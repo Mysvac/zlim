@@ -1,0 +1,23 @@
+# Rust
+/target
+
+# Cargo
+Cargo.lock
+/.cargo/config
+/.cargo/config.toml
+
+# OS
+.DS_Store
+
+# Editor
+/.vscode
+/.idea
+/.zed
+/.vs
+
+# AI
+/CLAUDE.md
+/.claude
+
+# Other
+/temp

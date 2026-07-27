@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = [ "crates/*" ]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Mysvac/zlim"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+std_instead_of_core = "warn"
+alloc_instead_of_core = "warn"
+
+type_complexity = "allow"
+too_many_arguments = "allow"
+
+print_stdout = "warn"
+print_stderr = "warn"
+allow_attributes_without_reason = "warn"
+
+type_id_on_box = "deny"
+missing_transmute_annotations = "deny"
+
+[lints]
+workspace = true
+
+[package]
+name = "zlim"
+exclude = [".github", "STYLE_GUIDE.md"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+zlim-internal = { path = "./crates/zlim-internal", default-features = false }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional = true }
+
+[features]
+
+default = []
+
+dylib = ["dep:zlim-dylib", "zlim-internal/dylib"]
+
+async_io = ["zlim-internal/async_io"]
+
+single_thread = ["zlim-internal/single_thread"]

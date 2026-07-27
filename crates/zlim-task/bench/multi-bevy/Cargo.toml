@@ -1,0 +1,11 @@
+[package]
+name = "multi-bevy"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+zlim-task = { path = "../.." }
+bevy_tasks = { version = "0.19", features = ["multi_threaded"] }
+rand = "0.10"

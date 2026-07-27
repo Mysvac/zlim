@@ -1,0 +1,10 @@
+[package]
+name = "single-bevy"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+zlim-task = { path = "../..", features = ["single_thread"] }
+bevy_tasks = { version = "0.19" } 

@@ -1,0 +1,31 @@
+[package]
+name = "zlim-internal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+
+default = []
+
+dylib = []
+
+async_io = ["zlim-task/async_io"]
+
+single_thread = ["zlim-task/single_thread"]
+
+[dependencies]
+
+zlim-cfg = { path = "../zlim-cfg", default-features = false }
+zlim-ptr = { path = "../zlim-ptr", default-features = false }
+zlim-reg = { path = "../zlim-reg", default-features = false }
+
+zlim-os = { path = "../zlim-os", default-features = false }
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+zlim-task = { path = "../zlim-task", default-features = false }
+
+[lints]
+workspace = true
