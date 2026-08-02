@@ -1,5 +1,6 @@
 [package]
 name = "zlim-reg"
+exclude = ["tests"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

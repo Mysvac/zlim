@@ -25,9 +25,8 @@ struct Node {
     // completes, `next` is never read by iterators, so `next`
     // itself does not need to be atomic.
     next: UnsafeCell<Option<&'static Node>>,
-    // Following the constraints in `zlim-os`, we require the target
-    // platform to support `AtomicPtr`, but not necessarily `AtomicU8`.
-    // So we use `AtomicUsize` instead, which also keeps the `Node` size the same.
+    // We require the target platform to support `AtomicPtr`, but not necessarily
+    // `AtomicU8`. So we use `AtomicUsize` instead, which also keeps struct size the same.
     state: AtomicUsize,
 }
 
@@ -111,6 +110,11 @@ pub struct Iter<T> {
 /// For example, avoid patterns that may cause the same [`Registry`] instance
 /// to be shared across unrelated types, which would corrupt internal typing and
 /// may trigger undefined behavior during iteration.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not implement `Collect`",
+    label = "`{Self}` does not implement `Collect`",
+    note = "consider using `zlim_reg::collect!({Self});`"
+)]
 pub trait Collect: Sync + Sized + 'static {
     fn registry() -> &'static Registry;
 }

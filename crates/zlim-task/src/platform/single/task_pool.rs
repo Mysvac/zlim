@@ -24,7 +24,7 @@ use super::{block_on, LocalExecutor, MainExecutor};
 /// ```
 /// # use zlim_task::TaskPoolBuilder;
 /// let pool = TaskPoolBuilder::new()
-///     .thread_num(4)
+///     .thread_count(4)
 ///     .thread_name("my-pool")
 ///     .build();
 /// ```
@@ -43,8 +43,8 @@ impl TaskPoolBuilder {
     ///
     /// No-op in single-threaded mode — only the current thread is used.
     #[inline]
-    pub fn thread_num(self, thread_num: usize) -> Self {
-        let _ = thread_num;
+    pub fn thread_count(self, thread_count: usize) -> Self {
+        let _ = thread_count;
         self
     }
 
@@ -129,7 +129,7 @@ impl TaskPoolBuilder {
 /// [`spawn_to_main`]: Self::spawn_to_main
 /// [`scope`]: Self::scope
 #[derive(Debug, Default)]
-pub struct TaskPool(()); // (()):  Prohibit direct creation
+pub struct TaskPool(pub(super) ()); // (()):  Prohibit direct creation
 
 impl TaskPool {
     /// Creates a new `TaskPool`.
@@ -145,7 +145,7 @@ impl TaskPool {
     ///
     /// Always returns `1` in single-threaded mode.
     #[inline]
-    pub fn thread_num(&self) -> usize {
+    pub fn thread_count(&self) -> usize {
         1
     }
 

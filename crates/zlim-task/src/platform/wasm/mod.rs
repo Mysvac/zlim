@@ -53,3 +53,124 @@ pub fn block_on<T>(future: impl Future<Output = T>) -> T {
 pub fn run_local() {
     /* do nothing */
 }
+
+// ----------------------------------------------------------------------------
+// Static TaskPool
+// ----------------------------------------------------------------------------
+//
+// In WASM mode all three pool newtypes share a single global `TaskPool`.
+// Tasks are submitted to the browser's microtask queue — there are no
+// background threads managed by Rust.
+//
+// Custom initialization via `try_init` is not supported: it always returns
+// `false` because the static pool is baked into the binary.
+
+// ----------------------------------------------------------------------------
+// Storage
+
+static TASK_POOL: TaskPool = TaskPool(());
+
+// ----------------------------------------------------------------------------
+// MainTaskPool
+
+/// The primary task pool for parallel algorithms and single-frame compute.
+///
+/// Note: "Main" here refers to this being the *primary* task pool,
+/// not that it only runs on the main thread.
+///
+/// In WASM mode this shares the same global [`TaskPool`] as
+/// [`AsyncTaskPool`] and [`IoTaskPool`]. Custom initialization via
+/// [`try_init`] is not supported — it always returns `false`.
+///
+/// [`try_init`]: Self::try_init
+pub struct MainTaskPool;
+
+impl core::ops::Deref for MainTaskPool {
+    type Target = TaskPool;
+
+    fn deref(&self) -> &Self::Target {
+        &TASK_POOL
+    }
+}
+
+impl MainTaskPool {
+    /// Always returns `false` in WASM mode.
+    ///
+    /// Custom initialization is not supported — all three pool newtypes
+    /// share a single static [`TaskPool`].
+    pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
+        let _ = f;
+        false
+    }
+
+    /// Returns a reference to the global [`TaskPool`].
+    pub fn get() -> &'static TaskPool {
+        &TASK_POOL
+    }
+}
+
+// ----------------------------------------------------------------------------
+// AsyncTaskPool
+
+/// A task pool for *async* CPU-intensive work that may span multiple frames.
+///
+/// In WASM mode this shares the same global [`TaskPool`] as
+/// [`MainTaskPool`] and [`IoTaskPool`].
+pub struct AsyncTaskPool;
+
+impl core::ops::Deref for AsyncTaskPool {
+    type Target = TaskPool;
+
+    fn deref(&self) -> &Self::Target {
+        &TASK_POOL
+    }
+}
+
+impl AsyncTaskPool {
+    /// Always returns `false` in WASM mode.
+    ///
+    /// Custom initialization is not supported — all three pool newtypes
+    /// share a single static [`TaskPool`].
+    pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
+        let _ = f;
+        false
+    }
+
+    /// Returns a reference to the global [`TaskPool`].
+    pub fn get() -> &'static TaskPool {
+        &TASK_POOL
+    }
+}
+
+// ----------------------------------------------------------------------------
+// IoTaskPool
+
+/// A task pool for IO-intensive work with potentially long waits.
+///
+/// In WASM mode this shares the same global [`TaskPool`] as
+/// [`MainTaskPool`] and [`AsyncTaskPool`].
+pub struct IoTaskPool;
+
+impl core::ops::Deref for IoTaskPool {
+    type Target = TaskPool;
+
+    fn deref(&self) -> &Self::Target {
+        &TASK_POOL
+    }
+}
+
+impl IoTaskPool {
+    /// Always returns `false` in WASM mode.
+    ///
+    /// Custom initialization is not supported — all three pool newtypes
+    /// share a single static [`TaskPool`].
+    pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
+        let _ = f;
+        false
+    }
+
+    /// Returns a reference to the global [`TaskPool`].
+    pub fn get() -> &'static TaskPool {
+        &TASK_POOL
+    }
+}

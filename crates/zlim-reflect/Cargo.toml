@@ -1,0 +1,40 @@
+[package]
+name = "zlim-reflect"
+exclude = ["tests"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+
+debug = []
+
+reflect_docs = ["zlim-reflect-derive/reflect_docs"]
+
+glam = ["dep:glam"]
+uuid = ["dep:uuid"]
+
+[dependencies]
+
+zlim-reflect-derive = { path = "derive" }
+
+zlim-cfg = { path = "../zlim-cfg", default-features = false }
+zlim-ptr = { path = "../zlim-ptr", default-features = false }
+zlim-reg = { path = "../zlim-reg", default-features = false }
+
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+# reflect serde
+serde_core = { version = "1.0", default-features = false, features = ["std"] }
+erased-serde = { version = "0.4", default-features = false, features = ["std"] }
+
+log = { version = "0.4" }
+
+# optional
+glam = { version = "0.33", features = ["serde", "float-types", "integer-types"], optional = true }
+uuid = { version = "1.24", default-features = false, features = ["serde"], optional = true }
+
+[lints]
+workspace = true

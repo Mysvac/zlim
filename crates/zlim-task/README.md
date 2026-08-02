@@ -164,21 +164,45 @@ thread, `spawn_local` is pinned to the current thread, and
 
 Three global singleton pools for different workloads:
 
-| Pool | Purpose |
-|------|---------|
-| [`MainTaskPool`] | Backend for parallel algorithms, and single-frame compute tasks |
-| [`AsyncTaskPool`] | Compute-intensive tasks that may span multiple frames |
-| [`IoTaskPool`] | IO-bound tasks with potentially long waits |
+| Pool | Purpose | Default threads (multi) |
+|------|---------|-------------------------|
+| [`MainTaskPool`] | Backend for parallel algorithms, and single-frame compute | 50% of available (≥ 1) |
+| [`AsyncTaskPool`] | Compute-intensive tasks that may span multiple frames | 25% of available (≥ 1) |
+| [`IoTaskPool`] | IO-bound tasks with potentially long waits | 25% of available (≥ 1) |
+
+Each pool is lazily initialized: the first call to `get()` (or any `Deref`
+usage) implicitly creates a `TaskPool` with the default configuration shown
+above. No explicit setup is required for typical use:
 
 ```rust
 use zlim_task::{MainTaskPool, TaskPool};
 
-// Initialize the global compute pool
-MainTaskPool::get_or_init(TaskPool::new);
-
-// Use it anywhere
+// Implicit init on first access — just use it
 let task = MainTaskPool::get().spawn(async { /* ... */ });
 ```
+
+For custom configuration, call `try_init` before the first access:
+
+```rust
+use zlim_task::{MainTaskPool, TaskPoolBuilder};
+
+// Custom init — must be called before first get()
+let did_init = MainTaskPool::try_init(|| {
+    TaskPoolBuilder::new()
+        .thread_count(8)
+        .thread_name("CustomMain")
+        .build()
+});
+
+assert!(did_init); // true on first call, false if already initialized
+```
+
+**Multi-threaded mode:** `try_init` returns `true` when the pool was not yet
+initialized (custom config applied), or `false` if already initialized.
+
+**Single-threaded / WASM mode:** all three pools share a single global
+`TaskPool`. `try_init` always returns `false` — custom initialization is
+not supported in these modes.
 
 ### ParallelSlice
 
@@ -194,8 +218,9 @@ let pos   = data.par_position(|v| *v > 5);   // Some(1)
 let doubled: Vec<_> = data.par_map(|v| *v * 2);
 ```
 
-When a [`MainTaskPool`] is available, work is distributed across
-worker threads. Otherwise, methods fall back to sequential iteration.
+When the `multi_thread` cfg path is enabled, work is distributed across
+worker threads via [`MainTaskPool`]. When multi-threading is disabled
+(single-threaded or WASM builds), methods fall back to sequential iteration.
 
 ### block_on
 

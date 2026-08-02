@@ -9,13 +9,13 @@ repository.workspace = true
 [dependencies]
 
 # Serialize and Deserialize support
-serde_core = { version = "1", default-features = false, features = ["std", "alloc"] }
+serde_core = { version = "1.0", default-features = false, features = ["std"] }
 
 # Small Buffer Optimized Vector
 fastvec = { version = "2.0", default-features = false, features = ["arrayvec", "fastvec", "smallvec", "serde"] }
 
 # Small Buffer Optimized String
-smol_str = { version = "0.3.6", default-features = false, features = ["std", "serde"] }
+smol_str = { version = "0.3.6", default-features = false }
 
 # Fixed Hasher
 foldhash = { version = "0.2", default-features = false }

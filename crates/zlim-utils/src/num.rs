@@ -41,6 +41,8 @@ use core::fmt::{LowerHex, Octal, UpperExp, UpperHex};
 use core::hash::{Hash, Hasher};
 use core::mem;
 use core::num::NonZero;
+use core::num::ParseIntError;
+use core::str::FromStr;
 
 macro_rules! impl_non_max {
     ($NonMax:ident, $Int:ty) => {
@@ -111,6 +113,14 @@ macro_rules! impl_non_max {
             #[inline(always)]
             pub const fn get(self) -> $Int {
                 unsafe { mem::transmute::<$NonMax, $Int>(self) ^ <$Int>::MAX }
+            }
+        }
+
+        impl Default for $NonMax {
+            #[inline(always)]
+            fn default() -> Self {
+                // SAFETY: `0 != MAX`
+                unsafe { Self::new_unchecked(0) }
             }
         }
 
@@ -233,6 +243,29 @@ macro_rules! impl_non_max {
             #[inline]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 UpperExp::fmt(&self.get(), f)
+            }
+        }
+
+        impl FromStr for $NonMax {
+            type Err = ParseIntError;
+
+            fn from_str(src: &str) -> Result<Self, Self::Err> {
+                match src.parse::<$Int>() {
+                    Ok(x) => match Self::new(x) {
+                        Some(r) => Ok(r),
+                        None => {
+                            ::core::hint::cold_path();
+                            // ↓ A hack, to create a `ParseIntError`.
+                            const {
+                                match u8::from_str_radix("-1", 10) {
+                                    Ok(_) => unreachable!(),
+                                    Err(e) => Err(e),
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => Err(e),
+                }
             }
         }
 

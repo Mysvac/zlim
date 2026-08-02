@@ -226,12 +226,14 @@ macro_rules! define_alias {
                 #[doc = concat!("An alias for `#[cfg(", stringify!($meta), ")]` .\n")]
                 #[doc = "See [`zlim_cfg::define_alias`] for details."]
                 $(#[$id_meta])*
+                #[doc(inline)]
                 pub use $crate::enabled as $id;
             }
             _ => {
                 #[doc = concat!("An alias for `#[cfg(", stringify!($meta), ")]` .\n")]
                 #[doc = "See [`zlim_cfg::define_alias`] for details."]
                 $(#[$id_meta])*
+                #[doc(inline)]
                 pub use $crate::disabled as $id;
             }
         }

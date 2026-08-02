@@ -32,6 +32,8 @@ impl Drop for OnDrop {
     }
 }
 
+const MAX_THREADS: usize = 31;
+
 // ----------------------------------------------------------------------------
 // TaskPoolBuilder
 
@@ -39,7 +41,7 @@ impl Drop for OnDrop {
 ///
 /// Currently configurable parameters:
 ///
-/// - [`thread_num`]: Number of additional worker threads to spawn (excluding the current thread).
+/// - [`thread_count`]: Number of additional worker threads to spawn (excluding the current thread).
 ///   Defaults to the number of logical cores on the system.
 ///
 /// - [`thread_name`]: Thread name prefix. If set, threads are named in the format
@@ -58,7 +60,7 @@ impl Drop for OnDrop {
 /// use std::sync::atomic::{AtomicU32, Ordering};
 ///
 /// let task_pool = TaskPoolBuilder::new()
-///     .thread_num(2)
+///     .thread_count(2)
 ///     .thread_name("doc")
 ///     .build();
 ///
@@ -76,7 +78,7 @@ impl Drop for OnDrop {
 /// assert_eq!(result, 100);
 /// ```
 ///
-/// [`thread_num`]: Self::thread_num
+/// [`thread_count`]: Self::thread_count
 /// [`thread_name`]: Self::thread_name
 /// [`stack_size`]: Self::stack_size
 /// [`on_thread_spawn`]: Self::on_thread_spawn
@@ -85,7 +87,7 @@ impl Drop for OnDrop {
 #[must_use]
 pub struct TaskPoolBuilder {
     /// Number of threads. If `None`, uses logical core count.
-    thread_num: Option<usize>,
+    thread_count: Option<usize>,
     /// Custom stack size.
     stack_size: Option<usize>,
     /// Thread name prefix.
@@ -101,7 +103,7 @@ impl TaskPoolBuilder {
     #[inline]
     pub const fn new() -> Self {
         Self{
-            thread_num: None,
+            thread_count: None,
             stack_size: None,
             thread_name: None,
             on_thread_spawn: None,
@@ -112,9 +114,12 @@ impl TaskPoolBuilder {
     /// Sets the number of threads in the pool.
     ///
     /// If unset, defaults to the system's logical core count.
+    /// 
+    /// The task pool should have at least `1` working thread and a maximum
+    /// of `31` working threads. Exceeding or falling short will be clamped.
     #[inline]
-    pub fn thread_num(mut self, thread_num: usize) -> Self {
-        self.thread_num = Some(thread_num);
+    pub fn thread_count(mut self, thread_count: usize) -> Self {
+        self.thread_count = Some(thread_count);
         self
     }
 
@@ -169,7 +174,7 @@ impl TaskPoolBuilder {
 ///
 /// Manages a fixed number of worker threads and distributes tasks across
 /// them using a work-stealing scheduler. At least one worker thread is
-/// always spawned — explicitly setting `thread_num(0)` is coerced to 1.
+/// always spawned — explicitly setting `thread_count(0)` is coerced to 1.
 ///
 /// ---
 ///
@@ -306,16 +311,18 @@ impl TaskPool {
         let stop_event = Event::new();
 
         // Set the number of threads based on Builder or available_parallelism.
-        let thread_num = builder
-            .thread_num
+        let thread_count = builder
+            .thread_count
             .unwrap_or_else(|| available_parallelism().get())
-            .max(1); // At least one worker thread.
+            .clamp(1, MAX_THREADS); // At least one worker thread.
+            // When a single pool has too many threads, the task scheduling
+            // overhead will significantly increase. Therefore, set a maximum value.
 
         // PoolExecutor
-        let executor = PoolExecutor::new(thread_num);
+        let executor = PoolExecutor::new(thread_count);
 
         // Create threads
-        let threads: Box<[JoinHandle<()>]> = (0..thread_num)
+        let threads: Box<[JoinHandle<()>]> = (0..thread_count)
             .map(|i| {
                 // clone PoolExecutor and shutdown signal channel receiver
                 let global_ex = executor.clone();
@@ -388,7 +395,7 @@ impl TaskPool {
     ///
     /// Does not include the thread where the task pool is located.
     #[inline]
-    pub fn thread_num(&self) -> usize {
+    pub fn thread_count(&self) -> usize {
         self.threads.len()
     }
 

@@ -23,6 +23,7 @@ too_many_arguments = "allow"
 
 print_stdout = "warn"
 print_stderr = "warn"
+allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
 
 type_id_on_box = "deny"
@@ -49,9 +50,13 @@ zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional 
 
 [features]
 
-default = []
+default = ["debug"]
+
+debug = ["zlim-internal/debug"]
 
 dylib = ["dep:zlim-dylib", "zlim-internal/dylib"]
+
+editor = ["debug", "dylib", "zlim-internal/editor"]
 
 async_io = ["zlim-internal/async_io"]
 

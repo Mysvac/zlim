@@ -1,9 +1,9 @@
 /// Parallel helpers for slice-like batch operations.
 ///
-/// When the `multi_thread` cfg path is enabled and a [`MainTaskPool`]
-/// is available, methods try to process the slice in chunks across worker
-/// threads. If no pool is available, methods fall back to the equivalent
-/// sequential iterator behavior.
+/// When the `multi_thread` cfg path is enabled, methods process the slice in
+/// chunks across worker threads using the global [`MainTaskPool`]. When
+/// multi-threading is disabled (single-threaded or WASM builds), methods fall
+/// back to the equivalent sequential iterator behavior.
 ///
 /// All closures are required to implement `Clone + Send` because each worker
 /// receives its own cloned closure instance.
@@ -187,24 +187,27 @@ impl<T: Send + Sync> ParallelSlice for [T] {
         Self::Item: PartialEq,
     {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
                 let results = pool.scope(|scope| {
                     for chunk in self.chunks(chunk_size) {
                         scope.spawn(async move { chunk.contains(val) });
                     }
                 });
-                return results.iter().any(|&r| r);
+                results.iter().any(|&r| r)
+            } else {
+                self.contains(val)
             }
         }
-        self.contains(val)
     }
 
     fn par_position(&self, f: impl FnMut(&Self::Item) -> bool + Clone + Send) -> Option<usize> {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
                 let results = pool.scope(|scope| {
                     for (index, chunk) in self.chunks(chunk_size).enumerate() {
@@ -217,16 +220,18 @@ impl<T: Send + Sync> ParallelSlice for [T] {
                         return Some(index * chunk_size + offset);
                     }
                 }
-                return None;
+                None
+            } else {
+                self.iter().position(f)
             }
         }
-        self.iter().position(f)
     }
 
     fn par_each(&self, f: impl FnMut(&Self::Item) + Clone + Send) {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
                 pool.scope(|scope| {
                     for chunk in self.chunks(chunk_size) {
@@ -234,16 +239,17 @@ impl<T: Send + Sync> ParallelSlice for [T] {
                         scope.spawn(async move { chunk.iter().for_each(func); });
                     }
                 });
-                return;
+            } else {
+                self.iter().for_each(f);
             }
         }
-        self.iter().for_each(f);
     }
 
     fn par_each_mut(&mut self, f: impl FnMut(&mut Self::Item) + Clone + Send) {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
                 pool.scope(|scope| {
                     for chunk in self.chunks_mut(chunk_size) {
@@ -251,16 +257,17 @@ impl<T: Send + Sync> ParallelSlice for [T] {
                         scope.spawn(async move { chunk.iter_mut().for_each(func); });
                     }
                 });
-                return;
+            } else {
+                self.iter_mut().for_each(f);
             }
         }
-        self.iter_mut().for_each(f);
     }
 
     fn par_map<R: Send + 'static>(&self, f: impl FnMut(&Self::Item) -> R + Clone + Send) -> Vec<R> {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
                 let mut results = pool.scope(|scope| {
                     for chunk in self.chunks(chunk_size) {
@@ -272,11 +279,11 @@ impl<T: Send + Sync> ParallelSlice for [T] {
                 for items in results.iter_mut() {
                     result.append(items);
                 }
-                return result;
+                result
+            } else {
+                self.iter().map(f).collect()
             }
         }
-
-        self.iter().map(f).collect()
     }
 
     fn par_map_mut<R: Send + 'static>(
@@ -284,8 +291,9 @@ impl<T: Send + Sync> ParallelSlice for [T] {
         f: impl FnMut(&mut Self::Item) -> R + Clone + Send,
     ) -> Vec<R> {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
                 let mut results = pool.scope(|scope| {
                     for chunk in self.chunks_mut(chunk_size) {
@@ -297,52 +305,56 @@ impl<T: Send + Sync> ParallelSlice for [T] {
                 for items in results.iter_mut() {
                     result.append(items);
                 }
-                return result;
+                result
+            } else {
+                self.iter_mut().map(f).collect()
             }
         }
-
-        self.iter_mut().map(f).collect()
     }
 
     fn par_splat_map<R: Send + 'static>(
         &self,
-        mut f: impl FnMut(&[Self::Item]) -> R + Clone + Send,
+        f: impl FnMut(&[Self::Item]) -> R + Clone + Send,
     ) -> Vec<R> {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
 
-                return pool.scope(|scope| {
+                pool.scope(|scope| {
                     for chunk in self.chunks(chunk_size) {
                         let mut func = f.clone();
                         scope.spawn(async move { func(chunk) });
                     }
-                });
+                })
+            } else {
+                let mut f = f; // need mutable
+                Vec::from([f(self)])
             }
         }
-
-        Vec::from([f(self)])
     }
 
     fn par_splat_map_mut<R: Send + 'static>(
         &mut self,
-        mut f: impl FnMut(&mut [Self::Item]) -> R + Clone + Send,
+        f: impl FnMut(&mut [Self::Item]) -> R + Clone + Send,
     ) -> Vec<R> {
         crate::cfg::multi_thread! {
-            if let Some(pool) = crate::MainTaskPool::try_get() {
-                let threads = pool.thread_num().max(1);
+            if {
+                let pool = crate::MainTaskPool::get();
+                let threads = pool.thread_count().max(1);
                 let chunk_size = (self.len() / threads).max(1);
 
-                return pool.scope(|scope| {
+                pool.scope(|scope| {
                     for chunk in self.chunks_mut(chunk_size) {
                         let mut func = f.clone();
                         scope.spawn(async move { func(chunk) });
                     }
-                });
+                })
+            } else {
+                let mut f = f; // need mutable
+                Vec::from([f(self)])
             }
         }
-
-        Vec::from([f(self)])
     }
 }

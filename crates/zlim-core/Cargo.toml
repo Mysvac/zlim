@@ -1,0 +1,26 @@
+[package]
+name = "zlim-core"
+exclude = ["tests"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+zlim-core-derive = { path = "derive" }
+
+zlim-reg = { path = "../zlim-reg" }
+zlim-ptr = { path = "../zlim-ptr" }
+
+zlim-os = { path = "../zlim-os" }
+zlim-utils = { path = "../zlim-utils" }
+
+zlim-task = { path = "../zlim-task" }
+
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+log = { version = "0.4" }
+
+[lints]
+workspace = true

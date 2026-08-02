@@ -59,6 +59,14 @@ impl<V> TypeMap<V> {
         self.0.shrink_to_fit();
     }
 
+    /// Reserves capacity for at least `additional` more elements to be inserted.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations.
+    #[inline]
+    pub fn reserve(&mut self, additional: usize) {
+        self.0.reserve(additional);
+    }
+
     /// Attempts to insert a key-value pair into the map.
     ///
     /// - Returns `true` if the key was not present and the pair was successfully inserted.

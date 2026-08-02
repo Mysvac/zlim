@@ -46,7 +46,7 @@ fn bench_scope_tiny() {
 
     let zt = {
         let zp = zlim_task::TaskPoolBuilder::new()
-            .thread_num(THREADS)
+            .thread_count(THREADS)
             .build();
         time("zlim-task", || {
             zp.scope(|s| {
@@ -85,7 +85,7 @@ fn bench_scope_heavy() {
 
     let zt = {
         let zp = zlim_task::TaskPoolBuilder::new()
-            .thread_num(THREADS)
+            .thread_count(THREADS)
             .build();
         time("zlim-task", || {
             zp.scope(|s| {
@@ -145,7 +145,7 @@ fn bench_par_map() {
 
     let zt = {
         let zp = zlim_task::TaskPoolBuilder::new()
-            .thread_num(THREADS)
+            .thread_count(THREADS)
             .build();
         time("zlim-task scope", || {
             zp.scope(|s| {

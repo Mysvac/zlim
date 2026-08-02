@@ -8,7 +8,9 @@ Foundation utilities for the zlim engine.
 
 ## str
 
-- Small-buffer-optimized string; re-exports the `smol_str` crate.
+- `SmolStr` — small-buffer-optimized, immutable string; wraps the `smol_str` crate.
+- `HashStr` — string with a pre-computed hash for `O(1)` equality checks and fast hashing.
+- `format_smol!` — macro for creating a `SmolStr` via `format_args!`.
 
 ## vec
 

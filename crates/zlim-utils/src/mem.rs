@@ -232,6 +232,24 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
         }
     }
 
+    /// Allocates a slice by copying its contents into the pool.
+    ///
+    /// Returns a mutable reference to the copied slice. The slice elements
+    /// must be `Copy`.
+    ///
+    /// This is safe because `T` implements `Copy` and does not require `Drop`.
+    #[inline]
+    fn alloc_slice<T: Copy>(&self, slice: &[T]) -> &mut [T] {
+        let layout = Layout::for_value(slice);
+        let ptr = self.alloc(layout).cast::<T>();
+
+        unsafe {
+            // Copy the slice contents
+            ptr::copy_nonoverlapping(slice.as_ptr(), ptr.as_ptr(), slice.len());
+            core::slice::from_raw_parts_mut(ptr.as_ptr(), slice.len())
+        }
+    }
+
     /// Allocates a value of type `T` in the pool and returns a mutable reference.
     ///
     /// The value is moved into the pool's memory. The returned reference is valid
@@ -249,21 +267,24 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
         }
     }
 
-    /// Allocates a slice by copying its contents into the pool.
+    /// Allocates a value of type `T` without requiring `Copy`.
     ///
-    /// Returns a mutable reference to the copied slice. The slice elements
-    /// must be `Copy`.
+    /// Unlike [`alloc_value`](Self::alloc_value), this method accepts any
+    /// `T`. The value is moved into pool-owned memory and **never dropped**
+    /// by the pool.
     ///
-    /// This is safe because `T` implements `Copy` and does not require `Drop`.
+    /// # Safety
+    ///
+    /// If `T` implements [`Drop`], the caller **must** manually run the
+    /// destructor before the pool is destroyed.
     #[inline]
-    fn alloc_slice<T: Copy>(&self, slice: &[T]) -> &mut [T] {
-        let layout = Layout::for_value(slice);
+    pub unsafe fn alloc_unchecked<T>(&self, val: T) -> &mut T {
+        let layout = Layout::new::<T>();
         let ptr = self.alloc(layout).cast::<T>();
 
         unsafe {
-            // Copy the slice contents
-            ptr::copy_nonoverlapping(slice.as_ptr(), ptr.as_ptr(), slice.len());
-            core::slice::from_raw_parts_mut(ptr.as_ptr(), slice.len())
+            ptr::write(ptr.as_ptr(), val);
+            &mut *ptr.as_ptr()
         }
     }
 
@@ -310,11 +331,15 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
 /// When the pool is dropped, all allocated pages are deallocated.
 /// However, the pool does **not** call `drop` on the allocated data.
 ///
-/// This means:
-/// - Only `Copy` types or types that do not require cleanup should be stored.
-/// - If you need to store types with destructors (like `Vec` or `String`),
-///   you must manage them manually outside the pool (e.g., keep them in a
-///   separate collection and drop them before the pool is deallocated).
+/// Use [`alloc_value`] / [`alloc_slice`] / [`alloc_str`] for `Copy` types
+/// (they are safe). Use [`alloc_unchecked`] for non-`Copy` types — in that
+/// case the caller is responsible for running destructors before the pool
+/// is destroyed.
+///
+/// [`alloc_value`]: Self::alloc_value
+/// [`alloc_slice`]: Self::alloc_slice
+/// [`alloc_str`]: Self::alloc_str
+/// [`alloc_unchecked`]: Self::alloc_unchecked
 ///
 /// # Example
 ///
@@ -453,6 +478,45 @@ impl Bump {
     pub fn alloc_slice<'a, T: Copy>(&'a self, s: &[T]) -> &'a mut [T] {
         self.0.alloc_slice(s)
     }
+
+    /// Allocates a value of type `T` without requiring `Copy`.
+    ///
+    /// Unlike [`alloc_value`](Self::alloc_value), this method accepts any `T`.
+    /// The value is moved into pool-owned memory and never dropped by the
+    /// pool.
+    ///
+    /// # Safety
+    ///
+    /// If `T` implements [`Drop`], the caller **must** manually run the
+    /// destructor before the pool is destroyed. The pool itself will never
+    /// call [`drop`] on the allocated value.
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if the system allocator fails to allocate
+    /// memory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zlim_utils::mem::Bump;
+    ///
+    /// let pool = Bump::new();
+    ///
+    /// // i32 is fine — no Drop, no problem.
+    /// let v = unsafe { pool.alloc_unchecked(42i32) };
+    /// assert_eq!(*v, 42);
+    ///
+    /// // For a type with Drop, the caller must invoke the destructor:
+    /// // let s = unsafe { pool.alloc_unchecked(String::from("hi")) };
+    /// // unsafe { core::ptr::drop_in_place(s); }
+    /// ```
+    /// ['drop`]: Drop::drop
+    pub unsafe fn alloc_unchecked<T>(&self, v: T) -> &mut T {
+        // SAFETY: delegated to the pool's `alloc_unchecked`; the caller is
+        // responsible for running `Drop` on the returned value.
+        unsafe { self.0.alloc_unchecked(v) }
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -532,11 +596,14 @@ static POOL: Mutex<Pool> = Mutex::new(Pool(PagePool::EMPTY));
 /// When the pool is dropped, all allocated pages are deallocated.
 /// However, the pool does **not** call `drop` on the allocated data.
 ///
-/// This means:
-/// - Only `Copy` types or types that do not require cleanup should be stored.
-/// - If you need to store types with destructors (like `Vec` or `String`),
-///   you must manage them manually outside the pool (e.g., keep them in a
-///   separate collection and drop them before the pool is deallocated).
+/// Use [`alloc_value`] / [`alloc_slice`] / [`alloc_str`] for `Copy` types
+/// (they are safe). Use [`alloc_unchecked`] for non-`Copy` types — in that
+/// case the caller is responsible for running destructors.
+///
+/// [`alloc_value`]: Self::alloc_value
+/// [`alloc_slice`]: Self::alloc_slice
+/// [`alloc_str`]: Self::alloc_str
+/// [`alloc_unchecked`]: Self::alloc_unchecked
 ///
 /// # Example
 ///
@@ -560,7 +627,7 @@ pub struct Global(());
 
 impl Global {
     /// Locks the global pool and returns a guard.
-    #[inline]
+    #[inline(always)]
     fn lock() -> MutexGuard<'static, Pool> {
         POOL.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -568,6 +635,7 @@ impl Global {
     /// Allocates memory with the given layout.
     ///
     /// See [`Bump::alloc`] for details.
+    #[inline(never)]
     pub fn alloc(layout: Layout) -> NonNull<u8> {
         Self::lock().0.alloc(layout)
     }
@@ -577,6 +645,7 @@ impl Global {
     /// The returned string has a `'static` lifetime.
     ///
     /// See [`Bump::alloc_str`] for details.
+    #[inline(never)]
     pub fn alloc_str(s: &str) -> &'static str {
         let binding = &Self::lock().0;
         let r: &str = binding.alloc_str(s);
@@ -590,6 +659,7 @@ impl Global {
     /// The returned reference has a `'static` lifetime.
     ///
     /// See [`Bump::alloc_value`] for details.
+    #[inline(never)]
     pub fn alloc_value<T: Copy>(v: T) -> &'static mut T {
         let binding = &Self::lock().0;
         let r: &mut T = binding.alloc_value(v);
@@ -603,9 +673,32 @@ impl Global {
     /// The returned slice has a `'static` lifetime.
     ///
     /// See [`Bump::alloc_slice`] for details.
+    #[inline(never)]
     pub fn alloc_slice<T: Copy>(s: &[T]) -> &'static mut [T] {
         let binding = &Self::lock().0;
         let r: &mut [T] = binding.alloc_slice(s);
+        // SAFETY: The data is allocated in `POOL` (a `static`), giving it `'static` lifetime.
+        // The MutexGuard (`binding`) is dropped after this line, but the pool data persists.
+        unsafe { core::mem::transmute(r) }
+    }
+
+    /// Allocates a value of type `T` without requiring `Copy`.
+    ///
+    /// The returned reference has a `'static` lifetime.
+    ///
+    /// # Safety
+    ///
+    /// If `T` implements [`Drop`], the caller **must** manually run the
+    /// destructor. The pool itself will never call [`drop`] on the allocated
+    /// value.
+    ///
+    /// [`drop`]: Drop::drop
+    #[inline(never)]
+    pub unsafe fn alloc_unchecked<T>(v: T) -> &'static mut T {
+        let binding = &Self::lock().0;
+        // SAFETY: delegated to the pool's `alloc_unchecked`; the caller is
+        // responsible for running `Drop` on the returned value.
+        let r: &mut T = unsafe { binding.alloc_unchecked(v) };
         // SAFETY: The data is allocated in `POOL` (a `static`), giving it `'static` lifetime.
         // The MutexGuard (`binding`) is dropped after this line, but the pool data persists.
         unsafe { core::mem::transmute(r) }
