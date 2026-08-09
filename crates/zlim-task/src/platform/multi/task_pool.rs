@@ -18,7 +18,7 @@ use async_task::Task;
 use super::executors::PoolExecutor;
 use super::{LocalExecutor, MainExecutor, block_on};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // OnDrop
 
 #[repr(transparent)]
@@ -34,7 +34,7 @@ impl Drop for OnDrop {
 
 const MAX_THREADS: usize = 31;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TaskPoolBuilder
 
 /// Builder for creating a [`TaskPool`].
@@ -167,7 +167,7 @@ impl TaskPoolBuilder {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TaskPool
 
 /// A thread pool for executing asynchronous tasks with work-stealing.
@@ -537,7 +537,7 @@ impl Drop for TaskPool {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Scope
 
 type FallibleTaskQueue<T> = SegQueue<FallibleTask<Result<T, Box<dyn Any + Send>>>>;

@@ -7,24 +7,14 @@
 //!
 //! | Function | JSON output |
 //! |---|---|
-//! | [`reflect_serialize`](TypeDB::reflect_serialize) | `{"my_crate::A":{"x":3,"y":4}}` |
-//! | [`serialize`](TypeDB::serialize()) | `{"x":3,"y":4}` |
+//! | [`reflect_serialize`] | `{"my_crate::A":{"x":3,"y":4}}` |
+//! | [`serialize`] | `{"x":3,"y":4}` |
 //!
-//! [`reflect_serialize`](TypeDB::reflect_serialize) wraps the payload in a single-entry map keyed by
+//! [`reflect_serialize`] wraps the payload in a single-entry map keyed by
 //! the type path.  This is **self-describing** — the output can be
 //! deserialized without knowing the target type in advance.
-//! [`serialize`](TypeDB::serialize()) produces only the payload, matching standard serde output.
+//! [`serialize`] produces only the payload, matching standard serde output.
 //! It is used internally for nested fields during recursive serialization.
-//!
-//! # Type naming in serde calls
-//!
-//! Only the outermost [`reflect_serialize`](TypeDB::reflect_serialize) wrapper uses
-//! [`type_path`](crate::path::TypePath::type_path) as the map key. All inner serde
-//! calls (`serialize_struct`, `serialize_enum`, `serialize_tuple_struct`, etc.)
-//! use [`type_ident`](crate::path::TypePath::IDENT) — the short name without
-//! generics and module path — as the type name argument. This matches standard
-//! serde conventions where the struct/enum name is an identifier, not a
-//! fully-qualified path.
 //!
 //! # Serialization priority
 //!
@@ -54,6 +44,8 @@
 //! string.  This ensures all reflected types are serializable even without
 //! explicit serde support.
 //!
+//! [`serialize`]: TypeDB::serialize()
+//! [`reflect_serialize`]: TypeDB::reflect_serialize
 //! [`TypeDB`]: super::TypeDB
 //! [`insert_serializer`]: TypeDB::insert_serializer
 //! [`ReflectRef`]: crate::ops::ReflectRef
@@ -78,9 +70,9 @@ use crate::info::ReflectKindError;
 use crate::ops::Opaque;
 use crate::ops::ReflectRef;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Register
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Logs a message when the same serializer is registered more than once.
 ///
@@ -168,9 +160,9 @@ impl TypeDB {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // serialize
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 impl TypeDB {
     /// Self-describing serializer for reflected types.
@@ -264,9 +256,9 @@ impl TypeDB {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Helper
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 crate::cfg::debug! {
     std::thread_local! {
@@ -329,9 +321,9 @@ fn invalid_info<E: Error>(ty: &'static str, error: ReflectKindError) -> E {
     ))
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypePathReflectSer — top-level wrapper with type path
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Wraps a `&dyn Reflect` for self-describing serialization.
 ///
@@ -354,9 +346,9 @@ impl Serialize for TypePathReflectSer<'_> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectSer — central dispatch wrapper
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Wraps a `&dyn Reflect` for direct serialization (no type path wrapping).
 ///
@@ -407,9 +399,9 @@ impl Serialize for ReflectSer<'_> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Opaque
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes an opaque value.
 ///
@@ -429,9 +421,9 @@ where
     serializer.serialize_str(&value.stringify()).map_err(maperr)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Array
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes a fixed-size array as a serde tuple.
 #[inline(never)]
@@ -450,9 +442,9 @@ where
     s.end().map_err(maperr)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // List
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes a growable list as a serde sequence.
 #[inline(never)]
@@ -471,9 +463,9 @@ where
     s.end().map_err(maperr)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Set
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes a set as a serde sequence.
 #[inline(never)]
@@ -489,9 +481,9 @@ where
     s.end().map_err(maperr)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Map
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes a map as a serde map.
 #[inline(never)]
@@ -507,9 +499,9 @@ where
     s.end().map_err(maperr)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tuple
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes a tuple / tuple-struct.
 ///
@@ -552,9 +544,9 @@ where
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Struct
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes a struct as a serde struct with named fields.
 ///
@@ -605,9 +597,9 @@ where
     s.end().map_err(maperr)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Enum
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Serializes an enum.
 ///

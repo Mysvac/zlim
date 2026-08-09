@@ -3,10 +3,10 @@ use core::fmt::{self, Display};
 
 use zlim_utils::mem::Global;
 
-use super::{Attributes, NamedField, UnnamedField, impl_docs_fn};
+use super::{Attributes, NamedField, UnnamedField};
 use super::{impl_attributes_fn, impl_with_attributes};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Enum Variant Kind
 
 /// Represents the kind/form of an enum variant.
@@ -56,7 +56,7 @@ impl Display for VariantKindError {
 
 impl Error for VariantKindError {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Struct-like variant
 
 /// Information for struct-style enum variants.
@@ -67,12 +67,9 @@ pub struct StructVariantInfo {
     // Needed for deserialization.
     field_names: &'static [&'static str],
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl StructVariantInfo {
-    impl_docs_fn!(docs);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
 
@@ -87,8 +84,6 @@ impl StructVariantInfo {
             fields: Global::alloc_slice(fields),
             field_names: Global::alloc_slice(field_names.as_slice()),
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -149,7 +144,7 @@ impl StructVariantInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tuple-like variant
 
 /// Information for tuple-style enum variants.
@@ -158,12 +153,9 @@ pub struct TupleVariantInfo {
     name: &'static str,
     fields: &'static [UnnamedField],
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl TupleVariantInfo {
-    impl_docs_fn!(docs);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
 
@@ -173,8 +165,6 @@ impl TupleVariantInfo {
             name,
             fields: Global::alloc_slice(fields),
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -205,7 +195,7 @@ impl TupleVariantInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Unit variant
 
 /// Information for unit enum variants.
@@ -213,12 +203,9 @@ impl TupleVariantInfo {
 pub struct UnitVariantInfo {
     name: &'static str,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl UnitVariantInfo {
-    impl_docs_fn!(docs);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
 
@@ -228,8 +215,6 @@ impl UnitVariantInfo {
         Self {
             name,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -240,7 +225,7 @@ impl UnitVariantInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // VariantInfo
 
 /// Container for compile-time enum variant info.
@@ -298,21 +283,6 @@ impl VariantInfo {
             Self::Struct(info) => info.field_len(),
         }
     }
-
-    /// The docstring of the underlying variant, if any.
-    ///
-    /// If `reflect_docs` feature is not enabled, this function always returns `None`.
-    pub const fn docs(&self) -> Option<&'static str> {
-        #[cfg(not(feature = "reflect_docs"))]
-        return None;
-
-        #[cfg(feature = "reflect_docs")]
-        match self {
-            Self::Struct(info) => info.docs(),
-            Self::Tuple(info) => info.docs(),
-            Self::Unit(info) => info.docs(),
-        }
-    }
 }
 
 macro_rules! impl_from_fn {
@@ -363,4 +333,4 @@ impl VariantInfo {
     impl_cast_fn!(as_struct: Struct => StructVariantInfo);
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

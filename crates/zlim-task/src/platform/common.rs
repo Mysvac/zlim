@@ -10,7 +10,7 @@ use futures_lite::FutureExt;
 use zlim_utils::ext::BlockList;
 use zlim_utils::sync::SegQueue;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // LocalExecutor
 
 thread_local! {
@@ -157,7 +157,7 @@ impl LocalExecutor {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Main Thread Executor
 
 static MAINEX: MainExecutor = MainExecutor {

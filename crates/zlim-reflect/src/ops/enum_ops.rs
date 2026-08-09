@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use super::Reflect;
 use crate::info::VariantKind;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Enum trait
 
 /// A trait for reflected enum types.
@@ -95,7 +95,7 @@ impl Debug for dyn Enum {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Variant Field Iterator
 
 /// An iterator over the fields of the current enum variant.
@@ -136,4 +136,4 @@ impl<'a> Iterator for VariantFieldIter<'a> {
 impl ExactSizeIterator for VariantFieldIter<'_> {}
 impl FusedIterator for VariantFieldIter<'_> {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

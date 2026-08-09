@@ -12,7 +12,7 @@ use core::ptr::{self, NonNull};
 use std::alloc as malloc;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Block
 
 const ALIGN: usize = align_of::<usize>();
@@ -142,7 +142,7 @@ impl Block {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // PagePool
 
 /// A bump-allocator pool that allocates memory in fixed-size pages.
@@ -314,7 +314,7 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Bump
 
 /// A bump allocator with a small page size for temporary caches.
@@ -519,7 +519,7 @@ impl Bump {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // STATIC_POOL
 
 cfg_select! {
@@ -565,7 +565,7 @@ cfg_select! {
     _ => {
         /// # other
         /// - `PAGE_SIZE > 128KiB`
-        const CHUNK_SIZE: usize = 128 * 1024 + 8;
+        const CHUNK_SIZE: usize = 256 * 1024 - 128;
     }
 }
 

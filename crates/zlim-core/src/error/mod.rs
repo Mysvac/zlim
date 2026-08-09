@@ -13,7 +13,7 @@
 //! | [`default_error_handler`] | Dispatches to the appropriate log level by [`Severity`]. |
 //! | [`Error`](derive@Error) | Derive macro for `core::error::Error` + optional `Display` and `From<Self> for ZlimError`. |
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Modules
 
 mod context;
@@ -21,7 +21,7 @@ mod error;
 
 pub mod handler;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Exports
 
 pub use zlim_core_derive::Error;

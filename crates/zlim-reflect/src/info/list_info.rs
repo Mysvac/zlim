@@ -1,13 +1,13 @@
 use core::any::{Any, TypeId};
 
 use super::{Attributes, Generics, Type, TypeInfo, Typed};
-use super::{impl_attributes_fn, impl_docs_fn, impl_with_attributes};
+use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
 use crate::Reflect;
 use crate::ops::List;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ListInfo
 
 /// A container for compile-time list-like info.
@@ -20,8 +20,6 @@ pub struct ListInfo {
     item_info: fn() -> &'static TypeInfo,
     generics: Generics,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl ListInfo {
@@ -30,7 +28,6 @@ impl ListInfo {
     impl_with_generics!(generics);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
-    impl_docs_fn!(docs);
 
     /// Creates a new [`ListInfo`].
     #[inline]
@@ -41,8 +38,6 @@ impl ListInfo {
             item_info: TItem::type_info,
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -65,4 +60,4 @@ impl ListInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

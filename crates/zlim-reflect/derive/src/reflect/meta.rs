@@ -11,9 +11,9 @@ use syn::{Ident, Path, Token, Type, TypeGenerics};
 
 use super::attrs::TypeAttrs;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectMeta
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 pub(crate) struct ReflectMeta<'a> {
     ident: &'a Ident,
@@ -72,23 +72,6 @@ impl<'a> ReflectMeta<'a> {
     #[inline]
     pub fn zlim_reflect(&self) -> &Path {
         &self.zlim_reflect
-    }
-
-    /// Generate docs codes
-    ///
-    /// If `docs` is empty, this function will return an empty token stream.
-    ///
-    /// Otherwise, it will return content similar to this:
-    ///
-    /// ```ignore
-    /// .with_docs(::core::option::Option::Some("......"))
-    /// ```
-    #[inline]
-    pub fn with_docs_expression(&self) -> TokenStream {
-        match self.attrs.doc_string() {
-            Some(docs) => quote!( .with_docs(::core::option::Option::Some( #docs )) ),
-            None => TokenStream::new(),
-        }
     }
 
     /// Generate attributes codes
@@ -215,13 +198,10 @@ impl<'a> ReflectMeta<'a> {
         let type_info_ = crate::path::type_info(zlim_reflect_path);
         let with_attributes = self.with_attributes_expression();
         let with_generics = self.with_generics_expression();
-        let with_docs = self.with_docs_expression();
 
         // Can be replaced with `only_lifetime_generics` ?
-        let is_const_express = self.no_generics()
-            && with_attributes.is_empty()
-            && with_generics.is_empty()
-            && with_docs.is_empty();
+        let is_const_express =
+            self.no_generics() && with_attributes.is_empty() && with_generics.is_empty();
 
         let ident = self.ident;
         let self_token = if is_const_express {
@@ -236,7 +216,6 @@ impl<'a> ReflectMeta<'a> {
                     #opaque_info_::new::<#self_token>()
                         #with_attributes
                         #with_generics
-                        #with_docs
                 )
             },
             is_const_express,
@@ -345,9 +324,9 @@ impl<'a> ReflectMeta<'a> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FixedState
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// A simple fixed hash state, used to ensure that `where` expression generated
 /// multiple times is consistent by the same `ReflectMeta`. (multiple compilations)
@@ -383,4 +362,4 @@ impl core::hash::Hasher for FixedHasher {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

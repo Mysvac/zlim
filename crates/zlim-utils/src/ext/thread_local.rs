@@ -22,7 +22,7 @@ use core::sync::atomic::{AtomicPtr, AtomicUsize};
 use std::collections::BinaryHeap;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Thread Index Allocation
 
 /// A unique identifier for a thread, starting from 1.
@@ -83,7 +83,7 @@ thread_local! {
     static THREAD_INDEX: LazyCell<ThreadIndex> = const { LazyCell::new(ThreadIndex::alloc) };
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ThreadLocal Storage
 
 /// The maximum number of buckets. Each bucket can hold 2^n elements.
@@ -197,7 +197,7 @@ const fn bucket_index(slot_index: usize) -> usize {
     (usize::BITS - 1 - slot_index.leading_zeros()) as usize
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ThreadLocal Implementations
 
 // SAFETY: ThreadLocal is always Sync, even if T isn't.
@@ -510,7 +510,7 @@ impl<T: Send + Debug> Debug for ThreadLocal<T> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // IntoIterator Implementations
 
 impl<T: Send> IntoIterator for ThreadLocal<T> {
@@ -548,7 +548,7 @@ impl<'a, T: Send> IntoIterator for &'a mut ThreadLocal<T> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Iterators
 
 /// An iterator that moves values out of a `ThreadLocal`.
@@ -651,7 +651,7 @@ impl<'a, T: Send> Iterator for IterMut<'a, T> {
 
 impl<T: Send> FusedIterator for IterMut<'_, T> {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]

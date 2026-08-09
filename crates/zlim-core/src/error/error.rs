@@ -5,7 +5,7 @@ use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ZlimError
 
 /// An error type that combines an underlying error with a severity level.
@@ -36,7 +36,7 @@ pub struct ZlimError(NonNull<()>, PhantomData<Box<InnerError>>);
 /// engine. Prefer this over `Result<T, ZlimError>` for brevity and consistency.
 pub type ZlimResult<T> = Result<T, ZlimError>;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Severity
 
 /// Indicates how severe a [`ZlimError`] is.
@@ -53,7 +53,7 @@ pub enum Severity {
     Panic = 3,
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Internal pointer-tagging helpers
 //
 // `ZlimError` packs a `Severity` (0–3) into the low 2 bits of an aligned
@@ -97,7 +97,7 @@ impl ZlimError {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Implementation
 
 impl ZlimError {
@@ -263,7 +263,7 @@ impl Debug for ZlimError {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // IntoZlimResult
 
 /// Conversion into a [`ZlimResult`].

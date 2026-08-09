@@ -6,7 +6,7 @@ use syn::{Data, DeriveInput, Fields, Ident};
 
 use crate::path;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Internal expansion
 
 pub fn expand(input: &DeriveInput) -> TokenStream {
@@ -22,6 +22,7 @@ pub fn expand(input: &DeriveInput) -> TokenStream {
 
     // 1. Always: core::error::Error
     let error_impl = quote! {
+        #[automatically_derived]
         impl #impl_generics ::core::error::Error for #name #ty_generics #where_clause {}
     };
 
@@ -46,7 +47,7 @@ pub fn expand(input: &DeriveInput) -> TokenStream {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Attribute parsing
 
 /// Extract `#[error("format string")]` or `#[error("fmt", extra...)]`.
@@ -70,23 +71,27 @@ fn parse_zlim_error_attr(attrs: &[syn::Attribute]) -> Result<Option<Ident>, syn:
                     "expected `#[zlim_error(info | warning | error | panic)]`",
                 )
             })?;
-            if severity != "info"
-                && severity != "warning"
-                && severity != "error"
-                && severity != "panic"
-            {
-                let message = format!(
-                    "invalid severity `{severity}`; expected one of `info`, `warning`, `error`, `panic`"
-                );
-                return Err(syn::Error::new_spanned(&severity, message));
+
+            let s = severity.to_string();
+
+            match s.as_str() {
+                "info" | "warning" | "error" | "panic" => {}
+                "warn" => return Err(syn::Error::new_spanned(&severity, "use `warning` instead")),
+                _ => {
+                    let message = format!(
+                        "invalid severity `{s}`; expected one of `info`, `warning`, `error`, `panic`"
+                    );
+                    return Err(syn::Error::new_spanned(&severity, message));
+                }
             }
+
             return Ok(Some(severity));
         }
     }
     Ok(None)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Display generation
 
 /// Returns `Ok(empty)` when there is no `#[error]` at all (Display is
@@ -124,8 +129,9 @@ fn gen_struct_display(
         Fields::Named(fields) => {
             let idents = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
             quote! {
-                #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                #[allow(unused, reason = "not all fields may appear in the format string")]
+                // // use `#[automatically_derived]` instead.
+                // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                // #[allow(unused, reason = "not all fields may appear in the format string")]
                 let Self { #(#idents),* } = self;
                 ::core::write!(__f__, #tokens)
             }
@@ -134,8 +140,9 @@ fn gen_struct_display(
             let n = fields.unnamed.len();
             let pats = (0..n).map(|i| format_ident!("_{i}"));
             quote! {
-                #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                #[allow(unused, reason = "not all fields may appear in the format string")]
+                // // use `#[automatically_derived]` instead.
+                // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                // #[allow(unused, reason = "not all fields may appear in the format string")]
                 let Self(#(#pats),*) = self;
                 ::core::write!(__f__, #tokens)
             }
@@ -146,6 +153,7 @@ fn gen_struct_display(
     };
 
     quote! {
+        #[automatically_derived]
         impl #impl_generics ::core::fmt::Display for #name #ty_generics #where_clause {
             fn fmt(&self, __f__: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 #body
@@ -185,8 +193,9 @@ fn gen_enum_display(
             Fields::Named(fields) => {
                 let idents = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
                 specific_arms.push(quote! {
-                    #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                    #[allow(unused, reason = "not all fields may appear in the format string")]
+                    // // use `#[automatically_derived]` instead.
+                    // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                    // #[allow(unused, reason = "not all fields may appear in the format string")]
                     #name::#vname { #(#idents),* } => ::core::write!(__f__, #tokens)
                 });
             }
@@ -194,8 +203,9 @@ fn gen_enum_display(
                 let n = fields.unnamed.len();
                 let pats = (0..n).map(|i| format_ident!("_{i}"));
                 specific_arms.push(quote! {
-                    #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                    #[allow(unused, reason = "not all fields may appear in the format string")]
+                    // // use `#[automatically_derived]` instead.
+                    // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                    // #[allow(unused, reason = "not all fields may appear in the format string")]
                     #name::#vname(#(#pats),*) => ::core::write!(__f__, #tokens)
                 });
             }
@@ -215,6 +225,7 @@ fn gen_enum_display(
     };
 
     Ok(quote! {
+        #[automatically_derived]
         impl #impl_generics ::core::fmt::Display for #name #ty_generics #where_clause {
             fn fmt(&self, __f__: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 match self {
@@ -226,7 +237,7 @@ fn gen_enum_display(
     })
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Into<ZlimError> via From impl
 
 /// Generate `From<Type> for ZlimError` (which provides `Into<ZlimError>`).
@@ -314,9 +325,8 @@ fn gen_enum_from_impl(
     };
 
     Ok(quote! {
-        impl #impl_generics ::core::convert::From<#name #ty_generics>
-            for #zlim_error_path #where_clause
-        {
+        #[automatically_derived]
+        impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error_path #where_clause {
             fn from(err: #name #ty_generics) -> Self {
                 #from_body
             }
@@ -324,7 +334,7 @@ fn gen_enum_from_impl(
     })
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Shared helpers
 
 /// Generate the `From<Type> for ZlimError` impl for a struct.
@@ -340,9 +350,8 @@ fn gen_struct_from_impl(
     let from_body = quote! { #zlim_error_path::#severity(err) };
 
     quote! {
-        impl #impl_generics ::core::convert::From<#name #ty_generics>
-            for #zlim_error_path #where_clause
-        {
+        #[automatically_derived]
+        impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error_path #where_clause {
             fn from(err: #name #ty_generics) -> Self {
                 #from_body
             }

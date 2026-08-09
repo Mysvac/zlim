@@ -29,6 +29,7 @@ pub(crate) fn gen_struct(info: &ReflectStruct) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = meta.split_generics();
 
     quote! {
+        #[automatically_derived]
         impl #impl_generics #struct_ for #real_ident #ty_generics #where_clause {
             fn field(&self, __name__: &str) -> ::core::option::Option<&dyn #reflect_> {
                 match __name__ {

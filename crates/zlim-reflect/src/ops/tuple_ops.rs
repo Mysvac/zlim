@@ -3,7 +3,7 @@ use core::iter::FusedIterator;
 
 use super::Reflect;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tuple trait
 
 /// A reflection trait for tuples and tuple-structs.
@@ -81,7 +81,7 @@ impl Debug for dyn Tuple {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tuple Field Iterator
 
 /// An iterator over the fields of a reflected tuple.
@@ -118,4 +118,4 @@ impl<'a> Iterator for TupleFieldIter<'a> {
 impl ExactSizeIterator for TupleFieldIter<'_> {}
 impl FusedIterator for TupleFieldIter<'_> {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

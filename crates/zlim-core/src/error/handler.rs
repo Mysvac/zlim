@@ -1,6 +1,6 @@
 use super::{ErrorContext, Severity, ZlimError};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ErrorHandler
 
 /// Function signature for zlim error handlers.
@@ -11,7 +11,7 @@ use super::{ErrorContext, Severity, ZlimError};
 /// paths when fallible work returns a [`ZlimError`].
 pub type ErrorHandler = fn(e: ZlimError, ctx: ErrorContext);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // default_error_handler
 
 /// Error handler that defers to an error's [`Severity`].
@@ -33,7 +33,7 @@ pub fn default_error_handler(e: ZlimError, ctx: ErrorContext) {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // helper
 
 macro_rules! inner {

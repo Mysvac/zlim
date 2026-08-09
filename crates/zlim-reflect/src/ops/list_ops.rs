@@ -3,7 +3,7 @@ use core::iter::FusedIterator;
 
 use super::Reflect;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // List trait
 
 /// A reflection trait for list-like types.
@@ -113,7 +113,7 @@ impl Debug for dyn List {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // List Iterator
 
 /// An iterator over the elements of a reflected list.
@@ -150,4 +150,4 @@ impl<'a> Iterator for ListItemIter<'a> {
 impl ExactSizeIterator for ListItemIter<'_> {}
 impl FusedIterator for ListItemIter<'_> {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

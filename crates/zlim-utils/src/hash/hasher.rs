@@ -6,7 +6,7 @@ use core::hash::{BuildHasher, Hasher};
 use foldhash::SharedSeed;
 use foldhash::fast::FoldHasher;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FixedHasher
 
 /// A fixed hasher whose hash results depend only on the input.
@@ -59,7 +59,7 @@ impl BuildHasher for FixedState {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // NoopHasher
 
 /// A no-op hasher that passes the value straight through as a `u64`.
@@ -151,7 +151,7 @@ impl BuildHasher for NoopState {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // SparseHasher
 
 /// A fast hasher that provides uniformly distributed values starting from 0.
@@ -256,7 +256,7 @@ impl BuildHasher for SparseState {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]

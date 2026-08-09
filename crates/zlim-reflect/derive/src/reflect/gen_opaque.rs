@@ -13,6 +13,7 @@ pub(crate) fn gen_opaque(meta: &ReflectMeta) -> TokenStream {
     let msg = format!("expect {ident_str}");
 
     quote! {
+        #[automatically_derived]
         impl #impl_generics #opaque_ for #real_ident #ty_generics #where_clause {
             fn apply_str(&mut self, v: &str) -> ::core::result::Result<(), ::std::string::String> {
                 if v == #ident_str {

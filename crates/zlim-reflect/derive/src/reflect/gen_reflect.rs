@@ -35,6 +35,7 @@ pub(crate) fn gen_reflect(derive: &ReflectDerive<'_>) -> TokenStream {
     let from_reflect_tokens = gen_from_reflect(derive);
 
     quote! {
+        #[automatically_derived]
         impl #impl_generics #reflect_ for #real_ident #ty_generics #where_clause {
             #[inline]
             fn reflect_assign(

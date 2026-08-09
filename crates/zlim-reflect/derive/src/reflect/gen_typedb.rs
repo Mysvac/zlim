@@ -38,6 +38,7 @@ pub(crate) fn gen_typedb(derive: &ReflectDerive) -> TokenStream {
     let need_inline = dependencies.is_empty().then(|| quote! { #[inline] });
 
     quote! {
+        #[automatically_derived]
         impl #impl_generics #type_database for #real_ident #ty_generics #where_clause {
             fn on_register(__db_x_: &'static #type_db) {
                 #defaultor

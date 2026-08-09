@@ -1,11 +1,10 @@
 mod allocator;
 mod entities;
-mod handle;
 mod id;
 mod mapper;
 
-pub use allocator::*;
-pub use entities::*;
-pub use handle::*;
-pub use id::*;
-pub use mapper::*;
+pub use allocator::AllocEntitiesIter;
+pub use allocator::{EntityAllocator, RemoteAllocator};
+pub use entities::{EntityError, EntityNode, EntityTree};
+pub use id::{EntityId, Location};
+pub use mapper::{EntityMap, EntityMapper, MapEntities};

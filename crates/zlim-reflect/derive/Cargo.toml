@@ -9,10 +9,6 @@ repository.workspace = true
 [lib]
 proc-macro = true
 
-[features]
-
-reflect_docs = []
-
 [dependencies]
 
 syn = { version = "2.0", features = ["visit", "visit-mut", "full", "extra-traits"] }

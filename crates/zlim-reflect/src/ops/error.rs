@@ -3,7 +3,7 @@ use core::fmt::{self, Display};
 
 use crate::info::{ReflectKind, VariantKind};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // CloneError
 
 /// Error returned when [`reflect_clone`] fails.
@@ -60,7 +60,7 @@ impl Display for CloneError {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ApplyError
 
 /// Error returned when [`reflect_apply`] fails.

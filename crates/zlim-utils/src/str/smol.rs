@@ -9,7 +9,7 @@ use serde_core::de::{self, Visitor};
 use serde_core::{Deserialize, Serialize};
 use smol_str::SmolStr as Inner;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // SmolStr
 
 /// A small-buffer-optimized, immutable string type.

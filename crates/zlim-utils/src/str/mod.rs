@@ -6,26 +6,21 @@
 //!   the [`smol_str`] crate. Strings up to 23 bytes are stack-allocated;
 //!   longer strings are heap-allocated. `Clone` is `O(1)`.
 //!
-//! - [`HashStr`] — a [`SmolStr`] with a pre-computed hash, enabling `O(1)`
-//!   equality checks and fast hashing. Ideal for use as keys in hash-based
-//!   collections.
-//!
 //! - [`intern_str`] — interns a `&str` into a `&'static str` via a global
-//!   read-optimised pool.
+//!   read-optimised pool backed by `HashSet<HS, NoopState>`.
 //!
-//! - [`format_smol!`] — a macro for creating a [`SmolStr`] via `format_args!`.
+//! - [`format_smol!`](crate::format_smol!) — a macro for creating a
+//!   [`SmolStr`] via `format_args!`.
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Modules
 
-mod hash;
 mod pool;
 mod smol;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Exports
 
-pub use hash::HashStr;
 pub use pool::intern_str;
 pub use smol::SmolStr;
 
@@ -44,7 +39,7 @@ pub mod __private {
     pub use smol_str::SmolStrBuilder as __SmolStrBuilder;
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]

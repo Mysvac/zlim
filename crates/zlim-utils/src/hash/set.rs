@@ -15,13 +15,13 @@ use hashbrown::{Equivalent, TryReserveError, hash_set as hb};
 
 use super::hasher::FixedState;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Re-Exports
 
 pub use hb::{Difference, Drain, Entry, ExtractIf, Intersection, IntoIter, Iter};
 pub use hb::{OccupiedEntry, SymmetricDifference, Union, VacantEntry};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // HashSet
 
 /// New-type for [`HashSet`] with [`FixedState`] as the default hashing provider.
@@ -53,7 +53,7 @@ pub use hb::{OccupiedEntry, SymmetricDifference, Union, VacantEntry};
 #[repr(transparent)]
 pub struct HashSet<T, S = FixedState>(hb::HashSet<T, S>);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // `FixedState` specific methods
 
 impl<T: Eq + Hash, const N: usize> From<[T; N]> for HashSet<T> {
@@ -101,7 +101,7 @@ impl<T> HashSet<T> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Transmute
 
 impl<T, S> HashSet<T, S> {
@@ -142,7 +142,7 @@ impl<T, S> From<HashSet<T, S>> for hb::HashSet<T, S> {
 //     }
 // }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Re-export the underlying method
 
 impl<T, S> Clone for HashSet<T, S>

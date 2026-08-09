@@ -9,7 +9,7 @@ use async_task::Task;
 
 use super::{block_on, LocalExecutor, MainExecutor};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TaskPoolBuilder
 
 /// Builder for configuring and creating a [`TaskPool`].
@@ -92,7 +92,7 @@ impl TaskPoolBuilder {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TaskPool
 
 /// A single-threaded task pool that runs tasks on the current thread.
@@ -230,7 +230,7 @@ impl TaskPool {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Scope
 
 /// A scope for running non-`'static` futures on a [`TaskPool`].

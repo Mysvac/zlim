@@ -12,7 +12,7 @@ use crate::path::{DynamicTypePath, TypePath};
 
 pub use zlim_reflect_derive::Reflect;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Reflect
 
 /// The core reflection trait.
@@ -143,6 +143,11 @@ pub use zlim_reflect_derive::Reflect;
 /// [`Struct`]: crate::ops::Struct
 /// [`Tuple`]: crate::ops::Tuple
 /// [`Enum`]: crate::ops::Enum
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not implement `Reflect`",
+    label = "invalid `Reflect`",
+    note = "consider annotating `{Self}` with `#[derive(Reflect)]`"
+)]
 pub trait Reflect: DynamicTypePath + DynamicTyped + Send + Sync + Any {
     /// Returns `true` if this value is a dynamic type.
     ///
@@ -626,7 +631,7 @@ pub trait Reflect: DynamicTypePath + DynamicTyped + Send + Sync + Any {
         Self: Sized;
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Methods
 
 impl dyn Reflect {
@@ -694,7 +699,7 @@ impl dyn Reflect {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Traits
 
 impl TypePath for dyn Reflect {
@@ -736,4 +741,4 @@ impl PartialEq for dyn Reflect {
 
 impl Eq for dyn Reflect {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

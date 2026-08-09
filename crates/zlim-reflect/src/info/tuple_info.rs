@@ -1,12 +1,12 @@
 use zlim_utils::mem::Global;
 
 use super::{Attributes, Generics, Type, UnnamedField};
-use super::{impl_attributes_fn, impl_docs_fn, impl_with_attributes};
+use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
 use crate::ops::Tuple;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TupleInfo
 
 /// A container for compile-time tuple-struct info.
@@ -16,8 +16,6 @@ pub struct TupleInfo {
     fields: &'static [UnnamedField],
     generics: Generics,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl TupleInfo {
@@ -26,7 +24,6 @@ impl TupleInfo {
     impl_with_generics!(generics);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
-    impl_docs_fn!(docs);
 
     /// Create a new [`TupleInfo`].
     ///
@@ -38,8 +35,6 @@ impl TupleInfo {
             fields: Global::alloc_slice(fields),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -72,9 +67,7 @@ impl TupleInfo {
         fields: &[],
         generics: Generics::EMPTY,
         attributes: Attributes::EMPTY,
-        #[cfg(feature = "reflect_docs")]
-        docs: None,
     };
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

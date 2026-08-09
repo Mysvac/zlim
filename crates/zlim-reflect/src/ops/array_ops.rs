@@ -3,7 +3,7 @@ use core::iter::FusedIterator;
 
 use super::Reflect;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Array trait
 
 /// A reflection trait for fixed-size arrays.
@@ -89,7 +89,7 @@ impl Debug for dyn Array {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Array Iterator
 
 /// An iterator over the elements of a reflected array.
@@ -126,4 +126,4 @@ impl<'a> Iterator for ArrayItemIter<'a> {
 impl ExactSizeIterator for ArrayItemIter<'_> {}
 impl FusedIterator for ArrayItemIter<'_> {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

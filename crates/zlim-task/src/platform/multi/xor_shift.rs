@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use std::hash::RandomState;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // XorShift64Star
 
 const FIXED_STATE: u64 = 0x9a7013f475bb8c23;

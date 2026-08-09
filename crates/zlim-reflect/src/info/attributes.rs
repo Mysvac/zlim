@@ -7,7 +7,7 @@ use zlim_utils::vec::SmallVec;
 use crate::Reflect;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Attributes
 
 /// A builder for [`Attributes`].
@@ -198,7 +198,7 @@ impl core::fmt::Debug for Attributes {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Auxiliary macros
 //
 // These generate the `attributes()` accessor, attribute lookup helpers,
@@ -278,4 +278,4 @@ macro_rules! impl_with_attributes {
 pub(crate) use impl_attributes_fn;
 pub(crate) use impl_with_attributes;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

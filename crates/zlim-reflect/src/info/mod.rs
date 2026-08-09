@@ -46,12 +46,11 @@
 //! - [`ReflectKindError`] / [`VariantKindError`]: Errors returned when a kind cast fails.
 //! - [`AttributesBuilder`]: Builder for constructing [`Attributes`].
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Modules
 
 mod array_info;
 mod attributes;
-mod docs_macro;
 mod enum_info;
 mod field_info;
 mod generics;
@@ -65,15 +64,14 @@ mod type_info;
 mod type_meta;
 mod variant_info;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Internal API
 
 use attributes::{impl_attributes_fn, impl_with_attributes};
-use docs_macro::impl_docs_fn;
 use generics::{impl_generics_fn, impl_with_generics};
 use type_meta::impl_type_fn;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Exports
 
 pub use array_info::ArrayInfo;
@@ -94,4 +92,4 @@ pub use type_meta::{PathTable, Type};
 pub use variant_info::{StructVariantInfo, TupleVariantInfo, UnitVariantInfo};
 pub use variant_info::{VariantInfo, VariantKind, VariantKindError};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

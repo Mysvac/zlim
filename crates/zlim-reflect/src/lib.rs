@@ -2,7 +2,7 @@
 #![cfg_attr(docsrs, expect(internal_features, reason = "needed for fake_variadic"))]
 #![cfg_attr(docsrs, feature(doc_cfg, rustdoc_internals))]
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// compilation configurations
 pub mod cfg {
@@ -11,14 +11,14 @@ pub mod cfg {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // Usually, we need to use `crate` in the crate itself and use `zlim_*` in
 // doc testing. `zlim_derive_utils::crate_path` choose `zlim_*`, so we must
 // have an `extern self` to ensure it can be used as an alias for `crate`.
 extern crate self as zlim_reflect;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Modules
 
 pub mod db;
@@ -30,7 +30,7 @@ pub mod path;
 
 pub use zlim_reflect_derive as derive;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Top-Level exports
 
 pub use ops::Reflect;

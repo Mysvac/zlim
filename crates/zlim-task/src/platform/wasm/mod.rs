@@ -1,13 +1,13 @@
 use super::{LocalExecutor, MainExecutor};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // task_pool
 
 mod task_pool;
 
 pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // block_on
 
 /// Blocks on the supplied `future`.
@@ -30,7 +30,7 @@ pub fn block_on<T>(future: impl Future<Output = T>) -> T {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // tick_local
 
 /// A no-op in WASM — exists for API parity.
@@ -54,9 +54,9 @@ pub fn run_local() {
     /* do nothing */
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Static TaskPool
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //
 // In WASM mode all three pool newtypes share a single global `TaskPool`.
 // Tasks are submitted to the browser's microtask queue — there are no
@@ -65,12 +65,12 @@ pub fn run_local() {
 // Custom initialization via `try_init` is not supported: it always returns
 // `false` because the static pool is baked into the binary.
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Storage
 
 static TASK_POOL: TaskPool = TaskPool(());
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // MainTaskPool
 
 /// The primary task pool for parallel algorithms and single-frame compute.
@@ -109,7 +109,7 @@ impl MainTaskPool {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // AsyncTaskPool
 
 /// A task pool for *async* CPU-intensive work that may span multiple frames.
@@ -142,7 +142,7 @@ impl AsyncTaskPool {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // IoTaskPool
 
 /// A task pool for IO-intensive work with potentially long waits.

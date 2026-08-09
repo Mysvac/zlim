@@ -7,7 +7,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 
 use super::futex::Futex;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // SpinLock
 
 /// A mutual exclusion primitive useful for protecting shared data.
@@ -175,7 +175,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for SpinLock<T> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // SpinLockGuard
 
 /// An RAII implementation of a "scoped lock" of a spin-lock.
@@ -233,7 +233,7 @@ impl<T: ?Sized + fmt::Display> fmt::Display for SpinLockGuard<'_, T> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]

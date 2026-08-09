@@ -1,12 +1,12 @@
 use zlim_utils::mem::Global;
 
 use super::{Attributes, Generics, Type, VariantInfo};
-use super::{impl_attributes_fn, impl_docs_fn, impl_with_attributes};
+use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
 use crate::ops::Enum;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // EnumInfo
 
 /// A container for compile-time enum info.
@@ -18,8 +18,6 @@ pub struct EnumInfo {
     variant_names: &'static [&'static str],
     generics: Generics,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl EnumInfo {
@@ -28,7 +26,6 @@ impl EnumInfo {
     impl_with_generics!(generics);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
-    impl_docs_fn!(docs);
 
     /// Creates a new [`EnumInfo`].
     ///
@@ -42,8 +39,6 @@ impl EnumInfo {
             variant_names: Global::alloc_slice(variant_names.as_slice()),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -103,4 +98,4 @@ impl EnumInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

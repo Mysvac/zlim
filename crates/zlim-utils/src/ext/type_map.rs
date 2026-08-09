@@ -7,7 +7,7 @@ use crate::hash::NoopState;
 use crate::hash::hashbrown::HashMap;
 use crate::hash::hashbrown::hash_map::Entry;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypeMap
 
 pub type TypeMapEntry<'a, V> = Entry<'a, TypeId, V, NoopState>;
@@ -216,7 +216,7 @@ impl<V> TypeMap<V> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Traits
 
 impl<T> Default for TypeMap<T> {

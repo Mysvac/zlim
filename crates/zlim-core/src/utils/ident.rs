@@ -28,6 +28,7 @@ macro_rules! define_ident {
             /// Create a new ID without bound checking.
             ///
             /// # Safety
+            ///
             /// `id != u32::MAX`
             #[expect(clippy::allow_attributes, reason = "allow unused function")]
             #[allow(unused, reason = "Some types may not require this function")]

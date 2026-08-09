@@ -1,12 +1,12 @@
 use zlim_utils::mem::Global;
 
 use super::{Attributes, Generics, NamedField, Type};
-use super::{impl_attributes_fn, impl_docs_fn, impl_with_attributes};
+use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
 use crate::ops::Struct;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // StructInfo
 
 /// A container for compile-time named struct info.
@@ -18,8 +18,6 @@ pub struct StructInfo {
     field_names: &'static [&'static str],
     generics: Generics,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl StructInfo {
@@ -28,7 +26,6 @@ impl StructInfo {
     impl_with_generics!(generics);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
-    impl_docs_fn!(docs);
 
     /// Create a new [`StructInfo`].
     ///
@@ -43,8 +40,6 @@ impl StructInfo {
             field_names: Global::alloc_slice(name.as_slice()),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -99,4 +94,4 @@ impl StructInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

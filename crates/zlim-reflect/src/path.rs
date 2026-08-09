@@ -23,7 +23,7 @@
 
 pub use zlim_reflect_derive::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypePath
 
 /// A static accessor to type paths and names.
@@ -49,6 +49,11 @@ pub use zlim_reflect_derive::TypePath;
 /// [`IDENT`]: TypePath::IDENT
 /// [`MODULE`]: TypePath::MODULE
 /// [`CRATE`]: TypePath::CRATE
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not implement `TypePath`",
+    label = "invalid `TypePath`",
+    note = "consider annotating `{Self}` with `#[derive(TypePath)]`"
+)]
 pub trait TypePath: 'static {
     /// Returns the fully qualified path with generics of the target type.
     ///
@@ -103,7 +108,7 @@ pub trait TypePath: 'static {
     const MODULE: Option<&str>;
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DynamicTypePath
 
 /// Provide dynamic dispatch for types that implement [`TypePath`].
@@ -163,7 +168,7 @@ impl<T: TypePath> DynamicTypePath for T {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // GenericTypePathCell
 
 use core::any::TypeId;
@@ -261,7 +266,7 @@ impl PathCell {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Concat helper
 
 /// An efficient string concatenation function.
@@ -299,8 +304,8 @@ pub fn concat(arr: &[&str]) -> String {
     res
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tests
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // see <zlim-reflect/tests/type_path.rs>

@@ -7,7 +7,7 @@ use super::{EnumInfo, StructInfo};
 use super::{MapInfo, OpaqueInfo, SetInfo};
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectKind
 
 /// An enumeration of the "kinds" of a reflected type.
@@ -83,7 +83,7 @@ impl Display for ReflectKindError {
 
 impl Error for ReflectKindError {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypeInfo
 
 /// Compile-time type information for various reflected types.
@@ -183,29 +183,9 @@ impl TypeInfo {
         }
     }
     super::impl_attributes_fn!();
-
-    /// Returns the documentation string for the type, if `reflect_docs` is
-    /// enabled and docs are present.
-    ///
-    /// If `reflect_docs` feature is not enabled, this function always returns `None`.
-    pub const fn docs(&self) -> Option<&'static str> {
-        #[cfg(not(feature = "reflect_docs"))]
-        return None;
-        #[cfg(feature = "reflect_docs")]
-        match self {
-            Self::Opaque(info) => info.docs(),
-            Self::Struct(info) => info.docs(),
-            Self::Tuple(info) => info.docs(),
-            Self::Array(info) => info.docs(),
-            Self::List(info) => info.docs(),
-            Self::Map(info) => info.docs(),
-            Self::Set(info) => info.docs(),
-            Self::Enum(info) => info.docs(),
-        }
-    }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Typed
 
 /// A static accessor to compile-time type information.
@@ -219,7 +199,7 @@ pub trait Typed: TypePath {
     fn type_info() -> &'static TypeInfo;
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DynamicTyped
 
 /// Provide dynamic dispatch for types that implement [`Typed`].
@@ -240,7 +220,7 @@ impl<T: Typed> DynamicTyped for T {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // InfoCell
 
 use core::any::TypeId;
@@ -310,4 +290,4 @@ impl InfoCell {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

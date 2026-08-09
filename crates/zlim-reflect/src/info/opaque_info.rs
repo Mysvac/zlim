@@ -1,11 +1,11 @@
 use super::{Attributes, Generics, Type};
-use super::{impl_attributes_fn, impl_docs_fn, impl_with_attributes};
+use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
 use crate::Reflect;
 use crate::ops::Opaque;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // OpaqueInfo
 
 /// Metadata for types whose internals are opaque to the reflection system.
@@ -17,8 +17,6 @@ pub struct OpaqueInfo {
     ty: Type,
     generics: Generics,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl OpaqueInfo {
@@ -27,7 +25,6 @@ impl OpaqueInfo {
     impl_with_generics!(generics);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
-    impl_docs_fn!(docs);
 
     /// Create a new [`OpaqueInfo`].
     #[inline]
@@ -36,8 +33,6 @@ impl OpaqueInfo {
             ty: Type::of::<T>(),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -48,10 +43,8 @@ impl OpaqueInfo {
             ty: Type::of::<T>(),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

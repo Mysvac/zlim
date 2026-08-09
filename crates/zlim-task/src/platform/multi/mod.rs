@@ -1,6 +1,6 @@
 use super::{LocalExecutor, MainExecutor};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // task_pool
 
 mod xor_shift;
@@ -9,7 +9,7 @@ mod executors;
 
 pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // block_on
 
 #[cfg(feature = "async_io")]
@@ -18,7 +18,7 @@ pub use async_io::block_on;
 #[cfg(not(feature = "async_io"))]
 pub use futures_lite::future::block_on;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // tick_local
 
 /// Drives local tasks to completion.
@@ -49,9 +49,9 @@ pub fn run_local() {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Static TaskPool
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //
 // Three global singleton pools backed by `OnceLock<TaskPool>`, each serving a
 // different workload category:
@@ -68,7 +68,7 @@ pub fn run_local() {
 // mode racing concurrent calls may observe stale results — call `try_init` once
 // from the main thread during app startup.
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Default constructors
 
 /// Default constructor for [`MainTaskPool`].
@@ -107,7 +107,7 @@ fn io_pool_default() -> TaskPool {
     TaskPoolBuilder::new().thread_name("IoTaskPool").thread_count(threads).build()
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Storage
 
 static MAIN_TASK_POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
@@ -116,7 +116,7 @@ static ASYNC_TASK_POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new
 
 static IO_TASK_POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // MainTaskPool
 
 /// The primary task pool for parallel algorithms and single-frame compute.
@@ -181,7 +181,7 @@ impl MainTaskPool {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // AsyncTaskPool
 
 /// A task pool for *async* CPU-intensive work that may span multiple frames.
@@ -230,7 +230,7 @@ impl AsyncTaskPool {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // IoTaskPool
 
 /// A task pool for IO-intensive work with potentially long waits.

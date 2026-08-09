@@ -1,7 +1,7 @@
 use super::{Array, Enum, List, Map, Opaque, Set, Struct, Tuple};
 use crate::info::{ReflectKind, ReflectKindError};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectRef
 
 /// An immutable enumeration of ["kinds"](ReflectKind) of a reflected type.
@@ -25,7 +25,7 @@ pub enum ReflectRef<'a> {
     Enum(&'a dyn Enum),
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectMut
 
 /// A mutable enumeration of ["kinds"](ReflectKind) of a reflected type.
@@ -49,7 +49,7 @@ pub enum ReflectMut<'a> {
     Enum(&'a mut dyn Enum),
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectOwned
 
 /// An owned enumeration of ["kinds"](ReflectKind) of a reflected type.
@@ -73,7 +73,7 @@ pub enum ReflectOwned {
     Enum(Box<dyn Enum>),
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Implementation
 
 macro_rules! impl_kind_fn {
@@ -152,4 +152,4 @@ impl ReflectOwned {
     impl_cast_fn!(into_enum: Enum => Box<dyn Enum>);
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

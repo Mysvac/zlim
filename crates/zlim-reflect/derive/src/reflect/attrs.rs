@@ -6,9 +6,9 @@ use syn::Token;
 use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypeAttrs
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Parsed `#[reflect(...)]` type-level attributes.
 #[derive(Debug, Default)]
@@ -21,7 +21,6 @@ pub(crate) struct TypeAttrs {
     pub(crate) has_default: bool,
     pub(crate) has_serialize: bool,
     pub(crate) has_deserialize: bool,
-    pub(crate) docs: Vec<String>,
     pub(crate) custom_attrs: Vec<Expr>,
     pub(crate) override_is_compatible: Option<Expr>,
     pub(crate) override_from_reflect: Option<Expr>,
@@ -32,10 +31,7 @@ pub(crate) struct TypeAttrs {
 impl TypeAttrs {
     /// Parse all `#[reflect(...)]` attributes from a type's attribute list.
     pub(crate) fn parse(attrs: &[Attribute]) -> syn::Result<Self> {
-        let mut result = TypeAttrs {
-            docs: collect_docs(attrs),
-            ..Default::default()
-        };
+        let mut result = TypeAttrs::default();
 
         for attr in find_reflect_attrs(attrs) {
             let content: TypeAttrsContent = attr.parse_args()?;
@@ -43,14 +39,6 @@ impl TypeAttrs {
         }
 
         Ok(result)
-    }
-
-    /// Returns the merged doc string, if any.
-    pub(crate) fn doc_string(&self) -> Option<String> {
-        if self.docs.is_empty() {
-            return None;
-        }
-        Some(self.docs.join("\n"))
     }
 
     fn merge(&mut self, other: TypeAttrs) -> syn::Result<()> {
@@ -117,9 +105,9 @@ impl TypeAttrs {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FieldAttrs
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Parsed `#[reflect(...)]` field-level attributes.
 #[derive(Debug, Default)]
@@ -128,16 +116,12 @@ pub(crate) struct FieldAttrs {
     pub(crate) has_default: bool,
     pub(crate) has_clone: bool,
     pub(crate) custom_attrs: Vec<Expr>,
-    pub(crate) docs: Vec<String>,
 }
 
 impl FieldAttrs {
     /// Parse all `#[reflect(...)]` attributes from a field's attribute list.
     pub(crate) fn parse(attrs: &[Attribute]) -> syn::Result<Self> {
-        let mut result = FieldAttrs {
-            docs: collect_docs(attrs),
-            ..Default::default()
-        };
+        let mut result = FieldAttrs::default();
 
         for attr in find_reflect_attrs(attrs) {
             let content: FieldAttrsContent = attr.parse_args()?;
@@ -145,14 +129,6 @@ impl FieldAttrs {
         }
 
         Ok(result)
-    }
-
-    /// Returns the merged doc string, if any.
-    pub(crate) fn doc_string(&self) -> Option<String> {
-        if self.docs.is_empty() {
-            return None;
-        }
-        Some(self.docs.join("\n"))
     }
 
     fn merge(&mut self, other: FieldAttrs) -> syn::Result<()> {
@@ -175,44 +151,17 @@ impl FieldAttrs {
     }
 }
 
-// ----------------------------------------------------------------------------
-// collect_docs
-// ----------------------------------------------------------------------------
-
-fn collect_docs(_attrs_: &[Attribute]) -> Vec<String> {
-    #[cfg(not(feature = "reflect_docs"))]
-    return Vec::new();
-
-    #[cfg(feature = "reflect_docs")]
-    return _attrs_
-        .iter()
-        .filter_map(|a| {
-            if !a.path().is_ident("doc") {
-                return None;
-            }
-            let meta: syn::MetaNameValue = a.parse_args().ok()?;
-            match &meta.value {
-                Expr::Lit(syn::ExprLit {
-                    lit: syn::Lit::Str(s),
-                    ..
-                }) => Some(s.value()),
-                _ => None,
-            }
-        })
-        .collect();
-}
-
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // find_reflect_attrs
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 fn find_reflect_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &'_ Attribute> {
     attrs.iter().filter(|a| a.path().is_ident("reflect"))
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Error
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 fn duplicate_flag(name: &str) -> syn::Error {
     let msg = format!(
@@ -230,9 +179,9 @@ fn duplicate_override(name: &str) -> syn::Error {
     syn::Error::new(proc_macro2::Span::call_site(), msg)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypeMetaItem
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 enum TypeMetaItem {
     CustomAttr(Expr),
@@ -270,9 +219,9 @@ impl syn::parse::Parse for TypeMetaItem {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypeAttrsContent
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 struct TypeAttrsContent {
     attrs: TypeAttrs,
@@ -351,9 +300,9 @@ fn set_expr(attrs: &mut TypeAttrs, name: &syn::Ident, expr: Expr) -> syn::Result
     Ok(())
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FieldMetaItem
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 enum FieldMetaItem {
     CustomAttr(Expr),
@@ -377,9 +326,9 @@ impl syn::parse::Parse for FieldMetaItem {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FieldAttrsContent
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 struct FieldAttrsContent {
     attrs: FieldAttrs,

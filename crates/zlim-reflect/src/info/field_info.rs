@@ -1,6 +1,6 @@
 use core::any::{Any, TypeId};
 
-use crate::info::{Attributes, TypeInfo, Typed, impl_docs_fn};
+use crate::info::{Attributes, TypeInfo, Typed};
 use crate::info::{impl_attributes_fn, impl_with_attributes};
 
 // ----------------------------------------------------------------------------
@@ -15,12 +15,9 @@ pub struct NamedField {
     // using a function pointer delays it.
     type_info: fn() -> &'static TypeInfo,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl NamedField {
-    impl_docs_fn!(docs);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
 
@@ -32,8 +29,6 @@ impl NamedField {
             id: TypeId::of::<T>(),
             type_info: T::type_info,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -74,12 +69,9 @@ pub struct UnnamedField {
     // using a function pointer delays it.
     type_info: fn() -> &'static TypeInfo,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl UnnamedField {
-    impl_docs_fn!(docs);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
 
@@ -91,8 +83,6 @@ impl UnnamedField {
             id: TypeId::of::<T>(),
             type_info: T::type_info,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 

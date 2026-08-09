@@ -1,6 +1,7 @@
 # Platform Abstraction Layer
 
-Platform-layer bridge that handles cross-platform differences and exports platform-specific interfaces for the rest of the runtime.
+Platform-layer bridge that handles cross-platform differences and
+exports platform-specific interfaces for the rest of the runtime.
 
 ## dirs
 
@@ -21,11 +22,9 @@ On WASM the crate avoids a hard `std::time` dependency.
 
 ## sys
 
-Hidden re-exports of platform system crates (`windows-sys`, `wasm-bindgen`, `android-activity`, `js-sys`).
+Hidden re-exports of platform system crates (`windows-sys`, `wasm-bindgen`, `android-activity`, etc.).
 
 Marked `#[doc(hidden)]` — not part of the public API.
-Exists only to consolidate platform dependency versions in one place so downstream code does not need to specify them individually.
 
-## License
-
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
+Exists only to consolidate platform dependency versions in one place
+so downstream code does not need to specify them individually.

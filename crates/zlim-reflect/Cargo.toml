@@ -11,8 +11,6 @@ repository.workspace = true
 
 debug = []
 
-reflect_docs = ["zlim-reflect-derive/reflect_docs"]
-
 glam = ["dep:glam"]
 uuid = ["dep:uuid"]
 
@@ -24,6 +22,7 @@ zlim-cfg = { path = "../zlim-cfg", default-features = false }
 zlim-ptr = { path = "../zlim-ptr", default-features = false }
 zlim-reg = { path = "../zlim-reg", default-features = false }
 
+zlim-os = { path = "../zlim-os", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
 
 # reflect serde

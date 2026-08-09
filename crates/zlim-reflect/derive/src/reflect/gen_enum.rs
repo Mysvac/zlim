@@ -166,6 +166,7 @@ pub(crate) fn gen_enum(info: &ReflectEnum) -> TokenStream {
     }
 
     quote! {
+        #[automatically_derived]
         impl #impl_generics #enum_ for #real_ident #ty_generics #where_clause {
             fn field(&self, #ref_name: &str) -> ::core::option::Option<&dyn #reflect_> {
                     match self {

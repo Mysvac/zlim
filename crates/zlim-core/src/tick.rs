@@ -16,7 +16,7 @@
 //! periodic pause (roughly every 8 hours), but the work is chunked and spread
 //! across threads, so the runtime impact is typically small.
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Configuration
 
 use zlim_ptr::{Slice, SliceMut};
@@ -27,7 +27,7 @@ pub const CHECK_CYCLE: u32 = 1 << 29;
 /// Maximum allowable Tick age - values exceeding this are clamped to this limit
 pub const MAX_TICK_AGE: u32 = u32::MAX - (CHECK_CYCLE << 1) - 1;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tick
 
 /// A 32-bit integer representing a discrete time point (or duration).
@@ -166,7 +166,7 @@ impl core::hash::Hash for Tick {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // CheckTicks
 
 /// Event emitted when periodic tick-age validation should run.
@@ -176,7 +176,7 @@ pub struct ClampTicks {
     pub now: Tick,
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DetectChanges
 
 /// Change-detection trait for components and resources.
@@ -209,7 +209,19 @@ pub trait DetectChanges {
     fn changed_tick(&self) -> Tick;
 }
 
-// -------------------------------------------------------------------
+pub trait DetectChangesMut: DetectChanges {
+    type Value<'w>
+    where
+        Self: 'w;
+
+    fn bypass<'w>(&'w mut self) -> Self::Value<'w>;
+
+    fn set_added(&mut self);
+
+    fn set_changed(&mut self);
+}
+
+// -----------------------------------------------------------------------------
 // TicksRef
 
 /// Immutable references to insertion/change ticks with run context.
@@ -239,7 +251,7 @@ pub struct TicksRef<'w> {
     pub this_run: Tick,
 }
 
-// -------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TicksMut
 
 /// Mutable references to insertion/change ticks with run context.
@@ -276,7 +288,7 @@ impl<'w> From<TicksMut<'w>> for TicksRef<'w> {
     }
 }
 
-// -------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TicksSliceRef
 
 /// Immutable slices of insertion/change ticks with run context.
@@ -301,7 +313,7 @@ pub struct TicksSliceRef<'w> {
     pub this_run: Tick,
 }
 
-// -------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TicksSliceMut
 
 /// Mutable slices of insertion/change ticks with run context.
@@ -338,3 +350,5 @@ impl<'w> From<TicksSliceMut<'w>> for TicksSliceRef<'w> {
         }
     }
 }
+
+// -----------------------------------------------------------------------------

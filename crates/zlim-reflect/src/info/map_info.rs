@@ -1,13 +1,13 @@
 use core::any::{Any, TypeId};
 
 use super::{Attributes, Generics, Type, TypeInfo, Typed};
-use super::{impl_attributes_fn, impl_docs_fn, impl_with_attributes};
+use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
 use crate::Reflect;
 use crate::ops::Map;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // MapInfo
 
 /// A container for compile-time map-like info.
@@ -22,8 +22,6 @@ pub struct MapInfo {
     value_info: fn() -> &'static TypeInfo,
     generics: Generics,
     attributes: Attributes,
-    #[cfg(feature = "reflect_docs")]
-    docs: Option<&'static str>,
 }
 
 impl MapInfo {
@@ -32,7 +30,6 @@ impl MapInfo {
     impl_with_generics!(generics);
     impl_attributes_fn!(attributes);
     impl_with_attributes!(attributes);
-    impl_docs_fn!(docs);
 
     /// Create a new [`MapInfo`].
     #[inline]
@@ -46,8 +43,6 @@ impl MapInfo {
             value_info: TValue::type_info,
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            #[cfg(feature = "reflect_docs")]
-            docs: None,
         }
     }
 
@@ -88,4 +83,4 @@ impl MapInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

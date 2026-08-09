@@ -67,7 +67,7 @@
 //! [`Set`]: crate::ops::Set
 //! [`Enum`]: crate::ops::Enum
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Modules
 
 mod dynamic_array;
@@ -78,7 +78,7 @@ mod dynamic_set;
 mod dynamic_struct;
 mod dynamic_tuple;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Exports
 
 pub use dynamic_array::DynamicArray;
@@ -90,7 +90,7 @@ pub use dynamic_set::DynamicSet;
 pub use dynamic_struct::DynamicStruct;
 pub use dynamic_tuple::DynamicTuple;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Shared macros
 
 /// Implements [`TypePath`] for a dynamic type.

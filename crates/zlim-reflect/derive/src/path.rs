@@ -4,7 +4,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Path;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // zlim_reflect_path
 
 #[inline]
@@ -12,7 +12,7 @@ pub(crate) fn zlim_reflect_path() -> Path {
     zlim_derive_utils::crate_path("zlim_reflect")
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Macros
 
 macro_rules! def_path_fn {
@@ -24,14 +24,14 @@ macro_rules! def_path_fn {
     };
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Path
 
 def_path_fn!(type_path_trait, path::TypePath);
 def_path_fn!(path_cell, path::PathCell);
 def_path_fn!(concat_fn, path::concat);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Info
 
 def_path_fn!(attributes, info::Attributes);
@@ -56,7 +56,7 @@ def_path_fn!(const_param, info::ConstParam);
 def_path_fn!(variant_kind, info::VariantKind);
 def_path_fn!(reflect_kind, info::ReflectKind);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Ops
 
 def_path_fn!(reflect_trait, ops::Reflect);
@@ -73,13 +73,13 @@ def_path_fn!(reflect_owned, ops::ReflectOwned);
 def_path_fn!(clone_error, ops::CloneError);
 def_path_fn!(apply_error, ops::ApplyError);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DB
 
 def_path_fn!(type_db, db::TypeDB);
 def_path_fn!(type_database_trait, db::TypeDatabase);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // impls
 
 def_path_fn!(reflect_hasher, impls::reflect_hasher);
@@ -90,4 +90,4 @@ def_path_fn!(tuple_apply, impls::tuple_apply);
 def_path_fn!(enum_try_apply, impls::enum_try_apply);
 def_path_fn!(is_convertable, impls::is_convertable);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

@@ -10,7 +10,7 @@ use syn::{DeriveInput, Field, Fields, Ident, Variant};
 use super::attrs::{FieldAttrs, TypeAttrs};
 use super::meta::ReflectMeta;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // StructField
 
 pub(crate) struct StructField<'a> {
@@ -77,20 +77,10 @@ impl<'a> StructField<'a> {
         let ty = &self.data.ty;
 
         let with_attributes = self.with_attributes_expression(zlim_reflect_path);
-        let with_docs = self.with_docs_expression();
 
         quote! {
             #field_info::new::<#ty>(#name)
                 #with_attributes
-                #with_docs
-        }
-    }
-
-    /// Generate docs codes
-    pub fn with_docs_expression(&self) -> TokenStream {
-        match self.attrs.doc_string() {
-            Some(docs) => quote!( .with_docs(::core::option::Option::Some( #docs )) ),
-            None => TokenStream::new(),
         }
     }
 
@@ -110,7 +100,7 @@ impl<'a> StructField<'a> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectStruct
 
 pub(crate) struct StructFieldAccessors {
@@ -195,20 +185,18 @@ impl<'a> ReflectStruct<'a> {
 
         let with_attributes = self.meta.with_attributes_expression();
         let with_generics = self.meta.with_generics_expression();
-        let with_docs = self.meta.with_docs_expression();
 
         quote! {
             #type_info_path::#type_info_kind(
                 #info_struct_path::new::<Self>(&[ #(#field_infos),* ])
                     #with_attributes
                     #with_generics
-                    #with_docs
             )
         }
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // EnumVariantFields & EnumVariant
 
 pub(crate) enum EnumVariantFields<'a> {
@@ -265,30 +253,12 @@ impl<'a> EnumVariant<'a> {
         };
 
         let with_attributes = self.with_attributes_expression(zlim_reflect_path);
-        let with_docs = self.with_docs_expression();
 
         quote! {
             #variant_info_path::#variant_info_kind(
                 #info_struct_path::new( #args )
                     #with_attributes
-                    #with_docs
             )
-        }
-    }
-
-    /// Generate docs codes
-    ///
-    /// If `docs` is empty, this function will return an empty token stream.
-    ///
-    /// Otherwise, it will return content similar to this:
-    ///
-    /// ```ignore
-    /// .with_docs(::core::option::Option::Some("......"))
-    /// ```
-    pub fn with_docs_expression(&self) -> TokenStream {
-        match self.attrs.doc_string() {
-            Some(docs) => quote!( .with_docs(::core::option::Option::Some( #docs )) ),
-            None => TokenStream::new(),
         }
     }
 
@@ -320,7 +290,7 @@ impl<'a> EnumVariant<'a> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectEnum
 
 pub(crate) struct ReflectEnum<'a> {
@@ -367,7 +337,6 @@ impl<'a> ReflectEnum<'a> {
             .map(|variant| variant.variant_info_tokens(zlim_reflect_path));
 
         let with_attributes = self.meta.with_attributes_expression();
-        let with_docs = self.meta.with_docs_expression();
         let with_generics = self.meta.with_generics_expression();
 
         quote! {
@@ -375,13 +344,12 @@ impl<'a> ReflectEnum<'a> {
                 #info_struct_path::new::<Self>(&[ #(#variant_infos),* ])
                     #with_attributes
                     #with_generics
-                    #with_docs
             )
         }
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ReflectDerive
 
 pub(crate) enum ReflectDerive<'a> {
@@ -448,7 +416,7 @@ impl<'a> ReflectDerive<'a> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Field / variant collection
 
 const MAX_COUNT: usize = u8::MAX as usize;

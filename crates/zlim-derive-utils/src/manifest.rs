@@ -15,14 +15,14 @@ use std::time::SystemTime;
 use serde::Deserialize;
 use serde::de::Visitor;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Config
 
 const ENGINE_NAME: &str = "zlim";
 const ENGINE_PATH: &str = "::zlim";
 const ENGINE_PREFIX: &str = "zlim_";
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Manifest
 
 /// A container optimized for path comparation.
@@ -128,7 +128,7 @@ struct Manifest {
     modified_time: SystemTime,
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Implementation
 
 /// Resolve a crate name to an absolute [`syn::Path`].
@@ -207,9 +207,10 @@ impl Manifest {
             return func(manifest);
         }
 
-        core::hint::cold_path();
-        drop(manifests);
+        ::core::hint::cold_path();
+        ::core::mem::drop(manifests);
 
+        // the manifest is modified, reload it
         let manifest = Manifest {
             manifest: read_manifest(&rev_path.0),
             modified_time: time,
@@ -226,6 +227,7 @@ impl Manifest {
     }
 
     fn find_crate_path(&self, name: &'static str) -> syn::Path {
+        // find from `dependencies`
         if let Some(module) = name.strip_prefix(ENGINE_PREFIX)
             && self.manifest.contains(ENGINE_NAME)
         {
@@ -243,6 +245,7 @@ impl Manifest {
 
         core::hint::cold_path();
 
+        // find from `dev-dependencies`
         if let Some(module) = name.strip_prefix(ENGINE_PREFIX)
             && self.manifest.dev_contains(ENGINE_NAME)
         {
@@ -257,6 +260,9 @@ impl Manifest {
         path
     }
 }
+
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {

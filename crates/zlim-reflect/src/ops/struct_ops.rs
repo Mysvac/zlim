@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use super::Reflect;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Struct trait
 
 /// A reflection trait for named structs.
@@ -137,7 +137,7 @@ impl Debug for dyn Struct {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Struct Field Iterator
 
 /// An iterator over the fields of a reflected struct.
@@ -174,4 +174,4 @@ impl<'a> Iterator for StructFieldIter<'a> {
 impl ExactSizeIterator for StructFieldIter<'_> {}
 impl FusedIterator for StructFieldIter<'_> {}
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

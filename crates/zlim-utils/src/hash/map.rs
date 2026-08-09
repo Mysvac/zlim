@@ -14,14 +14,14 @@ use hashbrown::{Equivalent, TryReserveError, hash_map as hb};
 
 use super::hasher::FixedState;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Re-Exports
 
 pub use hb::{Drain, Entry, EntryRef, ExtractIf, IntoIter, IntoKeys};
 pub use hb::{IntoValues, Iter, IterMut, Keys, OccupiedEntry};
 pub use hb::{OccupiedError, VacantEntry, Values, ValuesMut};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // HashMap
 
 /// New-type for [`HashMap`] with [`FixedState`] as the default hashing provider.
@@ -53,7 +53,7 @@ pub use hb::{OccupiedError, VacantEntry, Values, ValuesMut};
 #[repr(transparent)]
 pub struct HashMap<K, V, S = FixedState>(hb::HashMap<K, V, S>);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // `FixedState` specific methods
 
 impl<K: Eq + Hash, V, const N: usize> From<[(K, V); N]> for HashMap<K, V> {
@@ -101,7 +101,7 @@ impl<K, V> HashMap<K, V> {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Transmute
 
 impl<K, V, S> HashMap<K, V, S> {
@@ -142,7 +142,7 @@ impl<K, V, S> From<HashMap<K, V, S>> for hb::HashMap<K, V, S> {
 //     }
 // }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Re-export the underlying method
 
 impl<K, V, S> Clone for HashMap<K, V, S>

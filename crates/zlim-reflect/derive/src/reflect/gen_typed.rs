@@ -41,6 +41,7 @@ pub(crate) fn gen_typed(derive: &ReflectDerive) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = meta.split_generics();
 
     quote! {
+        #[automatically_derived]
         impl #impl_generics #typed_ for #real_ident #ty_generics #where_clause {
             fn type_info() -> &'static #type_info_ {
                 #inner_cell_tokens

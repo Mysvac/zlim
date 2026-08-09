@@ -7,19 +7,27 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+
+debug = []
+
 [dependencies]
 
-zlim-core-derive = { path = "derive" }
+zlim-core-derive = { path = "derive", default-features = false }
 
-zlim-reg = { path = "../zlim-reg" }
-zlim-ptr = { path = "../zlim-ptr" }
+zlim-cfg = { path = "../zlim-cfg", default-features = false }
+zlim-ptr = { path = "../zlim-ptr", default-features = false }
+zlim-reg = { path = "../zlim-reg", default-features = false }
 
-zlim-os = { path = "../zlim-os" }
-zlim-utils = { path = "../zlim-utils" }
+zlim-os = { path = "../zlim-os", default-features = false }
+zlim-utils = { path = "../zlim-utils", default-features = false }
 
-zlim-task = { path = "../zlim-task" }
+zlim-task = { path = "../zlim-task", default-features = false }
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
 
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+erased-serde = { version = "0.4", default-features = false, features = ["std"] }
+
 log = { version = "0.4" }
 
 [lints]

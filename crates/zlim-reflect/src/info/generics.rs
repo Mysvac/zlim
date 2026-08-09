@@ -6,7 +6,7 @@ use zlim_utils::mem::Global;
 use super::Type;
 use crate::path::TypePath;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ConstParam — const-generic value storage
 
 /// Stores the value of a const-generic parameter.
@@ -97,7 +97,7 @@ impl_from_fn!(isize, Isize);
 impl_from_fn!(char, Char);
 impl_from_fn!(bool, Bool);
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // ConstParamInfo — const-generic parameter metadata
 
 /// Compile-time metadata for a single const-generic parameter.
@@ -189,7 +189,7 @@ impl ConstParamInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // TypeParamInfo — type-generic parameter metadata
 
 /// Compile-time metadata for a single type-generic parameter.
@@ -279,7 +279,7 @@ impl TypeParamInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // GenericInfo — type- vs const-generic discriminator
 
 /// A single generic parameter — either a type or a const.
@@ -368,7 +368,7 @@ impl Debug for GenericInfo {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Generics — frozen parameter list
 
 /// A frozen, copyable collection of generic parameters.
@@ -451,7 +451,7 @@ impl Debug for Generics {
     }
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Auxiliary macros
 //
 // These generate the `generics()` accessor, convenience lookup helpers, and
@@ -520,4 +520,4 @@ macro_rules! impl_with_generics {
 pub(crate) use impl_generics_fn;
 pub(crate) use impl_with_generics;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

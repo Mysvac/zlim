@@ -15,6 +15,7 @@ use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::FusedIterator;
 use core::mem::MaybeUninit;
+use core::num::NonZeroU32;
 use core::sync::atomic::Ordering;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
 use core::{ptr, slice};
@@ -23,27 +24,11 @@ use std::sync::Arc;
 use zlim_utils::sync::Backoff;
 use zlim_utils::vec::ArrayVec;
 
-use super::{EntityId, EntityIndex, EntityVersion};
+use super::EntityId;
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FreshAllocator
-
-/// Builds a fresh [`EntityId`] from a raw index, at generation
-/// [`EntityVersion::MIN`].
-///
-/// # Safety
-/// `id` must be non-zero, as required by [`EntityIndex`].
-#[inline(always)]
-unsafe fn id_from_u32(id: u32) -> EntityId {
-    // SAFETY: the caller guarantees `id != 0`, and `EntityIndex` is
-    // `repr(transparent)` over `NonZeroU32`.
-    unsafe {
-        EntityId::new(
-            core::mem::transmute::<u32, EntityIndex>(id),
-            EntityVersion::MIN,
-        )
-    }
-}
+// -----------------------------------------------------------------------------
 
 /// Allocator for new, never-before-used entity IDs.
 #[repr(transparent)]
@@ -59,23 +44,28 @@ impl FreshAllocator {
         panic!("too many entities")
     }
 
-    /// Creates a new [`FreshAllocator`] starting from ID 1.
-    #[inline]
+    /// Creates a new [`FreshAllocator`] starting from ID `1`.
+    ///
+    /// range: `1 <= index < u32::MAX`.
+    #[inline(always)]
     const fn new() -> FreshAllocator {
         FreshAllocator {
-            // Start from 1 (0 is invalid EntityIndex)
+            // Start from `1` instead of `0`.
+            // A vacant slot is acceptable.
             next: AtomicU32::new(1),
         }
     }
 
     /// Allocates a single new entity ID.
-    ///
-    /// `1 <= return < u32::MAX`
     fn alloc(&self) -> EntityId {
         use Ordering::Relaxed;
 
+        // if `next` is `u32::MAX`, `try_update` return Err. So we won't get placeholder.
         match self.next.try_update(Relaxed, Relaxed, |v| v.checked_add(1)) {
-            Ok(index) => unsafe { id_from_u32(index) },
+            Ok(index) => EntityId {
+                index,
+                generation: NonZeroU32::MIN,
+            },
             Err(_) => Self::on_overflow(),
         }
     }
@@ -94,8 +84,9 @@ impl FreshAllocator {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FreshEntityIter
+// -----------------------------------------------------------------------------
 
 /// Iterator over freshly allocated entity IDs.
 #[repr(transparent)]
@@ -106,7 +97,10 @@ impl Iterator for FreshEntityIter {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|index| unsafe { id_from_u32(index) })
+        self.0.next().map(|index| EntityId {
+            index,
+            generation: NonZeroU32::MIN,
+        })
     }
 
     #[inline]
@@ -125,8 +119,9 @@ impl ExactSizeIterator for FreshEntityIter {
 
 impl FusedIterator for FreshEntityIter {}
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Chunk
+// -----------------------------------------------------------------------------
 
 /// A lazily-allocated, fixed-capacity block of [`EntityId`] slots.
 ///
@@ -175,8 +170,8 @@ impl Chunk {
         // writing `len` elements' worth of bytes stays in bounds. `count` is the
         // element count, not a byte count (see `write_bytes` docs).
         unsafe {
-            // Initialize every slot with the placeholder value; equivalent to a
-            // memset with 0xFF.
+            // Initialize every slot with the placeholder value;
+            // equivalent to a memset with 0xFF.
             boxed.as_mut_ptr().write_bytes(u8::MAX, len);
         }
 
@@ -248,10 +243,9 @@ impl Chunk {
         let len = available_len.min(entities.len());
 
         let mut head = self.head.get();
+
         if head.is_null() {
-            unsafe {
-                head = self.alloc(chunk_capacity);
-            }
+            unsafe { head = self.alloc(chunk_capacity) };
         }
 
         unsafe {
@@ -263,8 +257,9 @@ impl Chunk {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FreeBuffer
+// -----------------------------------------------------------------------------
 
 /// The number of chunks.
 const NUM_CHUNKS: u32 = 24;
@@ -353,8 +348,9 @@ impl Drop for FreeBuffer {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FreeBufferIter
+// -----------------------------------------------------------------------------
 
 /// Iterator over entities in a [`FreeBuffer`].
 struct FreeBufferIter<'a> {
@@ -457,8 +453,9 @@ impl FreeBuffer {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FreeCount
+// -----------------------------------------------------------------------------
 
 /// Packed state representation for [`FreeCount`].
 ///
@@ -602,8 +599,9 @@ impl FreeCount {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // FreeList
+// -----------------------------------------------------------------------------
 
 /// Thread-safe collection of recycled entities.
 ///
@@ -650,11 +648,8 @@ impl FreeList {
     }
 
     /// Allocates a single entity from the free list.
-    ///
-    /// # Safety
-    /// - The caller must ensure exclusive access or proper synchronization.
     #[inline]
-    unsafe fn alloc(&self) -> Option<EntityId> {
+    fn alloc(&self) -> Option<EntityId> {
         let len = self.len.pop_for_state(1).length();
         let index = len.checked_sub(1)?;
 
@@ -662,11 +657,8 @@ impl FreeList {
     }
 
     /// Allocates multiple entities from the free list.
-    ///
-    /// # Safety
-    /// - The caller must ensure exclusive access or proper synchronization.
     #[inline]
-    unsafe fn alloc_many(&self, count: u32) -> FreeBufferIter<'_> {
+    fn alloc_many(&self, count: u32) -> FreeBufferIter<'_> {
         let len = self.len.pop_for_state(count).length();
         let index = len.saturating_sub(count);
 
@@ -703,8 +695,9 @@ impl FreeList {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // AllocEntitiesIter
+// -----------------------------------------------------------------------------
 
 /// Iterator that yields entities from both recycled and fresh sources.
 pub struct AllocEntitiesIter<'a> {
@@ -740,8 +733,9 @@ impl Drop for AllocEntitiesIter<'_> {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // SharedAllocator
+// -----------------------------------------------------------------------------
 
 /// Shared state between [`EntityAllocator`] and [`RemoteAllocator`].
 /// Provides thread-safe entity allocation with support for both
@@ -755,8 +749,9 @@ struct SharedAllocator {
     is_closed: AtomicBool,
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // RemoteAllocator
+// -----------------------------------------------------------------------------
 
 /// Entity allocator that can operate without direct `World` access.
 ///
@@ -814,25 +809,11 @@ impl Debug for RemoteAllocator {
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // EntityAllocator
+// -----------------------------------------------------------------------------
 
-/// Local buffer size for batching free operations.
-/// This amortizes the cost of synchronization with the shared allocator.
-const LOCAL_CAP: usize = 127;
-
-/// Local buffer whose contents are preferred when
-/// a mutable reference is available.
-///
-/// Note: the free buffer and the allocation buffer
-/// are kept separate rather than combined. This helps
-/// avoid hot entities being rapidly reallocated,
-/// which can cause generation counters to advance
-/// quickly and increase the risk of id reuse/collision.
-struct LocalBuffer {
-    free: ArrayVec<EntityId, LOCAL_CAP>,
-    alloc: ArrayVec<EntityId, LOCAL_CAP>,
-}
+const LOCAL_SIZE: usize = 127;
 
 /// Primary entity allocator bound to a `World` instance.
 ///
@@ -847,8 +828,10 @@ struct LocalBuffer {
 ///   allocation or recycling. Callers must advance the version themselves when
 ///   reusing an id, to prevent a recycled id from aliasing an older handle.
 pub struct EntityAllocator {
+    /// See [`SharedAllocator`] for details.
     shared: Arc<SharedAllocator>,
-    local: Box<LocalBuffer>,
+    free_buf: Box<ArrayVec<EntityId, LOCAL_SIZE>>,
+    alloc_buf: Box<ArrayVec<EntityId, LOCAL_SIZE>>,
 }
 
 impl Debug for EntityAllocator {
@@ -867,27 +850,21 @@ impl Drop for EntityAllocator {
 }
 
 impl Default for EntityAllocator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl EntityAllocator {
     /// Creates a new [`EntityAllocator`].
-    pub fn new() -> Self {
+    fn default() -> Self {
         Self {
             shared: Arc::new(SharedAllocator {
                 free: FreeList::new(),
                 fresh: FreshAllocator::new(),
                 is_closed: AtomicBool::new(false),
             }),
-            local: Box::new(LocalBuffer {
-                free: ArrayVec::new(),
-                alloc: ArrayVec::new(),
-            }),
+            free_buf: Box::new(ArrayVec::new()),
+            alloc_buf: Box::new(ArrayVec::new()),
         }
     }
+}
 
+impl EntityAllocator {
     /// Creates a [`RemoteAllocator`] from this allocator.
     ///
     /// The remote allocator can be used to allocate entities without
@@ -909,26 +886,27 @@ impl EntityAllocator {
     ///
     /// Note: Entities may be stored in a local buffer and not immediately
     /// made available for allocation until the buffer is flushed.
-    #[inline]
+    #[inline(always)]
     pub fn free(&mut self, entity: EntityId) {
         #[inline(never)]
-        fn flush_buffer(this: &mut EntityAllocator) {
+        fn slow_path(this: &mut EntityAllocator) {
             // SAFETY: We have exclusive access (&mut self)
             unsafe {
-                let local_free = &mut this.local.free;
-                this.shared.free.free(local_free.as_slice());
-                local_free.set_len(0);
+                let entities = this.free_buf.as_slice();
+                this.shared.free.free(entities);
+                this.free_buf.set_len(0);
             }
         }
 
         // Flush local buffer if full
-        if self.local.free.is_full() {
-            flush_buffer(self);
+        if self.free_buf.is_full() {
+            core::hint::cold_path();
+            slow_path(self);
         }
 
         // Add entity to local buffer
         unsafe {
-            self.local.free.push_unchecked(entity);
+            self.free_buf.push_unchecked(entity);
         }
     }
 
@@ -936,30 +914,7 @@ impl EntityAllocator {
     ///
     /// More efficient than individual [`free`](Self::free) calls for batches.
     pub fn free_many(&mut self, entities: &[EntityId]) {
-        let local_free = &mut self.local.free;
-
-        if LOCAL_CAP - local_free.len() >= entities.len() {
-            let old_len = local_free.len();
-            let append = entities.len();
-            let new_len = old_len + append;
-            unsafe {
-                ptr::copy_nonoverlapping::<EntityId>(
-                    entities.as_ptr(),
-                    local_free.as_mut_ptr().add(old_len),
-                    append,
-                );
-                local_free.set_len(new_len);
-            }
-            return; // <---
-        }
-
-        if local_free.len() > (LOCAL_CAP >> 1) {
-            unsafe {
-                self.shared.free.free(local_free.as_slice());
-                local_free.set_len(0);
-            }
-        }
-
+        // SAFETY: We have exclusive access (&mut self)
         unsafe {
             self.shared.free.free(entities);
         }
@@ -967,11 +922,14 @@ impl EntityAllocator {
 
     /// Allocates a single entity, preferring recycled entities.
     ///
-    /// Note: does not modify the entity's [`EntityVersion`]. Callers must
-    /// advance the version when reusing an id, to prevent aliasing.
+    /// Note: does not modify the entity's `Generation`. Callers must
+    /// advance the generation when reusing an id, to prevent aliasing.
     #[must_use]
     pub fn alloc(&self) -> EntityId {
-        unsafe { self.shared.free.alloc() }.unwrap_or_else(|| self.shared.fresh.alloc())
+        self.shared
+            .free
+            .alloc()
+            .unwrap_or_else(|| self.shared.fresh.alloc())
     }
 
     /// Efficiently allocates multiple entities.
@@ -981,7 +939,7 @@ impl EntityAllocator {
     #[must_use]
     pub fn alloc_many(&self, count: u32) -> AllocEntitiesIter<'_> {
         // SAFETY: Caller ensures exclusive access or proper synchronization
-        let reused = unsafe { self.shared.free.alloc_many(count) };
+        let reused = self.shared.free.alloc_many(count);
         let still_need = count - reused.len() as u32;
         let fresh = self.shared.fresh.alloc_many(still_need);
         AllocEntitiesIter { fresh, reused }
@@ -990,40 +948,40 @@ impl EntityAllocator {
     /// Allocates a single entity with mutable access, checking local buffer first.
     ///
     /// More efficient than [`alloc`](Self::alloc) when mutable access is available.
-    #[inline]
     #[must_use]
+    #[inline(always)]
     pub fn alloc_mut(&mut self) -> EntityId {
         #[inline(never)]
-        fn alloc_slow(this: &mut EntityAllocator) -> EntityId {
-            let local_alloc = &mut this.local.alloc;
-
-            let count = LOCAL_CAP as u32 + 1;
-            let mut reused = unsafe { this.shared.free.alloc_many(count) };
+        fn slow_path(this: &mut EntityAllocator) -> EntityId {
+            let count = LOCAL_SIZE as u32 + 1;
+            let mut reused = this.shared.free.alloc_many(count);
             let still_need = count - reused.len() as u32;
             let mut fresh = this.shared.fresh.alloc_many(still_need);
-
             let ret = reused.next().or_else(|| fresh.next());
-            debug_assert!(ret.is_some());
+
+            let buf = &mut this.alloc_buf;
 
             unsafe {
-                reused.for_each(|v| local_alloc.push_unchecked(v));
-                fresh.for_each(|v| local_alloc.push_unchecked(v));
+                reused.for_each(|v| buf.push_unchecked(v));
+                fresh.for_each(|v| buf.push_unchecked(v));
             }
-            debug_assert!(local_alloc.len() == LOCAL_CAP);
 
+            debug_assert!(ret.is_some());
             unsafe { ret.unwrap_unchecked() }
         }
 
-        if let Some(entity) = self.local.alloc.pop() {
+        if let Some(entity) = self.alloc_buf.pop() {
             entity
         } else {
-            alloc_slow(self)
+            ::core::hint::cold_path();
+            slow_path(self)
         }
     }
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Tests
+// -----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -1048,7 +1006,7 @@ mod tests {
     #[test]
     fn uniqueness() {
         let mut entities = Vec::with_capacity(2000);
-        let mut allocator = EntityAllocator::new();
+        let mut allocator = EntityAllocator::default();
 
         entities.extend(allocator.alloc_many(1000));
 
@@ -1074,8 +1032,8 @@ mod tests {
 
     #[test]
     fn recyclable() {
-        let mut entities = Vec::with_capacity(1000);
-        let mut allocator = EntityAllocator::new();
+        let mut entities = Vec::with_capacity(550);
+        let mut allocator = EntityAllocator::default();
 
         for _ in 0..50 {
             (0..150).for_each(|_| entities.push(allocator.alloc()));

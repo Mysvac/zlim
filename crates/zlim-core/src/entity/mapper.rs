@@ -1,20 +1,17 @@
 use core::fmt::Debug;
-use core::ops::Index;
+use core::hash::{BuildHasher, Hash};
 
 use serde::{Deserialize, Serialize};
-use zlim_utils::hash::{HashMap, SparseState};
+use zlim_utils::hash::{HashMap, HashSet, SparseState};
 
-use crate::entity::EntityId;
+use super::EntityId;
 
-// ------------------------------------------------------------------------------
-// MapEntities
+// -----------------------------------------------------------------------------
+// EntityMapper & MapEntities
 
 pub trait MapEntities {
     fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E);
 }
-
-// ------------------------------------------------------------------------------
-// EntityMapper
 
 pub trait EntityMapper {
     fn get_mapped(&mut self, source: EntityId) -> EntityId;
@@ -22,7 +19,7 @@ pub trait EntityMapper {
     fn set_mapped(&mut self, source: EntityId, target: EntityId);
 }
 
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // EntityMap
 
 #[derive(Serialize, Deserialize)]
@@ -177,15 +174,6 @@ impl<T: Clone> Clone for EntityMap<T> {
     }
 }
 
-impl<T> Index<EntityId> for EntityMap<T> {
-    type Output = T;
-
-    #[inline(always)]
-    fn index(&self, index: EntityId) -> &Self::Output {
-        self.0.index(&index)
-    }
-}
-
 impl<T> IntoIterator for EntityMap<T> {
     type Item = <HashMap<EntityId, T, SparseState> as IntoIterator>::Item;
     type IntoIter = <HashMap<EntityId, T, SparseState> as IntoIterator>::IntoIter;
@@ -223,5 +211,155 @@ where
     #[inline(always)]
     fn extend<U: IntoIterator<Item = T>>(&mut self, iter: U) {
         self.0.extend(iter);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Impl MapEntities
+
+impl MapEntities for () {
+    #[inline(always)]
+    fn map_entities<E: EntityMapper>(&mut self, _: &mut E) {}
+}
+
+impl MapEntities for EntityId {
+    #[inline]
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        *self = entity_mapper.get_mapped(*self);
+    }
+}
+
+impl<T: MapEntities> MapEntities for Option<T> {
+    #[inline]
+    fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+        if let Some(entities) = self {
+            entities.map_entities(entity_mapper);
+        }
+    }
+}
+
+macro_rules! impl_map_entities_for_map {
+    ($($ty:tt)*) => {
+        impl $($ty)* {
+            fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+                *self = core::mem::take(self)
+                    .into_iter()
+                    .map(|(mut key_entities, mut value_entities)| {
+                        key_entities.map_entities(entity_mapper);
+                        value_entities.map_entities(entity_mapper);
+                        (key_entities, value_entities)
+                    })
+                    .collect();
+            }
+        }
+    };
+}
+
+impl_map_entities_for_map! {
+    <K: MapEntities + Eq + Hash, V: MapEntities, S: BuildHasher + Default> MapEntities for HashMap<K, V, S>
+}
+
+impl_map_entities_for_map! {
+    <K: MapEntities + Eq + Hash, V: MapEntities, S: BuildHasher + Default> MapEntities for std::collections::HashMap<K, V, S>
+}
+
+impl_map_entities_for_map! {
+    <K: MapEntities + Ord, V: MapEntities> MapEntities for std::collections::BTreeMap<K, V>
+}
+
+macro_rules! impl_map_entities_for_set {
+    ($($ty:tt)*) => {
+        impl $($ty)* {
+            fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+                *self = core::mem::take(self)
+                    .into_iter()
+                    .map(|mut entities| {
+                        entities.map_entities(entity_mapper);
+                        entities
+                    })
+                    .collect();
+            }
+        }
+    };
+}
+
+impl_map_entities_for_set! {
+    <T: MapEntities + Eq + Hash, S: BuildHasher + Default> MapEntities for HashSet<T, S>
+}
+
+impl_map_entities_for_set! {
+    <T: MapEntities + Eq + Hash, S: BuildHasher + Default> MapEntities for std::collections::HashSet<T, S>
+}
+
+impl_map_entities_for_set! {
+    <T: MapEntities + Ord> MapEntities for std::collections::BTreeSet<T>
+}
+
+macro_rules! impl_map_entities_for_list {
+    ($($ty:tt)*) => {
+        impl $($ty)* {
+            fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E) {
+                for entities in self.iter_mut() {
+                    entities.map_entities(entity_mapper);
+                }
+            }
+        }
+    };
+}
+
+impl_map_entities_for_list!(<T: MapEntities, const N: usize> MapEntities for [T; N]);
+impl_map_entities_for_list!(<T: MapEntities, const N: usize> MapEntities for zlim_utils::vec::ArrayVec<T, N>);
+impl_map_entities_for_list!(<T: MapEntities, const N: usize> MapEntities for zlim_utils::vec::SmallVec<T, N>);
+impl_map_entities_for_list!(<T: MapEntities, const N: usize> MapEntities for zlim_utils::ext::ArrayDeque<T, N>);
+impl_map_entities_for_list!(<T: MapEntities> MapEntities for &mut [T]);
+impl_map_entities_for_list!(<T: MapEntities> MapEntities for Vec<T>);
+impl_map_entities_for_list!(<T: MapEntities> MapEntities for zlim_utils::ext::BlockList<T>);
+impl_map_entities_for_list!(<T: MapEntities> MapEntities for std::collections::VecDeque<T>);
+impl_map_entities_for_list!(<T: MapEntities> MapEntities for std::collections::LinkedList<T>);
+
+// -----------------------------------------------------------------------------
+// EntityMapper Implementation
+
+impl EntityMapper for () {
+    #[inline]
+    fn get_mapped(&mut self, source: EntityId) -> EntityId {
+        source
+    }
+
+    #[inline]
+    fn set_mapped(&mut self, _source: EntityId, _target: EntityId) {}
+}
+
+impl EntityMapper for (EntityId, EntityId) {
+    #[inline]
+    fn get_mapped(&mut self, source: EntityId) -> EntityId {
+        if source == self.0 { self.1 } else { source }
+    }
+
+    #[inline]
+    fn set_mapped(&mut self, _source: EntityId, _target: EntityId) {}
+}
+
+impl EntityMapper for EntityMap<EntityId> {
+    #[inline]
+    fn get_mapped(&mut self, source: EntityId) -> EntityId {
+        self.get(source).copied().unwrap_or(source)
+    }
+
+    #[inline]
+    fn set_mapped(&mut self, source: EntityId, target: EntityId) {
+        self.insert(source, target);
+    }
+}
+
+impl EntityMapper for &mut dyn EntityMapper {
+    #[inline(always)]
+    fn get_mapped(&mut self, source: EntityId) -> EntityId {
+        (*self).get_mapped(source)
+    }
+
+    #[inline(always)]
+    fn set_mapped(&mut self, source: EntityId, target: EntityId) {
+        (*self).set_mapped(source, target);
     }
 }
