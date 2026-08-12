@@ -422,4 +422,26 @@ impl Column {
             }
         }
     }
+
+    /// Shrink capacity to given value.
+    ///
+    /// # Safety
+    /// - `new` must be <= capacity
+    /// - `current_capacity` must be the current allocated capacity
+    /// - The objects of the removed slots must be dropped.
+    pub(super) unsafe fn shrink_to(&mut self, current: NonZeroUsize, new: usize) {
+        match NonZeroUsize::new(new) {
+            Some(new) => unsafe {
+                self.data.realloc(current, new);
+                self.added.realloc(current, new);
+                self.changed.realloc(current, new);
+            },
+            None => unsafe {
+                ::core::hint::cold_path();
+                self.data.dealloc(current.get());
+                self.added.dealloc(current.get());
+                self.changed.dealloc(current.get());
+            },
+        }
+    }
 }

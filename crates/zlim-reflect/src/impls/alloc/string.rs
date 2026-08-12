@@ -109,4 +109,4 @@ impl TypeDatabase for String {
     fn register_dependencies() {}
 }
 
-crate::register!(String);
+crate::register_reflect!(String);

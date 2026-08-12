@@ -90,6 +90,5 @@ pub fn trace(error: ZlimError, ctx: ErrorContext) {
 }
 
 /// Error handler that ignores the error.
-#[inline]
-#[track_caller]
+#[inline(always)]
 pub fn ignore(_: ZlimError, _: ErrorContext) {}

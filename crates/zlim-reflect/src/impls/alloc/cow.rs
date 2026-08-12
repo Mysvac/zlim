@@ -107,4 +107,4 @@ impl TypeDatabase for Cow<'static, str> {
     fn register_dependencies() {}
 }
 
-crate::register!(Cow<'static, str>);
+crate::register_reflect!(Cow<'static, str>);

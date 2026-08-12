@@ -1,6 +1,5 @@
 use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
-
 use core::panic::Location;
 
 // -----------------------------------------------------------------------------
@@ -10,6 +9,7 @@ use core::panic::Location;
 ///
 /// In `debug_assertions` builds (or with feature `debug`), this stores
 /// `Location::caller()` and prints it through [`Display`] / [`Debug`].
+///
 /// In release-like builds, it becomes a near-zero-cost placeholder.
 ///
 /// This type is commonly used in logging and panic diagnostics where call-site
@@ -25,6 +25,7 @@ pub struct DebugLocation(
 // Methods
 
 impl Display for DebugLocation {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[cfg(any(debug_assertions, feature = "debug"))]
         Display::fmt(self.1, f)?;
@@ -34,6 +35,7 @@ impl Display for DebugLocation {
 }
 
 impl Debug for DebugLocation {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[cfg(any(debug_assertions, feature = "debug"))]
         Debug::fmt(self.1, f)?;
@@ -47,7 +49,7 @@ impl DebugLocation {
     ///
     /// The returned value carries caller metadata in debug-style builds, and a
     /// lightweight placeholder in release-style builds.
-    #[inline]
+    #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub const fn caller() -> Self {
         Self(
@@ -55,6 +57,21 @@ impl DebugLocation {
             #[cfg(any(debug_assertions, feature = "debug"))]
             Location::caller(),
         )
+    }
+
+    /// Returns the raw [`Location`] stored in this value, if available.
+    ///
+    /// In debug-style builds this returns `Some(location)` with the
+    /// call-site captured by [`caller`].  In release builds it always
+    /// returns `None`.
+    ///
+    /// [`caller`]: Self::caller
+    #[inline(always)]
+    pub const fn get(self) -> Option<&'static Location<'static>> {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        return Some(self.1);
+        #[cfg(not(any(debug_assertions, feature = "debug")))]
+        return None;
     }
 }
 

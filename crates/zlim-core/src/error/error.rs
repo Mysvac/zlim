@@ -4,6 +4,7 @@ use core::error::Error;
 use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::ptr::NonNull;
+use std::ops::ControlFlow;
 
 // -----------------------------------------------------------------------------
 // ZlimError
@@ -107,10 +108,12 @@ impl ZlimError {
     #[inline(never)]
     fn new_boxed(level: Severity, error: BoxedError) -> Self {
         let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content: error }));
+
         debug_assert!(
             (ptr as usize & MASKS) == 0,
             "InnerError should be align of `8`"
         );
+
         unsafe {
             let p: *mut () = (ptr as *mut ()).byte_add(level as usize);
             Self(NonNull::new_unchecked(p), PhantomData)
@@ -161,6 +164,26 @@ impl ZlimError {
         Self::new_boxed(Severity::Panic, error.into())
     }
 
+    /// Returns the [`Severity`] stored in the pointer's low bits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use zlim_core::error::{ZlimError, Severity};
+    /// #
+    /// let err = ZlimError::panic("something broke");
+    /// assert_eq!(err.severity(), Severity::Panic);
+    /// ```
+    #[inline]
+    pub fn severity(&self) -> Severity {
+        match self.0.as_ptr() as usize & MASKS {
+            0 => Severity::Info,
+            1 => Severity::Warning,
+            2 => Severity::Error,
+            _ => Severity::Panic,
+        }
+    }
+
     /// Overrides the severity level of this error.
     ///
     /// This only changes the metadata; the underlying error value remains
@@ -169,11 +192,12 @@ impl ZlimError {
     /// # Examples
     ///
     /// ```
-    /// use zlim_core::error::{ZlimError, Severity};
-    ///
+    /// # use zlim_core::error::{ZlimError, Severity};
+    /// #
     /// let err = ZlimError::panic("something broke").with_severity(Severity::Warning);
     /// assert_eq!(err.severity(), Severity::Warning);
     /// ```
+    #[cold]
     #[inline]
     pub fn with_severity(self, level: Severity) -> Self {
         unsafe {
@@ -184,15 +208,48 @@ impl ZlimError {
         }
     }
 
-    /// Returns the [`Severity`] stored in the pointer's low bits.
-    #[inline]
-    pub fn severity(&self) -> Severity {
-        match self.0.as_ptr() as usize & MASKS {
-            0 => Severity::Info,
-            1 => Severity::Warning,
-            2 => Severity::Error,
-            _ => Severity::Panic,
-        }
+    ///  Merges the given severity into the current severity, taking the
+    /// maximum of the two values.
+    ///
+    /// This only changes the metadata; the underlying error value remains
+    /// unchanged.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use zlim_core::error::{ZlimError, Severity};
+    /// #
+    /// let e1 = ZlimError::info("something broke").merge_severity(Severity::Warning);
+    /// assert_eq!(e1.severity(), Severity::Warning);
+    ///
+    /// let e2 = ZlimError::error("something broke").merge_severity(Severity::Warning);
+    /// assert_eq!(e2.severity(), Severity::Error);
+    /// ```
+    #[cold]
+    pub fn merge_severity(self, severity: Severity) -> Self {
+        let old_severity = self.severity();
+        self.with_severity(old_severity.max(severity))
+    }
+
+    /// Map severity through given function.
+    ///
+    /// This only changes the metadata; the underlying error value remains
+    /// unchanged.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use zlim_core::error::{ZlimError, Severity};
+    /// #
+    /// let e = ZlimError::info("something broke")
+    ///     .map_severity(|e| e.max(Severity::Warning));
+    ///
+    /// assert_eq!(e.severity(), Severity::Warning);
+    /// ```
+    #[cold]
+    pub fn map_severity(self, f: impl FnOnce(Severity) -> Severity) -> Self {
+        let old_severity = self.severity();
+        self.with_severity(f(old_severity))
     }
 
     /// Returns a reference to the underlying boxed error.
@@ -282,9 +339,29 @@ impl Debug for ZlimError {
 /// |-----------------------------|-----------------------------------------------|
 /// | `T`                         | Returns `Ok(T)` unchanged.                    |
 /// | `Result<T, E>`              | Converts the error via `E: Into<ZlimError>`.  |
-pub trait IntoZlimResult<T> {
+pub trait IntoZlimResult<T>: Sized {
     /// Converts `self` into a [`ZlimResult`].
     fn into_zlim_result(self) -> Result<T, ZlimError>;
+
+    /// Overrides the severity of the produced error, if any.
+    ///
+    /// If `self.into_zlim_result()` is `Ok(T)`, this method also returns `Ok(T)`.
+    fn with_severity(self, severity: Severity) -> Result<T, ZlimError> {
+        self.into_zlim_result()
+            .map_err(|e| ZlimError::with_severity(e, severity))
+    }
+
+    /// Raises severity to `max(current, severity)` for the produced error, if any.
+    fn merge_severity(self, severity: Severity) -> Result<T, ZlimError> {
+        self.into_zlim_result()
+            .map_err(|e| ZlimError::merge_severity(e, severity))
+    }
+
+    /// Maps the severity of the produced error through a function, if any.
+    fn map_severity(self, f: impl FnOnce(Severity) -> Severity) -> Result<T, ZlimError> {
+        self.into_zlim_result()
+            .map_err(|e| ZlimError::map_severity(e, f))
+    }
 }
 
 impl<T> IntoZlimResult<T> for T {
@@ -292,10 +369,34 @@ impl<T> IntoZlimResult<T> for T {
     fn into_zlim_result(self) -> Result<T, ZlimError> {
         Ok(self)
     }
+
+    #[inline(always)]
+    fn with_severity(self, _: Severity) -> Result<T, ZlimError> {
+        Ok(self)
+    }
+
+    #[inline(always)]
+    fn merge_severity(self, _: Severity) -> Result<T, ZlimError> {
+        Ok(self)
+    }
+
+    #[inline(always)]
+    fn map_severity(self, _: impl FnOnce(Severity) -> Severity) -> Result<T, ZlimError> {
+        Ok(self)
+    }
 }
 
 impl<T, E: Into<ZlimError>> IntoZlimResult<T> for Result<T, E> {
     fn into_zlim_result(self) -> Result<T, ZlimError> {
         self.map_err(Into::into)
+    }
+}
+
+impl<C: IntoZlimResult<()>, B: Into<ZlimError>> IntoZlimResult<()> for ControlFlow<B, C> {
+    fn into_zlim_result(self) -> Result<(), ZlimError> {
+        match self {
+            ControlFlow::Continue(c) => c.into_zlim_result(),
+            ControlFlow::Break(b) => Err(b.into()),
+        }
     }
 }

@@ -64,6 +64,15 @@ Foundation utilities for the zlim engine.
 - `define_atomic_id!` — unique ID generator backed by an atomic counter.
 - `once_expr!` — single-execution expression, faster than `Once`.
 
+## debug
+
+- `DebugName` — conditionally captures a type name for diagnostic messages.
+  Stores the actual type name in debug builds; zero-size placeholder returns
+  `_unknown_` in release builds.
+- `DebugLocation` — conditionally captures a call-site `Location` for
+  diagnostic messages.  Carries real caller info in debug builds; zero-size
+  placeholder in release builds.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.

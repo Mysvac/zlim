@@ -142,7 +142,7 @@ static IO_TASK_POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
 /// For IO-bound work, use [`IoTaskPool`].
 ///
 /// [`get`]: Self::get
-/// [`Deref`]: Self::deref
+/// [`Deref`]: core::ops::Deref
 /// [`try_init`]: Self::try_init
 pub struct MainTaskPool;
 
@@ -196,7 +196,7 @@ impl MainTaskPool {
 /// Call [`try_init`] before the first access to supply a custom [`TaskPool`].
 ///
 /// [`get`]: Self::get
-/// [`Deref`]: Self::deref
+/// [`Deref`]: core::ops::Deref
 /// [`try_init`]: Self::try_init
 pub struct AsyncTaskPool;
 
@@ -245,7 +245,7 @@ impl AsyncTaskPool {
 /// Call [`try_init`] before the first access to supply a custom [`TaskPool`].
 ///
 /// [`get`]: Self::get
-/// [`Deref`]: Self::deref
+/// [`Deref`]: core::ops::Deref
 /// [`try_init`]: Self::try_init
 pub struct IoTaskPool;
 

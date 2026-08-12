@@ -109,7 +109,7 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 ///   auto-discovery via `TypeDB`.
 ///
 /// For non-generic types (lifetime-only parameters are fine), a
-/// `register!` call is also emitted so the type is automatically
+/// `register_reflect!` call is also emitted so the type is automatically
 /// discovered at program startup when `TypeDB::collect` is called.
 ///
 /// Unit structs (`struct Foo;`) are treated as opaque — they implement
@@ -351,12 +351,12 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 ///
 /// # Auto-registration
 ///
-/// For non-generic types the macro emits a `register!` call so the
+/// For non-generic types the macro emits a `register_reflect!` call so the
 /// type is discovered at startup. For generic types, use the
-/// standalone `register!` macro with concrete instantiations:
+/// standalone `register_reflect!` macro with concrete instantiations:
 ///
 /// ```rust, ignore
-/// register!(MyGenericType<u32>, MyGenericType<String>);
+/// register_reflect!(MyGenericType<u32>, MyGenericType<String>);
 /// ```
 ///
 /// Repeated registration is safe.

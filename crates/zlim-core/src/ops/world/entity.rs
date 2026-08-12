@@ -2,7 +2,7 @@ use core::mem::MaybeUninit;
 
 use crate::entity::{AllocEntitiesIter, EntityError, EntityId};
 use crate::ops::{EntityMut, EntityOwned, EntityRef};
-use crate::world::{World, WorldCell};
+use crate::world::{DeferredWorld, World, WorldCell};
 
 macro_rules! once_warning_for_owned {
     () => {
@@ -287,5 +287,48 @@ impl World {
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn entity_owned<E: FetchEntities>(&mut self, entities: E) -> E::Owned<'_> {
         self.get_entity_owned::<E>(entities).unwrap()
+    }
+}
+
+impl DeferredWorld<'_> {
+    /// Returns a shared entity view with cached tick context.
+    ///
+    /// Return `Err(EntityError)` if the entity is not spawned or not exists.
+    #[inline]
+    pub fn get_entity_ref<E: FetchEntities>(&self, entities: E) -> Result<E::Ref<'_>, EntityError> {
+        unsafe { E::fetch_ref(entities, self.cell()) }
+    }
+
+    /// Returns a mutable entity view with cached tick context.
+    ///
+    /// Return `Err(EntityError)` if the entity is not spawned or not exists.
+    #[inline]
+    pub fn get_entity_mut<E: FetchEntities>(
+        &mut self,
+        entities: E,
+    ) -> Result<E::Mut<'_>, EntityError> {
+        unsafe { E::fetch_mut(entities, self.cell()) }
+    }
+
+    /// Returns a shared entity view with cached tick context.
+    ///
+    /// Similar to `get_entity_ref().unwrap()`.
+    ///
+    /// # Panics
+    /// Panic if fetch failed.
+    #[inline]
+    pub fn entity_ref<E: FetchEntities>(&self, entities: E) -> E::Ref<'_> {
+        self.get_entity_ref::<E>(entities).unwrap()
+    }
+
+    /// Returns a mutable entity view with cached tick context.
+    ///
+    /// Similar to `get_entity_mut().unwrap()`.
+    ///
+    /// # Panics
+    /// Panic if fetch failed.
+    #[inline]
+    pub fn entity_mut<E: FetchEntities>(&mut self, entities: E) -> E::Mut<'_> {
+        self.get_entity_mut::<E>(entities).unwrap()
     }
 }

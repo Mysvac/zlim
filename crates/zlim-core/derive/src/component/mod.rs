@@ -6,9 +6,9 @@ use syn::{Data, DeriveInput, Fields, Ident, Index, Type};
 use crate::editor;
 use crate::utils::{contains_any_idents, field_type_constraint};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Attributes
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Cloner strategy for the `Component` derive.
 enum Cloner {
@@ -127,9 +127,9 @@ fn parse_component_attrs(attrs: &[syn::Attribute]) -> syn::Result<ComponentAttrs
     Ok(ret)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Entity-field collection
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// A field annotated with `#[entities]`, carrying access info for
 /// `map_entities` codegen.
@@ -178,9 +178,9 @@ fn collect_entity_fields(data: &Data) -> Result<Vec<EntityField<'_>>, syn::Error
     Ok(result)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Expand
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     let attrs = match parse_component_attrs(&ast.attrs) {
@@ -327,6 +327,18 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
+    // --- auto-registration (non-generic types only) -------------------
+    let auto_register = if generics.type_params().next().is_none() {
+        quote! {
+            #zlim_core::component::__internal__::submit!(
+                #zlim_core::component::__internal__::__ComponentReg__::of::<#type_ident>()
+                => #zlim_core::component::__internal__::__ComponentReg__
+            );
+        }
+    } else {
+        TokenStream::new()
+    };
+
     quote! {
         const _: () = {
             #[automatically_derived]
@@ -351,6 +363,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
                 #map_entities_tokens
             }
+
+            #auto_register
         };
     }
 }

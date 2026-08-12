@@ -2,9 +2,9 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, Fields, Ident, Index, Type};
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Editor field metadata
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Describes the editor visibility of a field.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -30,9 +30,9 @@ pub(crate) struct EditorField<'a> {
     pub(crate) kind: EditorKind,
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Attribute parsing
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Parse `#[editor(mutable)]` / `#[editor(readonly)]` from the given
 /// attributes.  Returns `None` when the field has no editor annotation.
@@ -53,9 +53,9 @@ pub(crate) fn parse_editor_kind(attrs: &[syn::Attribute]) -> Option<EditorKind> 
     None
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Field collection
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Walk the struct fields, picking up every `#[editor(…)]` entry.
 pub(crate) fn collect_editor_fields(data: &Data) -> Result<Vec<EditorField<'_>>, syn::Error> {
@@ -114,9 +114,9 @@ pub(crate) fn collect_editor_fields(data: &Data) -> Result<Vec<EditorField<'_>>,
     Ok(result)
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Token generation helpers
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Generates the `const FIELDS` / `MUTABLE_FIELDS` / `READONLY_FIELDS`
 /// and `fn field` / `fn field_mut` tokens from the collected editor fields.

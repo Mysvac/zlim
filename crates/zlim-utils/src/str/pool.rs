@@ -85,7 +85,7 @@ static POOL: RwLock<HashSet<HS, NoopState>> = RwLock::new(HashSet::with_hasher(N
 /// 3. **Hit** → return the cached `&'static str`.
 ///
 /// 4. **Miss** → promote the string to a [`Global`] static allocation,
-///    write-lock the pool, and insert a new [`HS`] entry.
+///    write-lock the pool, and insert a new entry.
 ///
 /// [`Global`]: crate::mem::Global
 #[inline(never)] // No need to inline.

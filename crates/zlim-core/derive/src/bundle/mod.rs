@@ -98,8 +98,11 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                         #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
                         unsafe impl #impl_generics #bundle_ for #type_ident #ty_generics #where_clause {
                             const NEED_APPLY_EFFECT: bool = false;
+                            #[inline(always)]
                             fn collect(_collector: &mut #component_collector_) {}
+                            #[inline(always)]
                             unsafe fn write(_data: #owning_ptr_<'_>, _writer: &mut #component_writer_) {}
+                            #[inline(always)]
                             unsafe fn apply_effect(_ptr: #owning_ptr_<'_>, _entity: &mut #entity_owned_<'_>) {}
                         }
                         #[automatically_derived]
@@ -182,6 +185,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                     #(#write_calls)*
                 }
 
+                #[inline(never)]
                 unsafe fn apply_effect(#apply_mut __ptr__: #owning_ptr_<'_>, __entity__: &mut #entity_owned_<'_>) {
                     #(#apply_effect_calls)*
                 }

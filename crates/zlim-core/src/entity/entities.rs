@@ -210,6 +210,22 @@ impl EntityTree {
 
         Ok(info)
     }
+
+    pub fn contains(&self, id: EntityId) -> bool {
+        let index = id.index as usize;
+
+        let Some(info) = self.entities.get(index) else {
+            core::hint::cold_path();
+            return false;
+        };
+
+        if info.generation != id.generation || info.location.is_none() {
+            core::hint::cold_path();
+            return false;
+        }
+
+        true
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -488,69 +504,6 @@ impl EntityTree {
 
         Ok(location)
     }
-
-    pub fn remove_all(&mut self, id: EntityId) -> Result<Vec<(EntityId, Location)>, EntityError> {
-        self.ensure_exist(id.index);
-
-        let Some(info) = self.entities.get_mut(id.index as usize) else {
-            core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
-        };
-
-        if info.generation != id.generation {
-            core::hint::cold_path();
-            let generation = info.generation;
-            let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
-            return Err(EntityError::Mismatch { expect, actual });
-        }
-
-        let location = info.location.take().ok_or(EntityError::NotSpawned(id))?;
-
-        let child_of = info.child_of.take();
-        let children = core::mem::take(&mut info.children);
-
-        if let Some(p) = child_of {
-            debug_assert!(self.entities.len() < (p.index as usize));
-            let slot = unsafe { self.entities.get_unchecked_mut(p.index as usize) };
-            debug_assert!(slot.location.is_some());
-            debug_assert!(slot.children.contains(&id));
-            let _ = slot.children.remove(&id);
-        } else {
-            debug_assert!(self.root.contains(&id));
-            self.root.remove(&id);
-        }
-
-        let mut out = Vec::with_capacity(1 + children.len());
-
-        out.push((id, location));
-
-        for c in children {
-            self.remove_all_internal(c, &mut out);
-        }
-
-        Ok(out)
-    }
-
-    fn remove_all_internal(&mut self, id: EntityId, out: &mut Vec<(EntityId, Location)>) {
-        debug_assert!(self.entities.len() < (id.index as usize));
-
-        let info = unsafe { self.entities.get_unchecked_mut(id.index as usize) };
-        assert_eq!(info.generation, id.generation);
-        let location = info.location.take().unwrap();
-        let _child_of = info.child_of.take().unwrap();
-        let children = core::mem::take(&mut info.children);
-        out.push((id, location));
-
-        out.reserve(children.len());
-
-        for c in children {
-            self.remove_all_internal(c, out);
-        }
-    }
 }
 
 impl EntityTree {
@@ -703,7 +656,7 @@ impl EntityTree {
 // -----------------------------------------------------------------------------
 
 #[derive(Debug, Error, Clone, Copy)]
-#[zlim_error(info)]
+#[zlim_error(warning)]
 pub enum EntityError {
     #[error("Entity with Index {_0} was not found")]
     NotFound(u32),

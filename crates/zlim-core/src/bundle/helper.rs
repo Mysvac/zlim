@@ -67,7 +67,7 @@ impl<'a> ComponentCollector<'a> {
     /// Finalises collection and returns the sorted, deduplicated component
     /// ID list.
     ///
-    /// The returned slice is interned via [`SlicePool`] and has `'static`
+    /// The returned slice is interned via `SlicePool` and has `'static`
     /// lifetime.
     #[inline(never)]
     pub fn finish(self) -> &'static [ComponentId] {
@@ -90,7 +90,7 @@ impl<'a> ComponentCollector<'a> {
 ///
 /// When the same component type appears more than once in a bundle (e.g.,
 /// through tuple nesting), the **last** write wins.  The first call to
-/// [`write`] or [`write_custom`] for a given [`ComponentId`] calls
+/// [`write`] or [`write_custom`] for a given Component [`TypeId`] calls
 /// [`Table::init_item`]; subsequent calls call [`Table::replace_item`],
 /// which drops the previous value and writes the new one.
 ///
@@ -103,23 +103,39 @@ pub struct ComponentWriter<'a> {
     tick: Tick,
     table_row: TableRow,
     table: &'a mut Table,
-    components: &'a Components,
-    writed: HashSet<ComponentId, NoopState>,
+    writed: HashSet<TypeId, NoopState>,
 }
 
 impl ComponentWriter<'_> {
-    /// Marks a component as already written without performing a write.
+    /// # Safety
+    /// Guaranteed by the caller.
+    #[inline]
+    pub unsafe fn new<'a>(
+        tick: Tick,
+        table: &'a mut Table,
+        table_row: TableRow,
+    ) -> ComponentWriter<'a> {
+        let hint = table.components().len();
+        let cap = hint + (hint >> 1);
+        ComponentWriter {
+            tick,
+            table_row,
+            table,
+            writed: HashSet::with_capacity_and_hasher(cap, NoopState),
+        }
+    }
+
+    /// Marks a component type as already written without performing a write.
     ///
     /// This is useful when the component was initialised before the bundle
     /// write phase (e.g., by the entity spawner).
     ///
     /// # Safety
     ///
-    /// The component identified by `id` must already be initialised in the
-    /// target table row.
+    /// The component `ty` must already be initialised in the target table row.
     #[inline(always)]
-    pub unsafe fn set_writed(&mut self, id: ComponentId) {
-        self.writed.insert(id);
+    pub unsafe fn set_writed(&mut self, ty: TypeId) {
+        self.writed.insert(ty);
     }
 
     /// Writes a component value by moving ownership into storage.
@@ -129,43 +145,27 @@ impl ComponentWriter<'_> {
     ///
     /// # Safety
     ///
-    /// - The component type `T` must be registered.
     /// - The component's column must exist in the target table.
-    #[inline(never)]
+    #[inline(always)]
     pub unsafe fn write_custom<T: Component>(&mut self, data: T) {
         let type_id = TypeId::of::<T>();
 
-        let component = unsafe {
-            self.components
-                .get_by_type(type_id)
-                .debug_checked_unwrap()
-                .id
-        };
-
         zlim_ptr::into_owning!(data);
 
-        unsafe { self.write_internal(component, data) };
+        unsafe { self.write_internal(type_id, data) };
     }
 
     /// Writes component data from an [`OwningPtr`] into the target row.
     ///
     /// # Safety
     ///
-    /// - The component type `T` must be registered.
     /// - The component's column must exist in the target table.
     /// - `data` must point to a valid, properly-aligned instance of `T`.
-    #[inline(never)]
+    #[inline(always)]
     pub unsafe fn write<T: Component>(&mut self, data: OwningPtr<'_>) {
         let type_id = TypeId::of::<T>();
 
-        let component = unsafe {
-            self.components
-                .get_by_type(type_id)
-                .debug_checked_unwrap()
-                .id
-        };
-
-        unsafe { self.write_internal(component, data) };
+        unsafe { self.write_internal(type_id, data) };
     }
 
     /// Internal write dispatch — first write initialises, subsequent writes
@@ -173,14 +173,14 @@ impl ComponentWriter<'_> {
     ///
     /// # Safety
     ///
-    /// - `component` must be a valid [`ComponentId`] present in the table.
+    /// - `type_id` must be a valid `Component` present in the table.
     /// - `data` must point to valid component data.
     #[inline(never)]
-    unsafe fn write_internal(&mut self, component: ComponentId, data: OwningPtr<'_>) {
+    unsafe fn write_internal(&mut self, ty: TypeId, data: OwningPtr<'_>) {
         unsafe {
-            let col = self.table.get_table_col(component).debug_checked_unwrap();
+            let col = self.table.get_type_col(ty).debug_checked_unwrap();
             let row = self.table_row;
-            if self.writed.insert(component) {
+            if self.writed.insert(ty) {
                 // First write for this component — allocate and
                 // initialise.
                 self.table.init_item(col, row, data, self.tick);

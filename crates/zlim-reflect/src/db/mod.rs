@@ -7,7 +7,7 @@
 //! # Registration
 //!
 //! Types opt into the database by implementing [`TypeDatabase`]. The
-//! [`register!`] macro submits registration closures to a platform
+//! [`register_reflect!`] macro submits registration closures to a platform
 //! linker section (via [`zlim_reg`]), and [`TypeDB::collect`] invokes
 //! them all at startup.
 //!
@@ -15,11 +15,11 @@
 //!
 //! - [`TypeDB`] — per-type metadata and runtime operations.
 //! - [`TypeDatabase`] — trait for types registered in the database.
-//! - [`register!`] — macro to register types for auto-discovery.
+//! - [`register_reflect!`] — macro to register types for auto-discovery.
 //! - Serialization / Deserialization — serde integration (see `ser` / `des` submodules).
 //!
 //! [`TypePath`]: crate::path::TypePath
-//! [`register!`]: crate::register!
+//! [`register_reflect!`]: crate::register_reflect!
 
 // -----------------------------------------------------------------------------
 // Imports
@@ -43,8 +43,10 @@ use crate::ops::Reflect;
 /// Trait for types that can be registered in the [`TypeDB`] database.
 ///
 /// Implementing this trait (together with [`Reflect`] and [`Typed`])
-/// makes a type eligible for [`register!`](crate::register!) and auto-discovery via
+/// makes a type eligible for [`register_reflect!`] and auto-discovery via
 /// [`TypeDB::collect`].
+///
+/// [`register_reflect!`]: crate::register_reflect!
 pub trait TypeDatabase: Reflect + Typed {
     /// Called after the type's [`TypeDB`] entry is created.
     #[expect(unused_variables, reason = "no-op implementation")]
@@ -327,16 +329,16 @@ mod ser;
 // -----------------------------------------------------------------------------
 
 impl TypeDB {
-    /// Triggers registration of all types submitted via [`register!`].
+    /// Triggers registration of all types submitted via [`register_reflect!`].
     ///
     /// This iterates over the linker-section entries populated by
-    /// [`register!`] and calls each registration function. Idempotent —
-    /// safe to call multiple times; subsequent calls are no-ops.
+    /// [`register_reflect!`] and calls each registration function.
+    /// Idempotent — safe to call multiple times; subsequent calls are no-ops.
     ///
     /// Typical usage is to call this once at program startup, before any
     /// ECS or reflection operations.
     ///
-    /// [`register!`]: crate::register!
+    /// [`register_reflect!`]: crate::register_reflect!
     pub fn collect() {
         #[cold]
         #[inline(never)]
@@ -391,7 +393,10 @@ impl TypeDB {
 
 /// Linker-section plumbing for auto-registration.
 ///
-/// Not intended for direct use. Prefer the [`register!`](crate::register!) macro.
+/// Not intended for direct use. Prefer the [`register_reflect!`] macro.
+///
+/// [`register_reflect!`]: crate::register_reflect!
+#[doc(hidden)]
 pub mod __internal__ {
     pub use zlim_reg::submit;
 
@@ -427,14 +432,14 @@ pub mod __internal__ {
 /// ```ignore
 /// use zlim_reflect::register;
 ///
-/// register!(MyComponent, MyResource, MyEvent);
+/// register_reflect!(MyComponent, MyResource, MyEvent);
 /// ```
 ///
 /// # Requirements
 ///
 /// Each listed type must implement [`TypeDatabase`].
 #[macro_export]
-macro_rules! register {
+macro_rules! register_reflect {
     ($($ty:ty),* $(,)?) => {
         const _: () = {
             $(

@@ -1,4 +1,5 @@
-use super::DebugLocation;
+use zlim_utils::debug::DebugLocation;
+
 use crate::entity::EntityId;
 use crate::world::WorldCell;
 
@@ -9,8 +10,11 @@ use crate::world::WorldCell;
 /// `World::forget_with_caller` to keep world indices/storage in a recoverable
 /// state.
 pub(crate) struct ForgetEntityOnPanic<'a> {
+    /// The entity to forget if a panic occurs during mutation.
     pub entity: EntityId,
+    /// Raw world handle used to drive the forget operation.
     pub world: WorldCell<'a>,
+    /// Debug call-site information for diagnostics.
     pub caller: DebugLocation,
 }
 

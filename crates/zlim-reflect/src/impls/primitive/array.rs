@@ -185,4 +185,4 @@ impl<T: TypeDatabase, const N: usize> TypeDatabase for [T; N] {
     }
 }
 
-// Generic type cannot be registered by `register!` macro.
+// Generic type cannot be registered by `register_reflect!` macro.

@@ -5,6 +5,7 @@
 
 mod macros;
 
+pub mod debug;
 pub mod exp;
 pub mod ext;
 pub mod hash;

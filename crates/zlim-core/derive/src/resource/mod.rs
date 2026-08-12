@@ -7,9 +7,9 @@ use syn::parse_quote;
 use crate::editor;
 use crate::utils::contains_any_idents;
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Expand
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     let zlim_core = crate::path::zlim_core_path();
@@ -59,6 +59,18 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
+    // --- auto-registration (non-generic types only) -------------------
+    let auto_register = if generics.type_params().next().is_none() {
+        quote! {
+            #zlim_core::resource::__internal__::submit!(
+                #zlim_core::resource::__internal__::__ResourceReg__::of::<#type_ident>()
+                => #zlim_core::resource::__internal__::__ResourceReg__
+            );
+        }
+    } else {
+        TokenStream::new()
+    };
+
     quote! {
         const _: () = {
             #[automatically_derived]
@@ -70,6 +82,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                 #eff
                 #efm
             }
+
+            #auto_register
         };
     }
 }

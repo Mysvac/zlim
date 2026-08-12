@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+
+debug = []
+
 [dependencies]
 
 # Serialize and Deserialize support

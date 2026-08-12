@@ -123,9 +123,9 @@ concrete types.
 ### Type Database
 
 The `TypeDB` is a per-type `'static` registry. Types opt in via the
-`TypeDatabase` trait, and the `register!` macro submits registration
-closures to a platform linker section. At startup, `TypeDB::collect`
-invokes all pending registrations.
+`TypeDatabase` trait, and the `register_reflect!` macro submits
+registration closures to a platform linker section. At startup,
+`TypeDB::collect` invokes all pending registrations.
 
 Registered types can provide:
 
@@ -140,8 +140,3 @@ Registered types can provide:
 | Flag | Description |
 |------|-------------|
 | `debug` | Enables debug-mode diagnostics and assertions in derive macros. |
-
-## License
-
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE)
-or [MIT license](LICENSE-MIT) at your option.

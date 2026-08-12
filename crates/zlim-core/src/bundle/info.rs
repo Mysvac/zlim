@@ -87,7 +87,7 @@ impl BundleInfo {
     ///
     /// Uses SIMD-accelerated linear search for small slices and falls
     /// back to binary search for larger ones.
-    #[inline]
+    #[inline(always)]
     pub fn contains_component(&self, id: ComponentId) -> bool {
         crate::utils::contains_component(id, self.components)
     }
@@ -142,32 +142,18 @@ impl Default for Bundles {
     }
 }
 
+// ---------------------------------------------------------------------
+// Methods
+
 impl Bundles {
     /// Returns the number of registered bundles (including the empty bundle).
-    #[inline]
-    #[expect(clippy::len_without_is_empty, reason = "len > 0")]
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.infos.len()
     }
 
-    /// Looks up the bundle ID for the given component set.
-    ///
-    /// Returns `None` if no bundle matches this exact set of components.
-    #[inline]
-    pub fn get_by_arch(&self, components: &[ComponentId]) -> Option<BundleId> {
-        self.mapper.get(components).copied()
-    }
-
-    /// Looks up the bundle ID for the given Rust type.
-    ///
-    /// Returns `None` if the type has not been registered as a bundle.
-    #[inline]
-    pub fn get_by_type(&self, id: TypeId) -> Option<BundleId> {
-        self.type_mapper.get(id).copied()
-    }
-
     /// Returns the [`BundleInfo`] for the given [`BundleId`].
-    #[inline]
+    #[inline(always)]
     pub fn get(&self, id: BundleId) -> Option<&BundleInfo> {
         self.infos.get(id.index())
     }
@@ -184,18 +170,23 @@ impl Bundles {
         unsafe { self.infos.get_unchecked(id.index()) }
     }
 
-    /// Returns a slice of all registered [`BundleInfo`] entries.
-    #[inline]
-    pub fn as_slice(&self) -> &[BundleInfo] {
-        self.infos.as_slice()
+    /// Looks up the bundle ID for the given component set.
+    ///
+    /// Returns `None` if no bundle matches this exact set of components.
+    pub fn get_by_arch(&self, components: &[ComponentId]) -> Option<BundleId> {
+        self.mapper.get(components).copied()
     }
 
-    /// Returns an iterator over all registered [`BundleInfo`] entries.
-    #[inline]
-    pub fn iter(&self) -> core::slice::Iter<'_, BundleInfo> {
-        self.infos.iter()
+    /// Looks up the bundle ID for the given Rust type.
+    ///
+    /// Returns `None` if the type has not been registered as a bundle.
+    pub fn get_by_type(&self, id: TypeId) -> Option<BundleId> {
+        self.type_mapper.get(id).copied()
     }
 }
+
+// ---------------------------------------------------------------------
+// Internal
 
 impl Bundles {
     /// Registers a new bundle for the given component set and returns its
@@ -210,7 +201,12 @@ impl Bundles {
     /// - Each `ComponentId` in `components` must be valid and registered.
     /// - `components` must be sorted.
     /// - `components` must not contain duplicates.
-    pub fn register(&mut self, type_id: TypeId, components: &'static [ComponentId]) -> BundleId {
+    #[inline]
+    pub(crate) fn register(
+        &mut self,
+        type_id: TypeId,
+        components: &'static [ComponentId],
+    ) -> BundleId {
         if let Some(&id) = self.mapper.get(components) {
             // Already registered — map this type_id to the existing bundle.
             self.type_mapper.insert(type_id, id);
@@ -223,6 +219,33 @@ impl Bundles {
             self.infos.push(BundleInfo::new(id, components));
             self.mapper.insert(components, id);
             self.type_mapper.insert(type_id, id);
+
+            id
+        }
+    }
+
+    /// Registers a new bundle for the given component set and returns its
+    /// [`BundleId`].
+    ///
+    /// If a bundle with the same component set already exists, the existing
+    /// ID is returned (deduplication).
+    ///
+    /// # Safety
+    ///
+    /// - Each `ComponentId` in `components` must be valid and registered.
+    /// - `components` must be sorted.
+    /// - `components` must not contain duplicates.
+    #[inline]
+    pub(crate) fn register_dynamic(&mut self, components: &'static [ComponentId]) -> BundleId {
+        if let Some(&id) = self.mapper.get(components) {
+            id
+        } else {
+            core::hint::cold_path();
+            let index = self.infos.len();
+            let id = BundleId::without_provenance(index);
+
+            self.infos.push(BundleInfo::new(id, components));
+            self.mapper.insert(components, id);
 
             id
         }

@@ -92,4 +92,4 @@ impl Opaque for &'static Location<'static> {
 
 impl TypeDatabase for &'static Location<'static> {}
 
-crate::register!(&'static Location<'static>);
+crate::register_reflect!(&'static Location<'static>);

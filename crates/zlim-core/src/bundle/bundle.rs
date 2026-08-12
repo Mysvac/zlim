@@ -107,7 +107,7 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
     /// Performs post-spawn side effects after all components have been
     /// written.
     ///
-    /// Only called when [`NEED_APPLY_EFFECT`] is `true`.  This receives
+    /// Only called when [`Bundle::NEED_APPLY_EFFECT`] is `true`.  This receives
     /// the original bundle data (consumed) and a mutable handle to the
     /// newly-spawned entity.
     ///
@@ -148,14 +148,17 @@ pub unsafe trait DataBundle: Bundle {}
 unsafe impl<T: Component> Bundle for T {
     const NEED_APPLY_EFFECT: bool = false;
 
+    #[inline]
     fn collect(collector: &mut ComponentCollector) {
         collector.collect::<T>();
     }
 
+    #[inline]
     unsafe fn write(data: OwningPtr<'_>, writer: &mut ComponentWriter) {
         unsafe { writer.write::<T>(data) };
     }
 
+    #[inline(always)]
     unsafe fn apply_effect(_: OwningPtr<'_>, _: &mut EntityOwned<'_>) {}
 }
 
@@ -252,6 +255,7 @@ macro_rules! impl_bundle_for_tuple {
                 })*
             }
 
+            #[inline(never)]
             unsafe fn apply_effect(
                 mut data: OwningPtr<'_>,
                 entity: &mut EntityOwned<'_>,

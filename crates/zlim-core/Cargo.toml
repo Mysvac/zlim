@@ -9,7 +9,7 @@ repository.workspace = true
 
 [features]
 
-debug = []
+debug = ["zlim-utils/debug"]
 
 [dependencies]
 

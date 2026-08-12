@@ -1,9 +1,13 @@
+use zlim_utils::debug::DebugLocation;
+
 use crate::entity::EntityId;
-use crate::utils::DebugLocation;
 use crate::world::World;
 
 impl World {
     /// Forget an entity without dropping its data and without calling components' hooks.
+    ///
+    /// This function has a high overhead and requires iterating all tables to stably
+    /// delete component data without relying on the Entity Location.
     ///
     /// Typically used for cleaning up entities that caused a panic.
     ///
@@ -32,7 +36,7 @@ impl World {
         for table in self.tables.iter_mut() {
             if let Some(row) = table.get_table_row(entity) {
                 let moved = unsafe { table.dealloc_row::<false>(row) };
-                self.entities.update_row(moved).unwrap();
+                let _ = self.entities.update_row(moved);
             }
         }
     }

@@ -1,3 +1,5 @@
+//! Change Detection Core Implementation
+//!
 //! Tick is the world timestamp mechanism used primarily for change detection.
 //!
 //! It is a 32-bit integer representing a discrete point in time. Because it can
@@ -55,6 +57,7 @@ impl Tick {
     /// Creates a new `Tick`.
     ///
     /// # Examples
+    ///
     /// ```
     /// # use zlim_core::tick::Tick;
     /// let tick = Tick::new(42);
@@ -67,6 +70,7 @@ impl Tick {
     /// Returns the underlying `u32` value.
     ///
     /// # Examples
+    ///
     /// ```
     /// # use zlim_core::tick::Tick;
     /// let tick = Tick::new(42);
@@ -80,6 +84,7 @@ impl Tick {
     /// Sets the tick value.
     ///
     /// # Examples
+    ///
     /// ```
     /// # use zlim_core::tick::Tick;
     /// let mut tick = Tick::new(42);
@@ -96,6 +101,7 @@ impl Tick {
     /// Uses wrapping subtraction so overflow/wrap-around is handled correctly.
     ///
     /// # Examples
+    ///
     /// ```
     /// # use zlim_core::tick::Tick;
     /// let later = Tick::new(200);
@@ -111,17 +117,19 @@ impl Tick {
     /// Returns whether this tick is newer than `other`, relative to `now`.
     ///
     /// This is used by change detection: if an update happened after
-    /// `last_run` from the perspective of `this_run` (`now`), it is considered
-    /// changed.
+    /// `last_run` from the perspective of `this_run` (`now`), it is
+    /// considered changed.
     ///
     /// Operationally, this compares two clamped ages:
+    ///
     /// - age(self) = `now - self`
     /// - age(other) = `now - other`
     ///
-    /// `self` is treated as newer when `age(self) < age(other)`.
-    /// Clamping with [`MAX_TICK_AGE`] keeps comparisons stable across wrap-around.
+    /// `self` is treated as newer when `age(self) < age(other)`. Clamping
+    /// with [`MAX_TICK_AGE`] keeps comparisons stable across wrap-around.
     ///
     /// # Examples
+    ///
     /// ```
     /// # use zlim_core::tick::Tick;
     /// let tick1 = Tick::new(100);
@@ -135,12 +143,12 @@ impl Tick {
     pub const fn is_newer_than(self, other: Tick, now: Tick) -> bool {
         // `core::cmp::min` cannot be used in `const fn`.
         #[inline(always)]
-        const fn min(x: u32, y: u32) -> u32 {
-            if x < y { x } else { y }
+        const fn clamp(x: u32) -> u32 {
+            if x < MAX_TICK_AGE { x } else { MAX_TICK_AGE }
         }
 
-        let since_insert = min(now.relative_to(self).0, MAX_TICK_AGE);
-        let since_system = min(now.relative_to(other).0, MAX_TICK_AGE);
+        let since_insert = clamp(now.relative_to(self).0);
+        let since_system = clamp(now.relative_to(other).0);
 
         since_system > since_insert
     }
@@ -160,20 +168,11 @@ impl Tick {
 }
 
 impl core::hash::Hash for Tick {
+    /// Hashes the inner `u32` value.
     #[inline(always)]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         state.write_u32(self.0);
     }
-}
-
-// -----------------------------------------------------------------------------
-// CheckTicks
-
-/// Event emitted when periodic tick-age validation should run.
-#[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
-pub struct ClampTicks {
-    pub now: Tick,
 }
 
 // -----------------------------------------------------------------------------
@@ -209,15 +208,34 @@ pub trait DetectChanges {
     fn changed_tick(&self) -> Tick;
 }
 
+/// Mutable change-detection trait for components and resources.
+///
+/// Extends [`DetectChanges`] with the ability to bypass change detection
+/// and manually set change markers.
+///
+/// This is typically consumed through mutable wrappers such as [`Mut`],
+/// [`ResMut`], and [`UntypedMut`].
+///
+/// [`Mut`]: crate::borrow::Mut
+/// [`ResMut`]: crate::borrow::ResMut
+/// [`UntypedMut`]: crate::borrow::UntypedMut
 pub trait DetectChangesMut: DetectChanges {
+    /// The mutable value type returned when bypassing change detection.
     type Value<'w>
     where
         Self: 'w;
 
-    fn bypass<'w>(&'w mut self) -> Self::Value<'w>;
+    /// Returns a mutable reference to the inner value without triggering
+    /// change detection.
+    ///
+    /// This allows modifying data without marking it as changed in the
+    /// current run.
+    fn bypass(&mut self) -> Self::Value<'_>;
 
+    /// Manually marks this value as having been added in the current run.
     fn set_added(&mut self);
 
+    /// Manually marks this value as having been changed in the current run.
     fn set_changed(&mut self);
 }
 
@@ -245,9 +263,14 @@ pub struct TicksRef<'w> {
     // then we can reduce 8 Bytes per struct.
     // But the reference is just a pointer, there is no need to access
     // its value, which may be faster during iteration.
+    /// Reference to the tick recording when this data was inserted.
     pub added: &'w Tick,
+    /// Reference to the tick recording when this data was most recently
+    /// modified.
     pub changed: &'w Tick,
+    /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
+    /// The tick of the current system run.
     pub this_run: Tick,
 }
 
@@ -270,13 +293,27 @@ pub struct TicksRef<'w> {
 /// [`UntypedMut`]: crate::borrow::UntypedMut
 #[derive(Debug)]
 pub struct TicksMut<'w> {
+    /// Mutable reference to the tick recording when this data was inserted.
     pub added: &'w mut Tick,
+    /// Mutable reference to the tick recording when this data was most recently
+    /// modified.
     pub changed: &'w mut Tick,
+    /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
+    /// The tick of the current system run.
     pub this_run: Tick,
 }
 
 impl<'w> From<TicksMut<'w>> for TicksRef<'w> {
+    /// Converts mutable tick references into an immutable [`TicksRef`].
+    ///
+    /// The [`last_run`] and [`this_run`] values are copied; the
+    /// [`added`] and [`changed`] references are reborrowed immutably.
+    ///
+    /// [`last_run`]: TicksRef::last_run
+    /// [`this_run`]: TicksRef::this_run
+    /// [`added`]: TicksRef::added
+    /// [`changed`]: TicksRef::changed
     #[inline(always)]
     fn from(this: TicksMut<'w>) -> Self {
         TicksRef {
@@ -306,10 +343,15 @@ impl<'w> From<TicksMut<'w>> for TicksRef<'w> {
 /// [`UntypedSliceRef`]: crate::borrow::UntypedSliceRef
 #[derive(Debug, Clone, Copy)]
 pub struct TicksSliceRef<'w> {
+    /// The number of elements in the slices.
     pub length: usize,
+    /// Immutable slice of insertion ticks, one per element.
     pub added: Slice<'w, Tick>,
+    /// Immutable slice of last-modification ticks, one per element.
     pub changed: Slice<'w, Tick>,
+    /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
+    /// The tick of the current system run.
     pub this_run: Tick,
 }
 
@@ -331,14 +373,29 @@ pub struct TicksSliceRef<'w> {
 /// [`UntypedSliceMut`]: crate::borrow::UntypedSliceMut
 #[derive(Debug)]
 pub struct TicksSliceMut<'w> {
+    /// The number of elements in the slices.
     pub length: usize,
+    /// Mutable slice of insertion ticks, one per element.
     pub added: SliceMut<'w, Tick>,
+    /// Mutable slice of last-modification ticks, one per element.
     pub changed: SliceMut<'w, Tick>,
+    /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
+    /// The tick of the current system run.
     pub this_run: Tick,
 }
 
 impl<'w> From<TicksSliceMut<'w>> for TicksSliceRef<'w> {
+    /// Converts mutable tick slices into an immutable [`TicksSliceRef`].
+    ///
+    /// The [`length`], [`last_run`], and [`this_run`] values are copied;
+    /// the [`added`] and [`changed`] slices are converted to immutable.
+    ///
+    /// [`length`]: TicksSliceRef::length
+    /// [`last_run`]: TicksSliceRef::last_run
+    /// [`this_run`]: TicksSliceRef::this_run
+    /// [`added`]: TicksSliceRef::added
+    /// [`changed`]: TicksSliceRef::changed
     #[inline(always)]
     fn from(this: TicksSliceMut<'w>) -> Self {
         TicksSliceRef {

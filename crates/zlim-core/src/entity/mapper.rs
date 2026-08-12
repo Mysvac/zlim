@@ -9,19 +9,42 @@ use super::EntityId;
 // -----------------------------------------------------------------------------
 // EntityMapper & MapEntities
 
+/// Trait for types that contain entity IDs and support remapping.
+///
+/// Implementing types traverse and remap every [`EntityId`] they hold
+/// via the provided [`EntityMapper`]. Used during operations like cloning
+/// and deserialization to rewrite entity handles.
 pub trait MapEntities {
+    /// Walks all [`EntityId`] values in `self` and remaps each one
+    /// through `entity_mapper`.
     fn map_entities<E: EntityMapper>(&mut self, entity_mapper: &mut E);
 }
 
+/// Trait for mapping old [`EntityId`] values to new ones.
+///
+/// An [`EntityMapper`] records source-to-target mappings and provides
+/// lookups for [`MapEntities`] to use during remapping. Implementations
+/// range from no-op identity mappers to full [`EntityMap`]-backed
+/// translators.
 pub trait EntityMapper {
+    /// Returns the mapped [`EntityId`] for `source`, or `source` itself
+    /// if no mapping has been registered.
     fn get_mapped(&mut self, source: EntityId) -> EntityId;
 
+    /// Records a mapping from `source` to `target`.
     fn set_mapped(&mut self, source: EntityId, target: EntityId);
 }
 
 // -----------------------------------------------------------------------------
 // EntityMap
 
+/// A map keyed by [`EntityId`], optimized for sparse entity storage.
+///
+/// Uses [`SparseState`] hashing for efficient lookups and iteration over
+/// entity-indexed data. Implements [`EntityMapper`] so it can serve as
+/// a remapping table during clone and deserialization operations.
+///
+/// [`SparseState`]: zlim_utils::hash::SparseState
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
@@ -34,13 +57,13 @@ impl<T> Default for EntityMap<T> {
 }
 
 impl<T> EntityMap<T> {
-    /// Create a empty [`EntityMap`]
+    /// Create an empty [`EntityMap`]
     #[inline(always)]
     pub const fn new() -> Self {
         Self(HashMap::with_hasher(SparseState))
     }
 
-    /// Create a empty [`EntityMap`] with specific capacity
+    /// Create an empty [`EntityMap`] with specific capacity
     #[inline(always)]
     pub fn with_capacity(capacity: usize) -> Self {
         Self(HashMap::with_capacity_and_hasher(capacity, SparseState))
@@ -363,3 +386,5 @@ impl EntityMapper for &mut dyn EntityMapper {
         (*self).set_mapped(source, target);
     }
 }
+
+// -----------------------------------------------------------------------------

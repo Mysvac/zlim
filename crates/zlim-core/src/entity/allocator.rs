@@ -71,6 +71,7 @@ impl FreshAllocator {
     }
 
     /// Allocates multiple new entity IDs.
+    #[inline]
     fn alloc_many(&self, count: u32) -> FreshEntityIter {
         use Ordering::Relaxed;
 
@@ -824,7 +825,7 @@ const LOCAL_SIZE: usize = 127;
 /// # Important Notes
 /// - Entities are specific to their creating `World` and cannot be used
 ///   across different `World` instances.
-/// - The allocator does not modify an entity's [`EntityVersion`] during
+/// - The allocator does not modify an entity's generation during
 ///   allocation or recycling. Callers must advance the version themselves when
 ///   reusing an id, to prevent a recycled id from aliasing an older handle.
 pub struct EntityAllocator {
@@ -937,6 +938,7 @@ impl EntityAllocator {
     /// Returns an iterator that must be fully consumed; otherwise,
     /// any remaining entities will be leaked (not available for reuse).
     #[must_use]
+    #[inline(never)]
     pub fn alloc_many(&self, count: u32) -> AllocEntitiesIter<'_> {
         // SAFETY: Caller ensures exclusive access or proper synchronization
         let reused = self.shared.free.alloc_many(count);
@@ -1050,3 +1052,5 @@ mod tests {
         }
     }
 }
+
+// -----------------------------------------------------------------------------

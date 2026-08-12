@@ -121,7 +121,7 @@ macro_rules! impl_reflect_for_atomic {
             fn register_dependencies() {}
         }
 
-        crate::register!($ty);
+        crate::register_reflect!($ty);
     };
 }
 

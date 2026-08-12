@@ -159,7 +159,7 @@ impl TypeDatabase for () {
     fn register_dependencies() {}
 }
 
-crate::register!(()); // Register TypeDB
+crate::register_reflect!(()); // Register TypeDB
 
 // -----------------------------------------------------------------------------
 // Tuple - 1~12, TypePath

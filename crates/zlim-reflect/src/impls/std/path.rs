@@ -131,4 +131,4 @@ impl TypeDatabase for &'static Path {
     fn register_dependencies() {}
 }
 
-crate::register!(&'static Path); // Register TypeDB
+crate::register_reflect!(&'static Path); // Register TypeDB

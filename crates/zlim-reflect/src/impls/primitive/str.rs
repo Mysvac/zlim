@@ -114,7 +114,7 @@ impl TypeDatabase for &'static str {
     fn register_dependencies() {}
 }
 
-crate::register!(&'static str); // Register TypeDB
+crate::register_reflect!(&'static str); // Register TypeDB
 
 // -----------------------------------------------------------------------------
 // Tests

@@ -179,7 +179,7 @@ macro_rules! impl_type_database {
             }
         }
 
-        crate::register!($ty); // Register TypeDB
+        crate::register_reflect!($ty); // Register TypeDB
     };
 }
 

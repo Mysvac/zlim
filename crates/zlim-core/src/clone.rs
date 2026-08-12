@@ -1,16 +1,19 @@
+//! Entity Clone Implementation
+
 use core::any::TypeId;
 use core::ptr::NonNull;
 use std::collections::VecDeque;
 
-use crate::table::{Column, TableCol};
-use crate::utils::{DebugCheckedUnwrap, DebugName};
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
+use zlim_utils::debug::{DebugLocation, DebugName};
 use zlim_utils::vec::SmallVec;
 
 use crate::component::Component;
 use crate::component::ComponentId;
 use crate::entity::{EntityId, EntityMap, EntityMapper};
-use crate::utils::{DebugLocation, ForgetEntityOnPanic};
+use crate::table::{Column, TableCol};
+use crate::utils::DebugCheckedUnwrap;
+use crate::utils::ForgetEntityOnPanic;
 use crate::world::{World, WorldCell};
 
 // -----------------------------------------------------------------------------
@@ -22,8 +25,9 @@ use crate::world::{World, WorldCell};
 /// This is primarily used by custom component cloners.
 pub struct CloneSource<'a> {
     ptr: Ptr<'a>,
-    name: &'static str,
     type_id: TypeId,
+    #[cfg(any(debug_assertions, feature = "debug"))]
+    name: &'static str,
 }
 
 /// Type-erased write target for one cloned component value.
@@ -32,9 +36,10 @@ pub struct CloneSource<'a> {
 /// initialized by the active cloner before returning.
 pub struct CloneTarget<'a> {
     ptr: OwningPtr<'a>,
-    name: &'static str,
     type_id: TypeId,
     initialized: &'a mut bool,
+    #[cfg(any(debug_assertions, feature = "debug"))]
+    name: &'static str,
 }
 
 /// Type-erased mutable view used in deferred clone callbacks.
@@ -43,8 +48,9 @@ pub struct CloneTarget<'a> {
 /// fully available.
 pub struct CloneValue<'a> {
     ptr: PtrMut<'a>,
-    name: DebugName,
     type_id: TypeId,
+    #[cfg(any(debug_assertions, feature = "debug"))]
+    name: &'static str,
 }
 
 // -----------------------------------------------------------------------------
@@ -64,7 +70,10 @@ impl CloneSource<'_> {
     #[inline(always)]
     pub fn assert_type<C: 'static>(&self) {
         if self.type_id != TypeId::of::<C>() {
+            #[cfg(any(debug_assertions, feature = "debug"))]
             Self::invalid_type(self.name, DebugName::type_name::<C>());
+            #[cfg(not(any(debug_assertions, feature = "debug")))]
+            Self::invalid_type("__unknown__", DebugName::type_name::<C>());
         }
     }
 
@@ -91,7 +100,10 @@ impl CloneTarget<'_> {
     #[inline(always)]
     pub fn assert_type<C: 'static>(&self) {
         if self.type_id != TypeId::of::<C>() {
+            #[cfg(any(debug_assertions, feature = "debug"))]
             Self::invalid_type(self.name, DebugName::type_name::<C>());
+            #[cfg(not(any(debug_assertions, feature = "debug")))]
+            Self::invalid_type("__unknown__", DebugName::type_name::<C>());
         }
     }
 
@@ -133,7 +145,7 @@ impl CloneTarget<'_> {
 impl CloneValue<'_> {
     #[cold]
     #[inline(never)]
-    fn invalid_type(actual: DebugName, read: DebugName) -> ! {
+    fn invalid_type(actual: &'static str, read: DebugName) -> ! {
         panic!("CloneValue Error: try modify value as `{read}`, but the actual type is `{actual}`.")
     }
 
@@ -143,7 +155,10 @@ impl CloneValue<'_> {
     #[inline(always)]
     pub fn assert_type<C: 'static>(&self) {
         if self.type_id != TypeId::of::<C>() {
+            #[cfg(any(debug_assertions, feature = "debug"))]
             Self::invalid_type(self.name, DebugName::type_name::<C>());
+            #[cfg(not(any(debug_assertions, feature = "debug")))]
+            Self::invalid_type("__unknown__", DebugName::type_name::<C>());
         }
     }
 
@@ -164,14 +179,20 @@ impl CloneValue<'_> {
 // CloneContext & CloneEntityMapper & Callback
 // -----------------------------------------------------------------------------
 
+/// Type alias for the entity-source-to-target mapping used during cloning.
+///
+/// Maps each source [`EntityId`] to its cloned counterpart. This mapping is
+/// built incrementally as entities are cloned and is consumed by deferred
+/// callbacks ( e.g., [`Component::map_entities`] ) for entity remapping.
 pub type CloneEntityMapper = EntityMap<EntityId>;
 
 struct Callback {
     func: Box<dyn FnOnce(CloneValue, &mut CloneEntityMapper)>,
     id: ComponentId,
     entity: EntityId,
-    name: DebugName,
     type_id: TypeId,
+    #[cfg(any(debug_assertions, feature = "debug"))]
+    name: &'static str,
 }
 
 /// Per-component context passed through a clone run.
@@ -179,14 +200,15 @@ struct Callback {
 /// This exposes source/target entities and provides deferred operations for
 /// entity remapping and post-clone mutation.
 pub struct CloneContext {
-    name: DebugName,
-    linked_clone: bool,
+    recursive: bool,
     id: ComponentId,
     type_id: TypeId,
     source: EntityId,
     target: EntityId,
     deferred: Vec<EntityId>,
     callback: Vec<Callback>,
+    #[cfg(any(debug_assertions, feature = "debug"))]
+    name: &'static str,
 }
 
 // -----------------------------------------------------------------------------
@@ -196,22 +218,27 @@ pub struct CloneContext {
 impl CloneContext {
     #[cold]
     #[inline(never)]
-    fn invalid_type(actual: DebugName, read: DebugName) -> ! {
+    fn invalid_type(actual: &'static str, read: DebugName) -> ! {
         panic!(
             "CloneContext Error: try callback value as `{read}`, but the actual type is `{actual}`."
         )
     }
 
-    pub(crate) fn new(linked_clone: bool) -> Self {
+    /// Creates a new clone context.
+    ///
+    /// Pass `recursive = true` when children entities should be recursively
+    /// cloned as part of the operation.
+    pub(crate) fn new(recursive: bool) -> Self {
         Self {
-            linked_clone,
+            recursive,
             id: ComponentId::without_provenance(0),
             source: EntityId::PLACEHOLDER,
             target: EntityId::PLACEHOLDER,
             type_id: TypeId::of::<Self>(),
-            name: DebugName::anonymous(),
             deferred: Vec::new(),
             callback: Vec::new(),
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            name: "__unknown__",
         }
     }
 
@@ -221,7 +248,10 @@ impl CloneContext {
     #[inline(always)]
     pub fn assert_type<C: 'static>(&self) {
         if self.type_id != TypeId::of::<C>() {
+            #[cfg(any(debug_assertions, feature = "debug"))]
             Self::invalid_type(self.name, DebugName::type_name::<C>());
+            #[cfg(not(any(debug_assertions, feature = "debug")))]
+            Self::invalid_type("__unknown__", DebugName::type_name::<C>());
         }
     }
 
@@ -231,8 +261,8 @@ impl CloneContext {
     }
 
     /// Returns whether this clone run is in linked mode.
-    pub fn linked_clone(&self) -> bool {
-        self.linked_clone
+    pub fn recursive(&self) -> bool {
+        self.recursive
     }
 
     /// Returns the source entity of the current clone step.
@@ -256,6 +286,7 @@ impl CloneContext {
     ///
     /// This calls [`Component::map_entities`] for the cloned component.
     pub fn defer_map_entities<C: Component>(&mut self) {
+        #[cfg(debug_assertions)]
         self.assert_type::<C>();
 
         let wrapper = move |mut value: CloneValue, mapper: &mut CloneEntityMapper| {
@@ -266,8 +297,9 @@ impl CloneContext {
             id: self.id,
             entity: self.target,
             func: Box::new(wrapper),
-            name: self.name,
             type_id: self.type_id,
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            name: self.name,
         });
     }
 
@@ -279,6 +311,7 @@ impl CloneContext {
         &mut self,
         func: impl FnOnce(&mut C, &mut CloneEntityMapper) + Send + 'static,
     ) {
+        #[cfg(debug_assertions)]
         self.assert_type::<C>();
 
         let wrapper = move |mut value: CloneValue, mapper: &mut CloneEntityMapper| {
@@ -289,8 +322,9 @@ impl CloneContext {
             id: self.id,
             entity: self.target,
             func: Box::new(wrapper),
-            name: self.name,
             type_id: self.type_id,
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            name: self.name,
         });
     }
 }
@@ -302,8 +336,6 @@ impl CloneContext {
 /// Strategy object describing how a single component type is cloned.
 ///
 /// Most component types should use [`Self::copyable`] or [`Self::clonable`].
-/// Relationship-aware types should use [`Self::relationship`] or
-/// [`Self::relationship_target`].
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
 pub struct ComponentCloner {
@@ -411,6 +443,7 @@ pub struct EntityCloner<'w> {
 
 impl<'w> EntityCloner<'w> {
     /// Creates an entity cloner bound to the given world.
+    #[inline(always)]
     pub fn new(world: &mut World) -> EntityCloner<'_> {
         EntityCloner {
             world: world.cell(),
@@ -423,41 +456,51 @@ impl<'w> EntityCloner<'w> {
     /// Clones a batch of entities.
     ///
     /// The returned vector preserves input order and contains cloned target
-    /// entities for each input source entity.
-    ///
-    /// If relationship cloning is enabled, the number of returned entities may
-    /// exceed the number of input entities. However, it is guaranteed that the
-    /// indices of the cloned targets correspond one-to-one with the inputs:
-    /// the first N elements of the returned vector are the direct clones of the
-    /// N input entities, and any remaining elements are products of recursive
-    /// cloning (e.g., children or related entities).
+    /// entities for each input source entity. Ensures the lengths are equal
+    /// and the entities correspond one-to-one.
     ///
     /// In theory, the order of input elements does not negatively affect the result.
-    /// Hierarchical relationships are established after all prototypes have been
-    /// cloned.
+    /// Hierarchical relationships are established after all entities have been cloned.
     ///
-    /// If `LINKED` is `true`, children entities will be recursively cloned.
+    /// If `recursive` is `true`, children entities will be recursively cloned.
+    ///
+    /// # Panic
+    /// - Panics if given entities is not spawned.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_clone_batch(
         &mut self,
         entities: &[EntityId],
-        linked_clone: bool,
+        recursive: bool,
     ) -> Vec<EntityId> {
         let caller = DebugLocation::caller();
         self.wait.extend(entities);
-        self.run(linked_clone, caller).into_vec()
+        self.run(recursive, caller).into_vec()
     }
 
     /// Clones one entity and returns the cloned target entity id.
     ///
-    /// If `LINKED` is `true`, children entities will be recursively cloned.
+    /// If `recursive` is `true`, children entities will be recursively cloned.
+    ///
+    /// # Panic
+    /// - Panics if given entity is not spawned.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn spawn_clone(&mut self, entity: EntityId, linked_clone: bool) -> EntityId {
+    pub fn spawn_clone(&mut self, entity: EntityId, recursive: bool) -> EntityId {
         let caller = DebugLocation::caller();
         self.wait.push_back(entity);
-        self.run(linked_clone, caller)[0]
+        self.run(recursive, caller)[0]
+    }
+
+    #[inline]
+    pub(crate) fn spawn_clone_with_caller(
+        &mut self,
+        entity: EntityId,
+        recursive: bool,
+        caller: DebugLocation,
+    ) -> EntityId {
+        self.wait.push_back(entity);
+        self.run(recursive, caller)[0]
     }
 }
 
@@ -470,14 +513,25 @@ impl<'w> EntityCloner<'w> {
     ///
     /// If `LINKED` is `true`, the children entities will be recursively cloned.
     #[inline(never)]
-    fn run(&mut self, linked_clone: bool, caller: DebugLocation) -> SmallVec<EntityId, 2> {
-        let mut context = CloneContext::new(linked_clone);
+    fn run(&mut self, recursive: bool, caller: DebugLocation) -> SmallVec<EntityId, 2> {
+        // -------------------------------------------------------------------
+        // Read waits
+        // -------------------------------------------------------------------
 
         // Store entities that are explicitly cloned.
         let mut output: SmallVec<EntityId, 2> = SmallVec::with_capacity(self.wait.len());
-        self.wait
-            .iter()
-            .for_each(|&e| unsafe { output.push_unchecked(e) });
+        let (x, y) = self.wait.as_slices();
+        // ↓ Faster than `extend_from_slice` and `iter + push_unchecked`.
+        unsafe {
+            debug_assert_eq!(x.len() + y.len(), self.wait.len());
+            let ptr_x: *mut EntityId = output.as_mut_ptr();
+            let ptr_y: *mut EntityId = ptr_x.add(x.len());
+            core::ptr::copy_nonoverlapping::<EntityId>(x.as_ptr(), ptr_x, x.len());
+            core::ptr::copy_nonoverlapping::<EntityId>(y.as_ptr(), ptr_y, y.len());
+            output.set_len(self.wait.len());
+        }
+
+        self.cloned.reserve(self.wait.len());
 
         // -------------------------------------------------------------------
         // Forget Guard
@@ -511,7 +565,14 @@ impl<'w> EntityCloner<'w> {
         };
 
         // -------------------------------------------------------------------
-        // Plain Clone
+        // Start Clone
+        // -------------------------------------------------------------------
+
+        // Reusable context, reduces memory allocation.
+        let mut context = CloneContext::new(recursive);
+
+        // -------------------------------------------------------------------
+        // Step-1: Plain Clone (alloc entity + clone compoent data)
         // -------------------------------------------------------------------
 
         // Clone all waiting entities.
@@ -522,12 +583,11 @@ impl<'w> EntityCloner<'w> {
                 Ok(location) => location,
                 Err(e) => {
                     core::hint::cold_path();
-                    log::warn!("Try Clone Entity `{source}` but it is not spawned. {e}. {caller}");
-                    continue;
+                    panic!("Try Clone Entity `{source}` but it is not spawned. {e}. {caller}")
                 }
             };
 
-            // We will map it after everything is completed.
+            // We will map it after everything is completed, no need hanle it here.
             let child_of = node.child_of;
 
             // SAFETY: `EntityTree::get` return `Err` if `location` is `None`.
@@ -536,12 +596,12 @@ impl<'w> EntityCloner<'w> {
             let table_id = location.table_id;
             let src_row = location.table_row;
 
-            // Spawn a uninitialized entity from given Archetype.
+            // Spawn a uninitialized entity from given Table (Archetype).
+            // The compoent data and hierarchy relationship is uninitialized.
             let uninit_entity =
                 unsafe { world1.spawn_uninit_with_caller(table_id, caller, child_of) };
 
-            // `ForgetGuard` can not forget this cloning entity.
-            // We need handle it manually.
+            // `ForgetGuard` can not forget this cloning entity. We need handle it manually.
             let item_guard = ForgetEntityOnPanic {
                 entity: uninit_entity.id,
                 world: self.world,
@@ -553,14 +613,11 @@ impl<'w> EntityCloner<'w> {
 
             let dst_id = uninit_entity.id;
             let dst_row = uninit_entity.location.table_row;
-            let this_run = uninit_entity.this_run;
             let table = uninit_entity.table;
+            let this_run = uninit_entity.this_run;
 
             debug_assert_eq!(table_id, uninit_entity.location.table_id);
-            debug_assert_eq!(
-                table.entities().get(src_row.0 as usize).copied(),
-                Some(source)
-            );
+            debug_assert_eq!(table.entities().get(src_row.0 as usize), Some(&source));
 
             let components = table.components();
 
@@ -576,9 +633,17 @@ impl<'w> EntityCloner<'w> {
                     components.get_by_id(id).debug_checked_unwrap()
                 };
 
-                let name = info.typa_name;
                 let type_id = info.type_id;
                 let cloner = info.cloner;
+
+                context.id = id;
+                context.type_id = type_id;
+
+                #[cfg(any(debug_assertions, feature = "debug"))]
+                let name = {
+                    context.name = info.typa_name;
+                    info.typa_name
+                };
 
                 let src_index = src_row.0 as usize;
                 let dst_index = dst_row.0 as usize;
@@ -593,26 +658,29 @@ impl<'w> EntityCloner<'w> {
                 let src_ptr = unsafe { (*column_p).get_data(src_index) };
                 let dst_ptr = unsafe { (*column_p).get_data_mut(dst_index).promote() };
 
-                let src = CloneSource {
-                    ptr: src_ptr,
-                    name,
-                    type_id,
-                };
+                let mut init = false;
+                let initialized: &mut bool = &mut init;
 
-                let mut initialized = false;
-                let dst = CloneTarget {
-                    ptr: dst_ptr,
-                    name,
-                    type_id,
-                    initialized: &mut initialized,
-                };
+                #[rustfmt::skip]
+                #[cfg(any(debug_assertions, feature = "debug"))]
+                let (src, dst) = (
+                    CloneSource { ptr: src_ptr, type_id, name },
+                    CloneTarget { ptr: dst_ptr, type_id, initialized, name },
+                );
+
+                #[rustfmt::skip]
+                #[cfg(not(any(debug_assertions, feature = "debug")))]
+                let (src, dst) = (
+                    CloneSource { ptr: src_ptr, type_id },
+                    CloneTarget { ptr: dst_ptr, type_id, initialized },
+                );
 
                 cloner.call(src, dst, &mut context);
 
-                // change to debug_assert ?
                 assert!(
-                    initialized,
-                    "The ComponentCloner of `{name}` did not write data. {caller}"
+                    init,
+                    "The Cloner of `{}` did not write data.\n{}",
+                    info.typa_name, caller
                 );
             }
 
@@ -622,36 +690,40 @@ impl<'w> EntityCloner<'w> {
             ::core::mem::forget(item_guard);
 
             // Collect all entities that should be linked clone.
-            // Note that the input `linked_clone` is non mandatory.
+            //
+            // The input recursive is already stored in the CloneContext;
+            // however, whether additional entities are cloned is determined
+            // by the component cloner, not by recursive itself.
+            //
+            // Therefore, we must always collect all deferred entities.
             context.deferred.drain(..).for_each(|entity| {
                 use crate::utils::contains_entity;
+                // Skip if the entity is already cloned or is in the wating queue.
                 let (x, y) = self.wait.as_slices();
-                let c1 = !self.mapper.contains(entity);
+                let c1 = !self.mapper.contains(entity); // c1: not already cloned
                 let c2 = !contains_entity(entity, x);
                 let c3 = !contains_entity(entity, y);
                 // let c4 = !contains_entity(entity, &self.cloned); // c4 == c1
-                if c1 && c2 && c3
-                /* && c4 */
-                {
+                if c1 && c2 && c3 {
                     self.wait.push_back(entity);
                 }
             });
         }
 
         // -------------------------------------------------------------------
-        // Callbacks
+        // Step-2: Callbacks (map entities + custom operation)
         // -------------------------------------------------------------------
 
-        // Run callbacks
-        let callbacks = context.callback;
         let world = unsafe { self.world.full_mut() };
-        for callback in callbacks {
+
+        for callback in context.callback {
             let Callback {
                 func,
                 id,
                 entity,
-                name,
                 type_id,
+                #[cfg(any(debug_assertions, feature = "debug"))]
+                name,
             } = callback;
 
             // The cloning operation has not yet called the lifecycle hooks.
@@ -661,24 +733,32 @@ impl<'w> EntityCloner<'w> {
             // is faster than hash (TypeId). Require tests.
             let untyped = entity_mut.get_mut_by_id(id).expect("should exist");
             let ptr = untyped.value;
-            let clone_value = CloneValue { ptr, name, type_id };
+
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            let clone_value = CloneValue { ptr, type_id, name };
+            #[cfg(not(any(debug_assertions, feature = "debug")))]
+            let clone_value = CloneValue { ptr, type_id };
+
             func(clone_value, &mut self.mapper);
         }
 
         // -------------------------------------------------------------------
-        // Complete Hierarchy
+        // Step-3: Complete Hierarchy Relationship
         // -------------------------------------------------------------------
 
         let world = unsafe { self.world.full_mut() };
+        // Iterate `&[EntityId]` is faster than `Vec<EntityId>`.
         for &id in self.cloned.as_slice() {
+            let index = id.index() as usize;
             let tree = &mut world.entities;
-            let node = unsafe { tree.entities.get_unchecked_mut(id.index() as usize) };
+            let node = unsafe { tree.entities.get_unchecked_mut(index) };
             let child_of = node.child_of.map(|x| self.mapper.get_mapped(x));
 
             node.child_of = child_of;
 
             if let Some(p) = child_of {
-                let slot = unsafe { tree.entities.get_unchecked_mut(p.index() as usize) };
+                let p_index = p.index() as usize;
+                let slot = unsafe { tree.entities.get_unchecked_mut(p_index) };
                 slot.children.insert(id);
             } else {
                 tree.root.insert(id);
@@ -686,12 +766,14 @@ impl<'w> EntityCloner<'w> {
         }
 
         // -------------------------------------------------------------------
-        // Component Hooks
+        // Step-4: Run Component Hooks
         // -------------------------------------------------------------------
 
-        // Run Lifetime Hooks
         let world = unsafe { self.world.full_mut() };
+        // Iterate `&[EntityId]` is faster than `Vec<EntityId>`.
         for &entity in self.cloned.as_slice() {
+            // The entity may be removed by other's component hook.
+            // Therefore, the locating failure is acceptable.
             if let Ok(location) = world.entities.locate(entity) {
                 let table_id = location.table_id;
                 let table = unsafe { world.tables.get_unchecked(table_id) };
@@ -700,10 +782,15 @@ impl<'w> EntityCloner<'w> {
                 table.trigger_on_clone(entity, deferred.reborrow(), caller);
                 table.trigger_on_add(entity, deferred.reborrow(), caller);
                 table.trigger_on_insert(entity, deferred.reborrow(), caller);
-
-                todo!("World::flush")
             }
         }
+
+        // Apply commands after component hooks.
+        world.flush();
+
+        // -------------------------------------------------------------------
+        // Finish, forget gurad
+        // -------------------------------------------------------------------
 
         ::core::mem::forget(forget_guard);
 
@@ -723,3 +810,127 @@ impl<'w> EntityCloner<'w> {
         output
     }
 }
+
+// -----------------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    use serde::{Deserialize, Serialize};
+    use zlim_reflect::TypePath;
+
+    use crate::world::World;
+    use crate::{derive::Component, entity::EntityId};
+
+    // -------------------------------------------------------------------------
+    // Test helpers
+    // -------------------------------------------------------------------------
+
+    macro_rules! define_tracker {
+        ($n:ident, $t:ident) => {
+            static $n: AtomicUsize = AtomicUsize::new(0);
+
+            #[derive(Debug, TypePath, Component, Clone, Serialize, Deserialize)]
+            struct $t;
+
+            impl Drop for $t {
+                fn drop(&mut self) {
+                    $n.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // Test components
+    // -------------------------------------------------------------------------
+
+    #[derive(Debug, TypePath, Component, Clone, Copy)]
+    #[derive(PartialEq, Eq, Serialize, Deserialize)]
+    struct Pos {
+        x: i32,
+        y: i32,
+    }
+
+    #[derive(Debug, TypePath, Component, Clone)]
+    #[derive(PartialEq, Eq, Serialize, Deserialize)]
+    struct Name(String);
+
+    #[test]
+    fn clone_batch_empty_returns_empty() {
+        let mut world = World::alloc();
+        let outputs = world.entity_cloner().spawn_clone_batch(&[], false);
+        assert!(outputs.is_empty());
+    }
+
+    #[test]
+    fn clone_empty_entity() {
+        let mut world = World::alloc();
+        let src_id = world.spawn((), None).id();
+        let dst = world.entity_cloner().spawn_clone(src_id, false);
+        assert_ne!(src_id, dst);
+    }
+
+    #[test]
+    fn clone_returns_different_entity() {
+        let mut world = World::alloc();
+        let src_id = world.spawn((Pos { x: 0, y: 0 },), None).id();
+        let dst = world.entity_cloner().spawn_clone(src_id, false);
+        assert_ne!(src_id, dst);
+    }
+
+    #[test]
+    fn clone_copies_both_components() {
+        let mut world = World::alloc();
+
+        let alice = Name("Alice".into());
+        let mut src = world.spawn((Pos { x: 1, y: 2 }, alice.clone()), None);
+
+        let dst_id = src.clone(false).unwrap();
+        let dst = world.entity_ref(dst_id);
+
+        assert_eq!(dst.get::<Pos>(), Some(&Pos { x: 1, y: 2 }));
+        assert_eq!(dst.get::<Name>(), Some(&alice));
+    }
+
+    #[test]
+    fn spawn_clone_batch_preserves_order() {
+        let mut world = World::alloc();
+        let ids: Vec<EntityId> = (0..5)
+            .map(|i| world.spawn((Pos { x: i, y: i },), None).id())
+            .collect();
+
+        let outputs = world.entity_cloner().spawn_clone_batch(&ids, false);
+        assert_eq!(outputs.len(), 5);
+
+        for (i, &dst_id) in outputs.iter().enumerate() {
+            let entity = world.entity_ref(dst_id);
+            assert_eq!(
+                entity.get::<Pos>(),
+                Some(&Pos {
+                    x: i as i32,
+                    y: i as i32
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn dropping_world_drops_cloned_entities() {
+        define_tracker!(CLONE_DROP, TrackedDrop);
+
+        let mut world = World::alloc();
+
+        CLONE_DROP.store(0, Ordering::SeqCst);
+        let mut src = world.spawn(TrackedDrop, None);
+        let _dst = src.clone(false).unwrap();
+        assert_eq!(CLONE_DROP.load(Ordering::SeqCst), 0usize);
+        ::core::mem::drop(world);
+        assert_eq!(CLONE_DROP.load(Ordering::SeqCst), 2usize);
+    }
+}
+
+// -----------------------------------------------------------------------------

@@ -31,7 +31,7 @@
 //!
 //! ```ignore
 //! // Spawn with a tuple bundle
-//! world.spawn((Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 }));
+//! world.spawn((Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 }), /* ... */);
 //! ```
 //!
 //! For larger bundles or reusable spawn patterns, use
@@ -74,3 +74,5 @@ mod info;
 pub use bundle::{Bundle, DataBundle};
 pub use helper::{ComponentCollector, ComponentWriter};
 pub use info::{BundleId, BundleInfo, Bundles};
+
+pub use zlim_core_derive::Bundle;

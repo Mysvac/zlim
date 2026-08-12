@@ -28,10 +28,13 @@ impl Dropper {
 
     /// Creates a [`Dropper`] for `T` if `T` needs drop.
     ///
-    /// Returns `None` for trivially droppable types, allowing callers to skip
-    /// storing or invoking unnecessary drop callbacks.
+    /// Returns `None` for trivially droppable types (those where
+    /// `mem::needs_drop` returns `false`).  This allows storage internals
+    /// to skip storing or invoking unnecessary drop callbacks, saving both
+    /// memory and CPU cycles.
     ///
-    /// This is typically used by type-erased storage metadata.
+    /// This is typically called once per component type during column or
+    /// slot initialisation.
     pub const fn of<T>() -> Option<Dropper> {
         if ::core::mem::needs_drop::<T>() {
             Some(Dropper {

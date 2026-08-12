@@ -31,7 +31,7 @@ const ANONYMOUS_NAME: &str = "_unknown_";
 /// assert_eq!(anonymous.parse(), "_unknown_");
 /// ```
 #[derive(Clone, Copy)]
-pub(crate) struct DebugName {
+pub struct DebugName {
     #[cfg(any(debug_assertions, feature = "debug"))]
     name: fn() -> &'static str,
 }
@@ -66,7 +66,7 @@ impl DebugName {
     ///
     /// ```ignore
     /// let anonymous = DebugName::anonymous();
-    /// assert_eq!(anonymous.parse(), "_unknown_");
+    /// assert_eq!(anonymous.to_string(), "_unknown_");
     /// ```
     #[inline(always)]
     pub const fn anonymous() -> Self {

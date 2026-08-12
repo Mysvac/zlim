@@ -3,8 +3,6 @@
 Zlim is a DOP (Data-Oriented Programming) game engine framework written in Rust,
 heavily inspired by Bevy's implementation.
 
-- The project root does not need a README.md. Do not create or suggest creating one.
-
 ## Common Commands
 
 The standard five-step verification suite — run these before considering a
@@ -22,7 +20,7 @@ cargo doc --workspace --no-deps --document-private-items
 RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --workspace --no-deps
 
 # 4. Format (requires nightly)
-cargo +nightly fmt --all -- --check
+cargo fmt --all -- --check
 
 # 5. Run tests
 cargo test --workspace

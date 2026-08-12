@@ -1,3 +1,4 @@
+#![expect(clippy::len_without_is_empty, reason = "useless")]
 #![expect(unsafe_code, reason = "performance optimization")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -24,20 +25,15 @@ extern crate self as zlim_core;
 pub use zlim_core_derive as derive;
 
 // -----------------------------------------------------------------------------
-// Re-exports
-
-pub use zlim_ptr::OwningPtr;
-
-// -----------------------------------------------------------------------------
 // Modules
 
 pub mod borrow;
 pub mod bundle;
 pub mod clone;
+pub mod command;
 pub mod component;
 pub mod entity;
 pub mod error;
-pub mod message;
 pub mod ops;
 pub mod resource;
 pub mod scene;
@@ -50,12 +46,31 @@ pub mod utils;
 pub mod world;
 
 // -----------------------------------------------------------------------------
-// Modules
+// Macro Exports
 
+/// Internal module, public for dervie macros.
 #[doc(hidden)]
 pub mod __macro_exports__ {
     pub use serde::Deserialize as __Deserialize;
     pub use serde::Serialize as __Serialize;
     pub use zlim_reflect::ops::Reflect as __Reflect;
     pub use zlim_reflect::path::TypePath as __TypePath;
+}
+
+// -----------------------------------------------------------------------------
+// Prelude
+
+pub mod prelude {
+    pub use crate::{register_component, register_resource};
+
+    pub use crate::bundle::{Bundle, DataBundle};
+    pub use crate::clone::EntityCloner;
+    pub use crate::command::{Command, EntityCommand};
+    pub use crate::component::Component;
+    pub use crate::entity::{EntityId, EntityMap, MapEntities};
+    pub use crate::error::{Error, Severity, ZlimError};
+    pub use crate::ops::{EntityMut, EntityOwned, EntityRef};
+    pub use crate::resource::Resource;
+    pub use crate::tick::{DetectChanges, DetectChangesMut};
+    pub use crate::world::{DeferredWorld, World};
 }

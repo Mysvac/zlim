@@ -1,3 +1,7 @@
+//! Debug-checked unwrap helpers — fail fast in debug, go unchecked in release.
+//!
+//! See [`DebugCheckedUnwrap`] for details.
+
 /// A debug checked version of [`Option::unwrap_unchecked`].
 ///
 /// This trait offers a "debug fail-fast, release unchecked" pattern:
@@ -6,7 +10,7 @@
 /// - In release-style builds, it maps to unchecked unwrap for maximum speed.
 ///
 /// Implemented for [`Option`] and [`Result`].
-pub trait DebugCheckedUnwrap {
+pub(crate) trait DebugCheckedUnwrap {
     type Item;
 
     /// Returns the inner value under a caller-validated invariant.

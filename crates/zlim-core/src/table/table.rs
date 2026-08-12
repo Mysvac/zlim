@@ -7,6 +7,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr;
 
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
+use zlim_utils::debug::DebugLocation;
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::{HashMap, SparseState};
 
@@ -21,7 +22,7 @@ use crate::component::{ComponentId, Components};
 use crate::entity::EntityId;
 use crate::table::ident::MovedEntityRow;
 use crate::tick::Tick;
-use crate::utils::{DebugCheckedUnwrap, DebugLocation, SlicePool};
+use crate::utils::{DebugCheckedUnwrap, SlicePool};
 use crate::world::DeferredWorld;
 
 // -----------------------------------------------------------------------------
@@ -230,6 +231,12 @@ impl Table {
     #[inline(always)]
     fn entity_count(&self) -> usize {
         self.entities.len()
+    }
+
+    // Unordered TypeId
+    #[inline(always)]
+    pub(crate) fn types(&self) -> impl ExactSizeIterator<Item = TypeId> + '_ {
+        self.mapper.keys().copied()
     }
 }
 
@@ -712,6 +719,47 @@ impl Table {
 }
 
 // -----------------------------------------------------------------------------
+// Shrink
+
+impl Table {
+    /// Reduce memory.
+    pub fn shrink(&mut self) {
+        let len = self.entity_count();
+        let cap = self.capacity();
+
+        if len == 0 && cap != 0 {
+            let abort_guard = AbortOnPanic;
+
+            let current = unsafe { NonZeroUsize::new_unchecked(cap) };
+            self.entities = Vec::new();
+
+            for c in &mut self.columns {
+                unsafe { c.shrink_to(current, 0) };
+            }
+
+            ::core::mem::forget(abort_guard);
+            return;
+        }
+
+        if cap >= (len << 1).next_power_of_two() && cap >= 16 {
+            let abort_guard = AbortOnPanic;
+
+            let current = unsafe { NonZeroUsize::new_unchecked(cap) };
+            let new_cap = len.next_power_of_two().max(len + (len >> 1));
+            self.entities.shrink_to(new_cap);
+
+            let new = self.entities.capacity();
+            for c in &mut self.columns {
+                unsafe { c.shrink_to(current, new) };
+            }
+
+            ::core::mem::forget(abort_guard);
+            return;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Alloc
 
 impl Table {
@@ -817,7 +865,7 @@ impl Table {
         &mut self,
         table_row: TableRow,
         other: &mut Table,
-    ) -> MovedEntityRow {
+    ) -> (MovedEntityRow, TableRow) {
         let src = table_row.0 as usize;
         let last = self.entity_count() - 1;
         debug_assert!(src <= last);
@@ -844,10 +892,13 @@ impl Table {
                         }
                     });
 
-                MovedEntityRow::Some {
-                    entity: swapped,
-                    new_row: table_row,
-                }
+                (
+                    MovedEntityRow::Some {
+                        entity: swapped,
+                        new_row: table_row,
+                    },
+                    new_row,
+                )
             } else {
                 core::hint::cold_path();
                 let moved = self.entities.remove_last(last);
@@ -866,8 +917,10 @@ impl Table {
                         }
                     });
 
-                MovedEntityRow::None
+                (MovedEntityRow::None, new_row)
             }
         }
     }
 }
+
+// -----------------------------------------------------------------------------

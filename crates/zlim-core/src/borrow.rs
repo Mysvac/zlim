@@ -1,3 +1,5 @@
+//! Borrow Containers
+
 use core::fmt::{Debug, Formatter};
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
@@ -82,13 +84,20 @@ pub struct UntypedSliceMut<'w> {
 // UntypedRef : Method Implementation
 
 impl<'w> UntypedRef<'w> {
-    /// Consumes `self` and returns the inner [`Ptr`].
+    /// Consumes `self` and returns the underlying [`Ptr`].
+    ///
+    /// The tick metadata is discarded; only the raw pointer to the
+    /// component data is returned.
     #[inline(always)]
     pub fn into_inner(self) -> Ptr<'w> {
         self.value
     }
 
-    /// Creates a copy with the same lifetime.
+    /// Creates a copy of this untyped reference with the same lifetime and
+    /// tick metadata.
+    ///
+    /// Shared references can be copied freely; the original and the copy
+    /// are independent and do not interfere with each other.
     #[inline(always)]
     pub fn reborrow(&self) -> UntypedRef<'w> {
         Self {
@@ -110,7 +119,10 @@ impl Debug for UntypedRef<'_> {
 // UntypedMut : Method Implementation
 
 impl<'w> UntypedMut<'w> {
-    /// Consumes `self` and returns the inner [`PtrMut`].
+    /// Consumes `self` and returns the underlying [`PtrMut`].
+    ///
+    /// The tick metadata is discarded; only the raw pointer to the
+    /// component data is returned.
     ///
     /// This function does not set the changed flag.
     #[inline(always)]
@@ -118,7 +130,11 @@ impl<'w> UntypedMut<'w> {
         self.value
     }
 
-    /// Returns a shorter-lived version of self.
+    /// Returns a shorter-lived reborrow of this untyped mutable reference.
+    ///
+    /// The returned [`UntypedMut`] has a narrower lifetime, satisfying the
+    /// borrow checker when the original reference must remain usable after
+    /// the reborrow ends.
     ///
     /// This function does not set the changed flag.
     #[inline(always)]
@@ -147,7 +163,10 @@ impl Debug for UntypedMut<'_> {
 // UntypedSliceRef : Method Implementation
 
 impl<'w> UntypedSliceRef<'w> {
-    /// Consumes `self` and returns the inner [`Ptr`].
+    /// Consumes `self` and returns the underlying [`Ptr`].
+    ///
+    /// The tick metadata and slice length are discarded; only the raw
+    /// pointer to the component data is returned.
     #[inline]
     pub fn into_inner(self) -> Ptr<'w> {
         self.value
@@ -179,7 +198,10 @@ impl Debug for UntypedSliceRef<'_> {
 // UntypedSliceMut : Method Implementation
 
 impl<'w> UntypedSliceMut<'w> {
-    /// Consumes `self` and returns the inner [`PtrMut`].
+    /// Consumes `self` and returns the underlying [`PtrMut`].
+    ///
+    /// The tick metadata and slice length are discarded; only the raw
+    /// pointer to the component data is returned.
     #[inline]
     pub fn into_inner(self) -> PtrMut<'w> {
         self.value
@@ -295,9 +317,25 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
 // --------------------------------------------------------------------
 // Ref
 
-/// A generic shared reference to a component or resource.
+/// A shared reference to a component or resource with per-element change
+/// detection.
 ///
-/// Provides read-only access with change detection.
+/// `Ref` wraps an immutable borrow (`&'w T`) together with change-detection
+/// tick metadata so that systems can query whether the referenced data was
+/// added or modified since the last time they ran.
+///
+/// Use [`into_inner`] to extract the underlying `&T`, or [`map_type`] /
+/// [`try_map_type`] to transform the held type while preserving ticks.
+/// The type also implements [`DetectChanges`] for direct change queries
+/// ([`DetectChanges::is_added()`], [`DetectChanges::is_changed()`],
+/// etc.).
+///
+/// This is the foundational immutable wrapper — resource types like [`Res`]
+/// and [`NonSend`] follow the same pattern but add thread-safety constraints.
+///
+/// [`into_inner`]: Ref::into_inner
+/// [`map_type`]: Ref::map_type
+/// [`try_map_type`]: Ref::try_map_type
 pub struct Ref<'w, T: ?Sized> {
     pub(crate) value: &'w T,
     pub(crate) ticks: TicksRef<'w>,
@@ -306,9 +344,27 @@ pub struct Ref<'w, T: ?Sized> {
 // --------------------------------------------------------------------
 // Mut
 
-/// A generic exclusive reference to a component or resource.
+/// An exclusive reference to a component or resource with per-element change
+/// detection.
 ///
-/// Provides mutable access with change detection.
+/// `Mut` wraps a mutable borrow (`&'w mut T`) together with change-detection
+/// tick metadata. Calling [`into_inner`] consumes `self` and returns the
+/// `&mut T`, automatically marking the data as changed so that downstream
+/// consumers can observe the modification.
+///
+/// Use [`reborrow`] to obtain a shorter-lived view without consuming `self`,
+/// or [`map_type`] / [`try_map_type`] to project into a sub-field while
+/// preserving ticks.
+///
+/// This is the foundational mutable wrapper — resource types like [`ResMut`]
+/// and [`NonSendMut`] follow the same pattern but add thread-safety
+/// constraints and also implement [`DerefMut`] and [`AsMut`] for ergonomic
+/// access.
+///
+/// [`into_inner`]: Mut::into_inner
+/// [`reborrow`]: Mut::reborrow
+/// [`map_type`]: Mut::map_type
+/// [`try_map_type`]: Mut::try_map_type
 pub struct Mut<'w, T: ?Sized> {
     pub(crate) value: &'w mut T,
     pub(crate) ticks: TicksMut<'w>,
@@ -319,10 +375,17 @@ pub struct Mut<'w, T: ?Sized> {
 
 /// A shared reference to a slice of components.
 ///
-/// Provides read-only access to multiple components of the same type.
+/// Provides read-only access to multiple components of the same type in a
+/// contiguous memory region. Each element carries its own per-element
+/// change-detection tick, so callers can distinguish which individual
+/// components were added or modified since the last system run.
 ///
-/// This is currently a low-level wrapper used by storage/query internals.
-/// It exposes contiguous read access plus change ticks for each element.
+/// `SliceRef` implements [`IntoIterator`], yielding [`Ref<'w, T>`] items
+/// through a [`SliceRefIter`]. It also dereferences to `&[T]` via [`Deref`].
+///
+/// This is a low-level wrapper used by storage/query internals — most
+/// application code will interact with slices through higher-level query
+/// abstractions.
 pub struct SliceRef<'w, T> {
     pub(crate) value: ThinSlice<'w, T>,
     pub(crate) ticks: TicksSliceRef<'w>,
@@ -333,10 +396,22 @@ pub struct SliceRef<'w, T> {
 
 /// An exclusive reference to a slice of components.
 ///
-/// Provides mutable access to multiple components of the same type.
+/// Provides mutable access to multiple components of the same type in a
+/// contiguous memory region. Each element carries its own per-element
+/// change-detection tick so callers can distinguish which individual
+/// components were added or modified since the last system run.
 ///
-/// This is currently a low-level wrapper used by storage/query internals.
-/// It exposes contiguous mutable access plus change ticks for each element.
+/// Mutating through [`DerefMut`], [`AsMut`], or [`into_inner`] marks
+/// every element in the slice as changed. For per-element change tracking,
+/// iterate with [`into_iter`] to obtain individual [`Mut<'w, T>`] items
+/// via a [`SliceMutIter`].
+///
+/// This is a low-level wrapper used by storage/query internals — most
+/// application code will interact with slices through higher-level query
+/// abstractions.
+///
+/// [`into_inner`]: SliceMut::into_inner
+/// [`into_iter`]: SliceMut::into_iter
 pub struct SliceMut<'w, T> {
     pub(crate) value: ThinSliceMut<'w, T>,
     pub(crate) ticks: TicksSliceMut<'w>,
@@ -503,7 +578,12 @@ impl<'w, T: ?Sized> Ref<'w, T> {
         self.value
     }
 
-    /// Creates a copy with the same lifetime.
+    /// Creates a copy of this reference with the same lifetime and tick
+    /// metadata.
+    ///
+    /// Unlike [`Mut::reborrow`], shared references can be copied freely
+    /// without shortening the lifetime — the borrow checker treats both
+    /// the original and the copy as independent shared borrows.
     #[inline]
     pub fn reborrow(&self) -> Self {
         Self {
@@ -717,15 +797,19 @@ impl<'w, T: ?Sized> DetectChangesMut for Mut<'w, T> {
 // SliceRef - Methods
 
 impl<'w, T> SliceRef<'w, T> {
-    /// Consumes self and returns the inner reference `&T` with the same lifetime.
+    /// Consumes `self` and returns the underlying slice `&[T]` with the
+    /// same lifetime.
     #[inline(always)]
     pub fn into_inner(self) -> &'w [T] {
         unsafe { self.value.deref(self.ticks.length) }
     }
 
-    /// Creates a copy with the **same** lifetime.
+    /// Creates a copy of this slice reference with the same lifetime and
+    /// tick metadata.
     ///
-    /// Since this is a shared reference, the original and copy do not interfere.
+    /// Since this is a shared reference, the original and copy do not
+    /// interfere — both can be used independently without lifetime
+    /// shortening.
     #[inline(always)]
     pub fn reborrow(&self) -> SliceRef<'w, T> {
         Self {
@@ -751,7 +835,20 @@ impl<'w, T> AsRef<[T]> for SliceRef<'w, T> {
     }
 }
 
-/// An iterator over shared references to components in a slice.
+/// An iterator over shared references to components in a [`SliceRef`].
+///
+/// Each item yielded by this iterator is a [`Ref<'w, T>`] providing read-only
+/// access to a single element together with its own per-element
+/// change-detection tick metadata. Because each element carries independent
+/// tick information, consumers can detect which specific elements were added
+/// or modified since the last system run.
+///
+/// This iterator implements [`ExactSizeIterator`] and [`FusedIterator`], so
+/// its length is known in advance and it will continue to yield `None` after
+/// exhaustion.
+///
+/// Obtain this iterator via [`SliceRef::into_iter`] or by using a
+/// [`SliceRef`] directly in a `for` loop.
 pub struct SliceRefIter<'w, T> {
     len: usize,
     value: NonNull<T>,
@@ -827,7 +924,12 @@ impl<'w, T> SliceMut<'w, T> {
         slice.iter_mut().for_each(|it| *it = this_run);
     }
 
-    /// Consumes self and returns the inner reference `&T` with the same lifetime.
+    /// Consumes `self` and returns the underlying mutable slice `&mut [T]`
+    /// with the same lifetime.
+    ///
+    /// All elements in the slice are marked as changed before the inner
+    /// reference is returned, so any downstream change-detection queries
+    /// will observe the modification.
     #[inline]
     pub fn into_inner(mut self) -> &'w mut [T] {
         self.mark_all_changed();
@@ -884,7 +986,24 @@ impl<'w, T> AsMut<[T]> for SliceMut<'w, T> {
     }
 }
 
-/// An iterator over mutable references to components in a slice.
+/// An iterator over mutable references to components in a [`SliceMut`].
+///
+/// Each item yielded by this iterator is a [`Mut<'w, T>`] providing exclusive
+/// access to a single element together with its own per-element
+/// change-detection tick metadata. Because each element carries independent
+/// tick information, consumers can detect which specific elements were added
+/// or modified since the last system run.
+///
+/// Calling [`Mut::into_inner`] on a yielded [`Mut`] automatically marks that
+/// element as changed, so downstream change-detection queries will observe the
+/// modification.
+///
+/// This iterator implements [`ExactSizeIterator`] and [`FusedIterator`], so
+/// its length is known in advance and it will continue to yield `None` after
+/// exhaustion.
+///
+/// Obtain this iterator via [`SliceMut::into_iter`] or by using a
+/// [`SliceMut`] directly in a `for` loop.
 pub struct SliceMutIter<'w, T> {
     len: usize,
     value: NonNull<T>,
@@ -1018,9 +1137,28 @@ pub struct ResMut<'w, T: Resource + Send> {
 
 /// A shared reference to a `!Sync` resource with change detection.
 ///
-/// `NonSend` parameters can only be fetched on the world's main thread.
-/// Use this when the resource type cannot be sent across threads but
-/// immutable access with change detection is needed.
+/// `NonSend` is the main-thread-only counterpart to [`Res`]. It is intended
+/// for resource types that do not implement `Sync` (and therefore cannot be
+/// shared across threads). Like [`Res`], it provides immutable access with
+/// full change-detection support via [`DetectChanges`].
+///
+/// # Thread safety
+///
+/// `NonSend` parameters can only be fetched from systems that run on the
+/// world's main thread. The ECS scheduler enforces this automatically.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[derive(Resource, /* ... */)]
+/// struct ThreadLocalState;
+///
+/// fn main_thread_system(state: NonSend<ThreadLocalState>) {
+///     if state.is_changed() {
+///         println!("local state was modified!");
+///     }
+/// }
+/// ```
 pub struct NonSend<'w, T: Resource> {
     pub(crate) value: &'w T,
     pub(crate) ticks: TicksRef<'w>,
@@ -1032,8 +1170,30 @@ pub struct NonSend<'w, T: Resource> {
 
 /// An exclusive reference to a `!Send` resource with change detection.
 ///
-/// This mutable view is restricted to the main thread and prevents any
-/// concurrent access to the same resource while the system runs.
+/// `NonSendMut` is the main-thread-only counterpart to [`ResMut`]. It is
+/// intended for resource types that do not implement `Send` (and therefore
+/// cannot be transferred to another thread). Like [`ResMut`], it provides
+/// mutable access with full change-detection support — writing through
+/// [`DerefMut`] or [`AsMut`] automatically marks the resource as changed.
+///
+/// # Thread safety
+///
+/// `NonSendMut` parameters can only be fetched from systems that run on the
+/// world's main thread. The ECS scheduler enforces this automatically and
+/// will prevent any concurrent access to the same resource while the system
+/// runs.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[derive(Resource, /* ... */)]
+/// struct RngState(u64);
+///
+/// fn main_thread_system(mut rng: NonSendMut<RngState>) {
+///     rng.0 = rng.0.wrapping_mul(636413622).wrapping_add(1);
+///     assert!(rng.is_changed());
+/// }
+/// ```
 pub struct NonSendMut<'w, T: Resource> {
     pub(crate) value: &'w mut T,
     pub(crate) ticks: TicksMut<'w>,

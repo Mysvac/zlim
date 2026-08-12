@@ -1,3 +1,7 @@
+mod local;
+
+pub use local::Local;
+
 use crate::error::ZlimResult;
 use crate::world::World;
 

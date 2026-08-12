@@ -15,7 +15,7 @@ pub(crate) fn gen_register(derive: &ReflectDerive) -> TokenStream {
     let real_ident = meta.ident();
     let zlim_reflect = meta.zlim_reflect();
 
-    // ↓ See [`zlim_reflect::register!`]'s implementation.
+    // ↓ See [`zlim_reflect::register_reflect!`]'s implementation.
     quote! {
         #zlim_reflect::db::__internal__::submit!(
             #zlim_reflect::db::__internal__::__TypeReg__::of::<#real_ident>()

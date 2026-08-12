@@ -1,5 +1,8 @@
+//! Component Core Implementation
+
 use core::alloc::Layout;
 use core::any::TypeId;
+use core::fmt::{Debug, Formatter};
 use core::ptr::NonNull;
 use std::sync::{PoisonError, RwLock};
 
@@ -8,14 +11,17 @@ use erased_serde::Serialize as ErasedSerialize;
 use serde::{Deserialize, Serialize};
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
 use zlim_reflect::{Reflect, TypePath};
+use zlim_utils::debug::DebugLocation;
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::HashMap;
 use zlim_utils::mem::{Bump, Global};
 
 use crate::clone::ComponentCloner;
 use crate::entity::{EntityId, EntityMapper};
-use crate::utils::{DebugLocation, Dropper};
+use crate::utils::Dropper;
 use crate::world::DeferredWorld;
+
+pub use zlim_core_derive::Component;
 
 // -----------------------------------------------------------------------------
 // ComponentId
@@ -23,6 +29,8 @@ use crate::world::DeferredWorld;
 
 crate::utils::define_ident!(
     /// A unique identifier for a `Component` type.
+    ///
+    /// This ID is shared by all worlds.
     ComponentId
 );
 
@@ -30,46 +38,161 @@ crate::utils::define_ident!(
 // ComponentId
 // -----------------------------------------------------------------------------
 
+/// Context passed to [`Component`] lifecycle hooks.
+///
+/// Identifies which component type triggered the hook (`id`), which entity
+/// it belongs to (`entity`), and the source location that caused the hook
+/// to fire (`caller`).
 #[derive(Debug, Clone, Copy)]
 pub struct HookContext {
+    /// The [`ComponentId`] of the component that triggered the hook.
     pub id: ComponentId,
+    /// The [`EntityId`] of the entity the component belongs to.
     pub entity: EntityId,
+    /// The source location (`file:line:column`) where the hook was triggered.
     pub caller: DebugLocation,
 }
 
+/// A lifecycle hook for [`Component`]s.
+///
+/// A function pointer that receives deferred world access along with a
+/// [`HookContext`] describing the triggering component, entity, and location.
 pub type ComponentHook = fn(DeferredWorld, HookContext);
 
 // -----------------------------------------------------------------------------
 // Component
 // -----------------------------------------------------------------------------
 
+/// The core trait for all component types.
+///
+/// Any type stored in ECS component storage must implement this trait.
+///
+/// `Component` describes runtime metadata that drives how ECS stores and
+/// manages values of this type: memory layout, clone and drop behavior, etc.
+///
+/// # Derive Macro
+///
+/// Most users should not implement this trait manually. Prefer deriving it with
+/// [Component derive macro], which sets sensible defaults and validates options.
+///
+/// ```ignore
+/// # use voker_ecs::derive::Component;
+/// // Basic usage
+/// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+/// struct Foo;
+///
+/// // Expose field to editor
+/// #[derive(TypePath, Component, Clon, Serialize, Deserialize)]
+/// struct Transform{
+///     #[editor(mutable)]
+///     x: f32,
+///     #[editor(mutable)]
+///     y: f32,
+///     #[editor(mutable)]
+///     z: f32,
+/// }
+///
+/// // Contains Entity:
+/// #[derive(TypePath, Component, Clon, Serialize, Deserialize)]
+/// struct Linked {
+///     #[entities]
+///     linked_entities: BTreeSet<EntityId>,
+/// }
+/// ```
+///
+/// See [Component derive macro] documentation for details.
+///
+/// # Safety
+///
+/// Implementing this trait promises that the type can be stored behind the
+/// ECS' type-erased resource storage. If you override [`Self::DROPPER`],
+/// they must match the implementor's actual layout and drop behavior.
+///
+/// [Component derive macro]: crate::derive::Component
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a `Component`",
     label = "invalid `Component`",
     note = "consider annotating `{Self}` with `#[derive(Component)]`"
 )]
 pub trait Component: TypePath + Send + Sync + Sized + Serialize + for<'d> Deserialize<'d> {
+    /// When `true`, this component does not belong to a specific entity.
+    ///
+    /// Defaults to `false`.
     const NO_ENTITY: bool = false;
 
+    /// An optional function pointer to drop the component when it is deallocated.
+    ///
+    /// Defaults to `Some(Dropper::of::<Self>())` which calls [`drop`] on `Self`.
     const DROPPER: Option<Dropper> = Dropper::of::<Self>();
 
-    const ON_ADD: Option<ComponentHook> = None;
-    const ON_CLONE: Option<ComponentHook> = None;
-    const ON_INSERT: Option<ComponentHook> = None;
-    const ON_REMOVE: Option<ComponentHook> = None;
-    const ON_DISCARD: Option<ComponentHook> = None;
-    const ON_DESPAWN: Option<ComponentHook> = None;
-
+    /// The cloning strategy for this component.
+    ///
+    /// Set by `#[derive(Component)]` to one of `clonable`, `copyable`, or `custom(fn)`.
     const CLONER: ComponentCloner;
 
+    /// Hook invoked when the component is **first** added to an entity.
+    ///
+    /// (i.e. entity spawn or insert new component).
+    ///
+    /// Called after component initialization is complete, before `on_insert`.
+    const ON_ADD: Option<ComponentHook> = None;
+
+    /// Hook invoked when this component instance is created by cloning another.
+    ///
+    /// (i.e. entity clone).
+    ///
+    /// Called after entity cloning is complete, before `on_add` and `on_insert`.
+    const ON_CLONE: Option<ComponentHook> = None;
+
+    /// Hook invoked on every insertion, including updates to an entity that
+    /// already had this component type.
+    ///
+    /// (i.e. entity spawn, clone or component insert).
+    ///
+    /// Called after component initialization is complete, after `on_add`.
+    const ON_INSERT: Option<ComponentHook> = None;
+
+    /// Hook invoked when the component is removed from an entity.
+    ///
+    /// (i.e. component remove or entity despawn).
+    ///
+    /// Call before component is actually removed, after `on_discard`.
+    const ON_REMOVE: Option<ComponentHook> = None;
+
+    /// Hook invoked when the component is discarded.
+    ///
+    /// (i.e. component replace, remove or entity despawn).
+    ///
+    /// Call before component is actually removed, before `on_remove` and `on_despawn`.
+    const ON_DISCARD: Option<ComponentHook> = None;
+
+    /// Hook invoked when the owning entity is despawned.
+    ///
+    /// (i.e. entity despawn).
+    ///
+    /// Call before component is actually dropped, after `on_discard` and `on_remove`.
+    const ON_DESPAWN: Option<ComponentHook> = None;
+
+    /// Names of all fields available for reflection. Defaults to empty.
     const FIELDS: &'static [&'static str] = &[];
+
+    /// Names of fields that editors may mutate. Defaults to empty.
     const MUTABLE_FIELDS: &'static [&'static str] = &[];
+
+    /// Names of fields that editors may read but not mutate. Defaults to empty.
     const READONLY_FIELDS: &'static [&'static str] = &[];
 
+    /// Returns a shared reference to the named reflected field, if it exists.
     fn field(&self, name: &str) -> Option<&dyn Reflect>;
 
+    /// Returns a mutable reference to the named reflected field, if it exists.
     fn field_mut(&mut self, name: &str) -> Option<&mut dyn Reflect>;
 
+    /// Remaps entity references inside this component.
+    ///
+    /// Called during entity cloning / scene instantiation. The default
+    /// implementation is a no-op. Override this if your component stores
+    /// [`EntityId`] values that need remapping.
     #[inline(always)]
     fn map_entities<M: EntityMapper>(&mut self, _: &mut M) {}
 }
@@ -78,21 +201,37 @@ pub trait Component: TypePath + Send + Sync + Sized + Serialize + for<'d> Deseri
 // alias
 // -----------------------------------------------------------------------------
 
+/// Type-erased function pointer aliases used by [`ComponentDB`].
+///
+/// These allow the component database to store type-independent function
+/// pointers for field reflection, entity mapping, serialization, and
+/// deserialization.
 pub mod alias {
     use crate::entity::EntityMapper;
-    use core::ptr::NonNull;
     use erased_serde::{Deserializer, Error, Serialize};
     use zlim_ptr::{OwningPtr, Ptr, PtrMut};
     use zlim_reflect::Reflect;
     use zlim_utils::mem::Bump;
 
+    /// Type-erased function for reading a field by name via reflection.
+    ///
+    /// Returns `Some(&dyn Reflect)` on success, `None` if the field does not exist.
     pub type FieldRefFunc = for<'a> unsafe fn(Ptr<'a>, &str) -> Option<&'a dyn Reflect>;
+
+    /// Type-erased function for mutably accessing a field by name via reflection.
+    ///
+    /// Returns `Some(&mut dyn Reflect)` on success, `None` if the field does not exist.
     pub type FieldMutFunc = for<'a> unsafe fn(PtrMut<'a>, &str) -> Option<&'a mut dyn Reflect>;
 
-    pub type WritterFunc = unsafe fn(NonNull<u8>, NonNull<u8>);
+    /// Type-erased function that remaps entity references within a component instance.
     pub type MapEntitiesFunc = unsafe fn(PtrMut<'_>, &mut dyn EntityMapper);
 
+    /// Type-erased function that returns an `erased_serde::Serialize` reference
+    /// from a component pointer.
     pub type SeriailizeFunc = for<'a> fn(Ptr<'a>) -> &'a dyn Serialize;
+
+    /// Type-erased function that deserializes a component from an `erased_serde`
+    /// deserializer, allocating through a [`Bump`].
     pub type DeserializeFunc =
         for<'a, 'b> fn(&'a mut dyn Deserializer, &'b Bump) -> Result<OwningPtr<'b>, Error>;
 }
@@ -103,40 +242,82 @@ use alias::*;
 // ComponentDB
 // -----------------------------------------------------------------------------
 
+/// Static metadata for a single component type.
+///
+/// Created lazily by [`ComponentDB::register`] and stored in the global
+/// `ID_REGISTRY`. Holds type identity, lifecycle hooks, field introspection
+/// function pointers, memory layout, clone/drop strategy, and serialization
+/// routines — all type-erased so they can be stored homogeneously.
 pub struct ComponentDB {
     // --------------------------------
-    // ident
+    // Ident
+    /// Unique identifier assigned at registration time.
     pub id: ComponentId,
+    /// Opaque [`TypeId`] for runtime type comparison.
     pub type_id: TypeId,
 
+    /// Fully-qualified type path (e.g. `"my_crate::components::Transform"`).
     pub typa_path: &'static str,
+    /// Short type name (e.g. `"Transform"`).
     pub typa_name: &'static str,
+    /// Module path of the type definition.
     pub module_path: &'static str,
+
     // --------------------------------
-    // hook
+    // Hook
+    /// Hook invoked on first add to an entity.
     pub on_add: Option<ComponentHook>,
+    /// Hook invoked when a component is cloned.
     pub on_clone: Option<ComponentHook>,
+    /// Hook invoked on every insertion (including updates).
     pub on_insert: Option<ComponentHook>,
+    /// Hook invoked when the component is removed from its entity.
     pub on_remove: Option<ComponentHook>,
+    /// Hook invoked when the component is discarded (entity alive, value dropped).
     pub on_discard: Option<ComponentHook>,
+    /// Hook invoked when the owning entity is despawned.
     pub on_despawn: Option<ComponentHook>,
+
     // --------------------------------
-    // editor accessor
+    // Editor accessor
+    /// Names of all reflected fields.
     pub fields: &'static [&'static str],
+    /// Names of fields editors are allowed to mutate.
     pub mutable_fields: &'static [&'static str],
+    /// Names of fields editors may read but not mutate.
     pub readonly_fields: &'static [&'static str],
+    /// Type-erased accessor for shared field reflection.
     pub field_ref_func: FieldRefFunc,
+    /// Type-erased accessor for mutable field reflection.
     pub field_mut_func: FieldMutFunc,
+
     // --------------------------------
-    // Data
+    // Memory Layout
+    /// Memory layout (size + alignment) of `Self`.
     pub layout: Layout,
+    /// Cloning strategy for this component.
     pub cloner: ComponentCloner,
+    /// Optional custom dropper; `None` means standard drop.
     pub dropper: Option<Dropper>,
+    /// Type-erased entity-remapping function.
     pub map_entities: MapEntitiesFunc,
+
     // --------------------------------
-    // serialize
+    // Serialization
+    /// Type-erased serialization function pointer.
     pub serialize: SeriailizeFunc,
+    /// Type-erased deserialization function pointer.
     pub deserialize: DeserializeFunc,
+}
+
+impl Debug for ComponentDB {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_map()
+            .entry(&"id", &self.id)
+            .entry(&"type_id", &self.type_id)
+            .entry(&"type_path", &self.typa_path)
+            .finish()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -160,6 +341,9 @@ impl ComponentDB {
         ComponentDB::register::<T>()
     }
 
+    /// Looks up a [`ComponentDB`] by its [`TypeId`].
+    ///
+    /// Returns `None` if the type has not been registered yet.
     pub fn get_by_type(id: TypeId) -> Option<&'static ComponentDB> {
         TYPE_REGISTRY
             .read()
@@ -168,6 +352,10 @@ impl ComponentDB {
             .copied()
     }
 
+    /// Looks up a [`ComponentDB`] by its fully-qualified type path (e.g.
+    /// `"my_crate::components::Transform"`).
+    ///
+    /// Returns `None` if the type has not been registered yet.
     pub fn get_by_path(path: &str) -> Option<&'static ComponentDB> {
         PATH_REGISTRY
             .read()
@@ -176,6 +364,12 @@ impl ComponentDB {
             .copied()
     }
 
+    /// Registers component type `C` in the global registries and returns
+    /// its `&'static` [`ComponentDB`].
+    ///
+    /// This is a cold path — the function double-checks the read lock first
+    /// and only proceeds with registration if the type is genuinely unknown.
+    /// The returned reference lives for the lifetime of the program.
     #[cold]
     #[inline(never)]
     pub fn register<C: Component>() -> &'static ComponentDB {
@@ -248,6 +442,12 @@ impl ComponentDB {
 // -----------------------------------------------------------------------------
 
 impl ComponentDB {
+    /// Triggers bulk registration of all component types submitted via the
+    /// `register_component!` macro or `#[derive(Component)]`.
+    ///
+    /// Internally iterates the `__ComponentReg__` registry, calling each
+    /// registration function. The process is guarded by [`std::sync::Once`]
+    /// so it only runs once per program lifetime.
     pub fn collect() {
         #[cold]
         #[inline(never)]
@@ -310,6 +510,11 @@ pub mod __internal__ {
 
     use super::{Component, ComponentDB};
 
+    /// A registration token that defers [`ComponentDB::register`] for a type.
+    ///
+    /// Collecting these tokens via [`zlim_reg::collect!`] enables bulk
+    /// registration at startup instead of incurring the cold-path cost
+    /// on every first access.
     #[repr(transparent)]
     pub struct __ComponentReg__(pub(super) fn() -> &'static ComponentDB);
 
@@ -324,6 +529,17 @@ pub mod __internal__ {
     zlim_reg::collect!(__ComponentReg__);
 }
 
+/// Submits one or more component types for bulk registration.
+///
+/// Equivalent to calling [`ComponentDB::register`] for each listed type,
+/// but defers the actual work until [`ComponentDB::collect`] is called.
+/// This amortizes the cold-path cost of lazy registration at startup.
+///
+/// # Example
+///
+/// ```ignore
+/// register_component!(Transform, Velocity);
+/// ```
 #[macro_export]
 macro_rules! register_component {
     ($($ty:ty),* $(,)?) => {
@@ -342,14 +558,34 @@ macro_rules! register_component {
 // Components
 // -----------------------------------------------------------------------------
 
+/// A local snapshot of the global component registry.
+///
+/// Created from the global `ID_REGISTRY`, `TYPE_REGISTRY`, and
+/// `PATH_REGISTRY` at construction time. Provides fast local lookups
+/// by id, type path, or [`TypeId`] without needing to acquire the global
+/// locks.
 pub struct Components {
-    pub dbs: Vec<&'static ComponentDB>,
-    pub type_map: TypeMap<&'static ComponentDB>,
-    pub path_map: HashMap<&'static str, &'static ComponentDB>,
+    /// Ordered list of all currently-known component descriptors.
+    dbs: Vec<&'static ComponentDB>,
+    /// Indexed by [`TypeId`] for O(1) lookup.
+    type_map: TypeMap<&'static ComponentDB>,
+    /// Indexed by type path string for O(1) lookup.
+    path_map: HashMap<&'static str, &'static ComponentDB>,
+}
+
+impl Debug for Components {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Debug::fmt(&self.dbs, f)
+    }
 }
 
 impl Default for Components {
     fn default() -> Self {
+        crate::cfg::debug! {
+            #[cfg(not(test))]
+            let start = ::std::time::Instant::now();
+        }
+
         let dbs: Vec<&'static ComponentDB> = ID_REGISTRY
             .read()
             .unwrap_or_else(PoisonError::into_inner)
@@ -364,6 +600,11 @@ impl Default for Components {
             path_map.insert(item.typa_path, item);
         }
 
+        crate::cfg::debug! {
+            #[cfg(not(test))]
+            log::debug!("`zlim_core::Components` initialized: {:?}`", start.elapsed());
+        }
+
         Self {
             dbs,
             type_map,
@@ -373,6 +614,11 @@ impl Default for Components {
 }
 
 impl Components {
+    /// Refreshes this snapshot from the global `ID_REGISTRY`.
+    ///
+    /// Picks up any component types that were registered after this
+    /// `Components` instance was created. New entries are appended to
+    /// `dbs`, `type_map`, and `path_map`.
     pub fn update(&mut self) {
         let r = ID_REGISTRY.read().unwrap_or_else(PoisonError::into_inner);
         let data = r.as_slice();
@@ -390,6 +636,16 @@ impl Components {
         }
     }
 
+    /// Return the number of registered components.
+    pub fn len(&self) -> usize {
+        self.dbs.len()
+    }
+
+    /// Returns the [`ComponentDB`] for component type `C`.
+    ///
+    /// Checks the local `type_map` first (fast path). If the type is not
+    /// yet in this snapshot, falls back to lazy registration via
+    /// [`ComponentDB::register`].
     pub fn get<C: Component>(&self) -> &'static ComponentDB {
         if let Some(&r) = self.type_map.get(TypeId::of::<C>()) {
             return r;
@@ -398,6 +654,10 @@ impl Components {
         ComponentDB::register::<C>()
     }
 
+    /// Looks up a [`ComponentDB`] by its [`ComponentId`].
+    ///
+    /// First checks the local `dbs` slice via index (fast path). On a miss
+    /// falls back to the global `ID_REGISTRY`.
     #[inline]
     pub fn get_by_id(&self, id: ComponentId) -> Option<&'static ComponentDB> {
         if let Some(info) = self.dbs.get(id.index()) {
@@ -417,6 +677,10 @@ impl Components {
         slow_path(id)
     }
 
+    /// Looks up a [`ComponentDB`] by its fully-qualified type path.
+    ///
+    /// First checks the local `path_map` (fast path). On a miss falls
+    /// back to the global `PATH_REGISTRY`.
     #[inline]
     pub fn get_by_path(&self, path: &str) -> Option<&'static ComponentDB> {
         if let Some(info) = self.path_map.get(path) {
@@ -436,6 +700,10 @@ impl Components {
         slow_path(path)
     }
 
+    /// Looks up a [`ComponentDB`] by its [`TypeId`].
+    ///
+    /// First checks the local `type_map` (fast path). On a miss falls
+    /// back to the global `TYPE_REGISTRY`.
     #[inline]
     pub fn get_by_type(&self, ty: TypeId) -> Option<&'static ComponentDB> {
         if let Some(info) = self.type_map.get(ty) {
@@ -472,7 +740,7 @@ fn field_mut<'a, C: Component>(ptr: PtrMut<'a>, name: &str) -> Option<&'a mut dy
     unsafe { ptr.deref::<C>().field_mut(name) }
 }
 
-/// Type-erased field accessor for `C::field`.
+/// Type-erased entity mapper for `C::map_entities`.
 fn map_entities_fn<'a, C: Component>(ptr: PtrMut<'a>, mut mapper: &mut dyn EntityMapper) {
     ptr.debug_assert_aligned::<C>();
     unsafe {
@@ -497,3 +765,5 @@ fn deserialize_fn<'b, C: Component>(
     let inner = NonNull::from_mut(ptr).cast::<u8>();
     Ok(unsafe { OwningPtr::new(inner) })
 }
+
+// -----------------------------------------------------------------------------
