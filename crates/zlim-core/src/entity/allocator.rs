@@ -7,8 +7,8 @@
 //!
 //! The shared state lives behind an [`Arc`], so the owning [`EntityAllocator`]
 //! and any number of cloned [`RemoteAllocator`]s on other threads can allocate
-//! concurrently. The owner additionally batches frees and allocations through a
-//! thread-local [`LocalBuffer`] to amortize synchronization with the shared
+//! concurrently. The owner additionally batches frees and allocations through
+//! local [`ArrayVec`] buffers to amortize synchronization with the shared
 //! state.
 
 use core::cell::Cell;
@@ -21,6 +21,7 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
 use core::{ptr, slice};
 use std::sync::Arc;
 
+use zlim_log as log;
 use zlim_utils::sync::Backoff;
 use zlim_utils::vec::ArrayVec;
 
@@ -296,7 +297,7 @@ impl FreeBuffer {
     #[inline]
     fn chunk_with_index(&self, full_index: u32) -> (&Chunk, u32, u32) {
         // Optimization: Determine chunk index based on the position of the highest set bit.
-        // For example, the chunk index of `0b1000...000` is `23` (the last chunk).
+        // For example, the chunk index of `0b0000...001` is `23` (the last chunk).
         let chunk_index = (NUM_CHUNKS - 1).saturating_sub(full_index.leading_zeros());
         // SAFETY: 0 <= chunk_index <= 23, in bound.
         let chunk = unsafe { self.0.get_unchecked(chunk_index as usize) };
@@ -701,6 +702,10 @@ impl FreeList {
 // -----------------------------------------------------------------------------
 
 /// Iterator that yields entities from both recycled and fresh sources.
+///
+/// Recycled (freed) ids are yielded before freshly-minted ones. The
+/// iterator must be fully consumed — dropping it while elements remain
+/// leaks those entities (a warning is logged on drop).
 pub struct AllocEntitiesIter<'a> {
     fresh: FreshEntityIter,
     reused: FreeBufferIter<'a>,
@@ -765,6 +770,24 @@ struct SharedAllocator {
 ///   is destroyed before they are used.
 /// - Always verify allocation validity using [`RemoteAllocator::is_closed`]
 ///   or [`EntityAllocator::is_connected_to`] before using remotely allocated entities.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+///
+/// let mut world = World::alloc();
+///
+/// // Remote allocators share the world's free-list state and can allocate
+/// // ids without borrowing the `World` itself.
+/// let remote = world.remote_allocator();
+/// let id = remote.alloc();
+/// assert!(!remote.is_closed());
+/// assert!(remote.is_connected_to(world.allocator()));
+///
+/// // Remotely allocated ids can still be spawned later.
+/// assert!(world.entities().check_spawnable(id).is_ok());
+/// ```
 #[derive(Clone)]
 pub struct RemoteAllocator {
     shared: Arc<SharedAllocator>,
@@ -794,6 +817,21 @@ impl RemoteAllocator {
     ///
     /// Attempts to reuse a recycled entity first, falling back to
     /// allocating a new entity if none are available.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let remote = world.remote_allocator();
+    ///
+    /// // The allocated id is valid, but must be spawned (e.g. with
+    /// // `World::spawn_at`) before it carries any component data.
+    /// let id = remote.alloc();
+    /// assert!(!remote.is_closed());
+    /// assert!(world.entities().check_spawnable(id).is_ok());
+    /// ```
     pub fn alloc(&self) -> EntityId {
         self.shared
             .free
@@ -818,16 +856,39 @@ const LOCAL_SIZE: usize = 127;
 
 /// Primary entity allocator bound to a `World` instance.
 ///
-/// Manages both allocation of new entities and recycling of destroyed entities.
-/// This is an internal type; entity allocation is automatically handled by
-/// `World` when creating entities.
+/// Manages both allocation of new entities and recycling of destroyed
+/// entities. The allocator is normally driven by [`World`] while spawning,
+/// but can also be used directly through [`World::allocator`] and
+/// [`World::allocator_mut`].
 ///
 /// # Important Notes
 /// - Entities are specific to their creating `World` and cannot be used
 ///   across different `World` instances.
 /// - The allocator does not modify an entity's generation during
-///   allocation or recycling. Callers must advance the version themselves when
-///   reusing an id, to prevent a recycled id from aliasing an older handle.
+///   allocation or recycling. Callers must advance the generation
+///   themselves when reusing an id, to prevent a recycled id from
+///   aliasing an older handle.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+///
+/// let mut world = World::alloc();
+///
+/// // Allocate ids, then recycle them for later reuse.
+/// let a = world.allocator().alloc();
+/// let b = world.allocator().alloc();
+/// world.allocator_mut().free_many(&[a, b]);
+///
+/// // Freed ids are recycled (last-in-first-out); generation is untouched.
+/// assert_eq!(world.allocator().alloc(), b);
+/// assert_eq!(world.allocator().alloc(), a);
+/// ```
+///
+/// [`World`]: crate::world::World
+/// [`World::allocator`]: crate::world::World::allocator
+/// [`World::allocator_mut`]: crate::world::World::allocator_mut
 pub struct EntityAllocator {
     /// See [`SharedAllocator`] for details.
     shared: Arc<SharedAllocator>,
@@ -850,9 +911,8 @@ impl Drop for EntityAllocator {
     }
 }
 
-impl Default for EntityAllocator {
-    /// Creates a new [`EntityAllocator`].
-    fn default() -> Self {
+impl EntityAllocator {
+    pub(crate) fn new() -> Self {
         Self {
             shared: Arc::new(SharedAllocator {
                 free: FreeList::new(),
@@ -870,6 +930,16 @@ impl EntityAllocator {
     ///
     /// The remote allocator can be used to allocate entities without
     /// requiring direct access to the `World`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let remote = world.allocator().remote();
+    /// assert!(world.allocator().is_connected_to(&remote));
+    /// ```
     #[inline]
     pub fn remote(&self) -> RemoteAllocator {
         RemoteAllocator {
@@ -887,6 +957,19 @@ impl EntityAllocator {
     ///
     /// Note: Entities may be stored in a local buffer and not immediately
     /// made available for allocation until the buffer is flushed.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let id = world.allocator().alloc();
+    ///
+    /// // `free` queues the id in a local buffer; recycling is deferred
+    /// // until the buffer is flushed (typically once it fills up).
+    /// world.allocator_mut().free(id);
+    /// ```
     #[inline(always)]
     pub fn free(&mut self, entity: EntityId) {
         #[inline(never)]
@@ -923,8 +1006,21 @@ impl EntityAllocator {
 
     /// Allocates a single entity, preferring recycled entities.
     ///
-    /// Note: does not modify the entity's `Generation`. Callers must
+    /// Note: does not modify the entity's generation. Callers must
     /// advance the generation when reusing an id, to prevent aliasing.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    ///
+    /// // The allocator mints ids even before the entity is spawned;
+    /// // spawning later uses the same id.
+    /// let id = world.allocator().alloc();
+    /// assert!(world.entities().check_spawnable(id).is_ok());
+    /// ```
     #[must_use]
     pub fn alloc(&self) -> EntityId {
         self.shared
@@ -937,6 +1033,16 @@ impl EntityAllocator {
     ///
     /// Returns an iterator that must be fully consumed; otherwise,
     /// any remaining entities will be leaked (not available for reuse).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let ids: Vec<_> = world.allocator().alloc_many(100).collect();
+    /// assert_eq!(ids.len(), 100);
+    /// ```
     #[must_use]
     #[inline(never)]
     pub fn alloc_many(&self, count: u32) -> AllocEntitiesIter<'_> {
@@ -949,7 +1055,20 @@ impl EntityAllocator {
 
     /// Allocates a single entity with mutable access, checking local buffer first.
     ///
-    /// More efficient than [`alloc`](Self::alloc) when mutable access is available.
+    /// More efficient than [`alloc`](Self::alloc) when mutable access is
+    /// available: ids are drawn from (and refilled into) a thread-local
+    /// buffer instead of touching the shared state on every call.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let a = world.allocator_mut().alloc_mut();
+    /// let b = world.allocator_mut().alloc_mut();
+    /// assert_ne!(a, b);
+    /// ```
     #[must_use]
     #[inline(always)]
     pub fn alloc_mut(&mut self) -> EntityId {
@@ -1008,7 +1127,7 @@ mod tests {
     #[test]
     fn uniqueness() {
         let mut entities = Vec::with_capacity(2000);
-        let mut allocator = EntityAllocator::default();
+        let mut allocator = EntityAllocator::new();
 
         entities.extend(allocator.alloc_many(1000));
 
@@ -1035,7 +1154,7 @@ mod tests {
     #[test]
     fn recyclable() {
         let mut entities = Vec::with_capacity(550);
-        let mut allocator = EntityAllocator::default();
+        let mut allocator = EntityAllocator::new();
 
         for _ in 0..50 {
             (0..150).for_each(|_| entities.push(allocator.alloc()));

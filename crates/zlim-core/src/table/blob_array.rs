@@ -1,8 +1,12 @@
+//! Raw byte-level component storage.
+
 use core::alloc::Layout;
+use core::fmt::{Debug, Formatter};
 use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 use std::alloc as malloc;
 
+use zlim_log as log;
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
 
 use crate::utils::Dropper;
@@ -31,12 +35,23 @@ impl Drop for AbortOnDropFail {
 /// This type handles raw byte-level memory management and supports both
 /// types with and without drop logic.
 ///
-/// The internal elements can be either dense or sparse.
-#[derive(Debug)]
+/// The buffer is type-erased: elements are stored as raw bytes described by
+/// an item [`Layout`].  Slots may be uninitialized — initialization state
+/// is tracked by the caller, not by this type.
 pub(super) struct BlobArray {
     item_layout: Layout,
     data: NonNull<u8>,
     dropper: Option<Dropper>,
+}
+
+impl Debug for BlobArray {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_map()
+            .entry(&"data", &self.data.cast::<u8>())
+            .entry(&"layout", &self.item_layout)
+            .entry(&"needs_drop", &self.dropper.is_some())
+            .finish()
+    }
 }
 
 impl BlobArray {
@@ -197,13 +212,16 @@ impl BlobArray {
         unsafe { self.get_mut(index).promote() }
     }
 
-    /// Forgets specified items but no effect on the allocated capacity.
+    /// Marks the item at `index` as forgotten.
     ///
-    /// Actually, do nothing
+    /// This is a no-op: the item's bytes are left in place and the
+    /// allocation is unchanged.  The caller guarantees the item does not
+    /// need to be dropped here (e.g. it was already moved out or is a
+    /// zero-sized type).
     ///
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
-    /// - The item at `index` must be uninitialized
+    /// - The item must not require dropping at this site
     #[inline(always)]
     pub unsafe fn forget_item(&mut self, _index: usize) {
         // nothing

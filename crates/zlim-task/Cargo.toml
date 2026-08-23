@@ -1,6 +1,6 @@
 [package]
 name = "zlim-task"
-exclude = ["bench"]
+exclude = ["bench", "tests"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,9 +18,8 @@ async_io = [ "dep:async-io" ]
 zlim-cfg = { path = "../zlim-cfg", default-features = false }
 
 zlim-os = { path = "../zlim-os", default-features = false }
+zlim-log = { path = "../zlim-log", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
-
-log = { version = "0.4" }
 
 atomic-waker = { version = "1.1", default-features = false }
 async-task = { version = "4.7", default-features = false, features = ["std"] }

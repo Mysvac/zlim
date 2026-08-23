@@ -322,33 +322,6 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 ///
 /// These attributes are type-level only.
 ///
-/// # Documentation reflection
-///
-/// When the `reflect_docs` feature is enabled on `zlim-reflect-derive`,
-/// standard `#[doc = "..."]` attributes (including `/// ...` comments)
-/// are collected and stored in the type's `TypeInfo`. This makes
-/// documentation available at runtime through
-/// `TypeInfo::docs`.
-///
-/// ```rust, ignore
-/// /// The player's current health.
-/// /// Ranges from 0 to 100.
-/// #[derive(Reflect)]
-/// struct Health(u32);
-/// ```
-///
-/// The feature is off by default — enable it in your `Cargo.toml`:
-///
-/// ```toml
-/// [dependencies]
-/// zlim-reflect-derive = { features = ["reflect_docs"] }
-/// ```
-///
-/// Without the feature, all `docs()` methods return `None` regardless
-/// of doc comments in the source.
-///
-/// This applies at the type, field, and enum-variant levels.
-///
 /// # Auto-registration
 ///
 /// For non-generic types the macro emits a `register_reflect!` call so the

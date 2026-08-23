@@ -1,7 +1,14 @@
+//! Entity handles and their operations.
+//!
+//! Defines the four entity view types — [`Entity`], [`EntityRef`],
+//! [`EntityMut`], and [`EntityOwned`] — together with the component-access
+//! traits [`FetchComponents`] and [`GetComponents`].
+
 // -----------------------------------------------------------------------------
 // Modules
 // -----------------------------------------------------------------------------
 
+mod clear;
 mod clone;
 mod despawn;
 mod fetch_trait;
@@ -40,10 +47,44 @@ use crate::world::WorldCell;
 use crate::world::{DeferredWorld, World};
 
 // -----------------------------------------------------------------------------
-// Entity & EntityRef & EntityMut & EntityOwend
+// Entity & EntityRef & EntityMut & EntityOwned
 // -----------------------------------------------------------------------------
 
-/// 一个仅数据可变的视图，可以访问层级关系，结构不可变。
+/// A mutable view that can access the entity's component data and hierarchy,
+/// but cannot change the entity's structure (no add/remove components).
+///
+/// This is the most capable non-owning view: it carries a [`WorldCell`]
+/// handle, the entity's [`EntityNode`] for hierarchy traversal, and
+/// mutable access to the component table.
+///
+/// Obtained via [`World::entity`], [`World::get_entity`],
+/// [`TryFrom<EntityOwned>`] or [`EntityOwned::as_view`].
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::derive::Component;
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Hp(u32);
+///
+/// let mut world = World::alloc();
+/// let mut owned = world.spawn(Hp(100), None);
+///
+/// // `Entity` can read and mutate components and traverse the hierarchy,
+/// // but cannot add or remove components.
+/// let mut view = owned.as_view();
+/// assert_eq!(view.get::<Hp>(), Some(&Hp(100)));
+///
+/// *view.get_mut::<Hp>().unwrap().into_inner() = Hp(75);
+/// assert_eq!(owned.get::<Hp>(), Some(&Hp(75)));
+/// ```
+///
+/// [`WorldCell`]: crate::world::WorldCell
+/// [`EntityNode`]: crate::entity::EntityNode
+/// [`World::entity`]: crate::world::World::entity
+/// [`World::get_entity`]: crate::world::World::get_entity
 pub struct Entity<'w> {
     pub(crate) id: EntityId,
     pub(crate) world: WorldCell<'w>,
@@ -52,7 +93,35 @@ pub struct Entity<'w> {
     pub(crate) location: Location,
 }
 
-/// 一个不可变视图，只能访问自身的组件数据。
+/// A read-only view of a spawned entity's component data.
+///
+/// Provides shared access with change detection.  Obtained from
+/// [`EntityOwned`], [`Entity`], or [`EntityMut`] via their respective
+/// conversion methods, or directly from the world through
+/// [`World::entity_ref`] / [`World::get_entity_ref`].
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::derive::Component;
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Name(&'static str);
+///
+/// let mut world = World::alloc();
+/// let entity = world.spawn(Name("hero"), None);
+///
+/// // `EntityRef` yields change-aware references: `Ref<T>` reports whether
+/// // the component was added or changed since the last run.
+/// let read = entity.as_readonly();
+/// let name = read.get_ref::<Name>().unwrap();
+/// assert!(name.is_added());
+/// assert_eq!(name.into_inner(), &Name("hero"));
+/// ```
+///
+/// [`World::entity_ref`]: crate::world::World::entity_ref
+/// [`World::get_entity_ref`]: crate::world::World::get_entity_ref
 pub struct EntityRef<'w> {
     pub(crate) id: EntityId,
     pub(crate) table: &'w Table,
@@ -61,7 +130,34 @@ pub struct EntityRef<'w> {
     pub(crate) this_run: Tick,
 }
 
-/// 一个可变视图，但只能访问自身的组件数据。
+/// A mutable view limited to the entity's own component data.
+///
+/// Provides exclusive access with change detection, but cannot traverse
+/// hierarchy or perform structural mutations.  Obtained from
+/// [`EntityOwned`] or [`Entity`] via their respective conversion methods,
+/// or directly from the world through [`World::entity_mut`] /
+/// [`World::get_entity_mut`].
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::derive::Component;
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Hp(u32);
+///
+/// let mut world = World::alloc();
+/// let mut entity = world.spawn(Hp(100), None);
+///
+/// // `EntityMut` gives exclusive, change-aware access to components.
+/// let mut view = entity.as_mutable();
+/// *view.get_mut::<Hp>().unwrap().into_inner() = Hp(50);
+/// assert_eq!(view.get::<Hp>(), Some(&Hp(50)));
+/// ```
+///
+/// [`World::entity_mut`]: crate::world::World::entity_mut
+/// [`World::get_entity_mut`]: crate::world::World::get_entity_mut
 pub struct EntityMut<'w> {
     pub(crate) id: EntityId,
     pub(crate) table: &'w mut Table,
@@ -70,9 +166,55 @@ pub struct EntityMut<'w> {
     pub(crate) this_run: Tick,
 }
 
-/// 一个代表所有权的视图，可以访问组件，以及层级关系，可以修改结构。
+/// A fully-mutable owning handle — equivalent to `World` + `EntityId`.
 ///
-/// 同时，它可能指向不存在的实现，此时某些操作会返回失败，而转换会 Panic。
+/// With [`EntityOwned`], you can:
+///
+/// - Insert and remove components (structural mutation).
+/// - Traverse and modify the entity hierarchy.
+/// - Despawn the entity.
+/// - Access the underlying [`World`] directly.
+///
+/// The internal [`EntityId`] is tracked automatically.  When the entity
+/// is despawned (or otherwise invalidated), many operations return
+/// `Err(EntityError)` instead of panicking.  Panics only occur when you
+/// explicitly call a panicking conversion (e.g.
+/// [`into_view`](Self::into_view)).
+///
+/// Obtained via [`World::spawn`] or [`World::entity_owned`].
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::derive::Component;
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Hp(u32);
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Speed(f32);
+///
+/// let mut world = World::alloc();
+///
+/// // `World::spawn` returns an `EntityOwned` handle.
+/// let mut player = world.spawn(Hp(100), None);
+/// player.insert(Speed(3.0)).unwrap();
+/// assert_eq!(player.get::<Speed>(), Some(&Speed(3.0)));
+///
+/// // The handle can also spawn children and manage the hierarchy.
+/// player.with_child(Hp(10)).unwrap();
+/// assert_eq!(player.child_count(), 1);
+///
+/// // Despawning the parent recursively despawns its descendants.
+/// player.despawn().unwrap();
+/// ```
+///
+/// [`World::spawn`]: crate::world::World::spawn
+/// [`World::entity_owned`]: crate::world::World::entity_owned
+/// [`World`]: crate::world::World
+/// [`EntityId`]: crate::entity::EntityId
+/// [`EntityError`]: crate::entity::EntityError
 pub struct EntityOwned<'w> {
     pub(crate) id: EntityId,
     pub(crate) world: WorldCell<'w>,
@@ -121,6 +263,7 @@ impl Debug for EntityOwned<'_> {
 // -----------------------------------------------------------------------------
 
 impl Entity<'_> {
+    /// Creates a shorter-lived reborrow of this entity view.
     #[inline(always)]
     pub fn reborrow(&mut self) -> Entity<'_> {
         // SAFETY: no need drop
@@ -129,6 +272,7 @@ impl Entity<'_> {
 }
 
 impl EntityRef<'_> {
+    /// Creates a shorter-lived reborrow of this entity view.
     #[inline(always)]
     pub fn reborrow(&self) -> EntityRef<'_> {
         // SAFETY: no need drop
@@ -137,6 +281,7 @@ impl EntityRef<'_> {
 }
 
 impl EntityMut<'_> {
+    /// Creates a shorter-lived reborrow of this entity view.
     #[inline(always)]
     pub fn reborrow(&mut self) -> EntityMut<'_> {
         // SAFETY: no need drop
@@ -296,6 +441,23 @@ impl EntityOwned<'_> {
     ///
     /// - Return `Ok(())` if the entity is spawned.
     /// - Return `Err(EntityError::NotSpawned)` if the entity is despawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let mut entity = world.spawn((), None);
+    /// assert!(entity.validate().is_ok());
+    ///
+    /// // `world_scope` hands out raw `&mut World` access; despawning the
+    /// // entity there invalidates the handle, and the scope guard refreshes
+    /// // the cached location on the way out.
+    /// let id = entity.id();
+    /// entity.world_scope(|world| world.despawn(id).unwrap());
+    /// assert!(entity.validate().is_err());
+    /// ```
     #[inline(always)]
     pub fn validate(&self) -> Result<(), EntityError> {
         if self.storage.is_none() {
@@ -305,21 +467,19 @@ impl EntityOwned<'_> {
         }
     }
 
-    /// Return `true` if the entity is spawned.
+    /// Returns `true` if the entity is spawned.
     ///
-    /// Note that this function check cached [`Location`] directly,
-    /// if you want to update it, call [`EntityOwned::relocate`] before
-    /// this function.
+    /// Note that this function checks the cached [`Location`] directly;
+    /// call [`EntityOwned::relocate`] first if you need to refresh it.
     #[inline(always)]
     pub fn is_spawned(&self) -> bool {
         self.storage.is_some()
     }
 
-    /// Return `true` if the entity is despawned.
+    /// Returns `true` if the entity is despawned.
     ///
-    /// Note that this function check cached [`Location`] directly,
-    /// if you want to update it, call [`EntityOwned::relocate`] before
-    /// this function.
+    /// Note that this function checks the cached [`Location`] directly;
+    /// call [`EntityOwned::relocate`] first if you need to refresh it.
     #[inline(always)]
     pub fn is_despawned(&self) -> bool {
         self.storage.is_none()
@@ -328,11 +488,14 @@ impl EntityOwned<'_> {
     /// Updates the internal entity location to match the current location
     /// in the internal [`World`].
     ///
-    /// This is *only* required when using the unsafe function [`EntityOwned::world_cell`],
-    /// which enables the location to change.
+    /// This is required after structural operations performed through raw
+    /// world access — for example inside [`EntityOwned::world_scope`] — may
+    /// have moved the entity between tables.  Most methods re-locate
+    /// automatically and never need this.
     ///
-    /// Note that if the entity is not spawned for any reason, this will have a location of
-    /// `None`, leading some methods to panic.
+    /// Note that if the entity is not spawned for any reason, this will leave
+    /// the handle's cached location as `None`, causing the panicking
+    /// conversion methods to panic.
     pub fn relocate(&mut self) {
         let world = unsafe { self.world.data_mut() };
 
@@ -389,7 +552,8 @@ impl<'a> Entity<'a> {
 }
 
 impl<'a> EntityOwned<'a> {
-    /// Consumes `self` and returns mutable view, with the world `'w` lifetime.
+    /// Consumes `self` and returns a mutable view, with the world `'w`
+    /// lifetime.
     ///
     /// # Panics
     /// Panics if `self` is despawned.
@@ -959,7 +1123,7 @@ impl Entity<'_> {
 impl<'a> EntityOwned<'a> {
     /// Returns the component schema of this table.
     ///
-    /// Return `None` if this entity is despawned
+    /// Returns `None` if this entity is despawned.
     #[inline(always)]
     pub fn components(&self) -> Option<&'static [ComponentId]> {
         Some(unsafe { ptr::read(&self.storage)?.0.components() })
@@ -967,10 +1131,10 @@ impl<'a> EntityOwned<'a> {
 
     /// Returns the cached Table that the current entity belongs to.
     ///
-    /// Return `None` if this entity is despawned
+    /// Returns `None` if this entity is despawned.
     ///
-    /// if you want to update it, call [`EntityOwned::relocate`] before
-    /// this function.
+    /// The table is cached; call [`EntityOwned::relocate`] first if you need
+    /// to refresh it.
     #[inline]
     pub fn table(&self) -> Option<&Table> {
         Some(unsafe { ptr::read(&self.storage)?.0 })
@@ -988,6 +1152,14 @@ impl<'a> Entity<'a> {
         unsafe { self.world.read_only() }
     }
 
+    /// Returns this entity's [`World`], consuming itself.
+    ///
+    /// This is read-only, because the `Entity` cannot modify world structure.
+    #[inline(always)]
+    pub fn into_world(self) -> &'a World {
+        unsafe { self.world.full_mut() }
+    }
+
     /// Gets a restricted mutable world handle for deferred mutation workflows.
     #[inline(always)]
     pub fn deferred(&mut self) -> DeferredWorld<'_> {
@@ -998,14 +1170,6 @@ impl<'a> Entity<'a> {
     #[inline(always)]
     pub fn into_deferred(self) -> DeferredWorld<'a> {
         unsafe { self.world.deferred() }
-    }
-
-    /// Returns this entity's [`World`], consuming itself.
-    ///
-    /// This is readonly, because the `Entity` cannot modify world structure.
-    #[inline(always)]
-    pub fn into_world(self) -> &'a World {
-        unsafe { self.world.full_mut() }
     }
 }
 
@@ -1016,6 +1180,16 @@ impl<'a> EntityOwned<'a> {
         unsafe { self.world.read_only() }
     }
 
+    /// Returns this entity's [`World`], consuming itself.
+    ///
+    /// Unlike the [`Entity`] variant, this returns a mutable world reference:
+    /// the owning handle gives up its entity-specific access and hands the
+    /// whole world back.
+    #[inline(always)]
+    pub fn into_world(self) -> &'a mut World {
+        unsafe { self.world.full_mut() }
+    }
+
     /// Gets a restricted mutable world handle for deferred mutation workflows.
     #[inline(always)]
     pub fn deferred(&mut self) -> DeferredWorld<'_> {
@@ -1026,12 +1200,6 @@ impl<'a> EntityOwned<'a> {
     #[inline(always)]
     pub fn into_deferred(self) -> DeferredWorld<'a> {
         unsafe { self.world.deferred() }
-    }
-
-    /// Returns this entity's [`World`], consuming itself.
-    #[inline(always)]
-    pub fn into_world(self) -> &'a mut World {
-        unsafe { self.world.full_mut() }
     }
 
     /// Gives mutable access to this entity's [`World`] in a temporary scope.
@@ -1167,104 +1335,229 @@ impl<'a> EntityOwned<'a> {
 }
 
 // -----------------------------------------------------------------------------
-// Hierachy Spawn
+// Hierarchy Spawn
 // -----------------------------------------------------------------------------
 
 impl<'a> Entity<'a> {
+    /// Returns the parent entity's ID, if any.
     #[inline]
     pub fn parent(&self) -> Option<EntityId> {
-        self.node.child_of
+        self.node.parent
     }
 
+    /// Returns an iterator over the IDs of this entity's direct children.
+    ///
+    /// Children are ordered by insertion.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let root_id = world.spawn((), None).id();
+    /// let a = world.spawn((), Some(root_id)).id();
+    /// let b = world.spawn((), Some(root_id)).id();
+    ///
+    /// let mut root = world.entity_owned(root_id);
+    /// let ids: Vec<EntityId> = root.as_view().children().collect();
+    /// assert_eq!(ids, vec![a, b]);
+    /// assert_eq!(root.as_view().child_count(), 2);
+    /// ```
     #[inline]
     pub fn children(&self) -> impl ExactSizeIterator<Item = EntityId> + '_ {
         self.node.children.iter().copied()
     }
 
+    /// Returns the number of this entity's direct children.
+    #[inline]
+    pub fn child_count(&self) -> usize {
+        self.node.children.len()
+    }
+
+    /// Returns a view of the direct child at `index`, if it exists.
+    ///
+    /// Children are ordered by insertion, so `index` is the position in
+    /// that order.  Returns `None` when `index` is out of bounds.
+    ///
+    /// This reborrows `self` — the child view coexists with the current
+    /// view.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let root_id = world.spawn((), None).id();
+    /// let first = world.spawn((), Some(root_id)).id();
+    /// let second = world.spawn((), Some(root_id)).id();
+    ///
+    /// let mut root = world.entity_owned(root_id);
+    /// let mut view = root.as_view();
+    /// assert_eq!(view.get_child(0).unwrap().id(), first);
+    /// assert_eq!(view.get_child(1).unwrap().id(), second);
+    /// assert!(view.get_child(2).is_none());
+    /// ```
+    pub fn get_child(&mut self, index: usize) -> Option<Entity<'_>> {
+        let world = self.world;
+        let id = *self.node.children.get(index)?;
+        Some(Self::from_id(world, id))
+    }
+
+    /// Returns a view of the parent entity, if it exists.
+    ///
+    /// This reborrows `self` — the parent view coexists with the current
+    /// view.
     pub fn as_parent(&mut self) -> Option<Entity<'_>> {
-        let id = self.node.child_of?;
+        let id = self.node.parent?;
         let world = self.world;
-        let w = unsafe { world.data_mut() };
-        let node = w.entities.get(id).unwrap();
-        let location = unsafe { node.location.unwrap_unchecked() };
-        let table_id = location.table_id;
-        let table = unsafe { w.tables.get_unchecked_mut(table_id) };
-        Some(Entity {
-            id,
-            world,
-            node,
-            table,
-            location,
-        })
+        Some(Self::from_id(world, id))
     }
 
+    /// Consumes `self` and returns a view of the parent entity, if it
+    /// exists.
     pub fn into_parent(self) -> Option<Entity<'a>> {
-        let id = self.node.child_of?;
-        let world = self.world;
-        let w = unsafe { world.data_mut() };
-        let node = w.entities.get(id).unwrap();
-        let location = unsafe { node.location.unwrap_unchecked() };
-        let table_id = location.table_id;
-        let table = unsafe { w.tables.get_unchecked_mut(table_id) };
-        Some(Entity {
-            id,
-            world,
-            node,
-            table,
-            location,
-        })
+        let id = self.node.parent?;
+        Some(Self::from_id(self.world, id))
     }
 
+    /// Returns an iterator over views of this entity's direct children.
+    ///
+    /// This reborrows `self` — the child views coexist with the parent
+    /// view.
     pub fn as_children(&mut self) -> impl ExactSizeIterator<Item = Entity<'_>> + '_ {
         let world = self.world;
-        self.node.children.iter().map(move |&id| {
-            let w = unsafe { world.data_mut() };
-            let node = w.entities.get(id).unwrap();
-            let location = unsafe { node.location.unwrap_unchecked() };
-            let table_id = location.table_id;
-            let table = unsafe { w.tables.get_unchecked_mut(table_id) };
-            Entity {
-                id,
-                world,
-                node,
-                table,
-                location,
-            }
-        })
+        self.node
+            .children
+            .iter()
+            .map(move |&id| Self::from_id(world, id))
     }
 
+    /// Consumes `self` and returns an iterator over views of this entity's
+    /// direct children.
     pub fn into_children(self) -> impl ExactSizeIterator<Item = Entity<'a>> + 'a {
         let world = self.world;
-        self.node.children.iter().map(move |&id| {
-            let w = unsafe { world.data_mut() };
-            let node = w.entities.get(id).unwrap();
-            let location = unsafe { node.location.unwrap_unchecked() };
-            let table_id = location.table_id;
-            let table = unsafe { w.tables.get_unchecked_mut(table_id) };
-            Entity {
-                id,
-                world,
-                node,
-                table,
-                location,
-            }
-        })
+        self.node
+            .children
+            .iter()
+            .map(move |&id| Self::from_id(world, id))
+    }
+
+    /// Builds an entity view for a spawned entity ID in `world`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is not a spawned entity.
+    #[inline]
+    fn from_id(world: WorldCell<'a>, id: EntityId) -> Entity<'a> {
+        let w = unsafe { world.data_mut() };
+        let node = w.entities.get(id).unwrap();
+        let location = unsafe { node.location.unwrap_unchecked() };
+        let table_id = location.table_id;
+        let table = unsafe { w.tables.get_unchecked_mut(table_id) };
+        Entity {
+            id,
+            world,
+            node,
+            table,
+            location,
+        }
     }
 }
 
 impl<'w> EntityOwned<'w> {
+    /// Returns the number of this entity's direct children.
+    ///
+    /// Returns `0` if this entity is despawned.
     #[inline]
-    pub fn modify_parent(&mut self, child_of: Option<EntityId>) -> Result<&mut Self, EntityError> {
+    pub fn child_count(&self) -> usize {
+        let world = unsafe { self.world.read_only() };
+        match world.entities.get(self.id) {
+            Ok(node) => node.children.len(),
+            Err(_) => 0,
+        }
+    }
+
+    /// Returns a view of the direct child at `index`, if it exists.
+    ///
+    /// Children are ordered by insertion, so `index` is the position in
+    /// that order.  Returns `None` when this entity is despawned or
+    /// `index` is out of bounds.
+    pub fn get_child(&mut self, index: usize) -> Option<Entity<'_>> {
+        self.validate().ok()?;
+        let this = self.id;
+        let world = self.world;
+        let w = unsafe { world.data_mut() };
+        let node = w.entities.get(this).ok()?;
+        let child = *node.children.get(index)?;
+        let cnode = w.entities.get(child).ok()?;
+        let location = unsafe { cnode.location.unwrap_unchecked() };
+        let table_id = location.table_id;
+        let table = unsafe { w.tables.get_unchecked_mut(table_id) };
+        Some(Entity {
+            id: child,
+            world,
+            node: cnode,
+            table,
+            location,
+        })
+    }
+
+    /// Changes the parent of this entity.
+    ///
+    /// Pass `None` to detach this entity from its current parent (making
+    /// it a root entity).  Pass `Some(id)` to make `id` the new parent.
+    ///
+    /// Returns `Err` if this entity is despawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let a = world.spawn((), None).id();
+    /// let b = world.spawn((), None).id();
+    /// let mut child = world.spawn((), Some(a));
+    ///
+    /// // Move the child under a new parent.
+    /// child.modify_parent(Some(b)).unwrap();
+    /// assert_eq!(child.as_view().parent(), Some(b));
+    ///
+    /// // Detach it again, making it a root entity.
+    /// child.modify_parent(None).unwrap();
+    /// assert_eq!(child.as_view().parent(), None);
+    /// ```
+    #[inline]
+    pub fn modify_parent(&mut self, parent: Option<EntityId>) -> Result<&mut Self, EntityError> {
         self.validate()?;
         let this = self.id();
         let world = unsafe { self.world.full_mut() };
         let guard = RelocateGuard(self);
-        world.entities.modify_child_of(this, child_of)?;
+        world.entities.modify_parent(this, parent)?;
         ::core::mem::drop(guard); // drop, not forget
         Ok(self)
     }
 
-    /// Spawns a child entity related to this entity with [`ChildOf`].
+    /// Spawns a child entity as a direct child of this entity.
+    ///
+    /// The spawned entity inherits the parent's lifecycle — when the
+    /// parent is despawned, all descendants are recursively despawned.
+    ///
+    /// Returns `Err` if this entity is despawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let mut parent = world.spawn((), None);
+    ///
+    /// parent.with_child(()).unwrap();
+    /// assert_eq!(parent.child_count(), 1);
+    /// ```
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn with_child(&mut self, bundle: impl Bundle) -> Result<&mut Self, EntityError> {
@@ -1278,8 +1571,25 @@ impl<'w> EntityOwned<'w> {
         Ok(self)
     }
 
-    /// Spawns child entities related to this entity with [`ChildOf`]
-    /// by running a builder closure against a [`RelatedSpawner`].
+    /// Spawns multiple child entities as direct children of this entity.
+    ///
+    /// Each item in the iterator produces one child.  All children inherit
+    /// the parent's lifecycle.
+    ///
+    /// Returns `Err` if this entity is despawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let mut parent = world.spawn((), None);
+    ///
+    /// // Batch-spawn several children at once.
+    /// parent.with_children([(), ()]).unwrap();
+    /// assert_eq!(parent.child_count(), 2);
+    /// ```
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn with_children<B, I>(&mut self, iter: I) -> Result<&mut Self, EntityError>
@@ -1297,10 +1607,26 @@ impl<'w> EntityOwned<'w> {
         Ok(self)
     }
 
-    /// Despawns all children of this entity.
+    /// Despawns all direct children of this entity.
     ///
-    /// This removes child entities entirely (and recursively, because
-    /// `Children` enables linked lifecycle).
+    /// The despawn is recursive — each child's own children are also
+    /// despawned.
+    ///
+    /// Returns `Err` if this entity is despawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let mut parent = world.spawn((), None);
+    /// parent.with_children([(), ()]).unwrap();
+    /// assert_eq!(parent.child_count(), 2);
+    ///
+    /// parent.despawn_children().unwrap();
+    /// assert_eq!(parent.child_count(), 0);
+    /// ```
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn despawn_children(&mut self) -> Result<&mut Self, EntityError> {
         self.validate()?;
@@ -1309,7 +1635,7 @@ impl<'w> EntityOwned<'w> {
         let world = unsafe { self.world.full_mut() };
         let guard = RelocateGuard(self);
         let x = world.entities.get(this).unwrap();
-        let children: Vec<EntityId> = x.children.iter().copied().collect();
+        let children: Vec<EntityId> = x.children.to_vec();
 
         for child in children {
             world.try_despawn_with_caller(child, caller);
@@ -1317,5 +1643,80 @@ impl<'w> EntityOwned<'w> {
 
         ::core::mem::drop(guard); // drop, not forget
         Ok(self)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::World;
+
+    #[test]
+    fn hierarchy_child_access() {
+        let mut world = World::alloc();
+        let root = world.spawn((), None).id();
+        let a = world.spawn((), Some(root)).id();
+        let b = world.spawn((), Some(root)).id();
+        let c = world.spawn((), Some(root)).id();
+
+        // EntityOwned view: child count + ordered get_child.
+        let mut owned = world.entity_owned(root);
+        assert_eq!(owned.child_count(), 3);
+        assert_eq!(owned.get_child(0).unwrap().id(), a);
+        assert_eq!(owned.get_child(1).unwrap().id(), b);
+        assert_eq!(owned.get_child(2).unwrap().id(), c);
+        assert!(owned.get_child(3).is_none());
+
+        // Entity view: same APIs.
+        let mut view = owned.as_view();
+        assert_eq!(view.child_count(), 3);
+        assert_eq!(view.get_child(1).unwrap().id(), b);
+        assert!(view.get_child(3).is_none());
+
+        // Children are ordered by insertion.
+        let ids: Vec<EntityId> = view.children().collect();
+        assert_eq!(ids, vec![a, b, c]);
+
+        // Parent links.
+        assert_eq!(view.get_child(0).unwrap().parent(), Some(root));
+        assert_eq!(owned.child_count(), 3); // view reborrow ended
+    }
+
+    #[test]
+    fn hierarchy_reparent_keeps_insertion_order() {
+        let mut world = World::alloc();
+        let root = world.spawn((), None).id();
+        let other = world.spawn((), None).id();
+        let a = world.spawn((), Some(root)).id();
+        let b = world.spawn((), Some(root)).id();
+        let c = world.spawn((), Some(root)).id();
+
+        // Move `a` under another parent, then back — it is appended, so the
+        // insertion order becomes `[b, c, a]`.
+        world.entity_owned(a).modify_parent(Some(other)).unwrap();
+        world.entity_owned(a).modify_parent(Some(root)).unwrap();
+
+        {
+            let mut owned = world.entity_owned(root);
+            let ids: Vec<EntityId> = owned.as_view().children().collect();
+            assert_eq!(ids, vec![b, c, a]);
+            assert_eq!(owned.get_child(2).unwrap().id(), a);
+            assert_eq!(owned.child_count(), 3);
+        }
+
+        // Detach `b` — it becomes a root.
+        world.entity_owned(b).modify_parent(None).unwrap();
+
+        {
+            let mut owned = world.entity_owned(root);
+            assert_eq!(owned.child_count(), 2);
+            let ids: Vec<EntityId> = owned.as_view().children().collect();
+            assert_eq!(ids, vec![c, a]);
+            assert!(owned.get_child(2).is_none());
+        }
     }
 }

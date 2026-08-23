@@ -1,4 +1,7 @@
+//! Error handler types and the default severity dispatch.
+
 use super::{ErrorContext, Severity, ZlimError};
+use zlim_log as log;
 
 // -----------------------------------------------------------------------------
 // ErrorHandler
@@ -17,6 +20,8 @@ pub type ErrorHandler = fn(e: ZlimError, ctx: ErrorContext);
 /// Error handler that defers to an error's [`Severity`].
 ///
 /// Dispatch table:
+/// - [`Severity::Ignore`] => [`ignore()`]
+/// - [`Severity::Debug`] => [`debug()`]
 /// - [`Severity::Info`] => [`info()`]
 /// - [`Severity::Warning`] => [`warn()`]
 /// - [`Severity::Error`] => [`error()`]
@@ -26,6 +31,8 @@ pub type ErrorHandler = fn(e: ZlimError, ctx: ErrorContext);
 #[inline(never)]
 pub fn default_error_handler(e: ZlimError, ctx: ErrorContext) {
     match e.severity() {
+        Severity::Ignore => ignore(e, ctx),
+        Severity::Debug => debug(e, ctx),
         Severity::Info => info(e, ctx),
         Severity::Warning => warn(e, ctx),
         Severity::Error => error(e, ctx),

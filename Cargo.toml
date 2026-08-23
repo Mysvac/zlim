@@ -5,7 +5,7 @@ members = [ "crates/*" ]
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.98"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Mysvac/zlim"
 
@@ -50,13 +50,23 @@ zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional 
 
 [features]
 
-default = ["debug"]
+default = ["debug", "trace", "default_log_level"]
 
 debug = ["zlim-internal/debug"]
 
+trace = ["zlim-internal/trace"]
+
+trace_tracy = ["zlim-internal/trace_tracy"]
+
+trace_memory = ["zlim-internal/trace_memory"]
+
+trace_chrome = ["zlim-internal/trace_chrome"]
+
+default_log_level = ["zlim-internal/default_log_level"]
+
 dylib = ["dep:zlim-dylib", "zlim-internal/dylib"]
 
-editor = ["debug", "dylib", "zlim-internal/editor"]
+editor = ["debug", "trace", "dylib", "zlim-internal/editor"]
 
 async_io = ["zlim-internal/async_io"]
 

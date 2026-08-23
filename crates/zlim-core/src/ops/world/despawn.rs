@@ -1,3 +1,5 @@
+//! Entity despawn methods implemented on `World`.
+
 use zlim_utils::debug::DebugLocation;
 use zlim_utils::vec::{FastVec, FastVecData};
 
@@ -10,6 +12,27 @@ use crate::world::{DeferredWorld, World, WorldCell};
 // -----------------------------------------------------------------------------
 
 impl World {
+    /// Despawns an entity, recursively despawning all of its descendants.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EntityError`] if the entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    ///
+    /// // Spawn a small hierarchy: root -> child.
+    /// let root = world.spawn((), None).id();
+    /// let child = world.spawn((), Some(root)).id();
+    ///
+    /// // Despawning the root recursively despawns its descendants.
+    /// world.despawn(root).unwrap();
+    /// assert!(world.get_entity_owned(child).is_err());
+    /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn despawn(&mut self, entity: EntityId) -> Result<(), EntityError> {
@@ -17,6 +40,24 @@ impl World {
         self.despawn_with_caller(entity, caller)
     }
 
+    /// Despawns an entity, recursively despawning all of its descendants.
+    ///
+    /// Returns `false` (and does nothing) if the entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let id = world.spawn((), None).id();
+    ///
+    /// // Returns `true` when the entity was actually despawned...
+    /// assert!(world.try_despawn(id));
+    ///
+    /// // ...and `false` when it was already gone.
+    /// assert!(!world.try_despawn(id));
+    /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_despawn(&mut self, entity: EntityId) -> bool {
@@ -102,13 +143,20 @@ pub(crate) fn despawn_internal(this: &mut World, entity: EntityId, caller: Debug
     dfs_trigger(buf, cell, entity, caller);
 
     for &id in buf.iter() {
-        let location = unsafe { world.entities.locate(entity).debug_checked_unwrap() };
+        // Removes the entity from the entity tree (clearing its location and
+        // re-parenting any children to the root) and returns its storage
+        // location.
+        let location = unsafe { world.entities.remove_one(id).debug_checked_unwrap() };
         let table_id = location.table_id;
         let table_row = location.table_row;
         let table = unsafe { world.tables.get_unchecked_mut(table_id) };
         let moved = unsafe { table.dealloc_row::<true>(table_row) };
         world.entities.update_row(moved).unwrap();
-        world.allocator.free(id);
+
+        // Advance the generation so stale handles no longer alias the slot,
+        // then recycle the slot with the fresh id.
+        let new_id = world.entities.free_slot(id.index());
+        world.allocator.free(new_id);
     }
 
     ::core::mem::forget(guard);

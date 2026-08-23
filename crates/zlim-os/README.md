@@ -1,7 +1,9 @@
-# Platform Abstraction Layer
-
 Platform-layer bridge that handles cross-platform differences and
 exports platform-specific interfaces for the rest of the runtime.
+
+## time
+
+Re-exports `std::time` on native targets; switches to `web_time` on WASM.
 
 ## dirs
 
@@ -13,12 +15,6 @@ Standard user directory paths, resolved per-platform.
 | Linux    | `$XDG_CONFIG_HOME` or `~/.config` |
 | macOS    | `~/Library/Preferences` |
 | WASM / Android | `None` |
-
-## time
-
-Re-exports `std::time` on native targets; switches to `web_time` on WASM.
-This is a direct re-export with zero wrapping overhead on native.
-On WASM the crate avoids a hard `std::time` dependency.
 
 ## sys
 

@@ -1,5 +1,3 @@
-# zlim-derive-utils
-
 Helpers for proc-macro crates.
 
 This crate provides:

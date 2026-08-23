@@ -16,10 +16,9 @@ cargo check --workspace
 cargo clippy --workspace -- -D warnings
 
 # 3. Doc-tests + verify doc links
-cargo doc --workspace --no-deps --document-private-items
-RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --workspace --no-deps
+cargo doc --workspace --no-deps
 
-# 4. Format (requires nightly)
+# 4. Format
 cargo fmt --all -- --check
 
 # 5. Run tests
@@ -59,9 +58,8 @@ Supplemental conventions not covered by STYLE_GUIDE.md:
 - Internal types/functions use `pub(crate)` or `pub(super)` visibility.
 
 ### Performance
-- Reflection-related functions (`TypePath`, `concat`, etc.) are heavily called in
-  generic contexts. Avoid inline bloat; use `#[inline(never)]` when necessary.
-  Prefer pre-allocation, `const fn`, and compile-time constants.
+- Prefer pre-allocation, `const fn`, and compile-time constants.
+- Use `#[inline(never)]` and `#[inline(always)]` when necessary.
 
 ### Error Handling
 - Use `Option<T>` for values that may be absent (e.g., `preferences_dir()`).
@@ -107,8 +105,20 @@ Auxiliary:
 
 #### Embedded Derive Crates
 
-- `zlim-core/derive` — `#[derive(Error)]` and `#[derive(Bundle)]` macros
-- `zlim-reflect/derive` — `#[derive(TypePath)]` and `#[derive(Reflect)]` macros
+- `zlim-core/derive` 
+  - `#[derive(Error)]` macro
+  - `#[derive(Bundle)]` macro
+  - `#[derive(Component)]` macro
+  - `#[derive(Resource)]` macro
+  - `#[derive(QueryData)]` macro
+  - `#[derive(ScheduleLabel)]` macro
+  - `#[job_fn]` macro
+  - `job!` macro
+  - `job_group!` macro
+
+- `zlim-reflect/derive`
+  - `#[derive(TypePath)]` macro
+  - `#[derive(Reflect)]` macro
 
 Both use `zlim-derive-utils::crate_path` to resolve paths, enabling correct
 `::zlim::*` references from external crates.
@@ -129,9 +139,7 @@ Both use `zlim-derive-utils::crate_path` to resolve paths, enabling correct
 5. **Fixed-Seed Hashing**: HashMap/HashSet default to `FixedState` (fixed seed)
    for deterministic iteration order (DoS protection is unnecessary in game
    engine contexts).
-6. **Niche-Optimized IDs**: The `define_ident!` macro uses `NonMaxU32` to
-   enable niche optimization, making `Option<Id>` zero-overhead.
-7. **Proc-Macro Path Resolution** (zlim-derive-utils): Derive macros read the
+6. **Proc-Macro Path Resolution** (zlim-derive-utils): Derive macros read the
    consumer's `Cargo.toml` to determine whether `zlim` is a direct dependency,
    generating either `::zlim::module` or `::zlim_module` paths accordingly.
 
@@ -143,33 +151,34 @@ Both use `zlim-derive-utils::crate_path` to resolve paths, enabling correct
 | `component` | ✅ Implemented | Component trait (6 lifecycle hooks), ComponentDB global registry, `register_component!` macro, ComponentId (niche-optimized) |
 | `tick` | ✅ Implemented | 32-bit Tick change detection (wrap-around safe), TicksRef/TicksMut/TicksSlice types, DetectChanges trait |
 | `error` | ✅ Implemented | ZlimError (heap-allocated + Severity), `#[derive(Error)]` proc-macro |
-| `script` | ✅ Implemented | Script trait, ScriptFlags (noop/exclusive/independent/main_thread) |
+| `job` | ✅ Implemented | Job trait + JobDB/JobLabel/JobGroup + `#[job_fn]`/`job!`/`job_group!` macros |
 | `world` | ✅ Implemented | World struct, WorldCell (three-level safe access: read_only/data_mut/full_mut), DeferredWorld, WorldId |
 | `table` | ✅ Implemented | Dense columnar storage Table (organized by archetype), Column (BlobArray + TickArray), TableId, Tables manager |
 | `bundle` | ✅ Implemented | Bundle trait (collect/write/apply_effect), DataBundle, tuple impls (0..=12), `#[derive(Bundle)]` |
 | `borrow` | ✅ Implemented | Ref/Mut/SliceRef/SliceMut + corresponding Untyped* variants, integrated change detection |
 | `slot` | ✅ Implemented | Single-resource storage Slot (memory management + change detection ticks), ResourceSlots |
 | `resource` | ✅ Implemented | Resource trait + ResourceDB global registry, Resources, `register_resource!` macro |
-| `handle` | 🔸 Skeleton | Entity/EntityRef/EntityMut type definitions; most methods still pending |
-| `schedule` | 🔸 Placeholder | — |
-| `message` | 🔸 Placeholder | — |
+| `ops` | ✅ Implemented | Entity/EntityRef/EntityMut/EntityOwned type definitions; implementation of Common Methods |
+| `schedule` | ✅ Implemented | Schedule (job/group insertion by name or label, ordering, executors) + Schedules collection (owned by World) |
+| `message` | ✅ Implemented | Message trait + `#[derive(Message)]`, double-buffered MessageQueue, Messages registry, MessageWriter/Reader/Mutator system params |
 | `scene` | 🔸 Placeholder | — |
 
 ## Development Environment
 
-- **Rust version**: 1.96+ (edition 2024)
+- **Rust version**: 1.97+ (edition 2024)
 - **Resolver**: v3
-- **Formatting**: Uses `rustfmt.toml` (style_edition 2024) — requires nightly:
-  `cargo +nightly fmt`
+- **Formatting**: Uses `rustfmt.toml` (style_edition 2024); the stable `rustfmt`
+  is sufficient — just run `cargo fmt`.
 
 ## Current Status
 
 The project is in early development. The ECS core (`zlim-core`) has implemented:
 Entity allocation/mapping, Component registration/hook system, Tick change
-detection, Error type system, Script base trait, World struct with safe access
+detection, Error type system, Job base trait, World struct with safe access
 layer, Table columnar storage, Bundle composition and writing, Slot resource
-storage, Resource registry, and Borrow type-erased reference system.
-Schedule/Scene modules are still placeholders.
+storage, Resource registry, Borrow type-erased reference system, Schedule
+execution with job/group ordering, and the double-buffered Message pipeline.
+The Scene module is still a placeholder.
 
 All sub-crate infrastructure is in place:
 - Compile macros (`zlim-cfg`) operational

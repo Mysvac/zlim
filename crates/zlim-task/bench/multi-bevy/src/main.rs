@@ -15,6 +15,7 @@ fn main() {
         "multi-threaded — {THREADS} threads, {TASKS} tasks, {RUNS} runs (after {WARMUP} warmups)\n"
     );
 
+    bench_scope_local();
     bench_scope_tiny();
     bench_scope_heavy();
     bench_par_map();
@@ -40,6 +41,41 @@ fn time<R>(label: &str, mut f: impl FnMut() -> R) -> std::time::Duration {
 // -----------------------------------------------------------------------------
 // tiny task — measures scheduling overhead
 // -----------------------------------------------------------------------------
+
+fn bench_scope_local() {
+    println!("--- scope spawn_local (tiny task) ---");
+
+    let zt = {
+        let zp = zlim_task::TaskPoolBuilder::new()
+            .thread_count(THREADS)
+            .build();
+        time("zlim-task", || {
+            zp.scope(|s| {
+                for i in 0..TASKS {
+                    s.spawn_local(async move { i });
+                }
+            })
+        })
+    };
+
+    let bt = {
+        let bp = bevy_tasks::TaskPoolBuilder::new()
+            .num_threads(THREADS)
+            .build();
+        time("bevy_tasks", || {
+            bp.scope(|s| {
+                for i in 0..TASKS {
+                    s.spawn_on_scope(async move { i });
+                }
+            })
+        })
+    };
+
+    println!(
+        "  → zlim / bevy = {:.2}x\n",
+        bt.as_secs_f64() / zt.as_secs_f64()
+    );
+}
 
 fn bench_scope_tiny() {
     println!("--- scope spawn (tiny task) ---");

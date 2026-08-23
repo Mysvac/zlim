@@ -5,10 +5,12 @@ use crate::world::WorldCell;
 
 /// RAII guard that forgets an entity if unwinding crosses a critical mutation.
 ///
-/// World mutation paths create this guard before partially-committed operations.
-/// If a panic occurs before the guard is forgotten, `Drop` triggers
-/// `World::forget_with_caller` to keep world indices/storage in a recoverable
-/// state.
+/// World mutation paths create this guard before partially-committed
+/// operations.  `Drop` always performs the forget — it fires on **any** drop
+/// (normal scope exit, `?` early return, or unwinding), not just on panic.
+/// On the success path the caller must disarm the guard with
+/// [`core::mem::forget`] once the mutation has fully committed; otherwise the
+/// entity is forgotten even though the operation succeeded.
 pub(crate) struct ForgetEntityOnPanic<'a> {
     /// The entity to forget if a panic occurs during mutation.
     pub entity: EntityId,

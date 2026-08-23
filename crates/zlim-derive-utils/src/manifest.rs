@@ -281,9 +281,12 @@ quote = "1.0"
 "#;
         let deps: Dependencies = toml::from_str(toml).unwrap();
         assert!(deps.contains("zlim"));
-        assert!(!deps.contains("quote"));
         assert!(deps.dev_contains("zlim"));
         assert!(deps.dev_contains("quote"));
         assert!(deps.dev_contains("serde"));
+        assert!(!deps.contains("0.1"));
+        assert!(!deps.contains("\"0.1\""));
+        assert!(!deps.contains("quote"));
+        assert!(!deps.dev_contains("version"));
     }
 }

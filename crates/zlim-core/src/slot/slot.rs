@@ -1,3 +1,5 @@
+//! Single-resource storage slot.
+
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
 use core::alloc::Layout;
@@ -8,6 +10,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr::{self, NonNull};
 use std::alloc as malloc;
 
+use zlim_log as log;
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
 
 use crate::borrow::{UntypedMut, UntypedRef};
@@ -22,9 +25,8 @@ use crate::utils::{DebugCheckedUnwrap, Dropper};
 /// Drop guard that aborts the process if a resource's drop implementation
 /// panics during removal.
 ///
-/// This mirrors the behaviour of [`AbortOnPanic`] in the table module.
-///
-/// [`AbortOnPanic`]: crate::table::AbortOnPanic
+/// This mirrors the behaviour of the `AbortOnPanic` guard in the table
+/// module.
 struct AbortOnDropFail;
 
 impl Drop for AbortOnDropFail {
@@ -57,6 +59,31 @@ impl Drop for AbortOnDropFail {
 /// | `name` | Debug name (type name string) for diagnostics. |
 /// | `layout` | Memory layout for allocation/deallocation. |
 /// | `dropper` | Optional drop function for non-trivial types. |
+///
+/// # Examples
+///
+/// Slots are created lazily by the [`Slots`] collection when a resource is
+/// first used; user code usually reaches them through the [`World`]:
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use core::any::TypeId;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Resource)]
+/// struct Health(u32);
+///
+/// let mut world = World::alloc();
+/// world.insert_resource(Health(100));
+///
+/// let slot = world.slots().get_by_type(TypeId::of::<Health>()).unwrap();
+/// assert!(slot.is_present());
+/// assert_eq!(slot.name(), "Health");
+/// ```
+///
+/// [`ResourceId`]: crate::resource::ResourceId
+/// [`Slots`]: crate::slot::Slots
+/// [`World`]: crate::world::World
 #[repr(C)]
 pub struct Slot {
     data: *mut u8,
@@ -89,7 +116,7 @@ impl Slot {
         Self {
             id: db.id,
             type_id: db.type_id,
-            name: db.typa_name,
+            name: db.type_name,
             layout: db.layout,
             dropper: db.dropper,
             data: ptr::null_mut(),
@@ -113,7 +140,7 @@ impl Debug for Slot {
     }
 }
 
-// Safety: Slot access is mediated by `ResourceSlots::get`/`get_mut` which
+// Safety: Slot access is mediated by `Slots::get`/`get_mut` which
 // enforce exclusive-access discipline through `&self`/`&mut self`.
 unsafe impl Sync for Slot {}
 unsafe impl Send for Slot {}
@@ -127,6 +154,8 @@ impl RefUnwindSafe for Slot {}
 
 impl Slot {
     /// Returns the registered [`ResourceId`] of this slot.
+    ///
+    /// [`ResourceId`]: crate::resource::ResourceId
     #[inline(always)]
     pub fn id(&self) -> ResourceId {
         self.id
@@ -147,11 +176,13 @@ impl Slot {
     /// Clamps the stored ticks to prevent wrap-around from causing false
     /// positives in change detection.
     ///
-    /// See [`Tick::clamp`] for details.
+    /// See [`Tick::clamp_with`] for details.
+    ///
+    /// [`Tick::clamp_with`]: crate::tick::Tick::clamp_with
     #[inline(always)]
     pub fn clamp_ticks(&mut self, now: Tick) {
-        self.added.clamp(now);
-        self.changed.clamp(now);
+        self.added.clamp_with(now);
+        self.changed.clamp_with(now);
     }
 
     /// Returns `true` if the resource is currently initialised.
@@ -202,6 +233,34 @@ impl Slot {
 impl Slot {
     /// Returns an untyped shared reference with change-detection metadata,
     /// or `None` if the resource is absent.
+    ///
+    /// The returned [`UntypedRef`] carries the slot's `added`/`changed`
+    /// ticks together with the caller-supplied `last_run` / `this_run`
+    /// ticks, enabling change detection.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use core::any::TypeId;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Resource)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// world.insert_resource(Health(100));
+    ///
+    /// let slot = world.slots().get_by_type(TypeId::of::<Health>()).unwrap();
+    ///
+    /// // The tick window is supplied by the caller (e.g. the world's
+    /// // `last_run` / `this_run` pair):
+    /// assert!(slot.get_ref(Tick::new(0), Tick::new(1)).is_some());
+    /// assert!(slot.get_added().is_some());
+    /// assert!(slot.get_changed().is_some());
+    /// ```
+    ///
+    /// [`UntypedRef`]: crate::borrow::UntypedRef
     #[inline]
     pub fn get_ref(&self, last_run: Tick, this_run: Tick) -> Option<UntypedRef<'_>> {
         let data = NonNull::new(self.data)?;
@@ -218,6 +277,12 @@ impl Slot {
 
     /// Returns an untyped exclusive reference with change-detection
     /// metadata, or `None` if the resource is absent.
+    ///
+    /// The returned [`UntypedMut`] carries the slot's `added`/`changed`
+    /// ticks together with the caller-supplied `last_run` / `this_run`
+    /// ticks, enabling change detection.
+    ///
+    /// [`UntypedMut`]: crate::borrow::UntypedMut
     #[inline]
     pub fn get_mut(&mut self, last_run: Tick, this_run: Tick) -> Option<UntypedMut<'_>> {
         let data = NonNull::new(self.data)?;
@@ -278,9 +343,32 @@ impl Slot {
 
     /// Inserts a new resource value of type `T`.
     ///
+    /// This is the typed counterpart of [`insert_untyped`](Self::insert_untyped):
+    /// the value is moved into the slot's storage.  If a value already
+    /// exists it is dropped first.
+    ///
     /// # Safety
     ///
     /// - `tick` must be a valid epoch tick.
+    ///
+    /// # Examples
+    ///
+    /// User code normally goes through the safe [`World`] API, which routes
+    /// through this method:
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Resource)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// world.insert_resource(Health(100));
+    /// assert!(world.contains_resource::<Health>());
+    /// ```
+    ///
+    /// [`World`]: crate::world::World
     pub unsafe fn insert<T: Resource>(&mut self, value: T, tick: Tick) {
         debug_assert_eq!(Layout::new::<T>(), self.layout);
         zlim_ptr::into_owning!(value);
@@ -321,6 +409,27 @@ impl Slot {
     /// # Safety
     ///
     /// - `T` must match the resource's layout.
+    ///
+    /// # Examples
+    ///
+    /// User code normally goes through the safe [`World`] API, which routes
+    /// through this method:
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Resource, PartialEq, Debug)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// world.insert_resource(Health(100));
+    ///
+    /// assert_eq!(world.remove_resource::<Health>(), Some(Health(100)));
+    /// assert!(!world.contains_resource::<Health>());
+    /// ```
+    ///
+    /// [`World`]: crate::world::World
     pub unsafe fn remove<T: Resource>(&mut self) -> Option<T> {
         if self.data.is_null() {
             return None;

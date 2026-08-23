@@ -1,7 +1,9 @@
+//! Component-insertion methods implemented on `EntityOwned`.
+
 use zlim_utils::debug::DebugLocation;
 
-use crate::bundle::{Bundle, BundleId, ComponentWriter};
-use crate::component::HookContext;
+use crate::bundle::{Bundle, BundleId, DataBundle};
+use crate::component::{ComponentWriter, HookContext};
 use crate::entity::{EntityError, Location};
 use crate::ops::entity::EntityOwned;
 use crate::table::{Table, TableId};
@@ -18,6 +20,30 @@ impl EntityOwned<'_> {
     /// Components that already exist on the entity are **overwritten**.
     /// If the bundle introduces new component types, the entity moves to
     /// a different table.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::derive::Component;
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Hp(u32);
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Armor(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// let mut entity = world.spawn(Hp(100), None);
+    ///
+    /// // Adding a new component type moves the entity to a new table.
+    /// entity.insert(Armor(50)).unwrap();
+    /// assert_eq!(entity.get::<Armor>(), Some(&Armor(50)));
+    ///
+    /// // Re-inserting an existing component overwrites its value.
+    /// entity.insert(Hp(75)).unwrap();
+    /// assert_eq!(entity.get::<Hp>(), Some(&Hp(75)));
+    /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert<B: Bundle>(&mut self, bundle: B) -> Result<&mut Self, EntityError> {
@@ -30,9 +56,33 @@ impl EntityOwned<'_> {
     /// If all components already exist, nothing happens.  Otherwise the
     /// provided closure is called to produce the bundle value and all of
     /// its components are inserted (overwriting any existing ones).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::derive::Component;
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Hp(u32);
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Speed(f32);
+    ///
+    /// let mut world = World::alloc();
+    /// let mut entity = world.spawn(Hp(100), None);
+    ///
+    /// // `Hp` already exists, so the closure is never invoked.
+    /// entity.insert_if_new(|| Hp(1)).unwrap();
+    /// assert_eq!(entity.get::<Hp>(), Some(&Hp(100)));
+    ///
+    /// // `Speed` is missing, so it is inserted.
+    /// entity.insert_if_new(|| Speed(3.0)).unwrap();
+    /// assert_eq!(entity.get::<Speed>(), Some(&Speed(3.0)));
+    /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn insert_if_new<B: Bundle>(
+    pub fn insert_if_new<B: DataBundle>(
         &mut self,
         f: impl FnOnce() -> B,
     ) -> Result<&mut Self, EntityError> {
@@ -55,7 +105,7 @@ impl EntityOwned<'_> {
 
         let world_cell = self.world;
         let world = unsafe { world_cell.data_mut() };
-        let bundle_id = world.register_bundle::<B>();
+        let bundle_id = world.register_required_bundle::<B>();
         let current_table_id = unsafe { self.storage.as_ref().debug_checked_unwrap().1.table_id };
 
         let new_table_id = world.tables.table_after_insert(
@@ -75,16 +125,31 @@ impl EntityOwned<'_> {
         let data = bundle;
 
         if current_table_id == new_table_id {
-            insert_local(self, data, bundle_id, B::write, caller);
+            insert_local(
+                self,
+                data,
+                bundle_id,
+                B::write_explicit,
+                B::write_required,
+                caller,
+            );
         } else {
-            insert_moved(self, data, bundle_id, new_table_id, B::write, caller);
+            insert_moved(
+                self,
+                data,
+                bundle_id,
+                new_table_id,
+                B::write_explicit,
+                B::write_required,
+                caller,
+            );
         }
 
         core::mem::forget(guard);
         Ok(self)
     }
 
-    pub(crate) fn insert_if_new_with_caller<B: Bundle>(
+    pub(crate) fn insert_if_new_with_caller<B: DataBundle>(
         &mut self,
         f: impl FnOnce() -> B,
         caller: DebugLocation,
@@ -96,7 +161,7 @@ impl EntityOwned<'_> {
         // into `insert_with_caller`.
         unsafe {
             let world = self.world.full_mut();
-            let bundle_id = world.register_bundle::<B>();
+            let bundle_id = world.register_required_bundle::<B>();
             let info = world.bundles.get_unchecked(bundle_id);
             let table = &self.storage.as_ref().debug_checked_unwrap().0;
             if info
@@ -122,6 +187,7 @@ fn insert_local(
     data: zlim_ptr::OwningPtr<'_>,
     bundle_id: BundleId,
     write_fn: unsafe fn(zlim_ptr::OwningPtr<'_>, &mut ComponentWriter),
+    write_required_fn: unsafe fn(&mut ComponentWriter),
     caller: DebugLocation,
 ) {
     let entity = this.id;
@@ -155,9 +221,11 @@ fn insert_local(
         let table_ptr = table as *mut Table;
 
         unsafe {
-            let mut writer = ComponentWriter::new(tick, &mut *table_ptr, table_row);
-            (*table_ptr).types().for_each(|ty| writer.set_writed(ty));
-            write_fn(data, &mut writer)
+            let mut writer = ComponentWriter::from_table(&mut *table_ptr, table_row, tick);
+            // SAFETY: assume_init does not access `Table`.
+            (*table_ptr).types().for_each(|ty| writer.assume_init(ty));
+            write_fn(data, &mut writer);
+            write_required_fn(&mut writer);
         }
     }
 
@@ -191,6 +259,7 @@ fn insert_moved(
     bundle_id: BundleId,
     new_table_id: TableId,
     write_fn: unsafe fn(zlim_ptr::OwningPtr<'_>, &mut ComponentWriter),
+    write_required_fn: unsafe fn(&mut ComponentWriter),
     caller: DebugLocation,
 ) {
     let entity = this.id;
@@ -243,9 +312,10 @@ fn insert_moved(
         let world = unsafe { world_cell.data_mut() };
         let tick = world.this_run_fast();
         unsafe {
-            let mut writer = ComponentWriter::new(tick, new_table, new_table_row);
-            old_table.types().for_each(|ty| writer.set_writed(ty));
-            write_fn(data, &mut writer)
+            let mut writer = ComponentWriter::from_table(new_table, new_table_row, tick);
+            old_table.types().for_each(|ty| writer.assume_init(ty));
+            write_fn(data, &mut writer);
+            write_required_fn(&mut writer);
         }
     }
 

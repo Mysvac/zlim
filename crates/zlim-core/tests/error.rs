@@ -172,6 +172,49 @@ fn per_variant_no_default() {
 }
 
 // -----------------------------------------------------------------------------
+// Enum — no zlim_error anywhere (no Into<ZlimError>, no compile error)
+// -----------------------------------------------------------------------------
+
+#[derive(Debug, Error)]
+enum PlainError {
+    #[error("first failure")]
+    First,
+
+    #[error("second failure")]
+    Second,
+}
+
+#[test]
+fn no_zlim_error_anywhere_compiles_and_displays() {
+    // Display must still work.
+    assert_eq!(PlainError::First.to_string(), "first failure");
+    assert_eq!(PlainError::Second.to_string(), "second failure");
+}
+
+// -----------------------------------------------------------------------------
+// Struct — ignore & debug severities
+// -----------------------------------------------------------------------------
+
+#[derive(Debug, Error)]
+#[error("a debug-level issue")]
+#[zlim_error(debug)]
+struct DebugError;
+
+#[derive(Debug, Error)]
+#[error("a discardable issue")]
+#[zlim_error(ignore)]
+struct IgnoreError;
+
+#[test]
+fn debug_and_ignore_severities() {
+    let zerr: ZlimError = DebugError.into();
+    assert_eq!(zerr.severity(), Severity::Debug);
+
+    let zerr: ZlimError = IgnoreError.into();
+    assert_eq!(zerr.severity(), Severity::Ignore);
+}
+
+// -----------------------------------------------------------------------------
 // Format specifiers
 // -----------------------------------------------------------------------------
 

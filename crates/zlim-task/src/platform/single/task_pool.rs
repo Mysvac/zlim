@@ -109,9 +109,9 @@ impl TaskPoolBuilder {
 /// - **`LocalExecutor`** — a thread-local executor for `!Send` tasks. Used by
 ///   [`spawn`] and [`spawn_local`]. Must be ticked manually or via [`scope`].
 ///
-/// - **`MainExecutor`** — a global, thread-safe executor for the main thread.
-///   Used by [`spawn_to_main`]. Tasks can be submitted from any thread but
-///   are only executed on the main thread.
+/// - **`MainExecutor`** — a global, thread-safe executor used by
+///   [`spawn_to_main`]. Tasks are executed when the executor is driven via
+///   [`run_local`] or [`scope`].
 ///
 /// # Examples
 ///
@@ -202,20 +202,17 @@ impl TaskPool {
     /// Spawns a `Send + 'static` future that must run on the main thread.
     ///
     /// The task is submitted to the `MainExecutor` — a global, thread-safe
-    /// queue. The task can be submitted from any thread, but it will only
-    /// execute when the main thread ticks the executor. This is useful for
-    /// tasks that must interact with main-thread-only APIs (e.g., rendering,
-    /// UI updates).
-    ///
-    /// The main thread must call [`run_local`] or [`scope`] to drive the
-    /// `MainExecutor`.
+    /// queue. In single-threaded mode it only executes when the executor is
+    /// driven via [`run_local`] or [`scope`]. This is useful for tasks that
+    /// must interact with main-thread-only APIs (e.g., rendering, UI
+    /// updates).
     ///
     /// # Deadlock Warning
     ///
-    /// Do **not** block the main thread waiting for the returned [`Task`]
-    /// handle — the spawned task cannot run until the main thread yields to
-    /// the executor, so blocking will deadlock. Use [`TaskPool::scope`] to
-    /// collect results synchronously.
+    /// Do **not** block the current thread waiting for the returned
+    /// [`Task`] handle — the task cannot run until the executor is driven,
+    /// so blocking will deadlock. Use [`TaskPool::scope`] to collect
+    /// results synchronously.
     ///
     /// [`run_local`]: crate::run_local
     /// [`scope`]: Self::scope
@@ -349,9 +346,10 @@ impl<'sco, 'env, T: Send + 'env> Scope<'sco, 'env, T> {
 
     /// Spawns a future that must run on the main thread onto the scope.
     ///
-    /// The task is submitted to the `MainExecutor` and will be driven by
-    /// the main thread's executor during the scope. The future must be
-    /// `Send` because the `MainExecutor` can receive tasks from any thread.
+    /// In single-threaded mode this is equivalent to [`spawn_local`]: the
+    /// task is driven by the current scope and completes before
+    /// [`TaskPool::scope`] returns. The future must be `Send` for interface
+    /// compatibility with multi-threaded mode.
     ///
     /// As with [`spawn_local`], the future may borrow data with lifetime
     /// `'sco`, which is valid until [`TaskPool::scope`] returns.

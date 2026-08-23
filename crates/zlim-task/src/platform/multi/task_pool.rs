@@ -1,6 +1,7 @@
 #![expect(unsafe_code, reason = "lifetime transmutation")]
 
 use core::any::Any;
+use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::panic::{AssertUnwindSafe, RefUnwindSafe, UnwindSafe};
@@ -15,6 +16,7 @@ use zlim_utils::sync::SegQueue;
 use async_task::FallibleTask;
 use async_task::Task;
 
+use super::fake_main::main_thread_id;
 use super::executors::PoolExecutor;
 use super::{LocalExecutor, MainExecutor, block_on};
 
@@ -31,8 +33,6 @@ impl Drop for OnDrop {
         }
     }
 }
-
-const MAX_THREADS: usize = 31;
 
 // -----------------------------------------------------------------------------
 // TaskPoolBuilder
@@ -170,6 +170,8 @@ impl TaskPoolBuilder {
 // -----------------------------------------------------------------------------
 // TaskPool
 
+const MAX_THREADS: usize = 19;
+
 /// A thread pool for executing asynchronous tasks with work-stealing.
 ///
 /// Manages a fixed number of worker threads and distributes tasks across
@@ -186,7 +188,7 @@ impl TaskPoolBuilder {
 /// |--------|--------------|--------|-------------|
 /// | [`spawn`] | `Send + 'static` | `PoolExecutor` (global) | Distributed across worker threads |
 /// | [`spawn_local`] | `'static` only | `LocalExecutor` (current thread) | Stays on the calling thread |
-/// | [`spawn_to_main`] | `Send + 'static` | `MainExecutor` (main thread) | Wakes main thread to execute |
+/// | [`spawn_to_main`] | `Send + 'static` | `MainExecutor` (main thread) | Executed on the main thread |
 /// | [`scope`] | non-`'static` | mixed | Scoped fork-join, collects results |
 ///
 /// ## `spawn` APIs
@@ -198,16 +200,19 @@ impl TaskPoolBuilder {
 /// of whether the handle is polled.
 ///
 /// [`spawn_local`] submits tasks to the current thread's `LocalExecutor`.
-/// - On **worker threads**: tasks are automatically polled as part of the
-///   worker's execution loop — no explicit ticking needed.
-/// - On the **main thread**: tasks are **not** automatically polled and
+/// - On **worker threads** (and the fake main thread): tasks are
+///   automatically polled as part of the execution loop — no explicit
+///   ticking needed.
+/// - On any other thread: tasks are **not** automatically polled and
 ///   require explicit driving via [`run_local`] or [`scope`].
 ///
 /// [`spawn_to_main`] submits tasks to the `MainExecutor` — a global,
-/// thread-safe queue. The task can be submitted from any thread, but it
-/// will only execute when the main thread ticks the executor (via
-/// [`run_local`] or [`scope`]). This is useful for tasks that must
-/// interact with main-thread-only APIs (e.g., rendering, UI updates).
+/// thread-safe queue. The task can be submitted from any thread, and is
+/// executed on the main thread — a dedicated fake one unless the
+/// application marked the current thread up front with
+/// [`set_main_thread`](crate::set_main_thread). This is useful for
+/// tasks that must interact with main-thread-only APIs (e.g., rendering,
+/// UI updates).
 ///
 /// ## `scope` APIs
 ///
@@ -234,8 +239,8 @@ impl TaskPoolBuilder {
 ///   Stores `!Send` tasks on the owning thread.
 ///
 /// - **`MainExecutor`** — a global, wakeable endpoint for the main
-///   thread. Used by `spawn_to_main` to send tasks from any thread
-///   to the main thread.
+///   thread. Used by `spawn_to_main` to send tasks from any thread to the
+///   main thread (a dedicated fake one if not set up front).
 ///
 /// # Examples
 ///
@@ -269,7 +274,6 @@ impl TaskPoolBuilder {
 /// [`spawn_to_main`]: Self::spawn_to_main
 /// [`scope`]: Self::scope
 /// [`run_local`]: crate::run_local
-#[derive(Debug)]
 pub struct TaskPool {
     /// Main Thread Id.
     thread_id: ThreadId,
@@ -279,6 +283,15 @@ pub struct TaskPool {
     threads: Box<[JoinHandle<()>]>,
     /// Shutdown signal sender.
     stop_event: Event,
+}
+
+impl Debug for TaskPool {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TaskPool")
+            .field("main_id", &self.thread_id)
+            .field("executor", &self.executor)
+            .finish()
+    }
 }
 
 impl Default for TaskPool {
@@ -305,7 +318,7 @@ impl TaskPool {
 
     fn new_internal(builder: TaskPoolBuilder) -> Self {
         // main thread id
-        let thread_id = std::thread::current().id();
+        let thread_id = main_thread_id();
 
         // shutdown signal
         let stop_event = Event::new();
@@ -355,7 +368,6 @@ impl TaskPool {
                         
                         // bind and initialize `LOCAL_WORKER`.
                         executor.bind_local_worker();
-
 
                         // Call `on_thread_spawn`
                         if let Some(on_spawn) = on_thread_spawn {
@@ -494,17 +506,19 @@ impl TaskPool {
     /// Spawns a `Send + 'static` future that must run on the main thread.
     ///
     /// The task is submitted to the `MainExecutor` — a global, thread-safe
-    /// queue. It can be submitted from any thread, but will only execute
-    /// when the main thread ticks the executor via [`run_local`] or [`scope`].
+    /// queue. It can be submitted from any thread, and is executed on the
+    /// main thread — a dedicated fake one unless the application marked the
+    /// current thread up front with
+    /// [`set_main_thread`](crate::set_main_thread).
     ///
     /// This is useful for tasks that must interact with main-thread-only
     /// APIs (e.g., rendering, UI updates).
     ///
     /// # Deadlock Warning
     ///
-    /// Do **not** block the main thread waiting for the returned [`Task`]
-    /// handle — the spawned task cannot run until the main thread yields
-    /// to the executor. Use [`TaskPool::scope`] for synchronous collection.
+    /// Do **not** block the current thread waiting for the returned
+    /// [`Task`] handle if the task depends on the main thread — use
+    /// [`TaskPool::scope`] for synchronous collection.
     ///
     /// [`run_local`]: crate::run_local
     /// [`scope`]: Self::scope
@@ -517,7 +531,6 @@ impl TaskPool {
     {
         MainExecutor::spawn(future)
     }
-
 }
 
 impl Drop for TaskPool {
@@ -632,17 +645,9 @@ impl<'sco, 'env, T: Send + 'env> Scope<'sco, 'env, T> {
     /// Spawns a scoped future onto the main thread.
     ///
     /// Submits the task to the `MainExecutor` — analogous to
-    /// [`TaskPool::spawn_to_main`].  The task is sent to the main thread
-    /// and the current thread **blocks** waiting for the main thread to
-    /// execute it and produce a result.
-    ///
-    /// Deadlock is possible if the main thread never drives the
-    /// `MainExecutor` (e.g. the main thread is blocked on other work
-    /// and never calls [`run_local`](crate::run_local) or [`scope`]).
-    /// When `scope()` is called on the main thread this is handled
-    /// automatically — it ticks `MainExecutor` in its internal loop.
-    /// When called from a worker thread the caller is responsible for
-    /// ensuring the main thread makes progress.
+    /// [`TaskPool::spawn_to_main`]. The task is executed on the main thread
+    /// — a dedicated fake one unless [`set_main_thread`](crate::set_main_thread)
+    /// was called up front (see [`TaskPool::scope`]).
     ///
     /// The future's result will be included in the vector returned by
     /// [`TaskPool::scope`].
@@ -671,6 +676,12 @@ impl TaskPool {
     /// Takes a closure that receives a [`Scope`] object, which can be used
     /// to spawn tasks that borrow stack-local data. This method blocks until
     /// all spawned tasks complete, then collects and returns their results.
+    ///
+    /// For the duration of the scope, the calling thread drives the
+    /// thread-local `LocalExecutor` and the pool's workers. `spawn_to_main`
+    /// tasks are executed on the main thread — a dedicated fake one unless
+    /// [`set_main_thread`](crate::set_main_thread) was called up front —
+    /// which keeps polling the `MainExecutor` until the process exits.
     ///
     /// This is analogous to [`std::thread::scope`] and `rayon::scope`.
     ///
@@ -751,13 +762,21 @@ impl TaskPool {
             panic!("Failed to catch panic!");
         }
 
-        let stop_signal = async {
-            let mut results: Vec<T> = Vec::with_capacity(tasks.len());
-            while let Some(task) = tasks.pop() {
-                match task.await {
-                    Some(Ok(val)) => results.push(val),
-                    Some(Err(payload)) => std::panic::resume_unwind(payload),
+        // Drain the scope's task queue through the same `&'env` reference
+        // (`tasks_ref`) that spawned tasks push through, so tasks spawned
+        // from *within* running tasks are always observed.  The future never
+        // touches the `tasks` local itself, which also sidesteps any
+        // capture-by-move hazard with the transmuted reference.
+        let stop_signal = async move {
+            let mut results: Vec<T> = Vec::with_capacity(tasks_ref.len());
+            while let Some(f_task) = tasks_ref.pop() {
+                match f_task.await {
                     None => catch_panic_failed(),
+                    Some(Ok(val)) => results.push(val),
+                    Some(Err(payload)) => {
+                        ::core::hint::cold_path();
+                        std::panic::resume_unwind(payload)
+                    },
                 }
             }
             results
@@ -766,11 +785,13 @@ impl TaskPool {
         if std::thread::current().id() == self.thread_id {
             block_on(MainExecutor::run(LocalExecutor::run(stop_signal)))
         } else {
-            block_on(LocalExecutor::run(stop_signal))
+            block_on(LocalExecutor::run(executor.run(stop_signal)))
         }
     }
 }
 
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {
@@ -781,4 +802,3 @@ mod tests {
         let _ = TaskPool::new();
     }
 }
-

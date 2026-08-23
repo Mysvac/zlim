@@ -37,6 +37,7 @@ struct Block<T> {
     tail: usize,
 
     data: [MaybeUninit<T>; BLOCK_SIZE],
+
     next: *mut Block<T>,
 }
 

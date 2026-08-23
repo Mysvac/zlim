@@ -1,10 +1,13 @@
+//! Entity spawning methods and the batch-spawn iterator.
+
 use core::iter::FusedIterator;
 use core::ptr::NonNull;
 
 use zlim_ptr::OwningPtr;
 use zlim_utils::debug::DebugLocation;
 
-use crate::bundle::{Bundle, BundleId, ComponentWriter, DataBundle};
+use crate::bundle::{Bundle, BundleId, DataBundle};
+use crate::component::ComponentWriter;
 use crate::entity::{AllocEntitiesIter, EntityId, Location};
 use crate::ops::EntityOwned;
 use crate::table::Table;
@@ -16,11 +19,13 @@ use crate::world::{DeferredWorld, World, WorldCell};
 // -----------------------------------------------------------------------------
 
 type WriteFunc = unsafe fn(OwningPtr<'_>, &mut ComponentWriter);
+type RequiredWriteFunc = unsafe fn(&mut ComponentWriter);
 
 struct BundleSpawner<'a> {
     world: WorldCell<'a>,
     table: NonNull<Table>,
     writer: WriteFunc,
+    required_writer: RequiredWriteFunc,
     caller: DebugLocation,
 }
 
@@ -30,6 +35,7 @@ impl<'a> BundleSpawner<'a> {
         world: &'a mut World,
         bundle: BundleId,
         writer: WriteFunc,
+        required_writer: RequiredWriteFunc,
         caller: DebugLocation,
     ) -> BundleSpawner<'a> {
         let table_id = world
@@ -42,6 +48,7 @@ impl<'a> BundleSpawner<'a> {
             table: table.into(),
             world: world.into(),
             writer,
+            required_writer,
             caller,
         }
     }
@@ -61,7 +68,7 @@ impl<'a> BundleSpawner<'a> {
         &mut self,
         data: OwningPtr<'_>,
         entity: EntityId,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
     ) -> (&'a mut Table, Location) {
         let world_cell = self.world;
         let world = unsafe { world_cell.full_mut() };
@@ -85,8 +92,9 @@ impl<'a> BundleSpawner<'a> {
         let table_row = unsafe { table.alloc_row(entity) };
 
         unsafe {
-            let mut writer = ComponentWriter::new(tick, table, table_row);
+            let mut writer = ComponentWriter::from_table(table, table_row, tick);
             (self.writer)(data, &mut writer);
+            (self.required_writer)(&mut writer);
         }
 
         let location = Location {
@@ -94,10 +102,10 @@ impl<'a> BundleSpawner<'a> {
             table_row,
         };
 
-        if let Err(e) = world.entities.insert_one(entity, child_of, location) {
+        if let Err(e) = world.entities.insert_one(entity, parent, location) {
             ::core::hint::cold_path();
             let l = self.caller;
-            panic!("child_of `{child_of:?}` is invalid: {e}.\n\t{l}");
+            panic!("parent `{parent:?}` is invalid: {e}.\n\t{l}");
         }
 
         ::core::mem::forget(guard);
@@ -116,9 +124,9 @@ impl<'a> BundleSpawner<'a> {
         &mut self,
         data: OwningPtr<'_>,
         entity: EntityId,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
     ) -> Option<(&'a mut Table, Location)> {
-        let mut storage = Some(self.spawn_at(data, entity, child_of));
+        let mut storage = Some(self.spawn_at(data, entity, parent));
 
         let cell = self.world;
         let world = unsafe { cell.full_mut() };
@@ -143,43 +151,86 @@ impl<'a> BundleSpawner<'a> {
 impl World {
     /// Spawns a new entity and returns an owned handle to it.
     ///
-    /// # Panic
-    /// - Panics if `child_of` is `Some` but the target entity is not spawned.
+    /// # Panics
+    /// - Panics if `parent` is `Some` but the target entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::derive::Component;
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    ///
+    /// // A root entity with a single component.
+    /// let mut hero = world.spawn(Health(100), None);
+    /// assert_eq!(hero.get::<Health>(), Some(&Health(100)));
+    ///
+    /// // Passing a `parent` links the new entity into the hierarchy.
+    /// let hero_id = hero.id();
+    /// drop(hero); // release the world borrow before spawning again
+    /// let sidekick_id = world.spawn(Health(50), Some(hero_id)).id();
+    ///
+    /// let mut hero = world.entity_owned(hero_id);
+    /// assert!(hero.as_view().children().any(|id| id == sidekick_id));
+    /// ```
     #[inline(always)] // We enable inlining to avoid copying data
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn spawn<B: Bundle>(&mut self, bundle: B, child_of: Option<EntityId>) -> EntityOwned<'_> {
-        self.spawn_with_caller(bundle, child_of, DebugLocation::caller())
+    pub fn spawn<B: Bundle>(&mut self, bundle: B, parent: Option<EntityId>) -> EntityOwned<'_> {
+        self.spawn_with_caller(bundle, parent, DebugLocation::caller())
     }
 
     /// Spawns a new entity at given `id` and returns an owned handle to it.
     ///
-    /// # Panic
+    /// # Panics
     /// - Panics if given `id` cannot spawn (e.g. already spawned).
-    /// - Panics if `child_of` is `Some` but the target entity is not spawned.
+    /// - Panics if `parent` is `Some` but the target entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    ///
+    /// // Reserve an ID first, then spawn the entity at that exact ID.
+    /// let id = world.alloc_entity();
+    /// let entity = world.spawn_at((), id, None);
+    /// assert_eq!(entity.id(), id);
+    /// ```
     #[inline(always)] // We enable inlining to avoid copying data
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_at<B: Bundle>(
         &mut self,
         bundle: B,
         entity: EntityId,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
     ) -> EntityOwned<'_> {
-        self.spawn_at_with_caller(bundle, entity, child_of, DebugLocation::caller())
+        self.spawn_at_with_caller(bundle, entity, parent, DebugLocation::caller())
     }
 
     #[inline] // We enable inlining to avoid copying data
     pub(crate) fn spawn_with_caller<B: Bundle>(
         &mut self,
         bundle: B,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
         caller: DebugLocation,
     ) -> EntityOwned<'_> {
-        let bundle_id = self.register_bundle::<B>();
+        let bundle_id = self.register_required_bundle::<B>();
 
         let cell = self.cell();
         let world = unsafe { cell.full_mut() };
 
-        let mut spawner = BundleSpawner::new(world, bundle_id, B::write, caller);
+        let mut spawner = BundleSpawner::new(
+            world,
+            bundle_id,
+            B::write_explicit,
+            B::write_required,
+            caller,
+        );
 
         let entity = spawner.alloc();
 
@@ -194,7 +245,7 @@ impl World {
         let mut ptr = data;
         let data = unsafe { ptr.borrow_mut().promote() };
 
-        let storage = spawner.spawn_at_flush(data, entity, child_of);
+        let storage = spawner.spawn_at_flush(data, entity, parent);
 
         let mut owned = EntityOwned {
             id: entity,
@@ -214,26 +265,32 @@ impl World {
         &mut self,
         bundle: B,
         entity: EntityId,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
         caller: DebugLocation,
     ) -> EntityOwned<'_> {
         if let Err(e) = self.entities.check_spawnable(entity) {
             ::core::hint::cold_path();
             panic!("entity {entity} cannot spawned: {e}.\n\t{caller}")
         }
-        let bundle_id = self.register_bundle::<B>();
+        let bundle_id = self.register_required_bundle::<B>();
 
         let cell = self.cell();
         let world = unsafe { cell.full_mut() };
 
-        let mut spawner = BundleSpawner::new(world, bundle_id, B::write, caller);
+        let mut spawner = BundleSpawner::new(
+            world,
+            bundle_id,
+            B::write_explicit,
+            B::write_required,
+            caller,
+        );
 
         zlim_ptr::into_owning!(bundle as data);
 
         let mut ptr = data;
         let data = unsafe { ptr.borrow_mut().promote() };
 
-        let storage = spawner.spawn_at_flush(data, entity, child_of);
+        let storage = spawner.spawn_at_flush(data, entity, parent);
 
         let mut owned = EntityOwned {
             id: entity,
@@ -253,13 +310,18 @@ impl World {
 // Spawn Batch Iter
 // -----------------------------------------------------------------------------
 
+/// An iterator that spawns one entity per [`DataBundle`] produced by the
+/// underlying iterator.
+///
+/// Returned by [`World::spawn_batch`].  If not fully consumed, the remaining
+/// bundles are spawned on drop.
 pub struct SpawnBatchIter<'w, I>
 where
     I: Iterator,
     I::Item: DataBundle,
 {
     inner: I,
-    child_of: Option<EntityId>,
+    parent: Option<EntityId>,
     spawner: BundleSpawner<'w>,
     allocator: AllocEntitiesIter<'w>,
 }
@@ -298,7 +360,7 @@ where
 
         zlim_ptr::into_owning!(bundle as data);
 
-        self.spawner.spawn_at(data, entity, self.child_of);
+        self.spawner.spawn_at(data, entity, self.parent);
 
         Some(entity)
     }
@@ -321,36 +383,64 @@ impl World {
     /// If the iterator is not fully consumed, remaining data will
     /// be spawned during `Drop::drop`.
     ///
-    /// # Panic
-    /// - Panics if `child_of` is `Some` but the target entity is not spawned.
+    /// # Panics
+    /// - Panics if `parent` is `Some` but the target entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::derive::Component;
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct X(f32);
+    ///
+    /// let mut world = World::alloc();
+    ///
+    /// // Spawn one entity per bundle, all under a common parent.
+    /// let root_id = world.spawn((), None).id();
+    /// let ids: Vec<EntityId> = world
+    ///     .spawn_batch([X(1.0), X(2.0), X(3.0)], Some(root_id))
+    ///     .collect();
+    /// assert_eq!(ids.len(), 3);
+    ///
+    /// let mut root = world.entity_owned(root_id);
+    /// assert_eq!(root.child_count(), 3);
+    /// ```
     #[inline(always)] // We enable inlining to avoid copying data
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_batch<B, I>(
         &mut self,
         iter: I,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
     ) -> SpawnBatchIter<'_, I::IntoIter>
     where
         B: DataBundle,
         I: IntoIterator<Item = B>,
     {
-        self.spawn_batch_with_caller(iter, child_of, DebugLocation::caller())
+        self.spawn_batch_with_caller(iter, parent, DebugLocation::caller())
     }
 
     #[inline] // We enable inlining to avoid copying data
     pub(crate) fn spawn_batch_with_caller<B, I>(
         &mut self,
         iter: I,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
         caller: DebugLocation,
     ) -> SpawnBatchIter<'_, I::IntoIter>
     where
         B: DataBundle,
         I: IntoIterator<Item = B>,
     {
-        let bundle_id = self.register_bundle::<B>();
+        let bundle_id = self.register_required_bundle::<B>();
 
-        let mut spawner = BundleSpawner::new(self, bundle_id, B::write, caller);
+        let mut spawner = BundleSpawner::new(
+            self,
+            bundle_id,
+            B::write_explicit,
+            B::write_required,
+            caller,
+        );
 
         let inner = iter.into_iter();
         let count = inner.size_hint().0 as u32;
@@ -358,7 +448,7 @@ impl World {
 
         SpawnBatchIter {
             inner,
-            child_of,
+            parent,
             spawner,
             allocator,
         }

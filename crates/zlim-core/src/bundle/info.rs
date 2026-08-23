@@ -1,3 +1,6 @@
+//! Bundle metadata and the per-world bundle registry.
+#![expect(clippy::len_without_is_empty, reason = "useless")]
+
 use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 
@@ -25,6 +28,15 @@ impl BundleId {
     /// The empty bundle contains no components and is always available.
     /// It is used as a sentinel for entities that are spawned without
     /// any components.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::bundle::BundleId;
+    ///
+    /// // `()` is always registered as the very first bundle.
+    /// assert_eq!(BundleId::EMPTY.index(), 0);
+    /// ```
     pub const EMPTY: Self = BundleId::without_provenance(0);
 }
 
@@ -41,7 +53,25 @@ impl BundleId {
 ///
 /// Multiple `Bundle` types that resolve to the same sorted set of component
 /// IDs will share a single `BundleInfo`.  This is a space optimisation: the
-/// archetype is keyed by the component set, not by the Rust type.
+/// table is keyed by the component set, not by the Rust type.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone)]
+/// struct Health(u32);
+///
+/// let mut world = World::alloc();
+///
+/// // Registering two bundle types with the same component set yields the
+/// // same `BundleId`, so they share one `BundleInfo`.
+/// let a = world.register_required_bundle::<Health>();
+/// let b = world.register_required_bundle::<(Health,)>();
+/// assert_eq!(a, b);
+/// ```
 ///
 /// [`Table`]: crate::table::Table
 pub struct BundleInfo {
@@ -77,7 +107,7 @@ impl BundleInfo {
         self.id
     }
 
-    /// Returns the complete (sorted) list of component types in this bundle.
+    /// Returns the complete (sorted) list of component IDs in this bundle.
     #[inline(always)]
     pub fn components(&self) -> &'static [ComponentId] {
         self.components
@@ -85,8 +115,7 @@ impl BundleInfo {
 
     /// Checks whether this bundle contains the given component type.
     ///
-    /// Uses SIMD-accelerated linear search for small slices and falls
-    /// back to binary search for larger ones.
+    /// Uses a SIMD-accelerated linear search.
     #[inline(always)]
     pub fn contains_component(&self, id: ComponentId) -> bool {
         crate::utils::contains_component(id, self.components)
@@ -102,7 +131,7 @@ impl BundleInfo {
 /// `Bundles` is a per-world registry that maps bundle types to their
 /// associated component sets.  It provides fast lookups by:
 ///
-/// - **Component slice** — for archetype resolution.
+/// - **Component slice** — for target-table resolution.
 /// - **TypeId** — for bundle-type-based queries.
 /// - **BundleId** — for direct access to metadata.
 ///
@@ -115,7 +144,8 @@ pub struct Bundles {
     /// Maps component ID slices to bundle IDs.
     mapper: HashMap<&'static [ComponentId], BundleId>,
     /// Maps Rust type IDs to bundle IDs.
-    type_mapper: TypeMap<BundleId>,
+    required_map: TypeMap<BundleId>,
+    explicit_map: TypeMap<BundleId>,
 }
 
 impl Debug for Bundles {
@@ -124,19 +154,20 @@ impl Debug for Bundles {
     }
 }
 
-impl Default for Bundles {
-    /// Creates a `Bundles` registry pre-seeded with the empty bundle `()`.
-    fn default() -> Self {
+impl Bundles {
+    pub(crate) fn new() -> Self {
         let mut val = Bundles {
             infos: Vec::new(),
             mapper: HashMap::new(),
-            type_mapper: TypeMap::new(),
+            required_map: TypeMap::new(),
+            explicit_map: TypeMap::new(),
         };
 
         // The empty bundle is always available.
         val.infos.push(BundleInfo::new(BundleId::EMPTY, &[]));
         val.mapper.insert(&[], BundleId::EMPTY);
-        val.type_mapper.insert(TypeId::of::<()>(), BundleId::EMPTY);
+        val.required_map.insert(TypeId::of::<()>(), BundleId::EMPTY);
+        val.explicit_map.insert(TypeId::of::<()>(), BundleId::EMPTY);
 
         val
     }
@@ -179,9 +210,20 @@ impl Bundles {
 
     /// Looks up the bundle ID for the given Rust type.
     ///
+    /// Contains all components (including dependencies)
+    ///
     /// Returns `None` if the type has not been registered as a bundle.
-    pub fn get_by_type(&self, id: TypeId) -> Option<BundleId> {
-        self.type_mapper.get(id).copied()
+    pub fn get_required(&self, id: TypeId) -> Option<BundleId> {
+        self.required_map.get(id).copied()
+    }
+
+    /// Looks up the bundle ID for the given Rust type.
+    ///
+    /// Only explicitly provided components.
+    ///
+    /// Returns `None` if the type has not been registered as a bundle.
+    pub fn get_explicit(&self, id: TypeId) -> Option<BundleId> {
+        self.explicit_map.get(id).copied()
     }
 }
 
@@ -202,14 +244,14 @@ impl Bundles {
     /// - `components` must be sorted.
     /// - `components` must not contain duplicates.
     #[inline]
-    pub(crate) fn register(
+    pub(crate) fn register_required(
         &mut self,
         type_id: TypeId,
         components: &'static [ComponentId],
     ) -> BundleId {
         if let Some(&id) = self.mapper.get(components) {
             // Already registered — map this type_id to the existing bundle.
-            self.type_mapper.insert(type_id, id);
+            self.required_map.insert(type_id, id);
             id
         } else {
             core::hint::cold_path();
@@ -218,7 +260,42 @@ impl Bundles {
 
             self.infos.push(BundleInfo::new(id, components));
             self.mapper.insert(components, id);
-            self.type_mapper.insert(type_id, id);
+            self.required_map.insert(type_id, id);
+
+            id
+        }
+    }
+
+    /// Registers a new bundle for the given component set and returns its
+    /// [`BundleId`].
+    ///
+    /// If a bundle with the same component set already exists, the existing
+    /// ID is returned (deduplication).  The `type_id` is always recorded
+    /// so that `get_by_type` works for all types that share this bundle.
+    ///
+    /// # Safety
+    ///
+    /// - Each `ComponentId` in `components` must be valid and registered.
+    /// - `components` must be sorted.
+    /// - `components` must not contain duplicates.
+    #[inline]
+    pub(crate) fn register_explicit(
+        &mut self,
+        type_id: TypeId,
+        components: &'static [ComponentId],
+    ) -> BundleId {
+        if let Some(&id) = self.mapper.get(components) {
+            // Already registered — map this type_id to the existing bundle.
+            self.explicit_map.insert(type_id, id);
+            id
+        } else {
+            core::hint::cold_path();
+            let index = self.infos.len();
+            let id = BundleId::without_provenance(index);
+
+            self.infos.push(BundleInfo::new(id, components));
+            self.mapper.insert(components, id);
+            self.explicit_map.insert(type_id, id);
 
             id
         }

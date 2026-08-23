@@ -28,7 +28,7 @@ Width is locked to **80 columns**: `//` + 1 space + 77 hyphens.
 
 ## Imports
 
-Imports follow the rustfmt nightly `imports_granularity = "Module"` convention:
+Imports follow the rustfmt `imports_granularity = "Module"` convention:
 **only the final path segment** may use `{ ... }` braces.
 
 ```rust

@@ -6,7 +6,7 @@
 //! |------|-------------|
 //! | [`ZlimError`] | Heap-allocated error with severity metadata. |
 //! | [`ZlimResult<T>`] | `Result<T, ZlimError>` alias. |
-//! | [`Severity`] | `Info` / `Warning` / `Error` / `Panic`. |
+//! | [`Severity`] | `Ignore` / `Debug` / `Info` / `Warning` / `Error` / `Panic`. |
 //! | [`IntoZlimResult`] | Convert a type into a [`ZlimResult<T>`]. |
 //! | [`ErrorContext`] | Context metadata for where an error originated. |
 //! | [`ErrorHandler`] | `fn(ZlimError, ErrorContext)` signature for error callbacks. |
@@ -17,7 +17,7 @@
 // Modules
 
 mod context;
-mod error;
+mod zlim_error;
 
 pub mod handler;
 
@@ -27,6 +27,7 @@ pub mod handler;
 pub use zlim_core_derive::Error;
 
 pub use context::ErrorContext;
-pub use error::{IntoZlimResult, Severity};
-pub use error::{ZlimError, ZlimResult};
 pub use handler::{ErrorHandler, default_error_handler};
+pub use zlim_error::zlim_error_panic_hook;
+pub use zlim_error::{IntoZlimResult, Severity};
+pub use zlim_error::{ZlimError, ZlimResult};

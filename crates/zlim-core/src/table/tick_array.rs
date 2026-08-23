@@ -1,4 +1,7 @@
+//! Contiguous change-detection tick storage.
+
 use core::alloc::Layout;
+use core::fmt::{Debug, Formatter};
 use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 use std::alloc as malloc;
@@ -14,10 +17,15 @@ use crate::tick::Tick;
 ///
 /// This type provides efficient storage and manipulation of [`Tick`] values,
 /// optimized for the specific requirements of ECS change detection.
-#[derive(Debug)]
 #[repr(transparent)]
 pub(super) struct TickArray {
     data: NonNull<Tick>,
+}
+
+impl Debug for TickArray {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Debug::fmt(&self.data.cast::<u8>(), f)
+    }
 }
 
 impl TickArray {
@@ -116,7 +124,8 @@ impl TickArray {
     /// Returns a shared slice of ticks.
     ///
     /// # Safety
-    /// See [`Slice`], ensure by caller.
+    /// The returned [`Slice`] is only valid until the array is reallocated
+    /// or deallocated; the caller must enforce that.
     #[inline(always)]
     pub const unsafe fn get_slice(&self) -> Slice<'_, Tick> {
         unsafe { Slice::from_raw(self.data) }
@@ -125,19 +134,23 @@ impl TickArray {
     /// Returns a mutable slice of ticks.
     ///
     /// # Safety
-    /// See [`Slice`], ensure by caller.
+    /// The returned [`SliceMut`] is only valid until the array is
+    /// reallocated or deallocated, and must not alias any other reference
+    /// into the array; the caller must enforce that.
     #[inline(always)]
     pub const unsafe fn get_slice_mut(&mut self) -> SliceMut<'_, Tick> {
         unsafe { SliceMut::from_raw(self.data) }
     }
 
-    /// Copies the last item to the specified index without returning the moved item.
+    /// Copies the tick at `last` to `to`, without returning the moved value.
     ///
-    /// This is equivalent to `swap_remove_not_last` but without reading the removed value.
+    /// This is the tick-array counterpart of a swap-remove: it leaves a
+    /// duplicate at `last`.  The caller is responsible for updating the
+    /// logical length afterwards.
     ///
     /// # Safety
-    /// - `index` must be < `last_index` (nonoverlapping)
-    /// - Both `index` and `last_index` must be within bounds
+    /// - `to` must be < `last` (nonoverlapping)
+    /// - Both `to` and `last` must be within bounds
     #[inline(always)]
     pub const unsafe fn move_last_to(&mut self, last: usize, to: usize) {
         let base_ptr = self.data.as_ptr();

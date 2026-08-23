@@ -1,3 +1,5 @@
+//! Table, row, and column identifiers.
+
 use core::fmt::{Debug, Display, Formatter};
 use core::hash::Hash;
 
@@ -13,6 +15,21 @@ crate::utils::define_ident!(
     /// Each distinct component set (archetype) is assigned one `TableId`.
     /// The empty table (entity with no components) is always available at
     /// [`TableId::EMPTY`].
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::table::TableId;
+    ///
+    /// // The empty table — entities without components — always exists and
+    /// // is registered at index 0.
+    /// let empty = TableId::EMPTY;
+    /// assert_eq!(empty.index(), 0);
+    ///
+    /// // Table IDs are opaque handles into the world's `Tables` registry;
+    /// // obtain one via `world.tables().get_id(components)`.
+    /// ```
     ///
     /// [`Table`]: super::Table
     /// [`World`]: crate::world::World
@@ -38,6 +55,21 @@ impl TableId {
 /// swap-removed, the displaced entity's row changes — callers must track
 /// this via [`MovedEntityRow`].
 ///
+/// # Example
+///
+/// ```ignore
+/// use zlim_core::prelude::*;
+/// use zlim_core::table::{MovedEntityRow, Table, TableRow};
+///
+/// // Rows are dense and removal is a swap-remove: removing the last row
+/// // displaces nothing, but removing any other row moves the last row into
+/// // the gap.  `dealloc_row` / `move_row` report that displacement as a
+/// // `MovedEntityRow`.
+/// let table: &mut Table = /* obtained from the registry */;
+/// let removed: TableRow = TableRow(2);
+/// let _displacement: MovedEntityRow = unsafe { table.dealloc_row::<true>(removed) };
+/// ```
+///
 /// [`Table::alloc_row`]: super::Table::alloc_row
 /// [`MovedEntityRow`]: super::MovedEntityRow
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -50,6 +82,40 @@ pub struct TableRow(pub u32);
 /// Columns are ordered identically to the table's component list
 /// ([`Table::components`]).  The column index is stable for the lifetime
 /// of the table.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::table::TableCol;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone)]
+/// struct Position {
+///     x: f32,
+/// }
+///
+/// let mut world = World::alloc();
+/// world.spawn((Position { x: 1.0 },), None);
+///
+/// // Find the archetype table that holds `Position` entities.
+/// let table = world
+///     .tables()
+///     .iter()
+///     .find(|table| !table.entities().is_empty())
+///     .unwrap();
+///
+/// // Column indices are stable for the lifetime of the table, and a
+/// // column can be resolved from a component ID or a `TypeId`.
+/// assert_eq!(
+///     table.get_table_col(ComponentDB::of::<Position>().id),
+///     Some(TableCol(0))
+/// );
+/// assert_eq!(
+///     table.get_type_col(core::any::TypeId::of::<Position>()),
+///     Some(TableCol(0))
+/// );
+/// ```
 ///
 /// [`Table::components`]: super::Table::components
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]

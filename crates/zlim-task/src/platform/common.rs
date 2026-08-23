@@ -31,7 +31,7 @@ thread_local! {
 /// [`tick`]: Self::tick
 /// [`try_tick`]: Self::try_tick
 ///
-/// This executor is typically driven by a `TaskPool` that handles scheduling automatically.
+/// Driven by `TaskPool::scope`, worker threads, or [`run_local`](crate::run_local).
 ///
 /// # Deadlock Warning
 ///
@@ -168,7 +168,10 @@ static MAINEX: MainExecutor = MainExecutor {
 /// A global, thread-safe executor for the main thread.
 ///
 /// This executor can receive tasks from any thread (via `spawn`) and execute them
-/// on the main thread. It uses a concurrent queue and atomic waker to handle
+/// on the thread that drives it. In multi-threaded mode that is the main thread —
+/// a dedicated fake one unless [`set_main_thread`](crate::set_main_thread) was
+/// called up front — and applications hand main-thread work to it via
+/// `spawn_to_main`. It uses a concurrent queue and atomic waker to handle
 /// cross-thread submissions.
 ///
 /// Tasks are **not** executed immediately upon submission. They are queued and will only
@@ -178,7 +181,9 @@ static MAINEX: MainExecutor = MainExecutor {
 /// [`tick`]: Self::tick
 /// [`try_tick`]: Self::try_tick
 ///
-/// This executor is typically driven by a `TaskPool` that handles scheduling automatically.
+/// Driven by the main thread — the dedicated fake one, or the thread marked
+/// by [`set_main_thread`](crate::set_main_thread) — or by `run_local` /
+/// `scope` in single-threaded mode.
 ///
 /// # Deadlock Warning
 ///
@@ -259,13 +264,11 @@ impl MainExecutor {
     ///
     /// Returns `true` if a task was executed, `false` if the queue was empty.
     ///
-    /// This must be called from the main thread.
+    /// Thread-safe: may be called from any thread, e.g. by
+    /// [`run_local`](crate::run_local) or a scope.
     #[cfg(not(target_family = "wasm"))] // wasm: `run_local` does nothing
     #[inline]
     pub fn try_tick() -> bool {
-        #[cfg(debug_assertions)]
-        assert_is_main_thread();
-
         match MAINEX.queue.pop() {
             Some(runnable) => {
                 runnable.run();
@@ -280,12 +283,12 @@ impl MainExecutor {
     /// If the queue is empty, this function registers the current waker and waits
     /// until a task is submitted from any thread.
     ///
-    /// This must be called from the main thread.
+    /// The thread that drives this executor executes the dequeued tasks on
+    /// itself. In multi-threaded mode it is driven by the dedicated fake
+    /// main thread started by the `TaskPool` machinery (see
+    /// [`TaskPool`](crate::TaskPool)).
     pub async fn tick() {
         fn poll_tick(ctx: &mut Context<'_>) -> Poll<Runnable> {
-            #[cfg(debug_assertions)]
-            assert_is_main_thread();
-
             MAINEX.waker.register(ctx.waker());
             match MAINEX.queue.pop() {
                 Some(r) => Poll::Ready(r),
@@ -298,10 +301,12 @@ impl MainExecutor {
 
     /// Runs the executor continuously until a stop signal is received.
     ///
-    /// Processes queued tasks in a loop on the main thread. When `stop_signal`
+    /// Processes queued tasks in a loop on the current thread. When `stop_signal`
     /// completes, this function returns the signal's output.
     ///
-    /// This must be called from the main thread.
+    /// In multi-threaded mode this is driven by the dedicated fake main
+    /// thread started by the `TaskPool` machinery (see
+    /// [`TaskPool`](crate::TaskPool)).
     pub async fn run<T>(stop_signal: impl Future<Output = T>) -> T {
         let tick_forever = async {
             loop {
@@ -310,32 +315,5 @@ impl MainExecutor {
         };
 
         tick_forever.or(stop_signal).await
-    }
-}
-
-#[inline]
-#[track_caller]
-#[cfg(debug_assertions)]
-fn assert_is_main_thread() {
-    // Currently only tested on the following platforms.
-    #[cfg(any(
-        target_os = "android",
-        target_os = "windows",
-        target_os = "linux",
-        target_os = "macos",
-    ))]
-    {
-        use ::std::sync::LazyLock;
-        use ::std::thread::{ThreadId, current};
-
-        static ID: LazyLock<ThreadId> = LazyLock::new(|| current().id());
-        let main: ThreadId = *ID;
-        let current: ThreadId = current().id();
-
-        assert_eq! {
-            main, current,
-            "The MainExecutor must be ticked on the Main-Thread({:?}). Current: {:?} .",
-            main, current,
-        }
     }
 }

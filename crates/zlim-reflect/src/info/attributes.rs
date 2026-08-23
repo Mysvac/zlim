@@ -1,6 +1,7 @@
 use core::any::TypeId;
 use core::panic::Location;
 
+use zlim_log as log;
 use zlim_utils::mem::Global;
 use zlim_utils::vec::SmallVec;
 
@@ -59,7 +60,7 @@ impl AttributesBuilder {
         if self.buffer.iter().any(|&r| r.type_id() == id) {
             ::core::hint::cold_path();
             log::warn!(
-                "Duplicate attributes: `{}`, `{}`",
+                "Duplicate attributes: `{}`.\n\t`{}`",
                 T::IDENT,
                 Location::caller()
             );

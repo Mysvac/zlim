@@ -6,9 +6,10 @@ struct Int(u32);
 
 collect!(Int);
 
+submit!(Int(10) => Int as ITEM);
+
 #[test]
 fn is_submitted() {
-    submit!(Int(10) => Int as ITEM);
     assert!(ITEM.is_submitted());
 }
 

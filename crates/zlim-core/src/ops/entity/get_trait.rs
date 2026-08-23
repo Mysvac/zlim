@@ -1,3 +1,5 @@
+//! The `GetComponents` access trait and its implementations.
+
 use core::any::TypeId;
 
 use crate::borrow::{Mut, Ref};
@@ -5,8 +7,48 @@ use crate::component::Component;
 use crate::table::{Table, TableRow};
 use crate::tick::Tick;
 
+/// Internal trait describing a component access pattern that can be read
+/// from a [`Table`] row.
+///
+/// Implemented for every [`Component`] and for tuples of components, which
+/// is what allows the entity-handle methods ([`Entity::get`],
+/// [`Entity::get_ref`], [`Entity::get_mut`], …) to accept both single
+/// components and bundles.
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::derive::Component;
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Position { x: f32, y: f32 }
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Name(&'static str);
+///
+/// let mut world = World::alloc();
+/// let entity = world.spawn((Position { x: 1.0, y: 2.0 }, Name("hero")), None);
+///
+/// // Single component...
+/// assert_eq!(entity.get::<Position>().unwrap().x, 1.0);
+///
+/// // ...or a whole tuple at once.
+/// let (pos, name) = entity.get::<(Position, Name)>().unwrap();
+/// assert_eq!(pos, &Position { x: 1.0, y: 2.0 });
+/// assert_eq!(name, &Name("hero"));
+/// ```
+///
 /// # Safety
-/// Internal Trait
+///
+/// Implementors must ensure that every reference produced by the accessor
+/// methods is derived exclusively from the passed `table` borrow and the
+/// requested `table_row`.
+///
+/// [`Table`]: crate::table::Table
+/// [`Entity::get`]: crate::ops::Entity::get
+/// [`Entity::get_ref`]: crate::ops::Entity::get_ref
+/// [`Entity::get_mut`]: crate::ops::Entity::get_mut
 pub unsafe trait GetComponents {
     /// Raw shared output (no change wrapper).
     type Raw<'a>;
@@ -21,13 +63,13 @@ pub unsafe trait GetComponents {
     /// Gets the raw shared form of this component pattern.
     ///
     /// # Safety
-    /// - TableRow must in bound.
+    /// - The given `TableRow` must be in bounds for `table`.
     unsafe fn get<'a>(table: &'a Table, table_row: TableRow) -> Option<Self::Raw<'a>>;
 
     /// Gets the change-aware shared form of this component pattern.
     ///
     /// # Safety
-    /// - TableRow must in bound.
+    /// - The given `TableRow` must be in bounds for `table`.
     unsafe fn get_ref<'a>(
         table: &'a Table,
         table_row: TableRow,
@@ -38,7 +80,7 @@ pub unsafe trait GetComponents {
     /// Gets the change-aware mutable form of this component pattern.
     ///
     /// # Safety
-    /// - TableRow must in bound.
+    /// - The given `TableRow` must be in bounds for `table`.
     /// - Types should not be duplicated (mutable references to individual
     ///   types should not be obtained repeatedly).
     unsafe fn get_mut<'a>(

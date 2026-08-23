@@ -19,9 +19,3 @@ pub use hasher::{FixedState, NoopState, SparseState};
 pub use map::HashMap;
 pub use set::HashSet;
 pub use table::HashTable;
-
-// -----------------------------------------------------------------------------
-// Re-export crates
-
-pub use foldhash;
-pub use hashbrown;

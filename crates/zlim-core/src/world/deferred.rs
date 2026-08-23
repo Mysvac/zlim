@@ -25,7 +25,7 @@ use super::{World, WorldCell};
 /// - enqueue structural changes through `Commands`
 /// - perform limited direct mutable access to entities/resources
 ///
-/// Conceptually, it wraps an [`WorldCell`] and exposes an API surface that is
+/// Conceptually, it wraps a [`WorldCell`] and exposes an API surface that is
 /// convenient for command/deferred execution paths.
 ///
 /// Key properties:
@@ -38,6 +38,38 @@ use super::{World, WorldCell};
 /// - Works well in places where query initialization or full structural setup
 ///   should happen earlier on `&mut World`, while runtime code only consumes
 ///   pre-registered state.
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// struct Position {
+///     x: f32,
+///     y: f32,
+/// }
+///
+/// let mut world = World::alloc();
+/// world.spawn(Position { x: 1.0, y: 2.0 }, None);
+///
+/// let mut deferred = world.deferred();
+///
+/// // Read access via `Deref<Target = World>`.
+/// assert_eq!(deferred.entity_count(), 1);
+///
+/// // Enqueue deferred structural changes instead of mutating directly.
+/// deferred.commands().spawn(Position { x: 3.0, y: 4.0 }, None);
+///
+/// // Commands are only applied once the world is flushed.
+/// drop(deferred);
+/// world.flush();
+///
+/// // Both entities are now spawned; query to confirm.
+/// let total: f32 = world.query::<&Position, ()>().iter().map(|p| p.x).sum();
+/// assert_eq!(total, 4.0);
+/// ```
 #[repr(transparent)]
 pub struct DeferredWorld<'w>(WorldCell<'w>);
 

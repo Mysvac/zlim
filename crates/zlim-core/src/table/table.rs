@@ -1,3 +1,5 @@
+//! Dense columnar table storage.
+
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
 use core::any::TypeId;
@@ -6,6 +8,7 @@ use core::num::NonZeroUsize;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr;
 
+use zlim_log as log;
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
 use zlim_utils::debug::DebugLocation;
 use zlim_utils::ext::TypeMap;
@@ -108,20 +111,74 @@ type HookItem = (ComponentId, ComponentHook);
 
 /// A dense columnar storage table for ECS components.
 ///
-/// |  TableId  | Component A | Component B | Component C | .. |
+/// Every table belongs to one *archetype*: a fixed set of component types.
+/// All entities in a table share exactly that component set, which is what
+/// makes the storage dense — each column stores one component type for every
+/// row, with no per-entity type tags or gaps.
+///
+/// |           | Component A | Component B | Component C | .. |
 /// |-----------|-------------|-------------|-------------|----|
 /// | Entity A  | /* data */  | /* data */  | /* data */  | .. |
 /// | Entity B  | /* data */  | /* data */  | /* data */  | .. |
 /// | Entity C  | /* data */  | /* data */  | /* data */  | .. |
 /// | ........  | ..........  | ..........  | ..........  | .. |
 ///
-/// This structure provides optimal cache locality during iteration.
+/// Rows are identified by [`TableRow`] and columns by [`TableCol`]; the
+/// column order always matches the component list returned by
+/// [`Table::components`].  Iterating a column (or a whole table) touches
+/// contiguous memory, which provides optimal cache locality.
+///
+/// Tables are created and owned by the world's [`Tables`] registry — users
+/// never construct a [`Table`] directly.  An entity moves between tables
+/// whenever it gains or loses components; see [`Table::move_row`].
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+/// use zlim_core::table::Tables;
+///
+/// #[derive(TypePath, Component, Clone)]
+/// struct Position {
+///     x: f32,
+///     y: f32,
+/// }
+///
+/// #[derive(TypePath, Component, Clone)]
+/// struct Health {
+///     value: u32,
+/// }
+///
+/// let mut world = World::alloc();
+///
+/// // Both entities share the same component set, so they live in the same
+/// // table.  An entity with a different set would live in another table.
+/// world.spawn((Position { x: 0.0, y: 0.0 }, Health { value: 100 }), None);
+/// world.spawn((Position { x: 1.0, y: 2.0 }, Health { value: 50 }), None);
+///
+/// let tables: &Tables = world.tables();
+///
+/// // Two entities of the same archetype share one table; the always-
+/// // present empty table (entities without components) makes two total.
+/// assert_eq!(tables.len(), 2);
+///
+/// for table in tables.iter() {
+///     // Every row in this table has exactly `table.components()`.
+///     for &_entity in table.entities() {
+///         // ...
+///     }
+/// }
+/// ```
+///
+/// [`Tables`]: crate::table::Tables
+#[repr(C)]
 pub struct Table {
-    id: TableId,
     columns: Box<[Column]>,
-    compnents: &'static [ComponentId],
+    components: &'static [ComponentId],
     mapper: TypeMap<TableCol>,
     entities: Vec<EntityId>,
+    id: TableId,
     // Cached component hooks.
     on_add: &'static [HookItem],
     on_clone: &'static [HookItem],
@@ -144,7 +201,7 @@ impl Table {
         Self {
             id: TableId::EMPTY,
             columns: Box::new([]),
-            compnents: &[],
+            components: &[],
             entities: Vec::new(),
             mapper: TypeMap::new(),
             on_add: &[],
@@ -207,7 +264,7 @@ impl Table {
         Self {
             id,
             columns: columns.into_boxed_slice(),
-            compnents: idents,
+            components: idents,
             entities: Vec::new(),
             mapper,
             on_add,
@@ -238,6 +295,12 @@ impl Table {
     pub(crate) fn types(&self) -> impl ExactSizeIterator<Item = TypeId> + '_ {
         self.mapper.keys().copied()
     }
+
+    // Unordered TypeId
+    #[inline(always)]
+    pub(crate) fn type_cols(&self) -> impl ExactSizeIterator<Item = (TypeId, &TableCol)> + '_ {
+        self.mapper.iter()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -247,7 +310,7 @@ impl Debug for Table {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Table")
             .field("id", &self.id)
-            .field("components", &self.compnents)
+            .field("components", &self.components)
             .field("entities", &self.entities)
             .finish()
     }
@@ -282,6 +345,9 @@ impl Table {
     }
 
     /// Returns the entities currently stored in row order.
+    ///
+    /// The order is not stable across removals: swap-removal moves the last
+    /// row into the vacated position, reordering the table.
     #[inline(always)]
     pub fn entities(&self) -> &[EntityId] {
         &self.entities
@@ -292,7 +358,7 @@ impl Table {
     /// All rows in this table contain exactly this component set.
     #[inline(always)]
     pub fn components(&self) -> &'static [ComponentId] {
-        self.compnents
+        self.components
     }
 
     /// Finds the column index for a given component type.
@@ -310,7 +376,7 @@ impl Table {
     /// O(log n) where n is the number of component types
     #[inline]
     pub fn get_table_col(&self, id: ComponentId) -> Option<TableCol> {
-        let index = self.compnents.binary_search(&id).ok()?;
+        let index = self.components.binary_search(&id).ok()?;
         Some(TableCol(index as u32))
     }
 
@@ -319,8 +385,9 @@ impl Table {
     /// # Complexity
     /// O(n) where n is the number of entities
     ///
-    /// Note: This is inefficient and should be avoided. Store the `TableRow`
-    /// returned by `alloc_row()` instead.
+    /// Note: This is inefficient and should be avoided in hot paths.  Store
+    /// the [`TableRow`] returned by [`Table::alloc_row`] (or by the entity
+    /// location) instead.
     #[inline]
     pub fn get_table_row(&self, id: EntityId) -> Option<TableRow> {
         use crate::utils::position_entity;
@@ -328,7 +395,8 @@ impl Table {
         Some(TableRow(index as u32))
     }
 
-    /// Updates change ticks for all components based on the provided check parameters.
+    /// Clamps the change ticks of all components so that stale ticks do not
+    /// read as newer than `now`.
     pub fn clamp_ticks(&mut self, now: Tick) {
         let len = self.entity_count();
         self.columns.iter_mut().for_each(|c| unsafe {
@@ -340,11 +408,11 @@ impl Table {
     pub fn contains_component(&self, id: ComponentId) -> bool {
         // ComponentId is easy to optimize with SIMD, and linear search
         // is faster when the data is less than 100 (release + O3).
-        if self.compnents.len() < 200 {
-            crate::utils::contains_component(id, self.compnents)
+        if self.components.len() < 200 {
+            crate::utils::contains_component(id, self.components)
         } else {
             core::hint::cold_path();
-            self.compnents.binary_search(&id).is_ok()
+            self.components.binary_search(&id).is_ok()
         }
     }
 
@@ -364,7 +432,7 @@ impl Table {
 
 macro_rules! trigger_function {
     ($name1:ident, $name2:ident, $field:ident) => {
-        #[doc = concat!("Returns cached hooks triggered when a component is `", stringify!($field),  "` .")]
+        #[doc = concat!("Returns cached hooks triggered when a component is `", stringify!($field), "`.")]
         #[inline(always)]
         pub fn $name1(&self) -> &'static [HookItem] {
             self.$field
@@ -421,8 +489,8 @@ impl Table {
     /// Returns a reference to a column by its index.
     ///
     /// # Safety
-    /// - `index` must be a valid column index obtained from `get_table_col()`
-    /// - Returned reference must not outlive the table borrow
+    /// - `index` must be a valid column index for this table, as obtained
+    ///   from [`Table::get_table_col`] or [`Table::get_type_col`]
     #[inline(always)]
     pub unsafe fn get_column(&self, index: TableCol) -> &Column {
         debug_assert!((index.0 as usize) < self.columns.len());
@@ -432,12 +500,23 @@ impl Table {
     /// Returns a mutable reference to a column by its index.
     ///
     /// # Safety
-    /// - `index` must be a valid column index obtained from `get_table_col()`
+    /// - `index` must be a valid column index for this table, as obtained
+    ///   from [`Table::get_table_col`] or [`Table::get_type_col`]
     /// - No other references to the column may exist
     #[inline(always)]
     pub unsafe fn get_column_mut(&mut self, index: TableCol) -> &mut Column {
         debug_assert!((index.0 as usize) < self.columns.len());
         unsafe { self.columns.get_unchecked_mut(index.0 as usize) }
+    }
+
+    /// Return `EntityId` in the given row.
+    ///
+    /// # Safety
+    /// - `table_row` must be a valid row index    
+    #[inline(always)]
+    pub unsafe fn get_entity(&self, table_row: TableRow) -> EntityId {
+        debug_assert!((table_row.0 as usize) < self.entity_count());
+        unsafe { *self.entities.get_unchecked(table_row.0 as usize) }
     }
 
     /// Returns a pointer to component data at the specified row and column.
@@ -706,7 +785,6 @@ impl Table {
     /// # Safety
     /// - `table_row` and `table_col` must be valid
     /// - The component slot must be initialized
-    /// - Caller must ensure the returned `OwningPtr` is properly handled
     #[inline]
     pub unsafe fn drop_item(&mut self, table_col: TableCol, table_row: TableRow) {
         debug_assert!((table_row.0 as usize) < self.entity_count());
@@ -722,7 +800,12 @@ impl Table {
 // Shrink
 
 impl Table {
-    /// Reduce memory.
+    /// Reduces the memory footprint of the table.
+    ///
+    /// The allocation is shrunk only when it is large enough to matter: if
+    /// the table is empty the storage is fully deallocated, and otherwise
+    /// the capacity is trimmed to a power-of-two near the current entity
+    /// count.  This is a no-op for small tables.
     pub fn shrink(&mut self) {
         let len = self.entity_count();
         let cap = self.capacity();
@@ -754,7 +837,6 @@ impl Table {
             }
 
             ::core::mem::forget(abort_guard);
-            return;
         }
     }
 }
@@ -765,9 +847,31 @@ impl Table {
 impl Table {
     /// Allocates space for a new entity and returns its row index.
     ///
+    /// The entity is appended to the table, growing the storage when
+    /// necessary.  The component slots of the returned row are
+    /// **uninitialized**: every component of this table must be written with
+    /// [`Table::init_item`] before the row is observed by anything else.
+    ///
     /// # Safety
-    /// - The entity must be unique within this table
-    /// - The returned row is valid until the entity is removed
+    /// - The entity must not already be present in this table
+    /// - The returned row is valid until the entity is removed or moved
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::table::{Table, TableRow};
+    ///
+    /// // `alloc_row` is the low-level primitive behind spawning entities.
+    /// // It is normally called by the entity storage layer, which already
+    /// // holds a `&mut Table` from the world's `Tables` registry.
+    /// let table: &mut Table = /* obtained from the registry */;
+    /// let entity: EntityId = /* a freshly allocated entity */;
+    ///
+    /// // Append the entity and get its row.  The row's component slots are
+    /// // uninitialized until every component is written.
+    /// let row: TableRow = unsafe { table.alloc_row(entity) };
+    /// ```
     #[inline]
     #[must_use = "The returned row should be initialized or dropped."]
     pub unsafe fn alloc_row(&mut self, entity: EntityId) -> TableRow {
@@ -813,7 +917,20 @@ impl Table {
 // Dealloc
 
 impl Table {
-    /// Removes an entity by swapping with the last row and dropping its components.
+    /// Removes an entity from the table by swapping it with the last row.
+    ///
+    /// The entity at `table_row` is removed using swap-remove semantics: the
+    /// last row is moved into its place, so the removal is O(1) per column
+    /// but reorders the table.  The returned [`MovedEntityRow`] reports which
+    /// entity (if any) was displaced into `table_row`, so callers can update
+    /// their row bookkeeping.
+    ///
+    /// The const parameter `DROP` controls what happens to the removed
+    /// entity's components that exist only in this table:
+    /// - `DROP = true` — the components are dropped in place;
+    /// - `DROP = false` — the components are forgotten (not dropped); use
+    ///   this when the components are being handled (or moved) elsewhere,
+    ///   e.g. during despawn-without-drop.
     ///
     /// # Safety
     /// - `table_row` must be a valid, initialized row
@@ -856,10 +973,48 @@ impl Table {
 impl Table {
     /// Moves an entity to another table.
     ///
+    /// This is the low-level primitive behind component insertion and
+    /// removal: the entity at `table_row` is swap-removed from this table,
+    /// appended to `other`, and every component present in both tables is
+    /// moved across.  Components that exist only in this table are either
+    /// dropped (`DROP = true`) or forgotten (`DROP = false`), matching the
+    /// semantics of [`Table::dealloc_row`].  Components of `other` that the
+    /// source table lacks (e.g. newly inserted ones) are not touched here —
+    /// the caller initializes them after the move.
+    ///
+    /// # Return value
+    ///
+    /// Returns a tuple `(MovedEntityRow, TableRow)`:
+    /// - `MovedEntityRow` describes the displacement in the **source** table:
+    ///   which entity was swapped into the vacated row (if any), so callers
+    ///   can update the entity tree;
+    /// - the `TableRow` is the entity's new row in `other`.
+    ///
     /// # Safety
     /// - `table_row` must be a valid, initialized row in this table
-    /// - `other` must be a valid table
-    /// - Components are properly moved or dropped based on presence in destination
+    /// - `other` must be a different, valid table
+    /// - `DROP` must match how the caller handles components that are absent
+    ///   from `other` (dropped or forgotten)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::table::{MovedEntityRow, Table, TableRow};
+    ///
+    /// // `move_row` is normally called by the entity storage layer, which
+    /// // resolves the destination table via the world's `Tables` registry
+    /// // and holds `&mut Table` handles for both sides.
+    /// let source: &mut Table = /* obtained from the registry */;
+    /// let dest: &mut Table = /* obtained from the registry */;
+    /// let row: TableRow = /* the entity's row in `source` */;
+    ///
+    /// let (moved, new_row): (MovedEntityRow, TableRow) =
+    ///     unsafe { source.move_row::<true>(row, dest) };
+    ///
+    /// // `moved` tells us which entity (if any) now occupies the vacated
+    /// // source row; `new_row` is the entity's row inside `dest`.
+    /// ```
     #[must_use = "The moved entity should be handled."]
     pub unsafe fn move_row<const DROP: bool>(
         &mut self,
@@ -877,7 +1032,7 @@ impl Table {
                 let new_row = other.alloc_row(moved);
                 let dst = new_row.0 as usize;
 
-                self.compnents
+                self.components
                     .iter()
                     .zip(self.columns.iter_mut())
                     .for_each(|(&id, col)| {
@@ -905,7 +1060,7 @@ impl Table {
                 let new_row = other.alloc_row(moved);
                 let dst = new_row.0 as usize;
 
-                self.compnents
+                self.components
                     .iter()
                     .zip(self.columns.iter_mut())
                     .for_each(|(&id, col)| {

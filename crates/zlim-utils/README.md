@@ -1,5 +1,3 @@
-# Platform Independent Extensions
-
 Foundation utilities for the zlim engine.
 
 ## num
@@ -37,12 +35,11 @@ Foundation utilities for the zlim engine.
 
 - Deterministic `HashMap` and `HashSet` backed by `hashbrown`, defaulting to a fixed seed (`FixedState`).
 - Custom hashers: `NoopState` (identity hash), `SparseState` (Fibonacci hash for ECS entity IDs).
-- Re-exports `foldhash` and `hashbrown`.
 
 ## sync
 
 - `SpinLock` — busy-wait mutual exclusion with exponential backoff.
-- `SegQueue`, `ArrayQueue`, `ListQueue` — lock-free concurrent queues (ported from crossbeam).
+- `SegQueue`, `ArrayQueue` — lock-free concurrent queues (ported from crossbeam).
 - `Backoff`, `OnceFlag`, `Parallel` — synchronization helpers.
 
 ## ext
@@ -73,6 +70,4 @@ Foundation utilities for the zlim engine.
   diagnostic messages.  Carries real caller info in debug builds; zero-size
   placeholder in release builds.
 
-## License
-
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
+---

@@ -3,9 +3,12 @@
 
 use zlim_core::derive::Resource;
 use zlim_core::resource::Resource as ResourceTrait;
+use zlim_core::resource::ResourceDB;
 use zlim_core::tick::DetectChanges;
 use zlim_core::world::World;
 use zlim_reflect::TypePath;
+
+use serde::{Deserialize, Serialize};
 
 // -----------------------------------------------------------------------------
 // Test types
@@ -13,21 +16,21 @@ use zlim_reflect::TypePath;
 
 #[derive(TypePath, Resource, Debug, PartialEq, Eq)]
 struct Health {
-    #[editor(mutable)]
+    #[editor(get, set)]
     value: u32,
 }
 
 #[derive(TypePath, Resource, Debug, PartialEq, Eq)]
 struct Score {
-    #[editor(readonly)]
+    #[editor(get)]
     points: u64,
 }
 
 #[derive(TypePath, Resource)]
 struct Mixed {
-    #[editor(mutable)]
+    #[editor(get, set)]
     hp: u32,
-    #[editor(readonly)]
+    #[editor(get)]
     id: u64,
     _hidden: String,
 }
@@ -40,14 +43,14 @@ struct NoEditor {
 
 #[derive(TypePath, Resource)]
 struct TupleRes(
-    #[editor(mutable)] f32,
-    #[editor(mutable)] f32,
-    #[editor(readonly)] f32,
+    #[editor(get, set)] f32,
+    #[editor(get, set)] f32,
+    #[editor(get)] f32,
 );
 
 #[derive(TypePath, Resource)]
 struct GenericRes<T: Send + Sync + 'static> {
-    #[editor(mutable)]
+    #[editor(get, set)]
     data: T,
 }
 
@@ -55,81 +58,140 @@ struct GenericRes<T: Send + Sync + 'static> {
 // Derive macro tests
 // -----------------------------------------------------------------------------
 
+/// A resource registered with serialization support.
+#[derive(TypePath, Resource, Serialize, Deserialize)]
+#[resource(serialize)]
+struct SerializeRes(u32);
+
+#[test]
+fn derive_serialize_flag() {
+    let db = ResourceDB::of::<SerializeRes>();
+    assert!(db.serialize.is_some());
+    assert!(db.deserialize.is_some());
+    assert!(SerializeRes::SERIALIZE);
+    // The default is `false` for unmarked resources.
+    assert!(!Health::SERIALIZE);
+}
+
 #[test]
 fn derive_fields_const() {
-    assert_eq!(Mixed::FIELDS, &["hp", "id"]);
-    assert_eq!(Mixed::MUTABLE_FIELDS, &["hp"]);
-    assert_eq!(Mixed::READONLY_FIELDS, &["id"]);
+    assert_eq!(Mixed::GETTER, &["hp", "id"]);
+    assert_eq!(Mixed::SETTER, &["hp"]);
 }
 
 #[test]
 fn derive_no_editor_defaults() {
-    assert_eq!(NoEditor::FIELDS.len(), 0);
-    assert_eq!(NoEditor::MUTABLE_FIELDS.len(), 0);
-    assert_eq!(NoEditor::READONLY_FIELDS.len(), 0);
+    assert_eq!(NoEditor::GETTER.len(), 0);
+    assert_eq!(NoEditor::SETTER.len(), 0);
 }
 
 #[test]
-fn derive_field_access_mutable() {
+fn derive_get_field() {
     let m = Mixed {
         hp: 42,
         id: 7,
         _hidden: "x".into(),
     };
-    let f = m.field("hp").unwrap();
+    let f = m.get_field("hp").unwrap();
     assert_eq!(*f.downcast_ref::<u32>().unwrap(), 42);
 }
 
 #[test]
-fn derive_field_access_readonly() {
+fn derive_get_field_getter_only() {
     let m = Mixed {
         hp: 42,
         id: 7,
         _hidden: "x".into(),
     };
-    let f = m.field("id").unwrap();
+    let f = m.get_field("id").unwrap();
     assert_eq!(*f.downcast_ref::<u64>().unwrap(), 7);
 }
 
 #[test]
-fn derive_field_unmarked_not_exposed() {
+fn derive_get_field_unmarked_not_exposed() {
     let m = Mixed {
         hp: 0,
         id: 0,
         _hidden: "secret".into(),
     };
-    assert!(m.field("_hidden").is_none());
-    assert!(m.field("nonexistent").is_none());
+    assert!(m.get_field("_hidden").is_none());
+    assert!(m.get_field("nonexistent").is_none());
 }
 
 #[test]
-fn derive_field_mut_only_mutable() {
+fn derive_set_field() {
     let mut m = Mixed {
         hp: 10,
         id: 3,
         _hidden: "a".into(),
     };
-    {
-        let f = m.field_mut("hp").unwrap();
-        *f.downcast_mut::<u32>().unwrap() = 99;
-    }
+    m.set_field("hp", &99u32).unwrap();
     assert_eq!(m.hp, 99);
 
-    // readonly field not accessible via field_mut
-    assert!(m.field_mut("id").is_none());
-    assert!(m.field_mut("_hidden").is_none());
+    // getter-only fields are not writable.
+    assert!(m.set_field("id", &7u64).is_err());
+    assert!(m.set_field("_hidden", &"x".to_string()).is_err());
+}
+
+#[test]
+fn derive_set_field_errors() {
+    let mut m = Mixed {
+        hp: 10,
+        id: 3,
+        _hidden: "a".into(),
+    };
+
+    // Missing field.
+    let err = m.set_field("nonexistent", &0u32).unwrap_err();
+    assert!(
+        err.contains("Type `Mixed` is missing field `nonexistent`"),
+        "{err}"
+    );
+
+    // Apply failure — the wrong reflected type is left unchanged.
+    let err = m.set_field("hp", &"not a number".to_string()).unwrap_err();
+    assert!(
+        err.contains("Type `Mixed` failed to assign field `hp`"),
+        "{err}"
+    );
+    assert_eq!(m.hp, 10);
 }
 
 #[test]
 fn derive_tuple_struct() {
-    assert_eq!(TupleRes::FIELDS, &["0", "1", "2"]);
-    assert_eq!(TupleRes::MUTABLE_FIELDS, &["0", "1"]);
-    assert_eq!(TupleRes::READONLY_FIELDS, &["2"]);
+    assert_eq!(TupleRes::GETTER, &["0", "1", "2"]);
+    assert_eq!(TupleRes::SETTER, &["0", "1"]);
 
     let mut t = TupleRes(1.0, 2.0, 3.0);
-    assert_eq!(*t.field("0").unwrap().downcast_ref::<f32>().unwrap(), 1.0);
-    assert_eq!(*t.field("2").unwrap().downcast_ref::<f32>().unwrap(), 3.0);
-    assert!(t.field_mut("2").is_none());
+    assert_eq!(
+        *t.get_field("0").unwrap().downcast_ref::<f32>().unwrap(),
+        1.0
+    );
+    assert_eq!(
+        *t.get_field("2").unwrap().downcast_ref::<f32>().unwrap(),
+        3.0
+    );
+    assert!(t.set_field("2", &9.0f32).is_err());
+}
+
+// -----------------------------------------------------------------------------
+// Trait default implementations
+// -----------------------------------------------------------------------------
+
+/// A resource with no derive — exercises the trait defaults directly.
+#[derive(TypePath)]
+struct NoFields;
+
+impl ResourceTrait for NoFields {}
+
+#[test]
+fn default_field_behavior() {
+    let mut r = NoFields;
+    assert!(r.get_field("anything").is_none());
+
+    let err = r.set_field("anything", &0u32).unwrap_err();
+    assert!(err.contains("NoFields"), "{err}");
+    assert!(err.contains("exposes no fields"), "{err}");
 }
 
 #[test]
@@ -192,7 +254,7 @@ fn drop_resource() {
 #[test]
 fn resource_panics_on_missing() {
     let world = World::alloc();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
         world.resource::<Health>();
     }));
     assert!(result.is_err());
@@ -231,7 +293,7 @@ fn resource_mut_change_detection() {
 #[test]
 fn resource_mut_panics_on_missing() {
     let mut world = World::alloc();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
         world.resource_mut::<Health>();
     }));
     assert!(result.is_err());

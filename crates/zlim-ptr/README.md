@@ -1,33 +1,32 @@
-# Pointer extension
+Lightweight pointer wrappers for internal code.
 
-Lightweight pointer wrappers for internal runtime code.
+This crate consists of two parts: type-erased references, and slices that store no length.
 
-This crate provides small, type-erased pointer utilities used by ECS/reflection internals to reduce data movement and keep APIs explicit about safety boundaries.
+## Type-Erased References
 
-## Modules
+- `Ptr<'a>`: type-erased shared pointer, conceptually similar to `&'a dyn Any`.
 
-- `Ptr<'a>`: type-erased shared pointer, conceptually similar to `&'a T`.
-- `PtrMut<'a>`: type-erased exclusive pointer, conceptually similar to `&'a mut T`.
-- `OwningPtr<'a>`: type-erased ownership pointer for read/drop handoff patterns.
-- `Slice<'a, T>`: thin shared slice pointer (stores pointer only, no length).
-- `SliceMut<'a, T>`: thin mutable slice pointer (stores pointer only, no length).
+- `PtrMut<'a>`: type-erased exclusive pointer, conceptually similar to `&'a mut dyn Any`.
 
-## Safety
+- `OwningPtr<'a>`: type-erased ownership pointer for read/drop handoff patterns, similar to `&'a mut MaybeUninit<_>`.
 
-These types are intentionally low-level. The compiler enforces lifetime shape through `PhantomData`, but callers still own key runtime responsibilities:
+Unlike `dyn Any`, these three pointers erase the type completely — like `NonNull<()>` — and cannot be inspected through RTTI.
 
-1. Use the correct target type when casting from erased pointers.
-2. Ensure pointer alignment for the target type.
-3. Ensure pointee validity and initialization state.
-4. Respect aliasing/exclusivity rules for mutable access.
+They serve three main purposes:
 
-In debug builds, prefer calling alignment checks before unsafe casts.
+1. In ECS data storage implementations, function parameters prefer passing pointers over the full data; data is only transferred in deep functions (e.g. via `core::ptr::copy`), avoiding meaningless copies on the stack.
 
-## Usage
+2. Type erasure avoids code bloat, letting the ECS low-level storage share a single implementation.
 
-Shared erased pointer:
+3. Adding a lifetime parameter on top of the pointer provides a degree of safety.
 
-```rust
+One extra note: `OwningPtr` is still just a plain pointer — it is **not** equivalent to `Box<T>`. That is, `OwningPtr` does not free the memory it points to, nor does it automatically call the data's `Drop`.
+
+Semantically, `Ptr` is read-only, `PtrMut` is mutable, while `OwningPtr` permits "consuming" and "overwriting". `OwningPtr` usually points to a value wrapped in `ManuallyDrop`, so ownership of the value can be transferred out.
+
+**Example:**
+
+```rust, ignore
 use zlim_ptr::Ptr;
 
 let x = 10_i32;
@@ -37,20 +36,44 @@ let rx = unsafe { ptr.deref::<i32>() };
 assert_eq!(*rx, 10);
 ```
 
-Owning handoff:
-
-```rust
-use core::mem::ManuallyDrop;
+```rust, ignore
 use zlim_ptr::OwningPtr;
 
-let mut value = ManuallyDrop::new(42_i32);
-let ptr = OwningPtr::from_value(&mut value);
+let value = String::from("42");
 
-let out = unsafe { ptr.read::<i32>() };
-assert_eq!(out, 42);
+zlim_ptr::into_owning!(value as ptr);
+// ↑ equivalent to ↓
+// let value = ManuallyDrop::new(value);
+// let ptr = OwningPtr::from_value(&mut value);
+
+let out = unsafe { ptr.read::<String>() };
+// If `ptr.read()` is not called, the string's memory is never freed — a memory leak.
+
+assert_eq!(out, "42");
 ```
 
-Thin mutable slice:
+## Slices Without Length
+
+- `Slice<'a, T>`: thin shared slice pointer (stores only a pointer, no length).
+
+- `SliceMut<'a, T>`: thin mutable slice pointer (stores only a pointer, no length).
+
+These two types are used to reduce storage when the length is already known.
+
+For example, the ECS implementation may have a type like this:
+
+```rust, ignore
+struct DataSlice<'a, T> {
+    len: usize,
+    data: Slice<'a, T>,
+    added_time: Slice<'a, Tick>,
+    changed_time: Slice<'a, Tick>,
+}
+```
+
+In the example above, the three slices share a single length, so the struct saves the size of two `usize`.
+
+**Example:**
 
 ```rust
 use zlim_ptr::SliceMut;
@@ -64,6 +87,6 @@ unsafe {
 }
 ```
 
-## License
+---
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
+This crate's code is adapted from bevy_ptr.

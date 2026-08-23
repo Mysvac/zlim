@@ -1,4 +1,13 @@
-//! Entity Clone Implementation
+//! Entity cloning.
+//!
+//! This module implements the machinery for cloning entities:
+//!
+//! - [`ComponentCloner`] — per-component-type clone strategy (byte copy,
+//!   [`Clone`], or fully custom).
+//! - [`CloneSource`] / [`CloneTarget`] / [`CloneValue`] — type-erased views
+//!   handed to cloners for reading, writing, and deferred mutation.
+//! - [`CloneContext`] — per-step state plus deferred remap/mutate callbacks.
+//! - [`EntityCloner`] — the high-level entry point driving a full clone run.
 
 use core::any::TypeId;
 use core::ptr::NonNull;
@@ -22,7 +31,11 @@ use crate::world::{World, WorldCell};
 
 /// Type-erased read-only view of one source component value.
 ///
-/// This is primarily used by custom component cloners.
+/// Wraps a shared pointer to the source component together with its
+/// [`TypeId`], and is primarily used by custom component cloners to read the
+/// value being cloned via [`Self::read`].
+///
+/// [`TypeId`]: core::any::TypeId
 pub struct CloneSource<'a> {
     ptr: Ptr<'a>,
     type_id: TypeId,
@@ -32,8 +45,13 @@ pub struct CloneSource<'a> {
 
 /// Type-erased write target for one cloned component value.
 ///
-/// The underlying slot may start as uninitialized memory and must be
-/// initialized by the active cloner before returning.
+/// Wraps an owning pointer to the destination slot together with its
+/// [`TypeId`]. The underlying slot may start as uninitialized memory and must
+/// be initialized by the active cloner before returning, either via
+/// [`Self::write`] or — when writing through the raw pointer directly — via
+/// [`Self::assume_initialized`].
+///
+/// [`TypeId`]: core::any::TypeId
 pub struct CloneTarget<'a> {
     ptr: OwningPtr<'a>,
     type_id: TypeId,
@@ -44,8 +62,11 @@ pub struct CloneTarget<'a> {
 
 /// Type-erased mutable view used in deferred clone callbacks.
 ///
-/// This is used after plain cloning, when source-target entity mapping is
-/// fully available.
+/// This is used after plain cloning, when the source-to-target
+/// [`EntityMap`] is fully available, to remap embedded entity references or
+/// apply custom post-processing via [`Self::mutate`].
+///
+/// [`EntityMap`]: crate::entity::EntityMap
 pub struct CloneValue<'a> {
     ptr: PtrMut<'a>,
     type_id: TypeId,
@@ -181,9 +202,12 @@ impl CloneValue<'_> {
 
 /// Type alias for the entity-source-to-target mapping used during cloning.
 ///
-/// Maps each source [`EntityId`] to its cloned counterpart. This mapping is
+/// Maps each source [`EntityId`] to its cloned counterpart. The mapping is
 /// built incrementally as entities are cloned and is consumed by deferred
-/// callbacks ( e.g., [`Component::map_entities`] ) for entity remapping.
+/// callbacks (e.g., [`Component::map_entities`]) to remap embedded entity
+/// references.
+///
+/// [`Component::map_entities`]: crate::component::Component::map_entities
 pub type CloneEntityMapper = EntityMap<EntityId>;
 
 struct Callback {
@@ -197,8 +221,12 @@ struct Callback {
 
 /// Per-component context passed through a clone run.
 ///
-/// This exposes source/target entities and provides deferred operations for
-/// entity remapping and post-clone mutation.
+/// Carries the [`ComponentId`] and the source/target entities of the current
+/// clone step, and collects deferred operations for entity remapping and
+/// post-clone mutation. A single context is reused across every component of
+/// every entity in one clone run.
+///
+/// [`ComponentId`]: crate::component::ComponentId
 pub struct CloneContext {
     recursive: bool,
     id: ComponentId,
@@ -227,7 +255,8 @@ impl CloneContext {
     /// Creates a new clone context.
     ///
     /// Pass `recursive = true` when children entities should be recursively
-    /// cloned as part of the operation.
+    /// cloned as part of the operation. The flag is queried by relationship
+    /// cloners through [`Self::recursive`].
     pub(crate) fn new(recursive: bool) -> Self {
         Self {
             recursive,
@@ -260,7 +289,7 @@ impl CloneContext {
         self.id
     }
 
-    /// Returns whether this clone run is in linked mode.
+    /// Returns whether this clone run recursively clones children entities.
     pub fn recursive(&self) -> bool {
         self.recursive
     }
@@ -275,16 +304,26 @@ impl CloneContext {
         self.target
     }
 
-    /// Schedules another entity to be cloned in the same run.
+    /// Schedules another entity to be cloned later in the same run.
     ///
-    /// This is typically used by relationship-target cloners in linked mode.
+    /// This is typically used by relationship-target cloners in linked mode:
+    /// the target entity is enqueued and cloned once the current step
+    /// finishes. Entities that are already cloned or already waiting are
+    /// skipped.
     pub fn defer_clone(&mut self, entity: EntityId) {
         self.deferred.push(entity);
     }
 
     /// Schedules deferred entity-remapping for component type `C`.
     ///
-    /// This calls [`Component::map_entities`] for the cloned component.
+    /// After every target entity has been allocated, the cloned component is
+    /// visited with [`Component::map_entities`] so embedded [`EntityId`]
+    /// references are rewritten from source to target ids. Only call this
+    /// while the context is positioned on component `C` (asserted in debug
+    /// builds).
+    ///
+    /// [`Component::map_entities`]: crate::component::Component::map_entities
+    /// [`EntityId`]: crate::entity::EntityId
     pub fn defer_map_entities<C: Component>(&mut self) {
         #[cfg(debug_assertions)]
         self.assert_type::<C>();
@@ -305,8 +344,47 @@ impl CloneContext {
 
     /// Schedules a custom deferred mutation for component type `C`.
     ///
-    /// This is useful when cloning needs source-target mapping that is only
-    /// available after all target entities have been allocated.
+    /// This is useful when cloning needs the source-to-target mapping that is
+    /// only available after all target entities have been allocated.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
+    /// use zlim_core::clone::ComponentCloner;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone)]
+    /// #[component(cloner = clone_link)]
+    /// struct Link { target: EntityId }
+    ///
+    /// // Call inside a custom cloner, after the target slot is initialized.
+    /// fn clone_link(src: CloneSource, mut dst: CloneTarget, ctx: &mut CloneContext) {
+    ///     let value: &Link = src.read::<Link>();
+    ///     dst.write::<Link>(value.clone());
+    ///
+    ///     // Instead of the default remapping pass, schedule a deferred
+    ///     // mutation that rewrites the entity reference once the
+    ///     // source-to-target map is complete.
+    ///     ctx.defer_mutate::<Link>(|link, mapper| {
+    ///         link.target = mapper.get_mapped(link.target);
+    ///     });
+    /// }
+    ///
+    /// let _ = ComponentCloner::custom(clone_link);
+    ///
+    /// let mut world = World::alloc();
+    /// let target = world.spawn((), None).id();
+    /// let src = world.spawn((Link { target },), None).id();
+    ///
+    /// // Cloning both entities remaps `target` to its cloned counterpart.
+    /// let clones = world.entity_cloner().spawn_clone_batch(&[src, target], false);
+    /// assert_eq!(
+    ///     world.entity_ref(clones[0]).get::<Link>().unwrap().target,
+    ///     clones[1],
+    /// );
+    /// ```
     pub fn defer_mutate<C: Component>(
         &mut self,
         func: impl FnOnce(&mut C, &mut CloneEntityMapper) + Send + 'static,
@@ -335,7 +413,35 @@ impl CloneContext {
 
 /// Strategy object describing how a single component type is cloned.
 ///
-/// Most component types should use [`Self::copyable`] or [`Self::clonable`].
+/// Most component types should use [`Self::copyable`] or [`Self::clonable`];
+/// the `#[derive(Component)]` macro picks one automatically from the
+/// component's traits. Components with custom copy semantics can supply a
+/// manual strategy through [`Self::custom`].
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::clone::ComponentCloner;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+/// #[component(copy)]
+/// struct Position { x: f32, y: f32 }
+///
+/// // `Copy` components clone with a byte-for-byte copy.
+/// let _ = ComponentCloner::copyable::<Position>();
+///
+/// // The strategy is selected per component; clone an entity to see the
+/// // copy in action.
+/// let mut world = World::alloc();
+/// let src = world.spawn((Position { x: 1.0, y: 2.0 },), None).id();
+/// let dst = world.entity_cloner().spawn_clone(src, false);
+/// assert_eq!(
+///     world.entity_ref(dst).get::<Position>(),
+///     Some(&Position { x: 1.0, y: 2.0 }),
+/// );
+/// ```
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
 pub struct ComponentCloner {
@@ -345,7 +451,11 @@ pub struct ComponentCloner {
 impl ComponentCloner {
     /// Creates a cloner that performs a byte-for-byte copy for `Copy` components.
     ///
-    /// If `C::NO_ENTITY` is `false`, deferred entity remapping is queued.
+    /// The source value is copied with `ptr::copy_nonoverlapping`, which is
+    /// only sound for types that are [`Copy`] (i.e. trivially duplicable).
+    ///
+    /// If `C::NO_ENTITY` is `false`, deferred entity remapping is queued so
+    /// embedded entity references are rewritten after cloning.
     #[inline(always)]
     pub const fn copyable<C: Copy + Component>() -> Self {
         Self {
@@ -376,7 +486,31 @@ impl ComponentCloner {
 
     /// Creates a cloner that calls [`Clone::clone`] for components.
     ///
-    /// If `C::NO_ENTITY` is `false`, deferred entity remapping is queued.
+    /// If `C::NO_ENTITY` is `false`, deferred entity remapping is queued so
+    /// embedded entity references are rewritten after cloning.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::clone::ComponentCloner;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Name(String);
+    ///
+    /// // Non-`Copy` components clone by calling `Clone::clone` — the
+    /// // strategy `#[derive(Component)]` selects by default.
+    /// let _ = ComponentCloner::clonable::<Name>();
+    ///
+    /// let mut world = World::alloc();
+    /// let src = world.spawn((Name("Ada".into()),), None).id();
+    /// let dst = world.entity_cloner().spawn_clone(src, false);
+    /// assert_eq!(
+    ///     world.entity_ref(dst).get::<Name>(),
+    ///     Some(&Name("Ada".into())),
+    /// );
+    /// ```
     #[inline(always)]
     pub const fn clonable<C: Clone + Component>() -> Self {
         Self {
@@ -407,14 +541,63 @@ impl ComponentCloner {
     ///
     /// Most users should prefer [`Self::copyable`] or [`Self::clonable`].
     ///
-    /// A custom cloner should always initialize `dst` and should queue remap
-    /// when the component contains embedded entities.
+    /// A custom cloner must always initialize `dst` (via
+    /// [`CloneTarget::write`] or [`CloneTarget::assume_initialized`]) and
+    /// should queue remapping when the component contains embedded entity
+    /// references.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
+    /// use zlim_core::clone::ComponentCloner;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone)]
+    /// #[component(cloner = clone_link)]
+    /// struct Link {
+    ///     #[entities]
+    ///     target: EntityId,
+    /// }
+    ///
+    /// // A custom cloner must always initialize `dst` (via
+    /// // `CloneTarget::write`) and should queue remapping when the
+    /// // component stores entity references.
+    /// fn clone_link(src: CloneSource, mut dst: CloneTarget, ctx: &mut CloneContext) {
+    ///     // Read the source value and initialize the target slot.
+    ///     let value: &Link = src.read::<Link>();
+    ///     dst.write::<Link>(value.clone());
+    ///
+    ///     // `Link` stores an entity reference, so queue remapping for the
+    ///     // post-clone pass.
+    ///     ctx.defer_map_entities::<Link>();
+    /// }
+    ///
+    /// // `ComponentCloner::custom` builds the strategy object; the derive
+    /// // wires it into the component through `#[component(cloner = …)]`.
+    /// let _ = ComponentCloner::custom(clone_link);
+    ///
+    /// let mut world = World::alloc();
+    /// let target = world.spawn((), None).id();
+    /// let src = world.spawn((Link { target },), None).id();
+    ///
+    /// // Cloning both entities in one run remaps `target` to its twin.
+    /// let clones = world.entity_cloner().spawn_clone_batch(&[src, target], false);
+    /// assert_eq!(
+    ///     world.entity_ref(clones[0]).get::<Link>().unwrap().target,
+    ///     clones[1],
+    /// );
+    /// ```
     #[inline(always)]
     pub const fn custom(func: fn(CloneSource, CloneTarget, &mut CloneContext)) -> Self {
         Self { func }
     }
 
-    /// Invokes this cloner.
+    /// Invokes this cloner on one source/target pair.
+    ///
+    /// This is the entry point used by the engine during a clone run; custom
+    /// cloners do not normally call it themselves.
     #[inline(always)]
     pub fn call(
         self,
@@ -432,8 +615,38 @@ impl ComponentCloner {
 
 /// High-level entity cloning entry point.
 ///
+/// Clones entities into the same world, producing fresh entities with
+/// duplicated component data. Deferred entity remapping is applied after all
+/// target entities have been allocated, so components holding [`EntityId`]
+/// references stay consistent, and hierarchical relationships are rebuilt at
+/// the end of the run.
+///
 /// Create this via [`World::entity_cloner`], then call
 /// [`Self::spawn_clone`] or [`Self::spawn_clone_batch`].
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+/// struct Position { x: f32, y: f32 }
+///
+/// let mut world = World::alloc();
+/// let src = world.spawn((Position { x: 1.0, y: 2.0 },), None).id();
+///
+/// let mut cloner = world.entity_cloner();
+/// let dst = cloner.spawn_clone(src, false);
+///
+/// assert_eq!(
+///     world.entity_ref(dst).get::<Position>(),
+///     Some(&Position { x: 1.0, y: 2.0 }),
+/// );
+/// ```
+///
+/// [`World::entity_cloner`]: crate::world::World::entity_cloner
+/// [`EntityId`]: crate::entity::EntityId
 pub struct EntityCloner<'w> {
     world: WorldCell<'w>,
     mapper: CloneEntityMapper,
@@ -443,6 +656,24 @@ pub struct EntityCloner<'w> {
 
 impl<'w> EntityCloner<'w> {
     /// Creates an entity cloner bound to the given world.
+    ///
+    /// Prefer [`World::entity_cloner`] as the usual entry point.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let src = world.spawn((), None).id();
+    ///
+    /// let mut cloner = EntityCloner::new(&mut world);
+    /// let dst = cloner.spawn_clone(src, false);
+    ///
+    /// assert_ne!(src, dst);
+    /// ```
+    ///
+    /// [`World::entity_cloner`]: crate::world::World::entity_cloner
     #[inline(always)]
     pub fn new(world: &mut World) -> EntityCloner<'_> {
         EntityCloner {
@@ -455,24 +686,47 @@ impl<'w> EntityCloner<'w> {
 
     /// Clones a batch of entities.
     ///
-    /// The returned vector preserves input order and contains cloned target
-    /// entities for each input source entity. Ensures the lengths are equal
-    /// and the entities correspond one-to-one.
+    /// The returned vector preserves input order: each input source entity
+    /// corresponds one-to-one to the cloned target entity at the same index.
+    /// The order of input elements does not affect the result; hierarchical
+    /// relationships are established only after all entities have been
+    /// cloned.
     ///
-    /// In theory, the order of input elements does not negatively affect the result.
-    /// Hierarchical relationships are established after all entities have been cloned.
+    /// If `recursive` is `true`, children entities are recursively cloned as
+    /// part of the same run.
     ///
-    /// If `recursive` is `true`, children entities will be recursively cloned.
+    /// # Panics
     ///
-    /// # Panic
-    /// - Panics if given entities is not spawned.
+    /// - Panics if any given entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+    /// struct Position { x: f32, y: f32 }
+    ///
+    /// let mut world = World::alloc();
+    /// let ids: Vec<EntityId> = (0..3)
+    ///     .map(|i| world.spawn((Position { x: i as f32, y: 0.0 },), None).id())
+    ///     .collect();
+    ///
+    /// let mut cloner = world.entity_cloner();
+    /// let clones = cloner.spawn_clone_batch(&ids, false);
+    ///
+    /// assert_eq!(clones.len(), ids.len());
+    /// for (i, &dst) in clones.iter().enumerate() {
+    ///     assert_eq!(
+    ///         world.entity_ref(dst).get::<Position>(),
+    ///         Some(&Position { x: i as f32, y: 0.0 }),
+    ///     );
+    /// }
+    /// ```
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn spawn_clone_batch(
-        &mut self,
-        entities: &[EntityId],
-        recursive: bool,
-    ) -> Vec<EntityId> {
+    pub fn spawn_clone_batch(&mut self, entities: &[EntityId], recursive: bool) -> Vec<EntityId> {
         let caller = DebugLocation::caller();
         self.wait.extend(entities);
         self.run(recursive, caller).into_vec()
@@ -480,10 +734,34 @@ impl<'w> EntityCloner<'w> {
 
     /// Clones one entity and returns the cloned target entity id.
     ///
-    /// If `recursive` is `true`, children entities will be recursively cloned.
+    /// If `recursive` is `true`, children entities are recursively cloned as
+    /// part of the same run.
     ///
-    /// # Panic
-    /// - Panics if given entity is not spawned.
+    /// # Panics
+    ///
+    /// - Panics if the given entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+    /// struct Health { value: u32 }
+    ///
+    /// let mut world = World::alloc();
+    /// let src = world.spawn((Health { value: 100 },), None).id();
+    ///
+    /// let mut cloner = world.entity_cloner();
+    /// let dst = cloner.spawn_clone(src, false);
+    ///
+    /// assert_ne!(src, dst);
+    /// assert_eq!(
+    ///     world.entity_ref(dst).get::<Health>(),
+    ///     Some(&Health { value: 100 }),
+    /// );
+    /// ```
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_clone(&mut self, entity: EntityId, recursive: bool) -> EntityId {
@@ -509,9 +787,11 @@ impl<'w> EntityCloner<'w> {
 // -----------------------------------------------------------------------------
 
 impl<'w> EntityCloner<'w> {
-    /// Clones one entity and returns the cloned target entity id.
+    /// Runs one clone pass over the whole waiting queue.
     ///
-    /// If `LINKED` is `true`, the children entities will be recursively cloned.
+    /// Returns the cloned target entities in the same order as the queued
+    /// inputs. If `recursive` is `true`, the children entities are
+    /// recursively cloned.
     #[inline(never)]
     fn run(&mut self, recursive: bool, caller: DebugLocation) -> SmallVec<EntityId, 2> {
         // -------------------------------------------------------------------
@@ -572,7 +852,7 @@ impl<'w> EntityCloner<'w> {
         let mut context = CloneContext::new(recursive);
 
         // -------------------------------------------------------------------
-        // Step-1: Plain Clone (alloc entity + clone compoent data)
+        // Step-1: Plain Clone (alloc entity + clone component data)
         // -------------------------------------------------------------------
 
         // Clone all waiting entities.
@@ -587,19 +867,19 @@ impl<'w> EntityCloner<'w> {
                 }
             };
 
-            // We will map it after everything is completed, no need hanle it here.
-            let child_of = node.child_of;
+            // We will map it after everything is completed, no need handle it here.
+            let parent = node.parent;
 
-            // SAFETY: `EntityTree::get` return `Err` if `location` is `None`.
+            // SAFETY: `Entities::get` return `Err` if `location` is `None`.
             let location = unsafe { node.location.debug_checked_unwrap() };
 
             let table_id = location.table_id;
             let src_row = location.table_row;
 
             // Spawn a uninitialized entity from given Table (Archetype).
-            // The compoent data and hierarchy relationship is uninitialized.
+            // The component data and hierarchy relationship is uninitialized.
             let uninit_entity =
-                unsafe { world1.spawn_uninit_with_caller(table_id, caller, child_of) };
+                unsafe { world1.spawn_uninit_with_caller(table_id, caller, parent) };
 
             // `ForgetGuard` can not forget this cloning entity. We need handle it manually.
             let item_guard = ForgetEntityOnPanic {
@@ -641,8 +921,8 @@ impl<'w> EntityCloner<'w> {
 
                 #[cfg(any(debug_assertions, feature = "debug"))]
                 let name = {
-                    context.name = info.typa_name;
-                    info.typa_name
+                    context.name = info.type_name;
+                    info.type_name
                 };
 
                 let src_index = src_row.0 as usize;
@@ -680,7 +960,7 @@ impl<'w> EntityCloner<'w> {
                 assert!(
                     init,
                     "The Cloner of `{}` did not write data.\n{}",
-                    info.typa_name, caller
+                    info.type_name, caller
                 );
             }
 
@@ -698,7 +978,7 @@ impl<'w> EntityCloner<'w> {
             // Therefore, we must always collect all deferred entities.
             context.deferred.drain(..).for_each(|entity| {
                 use crate::utils::contains_entity;
-                // Skip if the entity is already cloned or is in the wating queue.
+                // Skip if the entity is already cloned or is in the waiting queue.
                 let (x, y) = self.wait.as_slices();
                 let c1 = !self.mapper.contains(entity); // c1: not already cloned
                 let c2 = !contains_entity(entity, x);
@@ -752,14 +1032,15 @@ impl<'w> EntityCloner<'w> {
             let index = id.index() as usize;
             let tree = &mut world.entities;
             let node = unsafe { tree.entities.get_unchecked_mut(index) };
-            let child_of = node.child_of.map(|x| self.mapper.get_mapped(x));
+            let parent = node.parent.map(|x| self.mapper.get_mapped(x));
 
-            node.child_of = child_of;
+            node.parent = parent;
 
-            if let Some(p) = child_of {
+            if let Some(p) = parent {
                 let p_index = p.index() as usize;
                 let slot = unsafe { tree.entities.get_unchecked_mut(p_index) };
-                slot.children.insert(id);
+                debug_assert!(!slot.children.contains(&id));
+                slot.children.push(id);
             } else {
                 tree.root.insert(id);
             }
@@ -789,7 +1070,7 @@ impl<'w> EntityCloner<'w> {
         world.flush();
 
         // -------------------------------------------------------------------
-        // Finish, forget gurad
+        // Finish, forget guard
         // -------------------------------------------------------------------
 
         ::core::mem::forget(forget_guard);

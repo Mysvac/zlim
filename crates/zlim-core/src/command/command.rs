@@ -1,3 +1,5 @@
+//! The `Command` and `EntityCommand` traits.
+
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
 use zlim_utils::debug::DebugName;
@@ -24,18 +26,48 @@ use crate::world::World;
 ///
 /// Any `FnOnce(&mut World) -> O` (where `O: IntoZlimResult<()>`) implements
 /// `Command`, so closures can be used directly as commands.  The module's
-/// function helpers (e.g. [`spawn_empty`](super::spawn_empty)) also return
-/// `impl Command`.
+/// function helpers (e.g. [`spawn_empty`]) also return `impl Command`.
 ///
 /// # Error handling
 ///
 /// Implementations that return errors can use the provided error-handling
-/// combinators ([`handle_error`](Self::handle_error),
-/// [`handle_error_with`](Self::handle_error_with),
-/// [`ignore_error`](Self::ignore_error)) to convert them into
-/// `Command<Output = ()>` suitable for queuing.
+/// combinators ([`handle_error`], [`handle_error_with`], [`ignore_error`])
+/// to convert them into `Command<Output = ()>` suitable for queuing.
+///
+/// # Examples
+///
+/// Closures with the right signature are [`Command`]s automatically:
+///
+/// ```rust
+/// # use zlim_core::command::CommandQueue;
+/// # use zlim_core::derive::Component;
+/// # use zlim_core::prelude::*;
+/// # use zlim_reflect::derive::TypePath;
+/// #
+/// #[derive(TypePath, Component, Clone)]
+/// struct Health(u32);
+///
+/// let mut world = World::alloc();
+/// let mut queue = CommandQueue::new();
+///
+/// // A closure returning `()` can be pushed directly.
+/// queue.push(|world: &mut World| {
+///     world.spawn(Health(100), None);
+/// });
+///
+/// // Commands are applied in batch, later.
+/// queue.apply(&mut world);
+/// assert_eq!(world.entity_count(), 1);
+/// ```
+///
+/// [`spawn_empty`]: super::spawn_empty
+/// [`handle_error`]: Self::handle_error
+/// [`handle_error_with`]: Self::handle_error_with
+/// [`ignore_error`]: Self::ignore_error
 pub trait Command: Send + Sized + 'static {
-    /// The return type of [`apply`](Self::apply), convertible to `Result<(), ZlimError>`.
+    /// The return type of [`apply`], convertible to `Result<(), ZlimError>`.
+    ///
+    /// [`apply`]: Self::apply
     type Output: IntoZlimResult<()>;
 
     /// Executes the command on the given [`World`].
@@ -43,16 +75,41 @@ pub trait Command: Send + Sized + 'static {
     /// This is called by the command queue during batch application.
     /// Implementations should perform their mutation and return `Ok(())`
     /// on success, or an error on failure.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::command::CommandQueue;
+    /// use zlim_core::prelude::*;
+    ///
+    /// struct SpawnEmpty;
+    ///
+    /// impl Command for SpawnEmpty {
+    ///     type Output = ();
+    ///     fn apply(self, world: &mut World) {
+    ///         world.spawn((), None);
+    ///     }
+    /// }
+    ///
+    /// let mut world = World::alloc();
+    /// let mut queue = CommandQueue::new();
+    ///
+    /// queue.push(SpawnEmpty);
+    /// queue.apply(&mut world);
+    ///
+    /// assert_eq!(world.entity_count(), 1);
+    /// ```
     fn apply(self, world: &mut World) -> Self::Output;
 
     /// Handles command errors with a custom [`ErrorHandler`].
     ///
-    /// Converts this command into one with `Output = ()`.  If [`apply`](Self::apply)
+    /// Converts this command into one with `Output = ()`.  If [`apply`]
     /// returns an error, the provided handler is invoked with the error and
-    /// a [`Command`](ErrorContext::Command) context.
+    /// a [`Command`] context.
     ///
+    /// [`apply`]: Self::apply
+    /// [`Command`]: crate::error::ErrorContext::Command
     /// [`ErrorHandler`]: crate::error::ErrorHandler
-    /// [`ErrorContext`]: crate::error::ErrorContext
     #[inline]
     fn handle_error_with(self, handler: ErrorHandler) -> impl Command<Output = ()> {
         move |world: &mut World| {
@@ -66,8 +123,10 @@ pub trait Command: Send + Sized + 'static {
     /// Handles command errors with the world's default [`ErrorHandler`].
     ///
     /// Converts this command into one with `Output = ()`.  Errors from
-    /// [`apply`](Self::apply) are forwarded to `world.error_handler`.
-    /// Equivalent to `self.handle_error_with(world.error_handler)`.
+    /// [`apply`] are forwarded to `world.error_handler`. Equivalent to
+    /// `self.handle_error_with(world.error_handler)`.
+    ///
+    /// [`apply`]: Self::apply
     #[inline]
     fn handle_error(self) -> impl Command<Output = ()> {
         move |world: &mut World| {
@@ -93,15 +152,52 @@ pub trait Command: Send + Sized + 'static {
 /// An entity-scoped deferred mutation.
 ///
 /// Like [`Command`], but the mutation targets a specific entity identified
-/// by its [`EntityId`].  Use [`with_entity`](Self::with_entity) to wrap an
-/// `EntityCommand` into a regular [`Command`] that the queue can apply.
+/// by its [`EntityId`].  Use [`with_entity`] to wrap an `EntityCommand` into
+/// a regular [`Command`] that the queue can apply.
 ///
 /// # Blanket implementations
 ///
 /// Any `FnOnce(EntityOwned) -> O` (where `O: IntoZlimResult<()>`) implements
 /// `EntityCommand`, so closures can be used directly.
+///
+/// # Examples
+///
+/// Closures over an [`EntityOwned`] are [`EntityCommand`]s automatically:
+///
+/// ```rust
+/// # use zlim_core::derive::Component;
+/// # use zlim_core::prelude::*;
+/// # use zlim_reflect::derive::TypePath;
+/// #
+/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// struct Health(u32);
+///
+/// // `Output = ()`, so this can be wrapped and queued directly.
+/// let heal = |mut entity: EntityOwned| {
+///     // `insert` is fallible; this example ignores the error.
+///     let _ = entity.insert(Health(200));
+/// };
+///
+/// let mut world = World::alloc();
+/// let entity = world.spawn(Health(100), None).id();
+///
+/// let mut commands = world.commands();
+/// commands.with_entity(entity).queue(heal);
+///
+/// drop(commands);
+/// world.flush();
+///
+/// assert_eq!(
+///     world.get_entity(entity).ok().and_then(|e| e.get::<Health>().cloned()),
+///     Some(Health(200))
+/// );
+/// ```
+///
+/// [`with_entity`]: Self::with_entity
 pub trait EntityCommand: Send + Sized + 'static {
-    /// The return type of [`apply`](Self::apply), convertible to `Result<(), ZlimError>`.
+    /// The return type of [`apply`], convertible to `Result<(), ZlimError>`.
+    ///
+    /// [`apply`]: Self::apply
     type Output: IntoZlimResult<()>;
 
     /// Executes the command on the given [`EntityOwned`].
@@ -110,8 +206,42 @@ pub trait EntityCommand: Send + Sized + 'static {
     /// Wraps this entity command into a [`Command`].
     ///
     /// The returned [`Command`] looks up the entity by its [`EntityId`]
-    /// at application time and calls [`apply`](Self::apply).
-    /// If the entity is not found, an [`EntityError`] is returned.
+    /// at application time and calls [`apply`]. If the entity is not found,
+    /// an [`EntityError`] is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::command::CommandQueue;
+    /// use zlim_core::derive::Component;
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// let entity = world.spawn(Health(100), None).id();
+    ///
+    /// let mut queue = CommandQueue::new();
+    ///
+    /// queue.push(
+    ///     (|mut entity: EntityOwned| {
+    ///         // `insert` is fallible; this example ignores the error.
+    ///         let _ = entity.insert(Health(999));
+    ///     })
+    ///     .with_entity(entity)
+    ///     .handle_error(),
+    /// );
+    /// queue.apply(&mut world);
+    ///
+    /// assert_eq!(
+    ///     world.get_entity(entity).ok().and_then(|e| e.get::<Health>().cloned()),
+    ///     Some(Health(999))
+    /// );
+    /// ```
+    ///
+    /// [`apply`]: Self::apply
     #[inline]
     fn with_entity(self, entity: EntityId) -> impl Command {
         move |world: &mut World| -> Packed<Self::Output, EntityError> {

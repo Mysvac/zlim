@@ -13,7 +13,7 @@ pub struct Parallel<T: Send> {
 
 impl<T: Send> Debug for Parallel<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("Parallel")
+        f.pad("Parallel { .. }")
     }
 }
 

@@ -6,6 +6,8 @@ use super::{LocalExecutor, MainExecutor};
 mod xor_shift;
 mod task_pool;
 mod executors;
+mod fake_main;
+mod local_deque;
 
 pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
 
@@ -22,13 +24,12 @@ pub use futures_lite::future::block_on;
 // tick_local
 
 /// Drives local tasks to completion.
-/// 
-/// This function continuously ticks executors in a loop until all queued
-/// tasks have been processed.
-/// 
-/// For multi-threaded mode, this function drives both
-/// `LocalExecutor` and `MainExecutor` on the main thread.
-/// Worker threads are automatically driven by the pool.
+///
+/// Ticks the thread-local `LocalExecutor` and the global `MainExecutor`
+/// until both queues are empty. In multi-threaded mode, worker threads are
+/// driven by the pool itself and `spawn_to_main` tasks by the main thread
+/// (a dedicated fake one unless [`set_main_thread`] was called up front) —
+/// this function is for threads that are neither.
 ///
 /// # Example
 ///
@@ -36,7 +37,7 @@ pub use futures_lite::future::block_on;
 /// use zlim_task::TaskPool;
 ///
 /// let pool = TaskPool::new();
-/// pool.spawn(async { println!("Hello from task!"); });
+/// pool.spawn_local(async { println!("Hello from task!"); });
 /// zlim_task::run_local(); // drive the task to completion
 /// ```
 pub fn run_local() {
@@ -48,6 +49,61 @@ pub fn run_local() {
         has_task |= LocalExecutor::try_tick();
     }
 }
+
+// -----------------------------------------------------------------------------
+// set_main_thread
+
+pub use fake_main::set_main_thread;
+
+// -----------------------------------------------------------------------------
+// block_on_main
+
+/// Send a single task to the main thread for execution and wait for the result.
+/// 
+/// If you call this function on the worker thread, it will not execute the task
+/// of the worker thread itself during the waiting period. In extreme cases, this
+/// may cause all threads to sleep dead.
+/// 
+/// In other words, this function is mainly called by the top-level intersection
+/// (App) of the program. Usually only used for internal implementation of `App::run`.
+#[inline]
+pub fn block_on_main<T, F>(future: F) -> T
+where
+    T: Send + 'static,
+    F: Future<Output = T> + Send + 'static,
+{
+    use core::panic::AssertUnwindSafe;
+    use futures_lite::future::FutureExt;
+
+    let main_id = fake_main::main_thread_id();
+
+    let fut = AssertUnwindSafe(future).catch_unwind();
+    let task = MainExecutor::spawn(fut).fallible();
+
+    #[cold]
+    #[inline(never)]
+    fn catch_panic_failed() -> ! {
+        panic!("Failed to catch panic!");
+    }
+
+    let stop_signal = async move {
+        match task.await {
+            None => catch_panic_failed(),
+            Some(Ok(val)) => val,
+            Some(Err(payload)) => {
+                ::core::hint::cold_path();
+                std::panic::resume_unwind(payload)
+            },
+        }
+    };
+
+    if std::thread::current().id() == main_id {
+        block_on(MainExecutor::run(LocalExecutor::run(stop_signal)))
+    } else {
+        block_on(LocalExecutor::run(stop_signal))
+    }
+}
+
 
 // -----------------------------------------------------------------------------
 // Static TaskPool
@@ -66,7 +122,7 @@ pub fn run_local() {
 // first `get()` to supply a custom configuration; it returns `true` on success
 // (pool was uninitialized) or `false` if already initialized. In multi-threaded
 // mode racing concurrent calls may observe stale results — call `try_init` once
-// from the main thread during app startup.
+// during app startup, before the first `get()`.
 
 // -----------------------------------------------------------------------------
 // Default constructors
@@ -79,31 +135,31 @@ pub fn run_local() {
 fn main_pool_default() -> TaskPool {
     let available: usize = zlim_os::thread::available_parallelism().get();
     let threads: usize = (available >> 1).clamp(1, 15);
-    log::info!("Main TaskPool Threads: {threads}");
+    zlim_log::info!("Main TaskPool Threads: {threads}");
     TaskPoolBuilder::new().thread_name("MainTaskPool").thread_count(threads).build()
 }
 
 /// Default constructor for [`AsyncTaskPool`].
 ///
-/// Uses **25%** of available parallelism (at least 1, at most 5 threads).
+/// Uses **25%** of available parallelism (at least 1, at most 7 threads).
 #[cold]
 #[inline(never)]
 fn async_pool_default() -> TaskPool {
     let available: usize = zlim_os::thread::available_parallelism().get();
-    let threads: usize = (available >> 2).clamp(1, 5);
-    log::info!("Async TaskPool Threads: {threads}");
+    let threads: usize = (available >> 2).clamp(1, 7);
+    zlim_log::info!("Async TaskPool Threads: {threads}");
     TaskPoolBuilder::new().thread_name("AsyncTaskPool").thread_count(threads).build()
 }
 
 /// Default constructor for [`IoTaskPool`].
 ///
-/// Uses **25%** of available parallelism (at least 1, at most 5 threads).
+/// Uses **25%** of available parallelism (at least 1, at most 7 threads).
 #[cold]
 #[inline(never)]
 fn io_pool_default() -> TaskPool {
     let available: usize = zlim_os::thread::available_parallelism().get();
-    let threads: usize = (available >> 2).clamp(1, 5);
-    log::info!("IO TaskPool Threads: {threads}");
+    let threads: usize = (available >> 2).clamp(1, 7);
+    zlim_log::info!("IO TaskPool Threads: {threads}");
     TaskPoolBuilder::new().thread_name("IoTaskPool").thread_count(threads).build()
 }
 
@@ -134,7 +190,7 @@ static IO_TASK_POOL: std::sync::OnceLock<TaskPool> = std::sync::OnceLock::new();
 /// Call [`try_init`] before the first access to supply a custom [`TaskPool`].
 /// Returns `true` on success (pool was not yet initialized), `false` if the
 /// pool had already been initialized. Racing concurrent calls may observe
-/// stale results — call once from the main thread during app startup.
+/// stale results — call once during app startup, before the first `get()`.
 ///
 /// # Alternatives
 ///
@@ -162,7 +218,7 @@ impl MainTaskPool {
     /// `f` is still called, but its result is discarded).
     ///
     /// **Concurrency note:** racing calls from multiple threads may observe
-    /// stale results. Call once from the main thread during app startup.
+    /// stale results. Call once during app startup, before the first `get()`.
     pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
         let ret = MAIN_TASK_POOL.get().is_none();
         let _ = MAIN_TASK_POOL.get_or_init(f);
@@ -214,7 +270,7 @@ impl AsyncTaskPool {
     /// Returns `true` if the pool was not yet initialized and `f` was used,
     /// or `false` if already initialized.
     ///
-    /// **Concurrency note:** call once from the main thread during app startup.
+    /// **Concurrency note:** call once during app startup, before the first `get()`.
     pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
         let ret = ASYNC_TASK_POOL.get().is_none();
         let _ = ASYNC_TASK_POOL.get_or_init(f);
@@ -263,7 +319,7 @@ impl IoTaskPool {
     /// Returns `true` if the pool was not yet initialized and `f` was used,
     /// or `false` if already initialized.
     ///
-    /// **Concurrency note:** call once from the main thread during app startup.
+    /// **Concurrency note:** call once during app startup, before the first `get()`.
     pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
         let ret = IO_TASK_POOL.get().is_none();
         let _ = IO_TASK_POOL.get_or_init(f);

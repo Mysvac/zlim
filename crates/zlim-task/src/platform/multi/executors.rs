@@ -8,41 +8,35 @@
 #![expect(unsafe_code, reason = "original implementation")]
 
 use core::cell::Cell;
+use core::pin::Pin;
 use core::ptr;
-use core::task::Waker;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 use core::future::poll_fn;
 use core::fmt::Debug;
-use core::task::Poll;
+use core::task::{Context, Poll, Waker};
 use std::sync::{Weak, Arc, Mutex, PoisonError};
 
 use async_task::Runnable;
 use async_task::Task;
 use futures_lite::FutureExt;
-use zlim_utils::sync::{ListQueue, ArrayQueue};
-use zlim_utils::ext::{ArrayDeque, CachePadded};
+use zlim_utils::sync::SegQueue;
+use zlim_utils::ext::CachePadded;
+use zlim_utils::vec::ArrayVec;
 
 use super::LocalExecutor;
+use super::local_deque::LocalDeque;
 use super::xor_shift::XorShift64Star;
 
-// -----------------------------------------------------------------------------
-// Config
-
-/// Capacity of each worker's local task queue.
-/// 
-/// Using 63 ensures the bounded `ArrayQueue` allocates exactly 64 slots
-/// (`(x + 1).next_power_of_two()`). This balance provides good throughput
-/// while keeping cache footprint reasonable.
-const WORKER_QUEUE_SIZE: usize = 63;
 
 // -----------------------------------------------------------------------------
 // State
 
 /// The internal, shared state of the executor.
 struct State {
-    /// Shared global queue
-    queue: ListQueue<Runnable>,
+    /// Shared global queue — a lock-free MPMC `SegQueue`. `spawn` pushes
+    /// from any thread; workers drain it through `steal_global`.
+    queue: SegQueue<Runnable>,
     /// “Seats” for worker threads;
     /// length equals the number of workers(without main thread).
     seats: CachePadded<Box<[Seat]>>,
@@ -63,16 +57,17 @@ struct State {
 // Seat
 
 /// A "seat" representing a worker thread's position in the executor.
-/// 
-/// Note: worker threads does not include main thread.
-/// 
+///
+/// Seats are for pool worker threads only — neither the application's main
+/// thread nor the fake main thread occupies one.
+///
 /// Each seat contains:
 /// - A local task queue for cache-efficient task processing
 /// - An occupancy flag for thread binding during initialization
 struct Seat {
     /// Local, bounded task queue for this worker
-    /// Uses `ArrayQueue` for lock-free push/pop operations
-    queue: ArrayQueue<Runnable>,
+    /// Uses a `LocalDeque` (Chase-Lev) for lock-free push/pop/steal.
+    queue: LocalDeque,
     /// Indicates whether this seat is occupied by a bound worker
     /// Set during worker initialization via atomic compare-and-swap
     occupied: AtomicBool,
@@ -171,7 +166,7 @@ struct Worker {
     /// Pointer to the executor's shared [`State`]
     state: Cell<*const State>,
     /// Pointer to the thread’s local task queue
-    queue: Cell<*const ArrayQueue<Runnable>>,
+    queue: Cell<*const LocalDeque>,
     /// Index of this worker’s seat in the executor
     seat_index: Cell<usize>,
     /// Current activity state of the worker
@@ -357,70 +352,62 @@ impl Worker {
     /// # Safety
     /// Must only be called after successful `bind()`
     #[inline(always)]
-    const fn queue(&self) -> &ArrayQueue<Runnable> {
+    const fn queue(&self) -> &LocalDeque {
         debug_assert!(!self.queue.get().is_null());
         unsafe{ &*self.queue.get() }
     }
 
-    #[inline(never)]
-    fn steal_global_inner(src: &ListQueue<Runnable>, dst: &ArrayQueue<Runnable>) {
-        let mut deque: ArrayDeque<Runnable, WORKER_QUEUE_SIZE> = ArrayDeque::new();
-
-        // Separate global theft and local storage to minimize lock holding time.
-        let mut guard = src.lock_pop();
-        for _ in 0..WORKER_QUEUE_SIZE {
-            if let Some(runnable) = src.pop_with_lock(&mut guard) {
-                // SAFETY: deque was just created (empty) and we push at most
-                // WORKER_QUEUE_SIZE items, which equals its capacity.
-                unsafe { deque.push_back_unchecked(runnable); }
-            } else {
-                break;
-            }
-        }
-        ::core::mem::drop(guard);
-
-        while let Some(runnable) = deque.pop_front() {
-            let ret = dst.push(runnable);
-            debug_assert!(ret.is_ok());
-            // SAFETY: This is called from fetch_runnable only after the local
-            // queue's pop() returned None, so the queue is empty. Only the
-            // current thread pushes to its own local queue (other threads only
-            // pop from it during work stealing). With capacity WORKER_QUEUE_SIZE
-            // and at most WORKER_QUEUE_SIZE items, push cannot fail.
-            unsafe { ret.unwrap_unchecked(); }
-        }
-    }
-
+    /// Steals up to `CAP + 1` tasks from the shared global queue into the
+    /// local queue, returning the first one.
+    ///
+    /// One task is popped directly as the return value; up to `CAP` more are
+    /// buffered in a stack `ArrayVec` and then pushed into the local queue
+    /// in reverse order. Since the local queue is LIFO (`push` and `pop`
+    /// operate on the same end), pushing in reverse restores the original
+    /// FIFO order of the global queue when the worker pops them.
     #[inline(never)]
     fn steal_global(&self) -> Option<Runnable> {
-        let src: &ListQueue<Runnable> = &self.state().queue;
-        let dst: &ArrayQueue<Runnable> = self.queue();
+        let src: &SegQueue<Runnable> = &self.state().queue;
+        let dst: &LocalDeque = self.queue();
 
-        if let Some(r) = src.pop() {
-            Worker::steal_global_inner(src, dst);
-            self.wake();
-            self.wake_one();
-            return Some(r);
+        const CAP: usize = LocalDeque::CAP;
+        let mut buf: ArrayVec<Runnable, CAP> = ArrayVec::new();
+
+        let first = src.pop()?;
+
+        for _ in 0..CAP {
+            if let Some(r) = src.pop() {
+                // SAFETY: the loop runs at most `CAP` times and `buf` has
+                // capacity `CAP`, so it is never full at this point.
+                unsafe { buf.push_unchecked(r) };
+            }
         }
 
-        None
+        // SAFETY: `dst` was empty before this call (the caller's
+        // `fetch_runnable` popped it and got `None`), `buf` holds at most
+        // `CAP` items (fitting exactly in `LocalDeque::CAP`), and only this
+        // worker thread ever pushes to its own queue.
+        unsafe { dst.push_many(&mut buf) };
+
+        self.wake();
+        self.wake_one();
+
+        Some(first)
     }
 
     #[inline(never)]
-    fn steal_worker_inner(src: &ArrayQueue<Runnable>, dst: &ArrayQueue<Runnable>) {
+    fn steal_worker_inner(src: &LocalDeque, dst: &LocalDeque) {
         let len: usize = src.len() >> 1;
         // if src.len == 1, we do not steal,
         // because we already stole one before calling this function.
         for _ in 0..len {
-            if let Some(runnable) = src.pop() {
-                let ret = dst.push(runnable);
-                debug_assert!(ret.is_ok());
-                // SAFETY: Same reasoning as steal_global_inner: dst is the
-                // current worker's local queue, which was empty before this
-                // steal (fetch_runnable popped from it and got None). Only
-                // the current thread pushes to its own queue, so capacity
-                // (WORKER_QUEUE_SIZE) is sufficient for the stolen items.
-                unsafe { ret.unwrap_unchecked(); }
+            if let Some(runnable) = src.steal() {
+                // SAFETY: Same reasoning as steal_global: dst is the current
+                // worker's local queue, which was empty before this steal
+                // (fetch_runnable popped from it and got None). Only the
+                // current thread pushes to its own queue, so `LocalDeque::CAP`
+                // is sufficient for the stolen items.
+                unsafe { dst.push(runnable) };
             } else {
                 return;
             }
@@ -430,7 +417,7 @@ impl Worker {
     #[inline(never)]
     fn steal_worker(&self) -> Option<Runnable> {
         let state: &State = self.state();
-        let dst: &ArrayQueue<Runnable> = self.queue();
+        let dst: &LocalDeque = self.queue();
 
         // Pick a random starting point in the iterator list and rotate the list.
         let worker_num = state.seats.len();
@@ -442,8 +429,8 @@ impl Worker {
 
         // Try stealing from each local queue in the list.
         for seat in iter {
-            let src: &ArrayQueue<Runnable> = &seat.queue;
-            if let Some(r) = src.pop() {
+            let src: &LocalDeque = &seat.queue;
+            if let Some(r) = src.steal() {
                 Worker::steal_worker_inner(src, dst);
                 self.wake();
                 self.wake_one();
@@ -570,7 +557,11 @@ impl Worker {
     /// Worker thread:
     /// - Uses work-stealing from local/global/other workers
     /// - Processes in batches of `RUN_BATCH` tasks before yielding
-    async fn work_run() -> ! {
+    ///
+    /// Never returns on its own (`-> !`): it is meant to run as the
+    /// never-ending half of `run_forever.or(stop_signal)`, which terminates
+    /// it once `stop_signal` completes.
+    async fn worker_run() -> ! {
         /// Number of tasks processed before a worker yields to the scheduler.
         /// This prevents long-running tasks from starving other work.
         const RUN_BATCH: usize = 120;
@@ -588,23 +579,67 @@ impl Worker {
         }
     }
 
-    /// Main thread:
-    /// - Cycles through worker seats, polling each one in round-robin
-    ///   order for tasks.
-    /// - Yields frequently to avoid starving bound workers.
-    async fn main_run(state: &State) -> ! {
+    /// Unbound thread (e.g. a `scope` caller): cycles through the worker
+    /// seats in round-robin and executes stolen tasks, helping the pool make
+    /// progress while this thread is blocked in a scope.
+    ///
+    /// Never returns on its own (`-> !`): like [`worker_run`](Self::worker_run),
+    /// it is meant to run as the never-ending half of
+    /// `run_forever.or(stop_signal)`, which terminates it once `stop_signal`
+    /// completes.
+    async fn assist_run(state: &State) -> ! {
         debug_assert!(!state.seats.is_empty(), "PoolExecutor requires at least one worker seat");
-        let mut counter = 0_usize;
 
-        loop {
-            counter = (counter + 1) % state.seats.len();
+        let mut counter = 0;
 
-            let seat = &state.seats[counter];
-            if let Some(runnable) = seat.queue.pop() {
+        'first: loop {
+            if let Some(runnable) = state.queue.pop() {
                 runnable.run();
+                futures_lite::future::yield_now().await;
+                continue 'first;
             }
 
-            futures_lite::future::yield_now().await;
+            'second: loop {
+                counter %= state.seats.len();
+                let start = counter;
+
+                for seat in &state.seats[start..state.seats.len()] {
+                    if let Some(runnable) = seat.queue.steal() {
+                        runnable.run();
+                        futures_lite::future::yield_now().await;
+                        continue 'second;
+                    }
+                    counter += 1;
+                }
+
+                for seat in &state.seats[0..start] {
+                    if let Some(runnable) = seat.queue.steal() {
+                        runnable.run();
+                        futures_lite::future::yield_now().await;
+                        continue 'second;
+                    }
+                    counter += 1;
+                }
+
+                break;
+            }
+
+            struct PendingOnce(bool);
+
+            impl Future for PendingOnce {
+                type Output = ();
+
+                fn poll(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+                    if !self.0 {
+                        self.0 = true;
+                        Poll::Pending
+                    } else {
+                        Poll::Ready(())
+                    }
+                }
+            }
+
+            PendingOnce(false).await;
         }
     }
 }
@@ -628,14 +663,14 @@ impl PoolExecutor {
     pub fn new(worker_num: usize) -> Self {
         assert!(worker_num > 0, "worker thread num should not be `0`");
 
-        // idle capacity is 32 * 64 == 2048, appropriate? (default is 16 * 64)
-        let queue: ListQueue<Runnable> = ListQueue::new(32);
+        // Unbounded MPMC queue shared by all workers; `spawn` pushes here.
+        let queue: SegQueue<Runnable> = SegQueue::new();
 
         // [0..worker_num] for worker thread, without main thread
         let seats: CachePadded<Box<[Seat]>> = CachePadded::new(
             (0..worker_num).map(|_|Seat{
                 occupied: AtomicBool::new(false),
-                queue: ArrayQueue::new(WORKER_QUEUE_SIZE),
+                queue: LocalDeque::new(),
             }).collect()
         );
 
@@ -775,19 +810,23 @@ impl PoolExecutor {
 
     /// Runs the executor until the given future completes
     pub async fn run<T>(&self, stop_signal: impl Future<Output = T>) -> T {
-        let is_main_thread = WORKER.with(|w: &Worker| w.queue.get().is_null());
+        // `worker_run` runs on bound worker threads; `assist_run` runs on
+        // any unbound thread (e.g. a `scope` caller) and helps drain the
+        // worker seats. The fake main thread never calls `run` — it only
+        // drives `MainExecutor`.
+        let is_worker = WORKER.with(|w: &Worker| !w.queue.get().is_null());
         let state: &State = &self.state;
 
         let run_forever = async move {
-            if is_main_thread {
-                Worker::main_run(state).await;
+            if is_worker {
+                Worker::worker_run().await;
             } else {
-                Worker::work_run().await;
+                ::core::hint::cold_path();
+                Worker::assist_run(state).await;
             }
         };
 
         // Run until stop signal completes
-        run_forever.or(stop_signal).await
+        stop_signal.or(run_forever).await
     }
-
 }

@@ -1,22 +1,14 @@
+//! Entity view accessors and the `FetchEntities` trait.
+
 use core::mem::MaybeUninit;
 
 use crate::entity::{AllocEntitiesIter, EntityError, EntityId};
-use crate::ops::{EntityMut, EntityOwned, EntityRef};
+use crate::ops::{Entity, EntityMut, EntityOwned, EntityRef};
+use crate::utils::DebugCheckedUnwrap;
 use crate::world::{DeferredWorld, World, WorldCell};
 
-macro_rules! once_warning_for_owned {
-    () => {
-        #[cfg(debug_assertions)]
-        zlim_utils::once_expr!{
-            log::warn!{
-                "Calling `entity_owned` for multiple entities, consider replace to `entity_mut`: {}.",
-                ::core::panic::Location::caller()
-            }
-        }
-    };
-}
-
-/// Returns a shared entity view with cached tick context.
+/// Builds a shared [`EntityRef`] view for one entity with cached tick
+/// context.
 fn get_entity_ref(world: &World, entity: EntityId) -> Result<EntityRef<'_>, EntityError> {
     let location = world.entities.locate(entity)?;
     let last_run = world.last_run();
@@ -32,7 +24,8 @@ fn get_entity_ref(world: &World, entity: EntityId) -> Result<EntityRef<'_>, Enti
     })
 }
 
-/// Returns a mutable entity view with cached tick context.
+/// Builds a mutable [`EntityMut`] view for one entity with cached tick
+/// context.
 fn get_entity_mut(world: &mut World, entity: EntityId) -> Result<EntityMut<'_>, EntityError> {
     let location = world.entities.locate(entity)?;
     let last_run = world.last_run();
@@ -48,7 +41,8 @@ fn get_entity_mut(world: &mut World, entity: EntityId) -> Result<EntityMut<'_>, 
     })
 }
 
-/// Returns an owned entity handle for direct per-entity operations.
+/// Builds an [`EntityOwned`] handle for one entity, keeping a raw
+/// [`WorldCell`] so the handle can perform direct per-entity operations.
 fn get_entity_owned(world: &mut World, entity: EntityId) -> Result<EntityOwned<'_>, EntityError> {
     let world_cell = world.cell();
     let world = unsafe { world_cell.full_mut() };
@@ -61,12 +55,41 @@ fn get_entity_owned(world: &mut World, entity: EntityId) -> Result<EntityOwned<'
     })
 }
 
+/// Builds an [`Entity`] handle for one entity, keeping its metadata node and
+/// a raw [`WorldCell`] for direct per-entity operations.
+fn get_entity(world: &mut World, entity: EntityId) -> Result<Entity<'_>, EntityError> {
+    let world_cell = world.cell();
+    let world = unsafe { world_cell.full_mut() };
+    let node = world.entities.get(entity)?;
+    let location = unsafe { node.location.debug_checked_unwrap() };
+    let table = unsafe { world.tables.get_unchecked_mut(location.table_id) };
+    Ok(Entity {
+        id: entity,
+        world: world_cell,
+        table,
+        node,
+        location,
+    })
+}
+
+/// Produces entity views from one or more entity identifiers.
+///
+/// This trait backs [`World::get_entity_ref`] and [`World::get_entity_mut`].
+/// It is implemented for [`EntityId`], arrays, and slices of
+/// [`EntityId`]s.
+///
 /// # Safety
-/// Internal Trait
+///
+/// Implementations must uphold the per-method safety contracts below.
+///
+/// [`World::get_entity_ref`]: crate::world::World::get_entity_ref
+/// [`World::get_entity_mut`]: crate::world::World::get_entity_mut
 pub unsafe trait FetchEntities {
+    /// The shared view type.
     type Ref<'a>;
+
+    /// The non-structural mutable view type.
     type Mut<'a>;
-    type Owned<'a>;
 
     /// # Safety
     /// - The world can be read.
@@ -77,18 +100,11 @@ pub unsafe trait FetchEntities {
     /// - The world is non-structurally-mutable.
     /// - Returns only non-structurally-mutable references.
     unsafe fn fetch_mut(this: Self, world: WorldCell<'_>) -> Result<Self::Mut<'_>, EntityError>;
-
-    /// # Safety
-    /// - The world is structurally-mutable (exclusive).
-    /// - Can **not** return structurally-mutable references for multi-entities.
-    unsafe fn fetch_owned(this: Self, world: WorldCell<'_>)
-    -> Result<Self::Owned<'_>, EntityError>;
 }
 
 unsafe impl FetchEntities for EntityId {
     type Ref<'a> = EntityRef<'a>;
     type Mut<'a> = EntityMut<'a>;
-    type Owned<'a> = EntityOwned<'a>;
 
     #[inline]
     unsafe fn fetch_ref(this: Self, world: WorldCell<'_>) -> Result<Self::Ref<'_>, EntityError> {
@@ -99,20 +115,11 @@ unsafe impl FetchEntities for EntityId {
     unsafe fn fetch_mut(this: Self, world: WorldCell<'_>) -> Result<Self::Mut<'_>, EntityError> {
         get_entity_mut(unsafe { world.data_mut() }, this)
     }
-
-    #[inline]
-    unsafe fn fetch_owned(
-        this: Self,
-        world: WorldCell<'_>,
-    ) -> Result<Self::Owned<'_>, EntityError> {
-        get_entity_owned(unsafe { world.data_mut() }, this)
-    }
 }
 
 unsafe impl<const N: usize> FetchEntities for &[EntityId; N] {
     type Ref<'a> = [EntityRef<'a>; N];
     type Mut<'a> = [EntityMut<'a>; N];
-    type Owned<'a> = [EntityMut<'a>; N];
 
     unsafe fn fetch_ref(this: Self, world: WorldCell<'_>) -> Result<Self::Ref<'_>, EntityError> {
         let mut result = MaybeUninit::<[EntityRef; N]>::uninit();
@@ -131,21 +138,11 @@ unsafe impl<const N: usize> FetchEntities for &[EntityId; N] {
         }
         Ok(unsafe { result.assume_init() })
     }
-
-    #[cfg_attr(debug_assertions, track_caller)]
-    unsafe fn fetch_owned(
-        this: Self,
-        world: WorldCell<'_>,
-    ) -> Result<Self::Owned<'_>, EntityError> {
-        once_warning_for_owned!();
-        unsafe { <Self as FetchEntities>::fetch_mut(this, world) }
-    }
 }
 
 unsafe impl<const N: usize> FetchEntities for [EntityId; N] {
     type Ref<'a> = [EntityRef<'a>; N];
     type Mut<'a> = [EntityMut<'a>; N];
-    type Owned<'a> = [EntityMut<'a>; N];
 
     #[inline(always)]
     unsafe fn fetch_ref(this: Self, world: WorldCell<'_>) -> Result<Self::Ref<'_>, EntityError> {
@@ -156,22 +153,11 @@ unsafe impl<const N: usize> FetchEntities for [EntityId; N] {
     unsafe fn fetch_mut(this: Self, world: WorldCell<'_>) -> Result<Self::Mut<'_>, EntityError> {
         unsafe { <&Self as FetchEntities>::fetch_mut(&this, world) }
     }
-
-    #[inline(always)]
-    #[cfg_attr(debug_assertions, track_caller)]
-    unsafe fn fetch_owned(
-        this: Self,
-        world: WorldCell<'_>,
-    ) -> Result<Self::Owned<'_>, EntityError> {
-        once_warning_for_owned!();
-        unsafe { <Self as FetchEntities>::fetch_mut(this, world) }
-    }
 }
 
 unsafe impl FetchEntities for &[EntityId] {
     type Ref<'a> = Vec<EntityRef<'a>>;
     type Mut<'a> = Vec<EntityMut<'a>>;
-    type Owned<'a> = Vec<EntityMut<'a>>;
 
     unsafe fn fetch_ref(this: Self, world: WorldCell<'_>) -> Result<Self::Ref<'_>, EntityError> {
         let mut ret = Vec::with_capacity(this.len());
@@ -192,26 +178,27 @@ unsafe impl FetchEntities for &[EntityId] {
 
         Ok(ret)
     }
-
-    #[cfg_attr(debug_assertions, track_caller)]
-    unsafe fn fetch_owned(
-        this: Self,
-        world: WorldCell<'_>,
-    ) -> Result<Self::Owned<'_>, EntityError> {
-        once_warning_for_owned!();
-        unsafe { <Self as FetchEntities>::fetch_mut(this, world) }
-    }
 }
 
 impl World {
-    /// Allocates a new entity identifier.
+    /// Reserves a fresh entity ID from the lock-free allocator.
+    ///
+    /// This is a low-level operation that only allocates an ID — it does not
+    /// register the entity in [`World::entities`] storage.  Prefer
+    /// `spawn`/`insert` unless you need to control ID allocation manually.
+    ///
+    /// [`World::entities`]: crate::world::World::entities
     #[inline]
     #[must_use]
     pub fn alloc_entity(&self) -> EntityId {
         self.allocator.alloc()
     }
 
-    /// Efficiently allocates multiple entities.
+    /// Reserves `count` fresh entity IDs in a single batch.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `count` is greater than or equal to `u32::MAX`.
     #[inline]
     #[must_use]
     pub fn alloc_entities(&self, count: usize) -> AllocEntitiesIter<'_> {
@@ -219,17 +206,27 @@ impl World {
         self.allocator.alloc_many(count as u32)
     }
 
-    /// Returns a shared entity view with cached tick context.
+    /// Returns shared entity view(s) for the given entity ID(s).
     ///
-    /// Return `Err(EntityError)` if the entity is not spawned or not exists.
+    /// `E` may be a single [`EntityId`], an array, or a slice of
+    /// [`EntityId`]s, producing a matching set of [`EntityRef`] views with
+    /// cached tick context.
+    ///
+    /// Returns `Err(EntityError)` if any entity is not spawned or does not
+    /// exist.
     #[inline]
     pub fn get_entity_ref<E: FetchEntities>(&self, entities: E) -> Result<E::Ref<'_>, EntityError> {
         unsafe { E::fetch_ref(entities, self.cell()) }
     }
 
-    /// Returns a mutable entity view with cached tick context.
+    /// Returns mutable entity view(s) for the given entity ID(s).
     ///
-    /// Return `Err(EntityError)` if the entity is not spawned or not exists.
+    /// `E` may be a single [`EntityId`], an array, or a slice of
+    /// [`EntityId`]s, producing a matching set of [`EntityMut`] views with
+    /// cached tick context.
+    ///
+    /// Returns `Err(EntityError)` if any entity is not spawned or does not
+    /// exist.
     #[inline]
     pub fn get_entity_mut<E: FetchEntities>(
         &mut self,
@@ -238,27 +235,56 @@ impl World {
         unsafe { E::fetch_mut(entities, self.cell()) }
     }
 
-    /// Returns an owned entity handle for direct per-entity operations.
+    /// Returns an [`EntityOwned`] handle for one entity.
     ///
-    /// Return `Err(EntityError)` if the entity is not spawned or not exists.
+    /// The handle keeps raw world access for direct per-entity operations
+    /// (spawning, inserting/removing components).
     ///
-    /// For multiple entities, this function is equivalent to `get_entity_mut`.
-    /// In other words, do **not** call this function for multi-entities.
+    /// Returns `Err(EntityError)` if the entity is not spawned or does not
+    /// exist.
     #[inline]
-    #[cfg_attr(debug_assertions, track_caller)]
-    pub fn get_entity_owned<E: FetchEntities>(
-        &mut self,
-        entities: E,
-    ) -> Result<E::Owned<'_>, EntityError> {
-        unsafe { E::fetch_owned(entities, self.cell()) }
+    pub fn get_entity_owned(&mut self, entity: EntityId) -> Result<EntityOwned<'_>, EntityError> {
+        get_entity_owned(self, entity)
+    }
+
+    /// Returns an [`Entity`] handle for one entity.
+    ///
+    /// The handle keeps the entity's metadata node and raw world access for
+    /// direct per-entity operations.
+    ///
+    /// Returns `Err(EntityError)` if the entity is not spawned or does not
+    /// exist.
+    #[inline]
+    pub fn get_entity(&mut self, entity: EntityId) -> Result<Entity<'_>, EntityError> {
+        get_entity(self, entity)
     }
 
     /// Returns a shared entity view with cached tick context.
     ///
-    /// Similar to `get_entity_ref().unwrap()`.
+    /// Convenience wrapper around [`World::get_entity_ref`] that panics on
+    /// failure.
     ///
     /// # Panics
-    /// Panic if fetch failed.
+    ///
+    /// Panics if the entity is not spawned or does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let ids = [world.spawn((), None).id(), world.spawn((), None).id()];
+    ///
+    /// // `FetchEntities` accepts a single ID, an array, or a slice,
+    /// // producing a matching set of views.
+    /// let [a, b] = world.entity_ref(ids);
+    /// assert_eq!(a.id(), ids[0]);
+    /// assert_eq!(b.id(), ids[1]);
+    ///
+    /// let single = world.entity_ref(ids[0]);
+    /// assert_eq!(single.id(), ids[0]);
+    /// ```
     #[inline]
     pub fn entity_ref<E: FetchEntities>(&self, entities: E) -> E::Ref<'_> {
         self.get_entity_ref::<E>(entities).unwrap()
@@ -266,42 +292,108 @@ impl World {
 
     /// Returns a mutable entity view with cached tick context.
     ///
-    /// Similar to `get_entity_mut().unwrap()`.
+    /// Convenience wrapper around [`World::get_entity_mut`] that panics on
+    /// failure.
     ///
     /// # Panics
-    /// Panic if fetch failed.
+    ///
+    /// Panics if the entity is not spawned or does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::derive::Component;
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Hp(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// let id = world.spawn(Hp(100), None).id();
+    ///
+    /// let mut view = world.entity_mut(id);
+    /// *view.get_mut::<Hp>().unwrap().into_inner() = Hp(50);
+    /// assert_eq!(view.get::<Hp>(), Some(&Hp(50)));
+    /// ```
     #[inline]
     pub fn entity_mut<E: FetchEntities>(&mut self, entities: E) -> E::Mut<'_> {
         self.get_entity_mut::<E>(entities).unwrap()
     }
 
-    /// Returns an owned entity handle for direct per-entity operations.
+    /// Returns an [`EntityOwned`] handle for one entity.
     ///
-    /// For multiple entities, this function is equivalent to `entity_mut`.
-    ///
-    /// Similar to `get_entity_owned().unwrap()`.
+    /// Convenience wrapper around [`World::get_entity_owned`] that panics on
+    /// failure.
     ///
     /// # Panics
-    /// Panic if fetch failed.
+    ///
+    /// Panics if the entity is not spawned or does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let id = world.spawn((), None).id();
+    ///
+    /// // Panics on failure; use `get_entity_owned` for the fallible variant.
+    /// let mut handle = world.entity_owned(id);
+    /// assert!(handle.is_spawned());
+    /// ```
     #[inline]
-    #[cfg_attr(debug_assertions, track_caller)]
-    pub fn entity_owned<E: FetchEntities>(&mut self, entities: E) -> E::Owned<'_> {
-        self.get_entity_owned::<E>(entities).unwrap()
+    pub fn entity_owned(&mut self, entities: EntityId) -> EntityOwned<'_> {
+        self.get_entity_owned(entities).unwrap()
+    }
+
+    /// Returns an [`Entity`] handle for one entity.
+    ///
+    /// Convenience wrapper around [`World::get_entity`] that panics on
+    /// failure.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the entity is not spawned or does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let id = world.spawn((), None).id();
+    ///
+    /// let view: Entity<'_> = world.entity(id);
+    /// assert_eq!(view.id(), id);
+    /// ```
+    #[inline]
+    pub fn entity(&mut self, entities: EntityId) -> Entity<'_> {
+        self.get_entity(entities).unwrap()
     }
 }
 
 impl DeferredWorld<'_> {
-    /// Returns a shared entity view with cached tick context.
+    /// Returns shared entity view(s) for the given entity ID(s).
     ///
-    /// Return `Err(EntityError)` if the entity is not spawned or not exists.
+    /// `E` may be a single [`EntityId`], an array, or a slice of
+    /// [`EntityId`]s, producing a matching set of [`EntityRef`] views with
+    /// cached tick context.
+    ///
+    /// Returns `Err(EntityError)` if any entity is not spawned or does not
+    /// exist.
     #[inline]
     pub fn get_entity_ref<E: FetchEntities>(&self, entities: E) -> Result<E::Ref<'_>, EntityError> {
         unsafe { E::fetch_ref(entities, self.cell()) }
     }
 
-    /// Returns a mutable entity view with cached tick context.
+    /// Returns mutable entity view(s) for the given entity ID(s).
     ///
-    /// Return `Err(EntityError)` if the entity is not spawned or not exists.
+    /// `E` may be a single [`EntityId`], an array, or a slice of
+    /// [`EntityId`]s, producing a matching set of [`EntityMut`] views with
+    /// cached tick context.
+    ///
+    /// Returns `Err(EntityError)` if any entity is not spawned or does not
+    /// exist.
     #[inline]
     pub fn get_entity_mut<E: FetchEntities>(
         &mut self,
@@ -310,12 +402,26 @@ impl DeferredWorld<'_> {
         unsafe { E::fetch_mut(entities, self.cell()) }
     }
 
+    /// Returns an [`Entity`] handle for one entity.
+    ///
+    /// The handle keeps the entity's metadata node and raw world access for
+    /// direct per-entity operations.
+    ///
+    /// Returns `Err(EntityError)` if the entity is not spawned or does not
+    /// exist.
+    #[inline]
+    pub fn get_entity(&mut self, entity: EntityId) -> Result<Entity<'_>, EntityError> {
+        get_entity(unsafe { self.cell().data_mut() }, entity)
+    }
+
     /// Returns a shared entity view with cached tick context.
     ///
-    /// Similar to `get_entity_ref().unwrap()`.
+    /// Convenience wrapper around [`DeferredWorld::get_entity_ref`] that
+    /// panics on failure.
     ///
     /// # Panics
-    /// Panic if fetch failed.
+    ///
+    /// Panics if the entity is not spawned or does not exist.
     #[inline]
     pub fn entity_ref<E: FetchEntities>(&self, entities: E) -> E::Ref<'_> {
         self.get_entity_ref::<E>(entities).unwrap()
@@ -323,12 +429,27 @@ impl DeferredWorld<'_> {
 
     /// Returns a mutable entity view with cached tick context.
     ///
-    /// Similar to `get_entity_mut().unwrap()`.
+    /// Convenience wrapper around [`DeferredWorld::get_entity_mut`] that
+    /// panics on failure.
     ///
     /// # Panics
-    /// Panic if fetch failed.
+    ///
+    /// Panics if the entity is not spawned or does not exist.
     #[inline]
     pub fn entity_mut<E: FetchEntities>(&mut self, entities: E) -> E::Mut<'_> {
         self.get_entity_mut::<E>(entities).unwrap()
+    }
+
+    /// Returns an [`Entity`] handle for one entity.
+    ///
+    /// Convenience wrapper around [`DeferredWorld::get_entity`] that panics
+    /// on failure.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the entity is not spawned or does not exist.
+    #[inline]
+    pub fn entity(&mut self, entities: EntityId) -> Entity<'_> {
+        self.get_entity(entities).unwrap()
     }
 }

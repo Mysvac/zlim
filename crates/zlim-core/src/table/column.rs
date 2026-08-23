@@ -27,9 +27,12 @@ use crate::utils::Dropper;
 /// - `added`: Tick when each component was added
 /// - `changed`: Tick when each component was last modified
 ///
-/// `Column` is the low-level untyped primitive used by both dense tables and
-/// sparse maps. Higher-level storage layers are responsible for ensuring row
-/// validity and aliasing discipline before calling these methods.
+/// `Column` is the low-level untyped primitive that backs dense table
+/// storage ([`Table`]).  Higher-level storage layers are responsible for
+/// ensuring row validity and aliasing discipline before calling these
+/// methods.
+///
+/// [`Table`]: crate::table::Table
 #[derive(Debug)]
 pub struct Column {
     data: BlobArray,
@@ -230,11 +233,16 @@ impl Column {
         unsafe { self.data.remove_item(index) }
     }
 
-    /// Forget the item in place, actually do nothing.
+    /// Marks the item at `index` as forgotten.
+    ///
+    /// This is a no-op: the item's bytes are left in place and the
+    /// allocation is unchanged.  The caller guarantees that the item does
+    /// not need to be dropped here (e.g. it was already moved out or is a
+    /// zero-sized type).
     ///
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
-    /// - The item must be uninitialized
+    /// - The item must not require dropping at this site
     #[inline]
     pub unsafe fn forget_item(&mut self, index: usize) {
         unsafe {
@@ -307,7 +315,7 @@ impl Column {
     /// - `src` must be within bounds (0..self.capacity)
     /// - `dst` must be within bounds (0..other.capacity)
     /// - The item at `src` must be properly initialized
-    /// - The item at `src` must be uninitialized
+    /// - The item at `dst` must be uninitialized
     #[inline]
     pub unsafe fn move_item_to(&mut self, other: &mut Self, src: usize, dst: usize) {
         unsafe {
@@ -378,6 +386,7 @@ impl Column {
     /// # Safety
     /// - `len` must be <= capacity
     /// - All items in `0..len` must be properly initialized
+    #[inline(always)]
     pub unsafe fn get_slice_ref(
         &self,
         len: usize,
@@ -403,6 +412,7 @@ impl Column {
     /// # Safety
     /// - `len` must be <= capacity
     /// - All items in `0..len` must be properly initialized
+    #[inline(always)]
     pub unsafe fn get_slice_mut(
         &mut self,
         len: usize,

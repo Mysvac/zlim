@@ -1,3 +1,5 @@
+//! Entity despawn methods implemented on `EntityOwned`.
+
 use zlim_utils::debug::DebugLocation;
 
 use crate::entity::EntityError;
@@ -5,6 +7,31 @@ use crate::ops::EntityOwned;
 use crate::ops::world::despawn_internal;
 
 impl EntityOwned<'_> {
+    /// Despawns this entity, recursively despawning all of its descendants.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EntityError`] if the entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::derive::Component;
+    ///
+    /// #[derive(TypePath, Component, Clone)]
+    /// struct Marker;
+    ///
+    /// let mut world = World::alloc();
+    /// let entity = world.spawn(Marker, None);
+    /// let id = entity.id();
+    ///
+    /// // Despawn the entity (and, recursively, any descendants).
+    /// entity.despawn().unwrap();
+    ///
+    /// // The ID is no longer backed by storage.
+    /// assert!(world.get_entity_owned(id).is_err());
+    /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn despawn(self) -> Result<(), EntityError> {
@@ -12,6 +39,22 @@ impl EntityOwned<'_> {
         self.despawn_with_caller(caller)
     }
 
+    /// Despawns this entity, recursively despawning all of its descendants.
+    ///
+    /// Returns `false` (and does nothing) if the entity is not spawned.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let entity = world.spawn((), None);
+    /// let id = entity.id();
+    ///
+    /// assert!(entity.try_despawn());
+    /// assert!(world.get_entity_owned(id).is_err());
+    /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_despawn(self) -> bool {

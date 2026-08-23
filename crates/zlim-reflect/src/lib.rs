@@ -33,5 +33,6 @@ pub use zlim_reflect_derive as derive;
 // -----------------------------------------------------------------------------
 // Top-Level exports
 
+pub use db::TypeDB;
 pub use ops::Reflect;
 pub use path::TypePath;

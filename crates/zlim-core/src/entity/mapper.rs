@@ -1,3 +1,11 @@
+//! Entity-id remapping for cloning and scene instantiation.
+//!
+//! [`MapEntities`] rewrites every [`EntityId`] a type holds, translating
+//! each one through an [`EntityMapper`]. [`EntityMap`] is a sparse
+//! id-keyed map that doubles as an [`EntityMapper`] implementation, so it
+//! can serve as the translation table for clone and deserialization
+//! operations.
+
 use core::fmt::Debug;
 use core::hash::{BuildHasher, Hash};
 
@@ -14,6 +22,29 @@ use super::EntityId;
 /// Implementing types traverse and remap every [`EntityId`] they hold
 /// via the provided [`EntityMapper`]. Used during operations like cloning
 /// and deserialization to rewrite entity handles.
+///
+/// The trait is implemented for most containers out of the box (vectors,
+/// arrays, maps, sets, [`Option`], ...), so a type that stores entity
+/// references in such containers usually only needs to implement it for
+/// its own fields.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+///
+/// let mut map = EntityMap::new();
+/// let old_a = EntityId::from_bits(0x1_0000_0001).unwrap();
+/// let old_b = EntityId::from_bits(0x1_0000_0002).unwrap();
+/// let new_a = EntityId::from_bits(0x1_0000_0003).unwrap();
+/// map.insert(old_a, new_a);
+///
+/// // `MapEntities` rewrites every entity reference it holds; ids without
+/// // a registered mapping are left unchanged.
+/// let mut batch = vec![old_a, old_b];
+/// batch.map_entities(&mut map);
+/// assert_eq!(batch, vec![new_a, old_b]);
+/// ```
 pub trait MapEntities {
     /// Walks all [`EntityId`] values in `self` and remaps each one
     /// through `entity_mapper`.
@@ -26,6 +57,31 @@ pub trait MapEntities {
 /// lookups for [`MapEntities`] to use during remapping. Implementations
 /// range from no-op identity mappers to full [`EntityMap`]-backed
 /// translators.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::entity::EntityMapper;
+///
+/// // A mapper that shifts every entity id's index by a fixed offset.
+/// struct OffsetMapper(u32);
+///
+/// impl EntityMapper for OffsetMapper {
+///     fn get_mapped(&mut self, source: EntityId) -> EntityId {
+///         let shifted = source.to_bits() + self.0 as u64;
+///         EntityId::from_bits(shifted).unwrap_or(source)
+///     }
+///
+///     fn set_mapped(&mut self, _source: EntityId, _target: EntityId) {
+///         // Read-only mappers do not need to record mappings.
+///     }
+/// }
+///
+/// let mut mapper = OffsetMapper(1);
+/// let id = EntityId::from_bits(0x1_0000_0001).unwrap();
+/// assert_eq!(mapper.get_mapped(id).index(), 2);
+/// ```
 pub trait EntityMapper {
     /// Returns the mapped [`EntityId`] for `source`, or `source` itself
     /// if no mapping has been registered.
@@ -44,6 +100,23 @@ pub trait EntityMapper {
 /// entity-indexed data. Implements [`EntityMapper`] so it can serve as
 /// a remapping table during clone and deserialization operations.
 ///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+///
+/// let mut map = EntityMap::with_capacity(16);
+/// let a = EntityId::from_bits(0x1_0000_0001).unwrap();
+/// let b = EntityId::from_bits(0x1_0000_0002).unwrap();
+///
+/// map.insert(a, 10);
+/// map.insert(b, 20);
+///
+/// assert_eq!(map.len(), 2);
+/// assert_eq!(map.get(a), Some(&10));
+/// assert_eq!(map.remove(a), Some(10));
+/// ```
+///
 /// [`SparseState`]: zlim_utils::hash::SparseState
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
@@ -57,13 +130,16 @@ impl<T> Default for EntityMap<T> {
 }
 
 impl<T> EntityMap<T> {
-    /// Create an empty [`EntityMap`]
+    /// Creates an empty [`EntityMap`].
+    ///
+    /// This is a `const` constructor; for a pre-sized map, use
+    /// [`with_capacity`](Self::with_capacity).
     #[inline(always)]
     pub const fn new() -> Self {
         Self(HashMap::with_hasher(SparseState))
     }
 
-    /// Create an empty [`EntityMap`] with specific capacity
+    /// Creates an empty [`EntityMap`] with the given capacity.
     #[inline(always)]
     pub fn with_capacity(capacity: usize) -> Self {
         Self(HashMap::with_capacity_and_hasher(capacity, SparseState))
@@ -117,7 +193,7 @@ impl<T> EntityMap<T> {
         self.0.len()
     }
 
-    /// Returns true if the map contains no elements.
+    /// Returns `true` if the map contains no elements.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -129,7 +205,7 @@ impl<T> EntityMap<T> {
         self.0.clear();
     }
 
-    /// Reserves capacity for at least additional more elements to be inserted in the HashMap.
+    /// Reserves capacity for at least `additional` more elements.
     #[inline(always)]
     pub fn reserve(&mut self, additional: usize) {
         self.0.reserve(additional);
@@ -141,7 +217,7 @@ impl<T> EntityMap<T> {
         self.0.shrink_to_fit();
     }
 
-    /// Shrinks the capacity of the map with a lower limit.
+    /// Shrinks the capacity of the map down to at least `min_capacity`.
     #[inline(always)]
     pub fn shrink_to(&mut self, min_capacity: usize) {
         self.0.shrink_to(min_capacity);
@@ -159,7 +235,7 @@ impl<T> EntityMap<T> {
         self.0.get_mut(&k)
     }
 
-    /// Returns true if the map contains a value for the specified entity.
+    /// Returns `true` if the map contains a value for the specified entity.
     #[inline(always)]
     pub fn contains(&self, k: EntityId) -> bool {
         self.0.contains_key(&k)

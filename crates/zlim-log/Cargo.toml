@@ -1,0 +1,61 @@
+[package]
+name = "zlim-log"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+
+default_log_level = [
+    "log/max_level_info",
+    "log/release_max_level_warn",
+    "tracing/max_level_debug",
+    "tracing/release_max_level_info",
+]
+
+debug = []
+trace = ["dep:tracing-error"]
+
+trace_tracy = ["dep:tracing-tracy"]
+trace_memory = ["dep:tracy-client"]
+trace_chrome = ["dep:tracing-chrome"]
+
+[dependencies]
+
+# Log Adapters
+log = { version = "0.4", default-features = false }
+tracing-log = { version = "0.2.0" }
+
+# tracing core
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3.23", features = ["registry", "env-filter"] }
+
+# feature: trace
+tracing-error = { version = "0.2.1", optional = true }
+
+# feature: trace_tracy
+# Tracy dependency compatibility table:
+# https://github.com/nagisa/rust_tracy_client
+tracing-tracy = { version = "0.11.4", optional = true }
+
+# feature: trace_chrome
+tracing-chrome = { version = "0.7.2", optional = true }
+
+# feature: trace_memory
+tracy-client = { version = "0.18.4", optional = true }
+
+# Platform Adapters
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tracing-wasm = "0.2.1"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+tracing-oslog = "0.3.0"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_log-sys = "0.3.2"
+
+[lints]
+workspace = true

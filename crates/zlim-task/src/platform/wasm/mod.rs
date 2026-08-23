@@ -50,8 +50,50 @@ pub fn block_on<T>(future: impl Future<Output = T>) -> T {
 /// [`spawn_local`]: TaskPool::spawn_local
 /// [`spawn_to_main`]: TaskPool::spawn_to_main
 /// [`TaskPool::scope`]: TaskPool::scope
+#[inline(always)]
 pub fn run_local() {
     /* do nothing */
+}
+
+// -----------------------------------------------------------------------------
+// set_main_thread
+
+/// Directly marks the current thread as the main thread.
+///
+/// On WASM this is a no-op: all tasks route to the browser event loop, so
+/// there is no `MainExecutor` driver thread to set up. (The `zlim_main`
+/// macro inserts this call for API parity.)
+#[inline(always)]
+pub fn set_main_thread() {
+    /* do nothing */
+}
+
+// -----------------------------------------------------------------------------
+// block_on_main
+
+/// Send a single task to the main thread for execution and wait for the result.
+/// 
+/// In single threaded mode, it is equivalent to direct execution.
+#[inline]
+pub fn block_on_main<T, F>(future: F) -> T
+where
+    T: Send + 'static,
+    F: Future<Output = T> + Send + 'static,
+{
+    use core::task::{Context, Poll};
+
+    // Pin the future on the stack.
+    let mut future = core::pin::pin!(future);
+    // We don't care about the waker as we're just going to poll as fast as possible.
+    let cx = &mut Context::from_waker(core::task::Waker::noop());
+
+    // Keep polling until the future is ready.
+    loop {
+        match future.as_mut().poll(cx) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => core::hint::spin_loop(),
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------

@@ -24,12 +24,11 @@ zlim-reg = { path = "../zlim-reg", default-features = false }
 
 zlim-os = { path = "../zlim-os", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
+zlim-log = { path = "../zlim-log", default-features = false }
 
 # reflect serde
 serde_core = { version = "1.0", default-features = false, features = ["std"] }
 erased-serde = { version = "0.4", default-features = false, features = ["std"] }
-
-log = { version = "0.4" }
 
 # optional
 glam = { version = "0.33", features = ["serde", "float-types", "integer-types"], optional = true }

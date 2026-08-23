@@ -4,8 +4,8 @@ use core::any::TypeId;
 use core::fmt::Debug;
 
 use crate::hash::NoopState;
-use crate::hash::hashbrown::HashMap;
-use crate::hash::hashbrown::hash_map::Entry;
+use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 
 // -----------------------------------------------------------------------------
 // TypeMap

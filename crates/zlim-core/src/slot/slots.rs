@@ -1,3 +1,6 @@
+//! Sparse collection of resource slots.
+#![expect(clippy::len_without_is_empty, reason = "useless")]
+
 use core::any::TypeId;
 use core::cell::UnsafeCell;
 use core::fmt::Debug;
@@ -12,7 +15,7 @@ use crate::resource::{ResourceId, Resources};
 use crate::utils::DebugCheckedUnwrap;
 
 // -----------------------------------------------------------------------------
-// ResourceSlots
+// Slots
 // -----------------------------------------------------------------------------
 
 /// A collection of all resources in the world.
@@ -29,21 +32,42 @@ use crate::utils::DebugCheckedUnwrap;
 /// be enforced at a higher level.  `Send` and `NonSend` resources share the
 /// same storage; the caller is responsible for enforcing thread-safety
 /// invariants.
-pub struct ResourceSlots {
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use core::any::TypeId;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Resource)]
+/// struct Health(u32);
+///
+/// #[derive(TypePath, Resource)]
+/// struct Mana(u32);
+///
+/// let mut world = World::alloc();
+/// world.insert_resource(Health(100));
+/// world.insert_resource(Mana(50));
+///
+/// // The world owns one `Slots` collection; each prepared resource type
+/// // has exactly one slot:
+/// let slots = world.slots();
+/// assert_eq!(slots.len(), 2);
+/// assert!(slots.get_by_type(TypeId::of::<Mana>()).is_some());
+///
+/// for slot in slots.iter() {
+///     assert!(slot.is_present());
+/// }
+/// ```
+///
+/// [`ResourceId`]: crate::resource::ResourceId
+pub struct Slots {
     slots: Vec<Option<&'static UnsafeCell<Slot>>>,
     mapper: TypeMap<&'static UnsafeCell<Slot>>,
 }
 
-impl Default for ResourceSlots {
-    fn default() -> Self {
-        Self {
-            slots: Vec::new(),
-            mapper: TypeMap::new(),
-        }
-    }
-}
-
-impl Debug for ResourceSlots {
+impl Debug for Slots {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_list()
             .entries(self.slots.iter().filter_map(Option::as_ref))
@@ -51,11 +75,20 @@ impl Debug for ResourceSlots {
     }
 }
 
+impl Slots {
+    pub(crate) const fn new() -> Self {
+        Self {
+            slots: Vec::new(),
+            mapper: TypeMap::new(),
+        }
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Register
 // -----------------------------------------------------------------------------
 
-impl ResourceSlots {
+impl Slots {
     /// Prepares a slot for the given resource type and returns a mutable
     /// reference to it.
     ///
@@ -101,7 +134,7 @@ impl ResourceSlots {
 // Drop
 // -----------------------------------------------------------------------------
 
-impl Drop for ResourceSlots {
+impl Drop for Slots {
     /// Drops and deallocates all active resource slots.
     fn drop(&mut self) {
         for slot in self.slots.iter_mut().flatten() {
@@ -110,33 +143,35 @@ impl Drop for ResourceSlots {
     }
 }
 
-// Safety: ResourceSlots mediates all internal Slot access through `&self`
+// Safety: Slots mediates all internal Slot access through `&self`
 // / `&mut self`, which provides the necessary mutual-exclusion guarantees.
-unsafe impl Sync for ResourceSlots {}
-unsafe impl Send for ResourceSlots {}
+unsafe impl Sync for Slots {}
+unsafe impl Send for Slots {}
 
-impl UnwindSafe for ResourceSlots {}
-impl RefUnwindSafe for ResourceSlots {}
+impl UnwindSafe for Slots {}
+impl RefUnwindSafe for Slots {}
 
 // -----------------------------------------------------------------------------
 // Accessors
 // -----------------------------------------------------------------------------
 
-impl ResourceSlots {
-    /// Returns `true` if no resources are currently active.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.slots.iter().all(Option::is_none)
-    }
-
-    /// Returns the number of active (inserted) resources.
-    #[inline]
+impl Slots {
+    /// Returns the number of prepared resource slots.
+    ///
+    /// Note: this counts *prepared* slots (storage allocated through
+    /// `register`), not the number of resources currently holding an
+    /// inserted value.  For the number of registered resource types, see
+    /// [`World::resource_count`].
+    ///
+    /// [`World::resource_count`]: crate::world::World::resource_count
     pub fn len(&self) -> usize {
         self.slots.iter().filter_map(Option::as_ref).count()
     }
 
     /// Returns a shared reference to the slot for the given [`ResourceId`],
     /// or `None` if the slot has not been prepared.
+    ///
+    /// [`ResourceId`]: crate::resource::ResourceId
     pub fn get(&self, id: ResourceId) -> Option<&Slot> {
         let s = *self.slots.get(id.index())?;
         unsafe { Some(&*(s?.get())) }
@@ -144,6 +179,8 @@ impl ResourceSlots {
 
     /// Returns a mutable reference to the slot for the given
     /// [`ResourceId`], or `None` if the slot has not been prepared.
+    ///
+    /// [`ResourceId`]: crate::resource::ResourceId
     pub fn get_mut(&mut self, id: ResourceId) -> Option<&mut Slot> {
         let s = *self.slots.get_mut(id.index())?;
         unsafe { Some(&mut *(s?.get())) }
@@ -154,6 +191,23 @@ impl ResourceSlots {
     ///
     /// This is the hot-path used by `get_resource::<T>()` — it avoids the
     /// intermediate `ResourceId` lookup.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use core::any::TypeId;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Resource)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// world.insert_resource(Health(100));
+    ///
+    /// let slot = world.slots().get_by_type(TypeId::of::<Health>()).unwrap();
+    /// assert!(slot.is_present());
+    /// ```
     pub fn get_by_type(&self, id: TypeId) -> Option<&Slot> {
         let slot = *self.mapper.get(id)?;
         unsafe { Some(&*slot.get()) }
@@ -175,6 +229,7 @@ impl ResourceSlots {
     ///
     /// - The slot must have been prepared via `register`.
     ///
+    /// [`ResourceId`]: crate::resource::ResourceId
     #[inline(always)]
     pub unsafe fn get_unchecked(&self, id: ResourceId) -> &Slot {
         debug_assert!(id.index() < self.slots.len());
@@ -191,6 +246,7 @@ impl ResourceSlots {
     ///
     /// - The slot must have been prepared via `register`.
     ///
+    /// [`ResourceId`]: crate::resource::ResourceId
     #[inline(always)]
     pub unsafe fn get_unchecked_mut(&mut self, id: ResourceId) -> &mut Slot {
         debug_assert!(id.index() < self.slots.len());
@@ -200,7 +256,30 @@ impl ResourceSlots {
         }
     }
 
-    /// Returns an iterator over all active (inserted) resources.
+    /// Returns an iterator over all prepared slots.
+    ///
+    /// Note that a prepared slot may not hold an inserted value yet; check
+    /// [`Slot::is_present`] per slot when only active resources are wanted.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Resource)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// world.insert_resource(Health(100));
+    ///
+    /// for slot in world.slots().iter() {
+    ///     assert_eq!(slot.name(), "Health");
+    ///     assert!(slot.is_present());
+    /// }
+    /// ```
+    ///
+    /// [`Slot::is_present`]: crate::slot::Slot::is_present
     #[inline]
     pub fn iter(&self) -> impl FusedIterator<Item = &'_ Slot> {
         self.slots
@@ -209,8 +288,8 @@ impl ResourceSlots {
             .map(|s| unsafe { &*s.get() })
     }
 
-    /// Returns an iterator that yields mutable references to all active
-    /// resources.
+    /// Returns an iterator that yields mutable references to all prepared
+    /// slots.
     #[inline]
     pub fn iter_mut(&mut self) -> impl FusedIterator<Item = &'_ mut Slot> {
         self.slots
@@ -219,3 +298,5 @@ impl ResourceSlots {
             .map(|s| unsafe { &mut *s.get() })
     }
 }
+
+// -----------------------------------------------------------------------------

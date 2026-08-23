@@ -301,4 +301,192 @@ impl<T> Future for Recv<'_, T> {
 // -----------------------------------------------------------------------------
 // Tests
 
-// TODO! - Unit Test
+#[cfg(test)]
+mod tests {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread::{scope, spawn};
+
+    use futures_lite::future::block_on;
+
+    use super::channel;
+
+    #[test]
+    fn smoke() {
+        let (tx, mut rx) = channel::<i32>();
+
+        tx.send(1).unwrap();
+        tx.send(2).unwrap();
+        drop(tx);
+
+        assert_eq!(block_on(rx.recv()), Some(1));
+        assert_eq!(block_on(rx.recv()), Some(2));
+        assert_eq!(block_on(rx.recv()), None);
+    }
+
+    #[test]
+    fn try_recv() {
+        let (tx, rx) = channel::<i32>();
+
+        // Empty, not closed.
+        assert_eq!(rx.try_recv(), None);
+
+        tx.send(7).unwrap();
+        assert_eq!(rx.try_recv(), Some(7));
+        assert_eq!(rx.try_recv(), None);
+
+        // Closed and empty.
+        drop(tx);
+        assert_eq!(rx.try_recv(), None);
+    }
+
+    #[test]
+    fn sender_clone_keeps_channel_open() {
+        let (tx, mut rx) = channel::<i32>();
+        let tx2 = tx.clone();
+
+        tx.send(1).unwrap();
+        drop(tx);
+
+        assert_eq!(block_on(rx.recv()), Some(1));
+
+        // `tx2` is still alive, so the channel stays open.
+        tx2.send(2).unwrap();
+        assert_eq!(block_on(rx.recv()), Some(2));
+
+        drop(tx2);
+        assert_eq!(block_on(rx.recv()), None);
+    }
+
+    #[test]
+    fn multiple_receivers() {
+        let (tx, mut rx1) = channel::<i32>();
+        let mut rx2 = rx1.clone();
+
+        tx.send(1).unwrap();
+        tx.send(2).unwrap();
+        drop(tx);
+
+        // Both receivers can receive; the distribution order is unspecified.
+        let a = block_on(rx1.recv()).unwrap();
+        let b = block_on(rx2.recv()).unwrap();
+        assert!(a != b && (a == 1 || a == 2) && (b == 1 || b == 2));
+
+        assert_eq!(block_on(rx1.recv()), None);
+        assert_eq!(block_on(rx2.recv()), None);
+    }
+
+    #[test]
+    fn sender_close() {
+        let (tx, mut rx) = channel::<i32>();
+
+        assert!(!tx.is_closed());
+        assert!(tx.close());
+        assert!(!tx.close()); // already closed
+        assert!(tx.is_closed());
+        assert!(rx.is_closed());
+
+        assert_eq!(tx.send(1), Err(1));
+        assert_eq!(block_on(rx.recv()), None);
+    }
+
+    #[test]
+    fn receiver_close() {
+        let (tx, mut rx) = channel::<i32>();
+
+        assert!(rx.close());
+        assert!(!rx.close());
+        assert!(tx.is_closed());
+
+        assert_eq!(tx.send(1), Err(1));
+        assert_eq!(block_on(rx.recv()), None);
+    }
+
+    #[test]
+    fn recv_wakes_on_send() {
+        let (tx, mut rx) = channel::<i32>();
+
+        spawn(move || {
+            tx.send(42).unwrap();
+        });
+
+        assert_eq!(block_on(rx.recv()), Some(42));
+    }
+
+    #[test]
+    fn recv_wakes_on_sender_drop() {
+        let (tx, mut rx) = channel::<i32>();
+
+        spawn(move || drop(tx));
+
+        assert_eq!(block_on(rx.recv()), None);
+    }
+
+    #[test]
+    fn concurrent_senders() {
+        #[cfg(miri)]
+        const COUNT: usize = 50;
+        #[cfg(not(miri))]
+        const COUNT: usize = 10_000;
+        const THREADS: usize = 4;
+
+        let (tx, mut rx) = channel::<usize>();
+
+        scope(|scope| {
+            for _ in 0..THREADS {
+                let tx = tx.clone();
+                scope.spawn(move || {
+                    for i in 0..COUNT {
+                        tx.send(i).unwrap();
+                    }
+                });
+            }
+            // Drop the original sender; the channel closes once all
+            // spawned senders have finished.
+            drop(tx);
+        });
+
+        let mut total = 0;
+        let mut count = 0;
+        while let Some(v) = block_on(rx.recv()) {
+            total += v;
+            count += 1;
+        }
+
+        assert_eq!(count, COUNT * THREADS);
+        assert_eq!(total, THREADS * COUNT * (COUNT - 1) / 2);
+    }
+
+    #[test]
+    fn concurrent_receivers() {
+        #[cfg(miri)]
+        const COUNT: usize = 50;
+        #[cfg(not(miri))]
+        const COUNT: usize = 10_000;
+        const THREADS: usize = 4;
+
+        let (tx, rx) = channel::<usize>();
+
+        for i in 0..COUNT {
+            tx.send(i).unwrap();
+        }
+        drop(tx);
+
+        let seen = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
+
+        scope(|scope| {
+            for _ in 0..THREADS {
+                let mut rx = rx.clone();
+                let seen = &seen;
+                scope.spawn(move || {
+                    while let Some(v) = block_on(rx.recv()) {
+                        seen[v].fetch_add(1, Ordering::SeqCst);
+                    }
+                });
+            }
+        });
+
+        for c in &seen {
+            assert_eq!(c.load(Ordering::SeqCst), 1);
+        }
+    }
+}

@@ -15,7 +15,7 @@
 //!
 //! Every [`CHECK_CYCLE`] ticks, all component/resource tick markers are validated
 //! to ensure their age does not exceed [`MAX_TICK_AGE`]. This can introduce a
-//! periodic pause (roughly every 8 hours), but the work is chunked and spread
+//! periodic pause, but the work is chunked and spread
 //! across threads, so the runtime impact is typically small.
 
 // -----------------------------------------------------------------------------
@@ -158,7 +158,7 @@ impl Tick {
     /// If the tick is too old, it is moved to the fallback value
     /// `now - Tick::MAX_AGE`.
     #[inline(always)]
-    pub const fn clamp(&mut self, now: Tick) {
+    pub const fn clamp_with(&mut self, now: Tick) {
         let age = now.relative_to(*self);
         let fallback = now.relative_to(Tick::MAX_AGE);
         if age.0 > MAX_TICK_AGE {

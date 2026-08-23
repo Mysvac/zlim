@@ -33,87 +33,59 @@ pub fn zlim_core_path() -> Path {
 // -----------------------------------------------------------------------------
 // Token-stream helpers — zlim_core
 
-/// `#zlim_core::error::ZlimError`
-pub fn zlim_error(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::error::ZlimError)
+macro_rules! def_path_fn {
+    ($name:ident, $($seg:ident)::+) => {
+        #[inline]
+        pub(crate) fn $name(zlim_core: &Path) -> TokenStream {
+            quote!( #zlim_core :: $($seg)::+ )
+        }
+    };
 }
 
-/// `#zlim_core::bundle::Bundle`
-pub fn bundle_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::bundle::Bundle)
-}
-
-/// `#zlim_core::bundle::DataBundle`
-pub fn data_bundle_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::bundle::DataBundle)
-}
-
-/// `#zlim_core::bundle::ComponentCollector`
-pub fn component_collector_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::bundle::ComponentCollector)
-}
-
-/// `#zlim_core::bundle::ComponentWriter`
-pub fn component_writer_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::bundle::ComponentWriter)
-}
-
-/// `#zlim_core::ops::Entity`
-pub fn entity_owned_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::ops::EntityOwned)
-}
-
-/// `#zlim_core::OwningPtr`
-pub fn owning_ptr_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::OwningPtr)
-}
-
-/// `#zlim_core::__macro_exports__::__Reflect`
-pub fn reflect_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::__macro_exports__::__Reflect)
-}
-
-/// `#zlim_core::__macro_exports__::__TypePath`
-pub fn type_path_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::__macro_exports__::__TypePath)
-}
-
-/// `#zlim_core::resource::Resource`
-pub fn resource_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::resource::Resource)
-}
-
-/// `#zlim_core::component::Component`
-pub fn component_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::component::Component)
-}
-
-/// `#zlim_core::component::ComponentHook`
-pub fn component_hook_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::component::ComponentHook)
-}
-
-/// `#zlim_core::clone::ComponentCloner`
-pub fn component_cloner_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::clone::ComponentCloner)
-}
-
-/// `#zlim_core::entity::MapEntities`
-pub fn map_entities_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::entity::MapEntities)
-}
-
-/// `#zlim_core::entity::EntityMapper`
-pub fn entity_mapper_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::entity::EntityMapper)
-}
-
-/// `#zlim_core::__macro_exports__::__Serialize`
-pub fn serialize_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::__macro_exports__::__Serialize)
-}
-
-/// `#zlim_core::__macro_exports__::__Deserialize`
-pub fn deserialize_(zlim_core: &Path) -> TokenStream {
-    quote!(#zlim_core::__macro_exports__::__Deserialize)
-}
+def_path_fn!(zlim_error, error::ZlimError);
+def_path_fn!(bundle_, bundle::Bundle);
+def_path_fn!(data_bundle_, bundle::DataBundle);
+def_path_fn!(component_collector_, component::ComponentCollector);
+def_path_fn!(component_writer_, component::ComponentWriter);
+def_path_fn!(entity_owned_, ops::EntityOwned);
+def_path_fn!(owning_ptr_, __macro_exports__::__OwningPtr);
+def_path_fn!(reflect_, __macro_exports__::__Reflect);
+def_path_fn!(type_path_, __macro_exports__::__TypePath);
+def_path_fn!(resource_, resource::Resource);
+def_path_fn!(resource_db_, resource::ResourceDB);
+def_path_fn!(component_, component::Component);
+def_path_fn!(component_db_, component::ComponentDB);
+def_path_fn!(component_hook_, component::ComponentHook);
+def_path_fn!(component_cloner_, clone::ComponentCloner);
+def_path_fn!(map_entities_, entity::MapEntities);
+def_path_fn!(entity_mapper_, entity::EntityMapper);
+def_path_fn!(serialize_, __macro_exports__::__Serialize);
+def_path_fn!(deserialize_, __macro_exports__::__Deserialize);
+def_path_fn!(world_, world::World);
+def_path_fn!(world_cell_, world::WorldCell);
+def_path_fn!(deferred_world_, world::DeferredWorld);
+def_path_fn!(system_param_, system::SystemParam);
+def_path_fn!(system_param_error_, system::SystemParamError);
+def_path_fn!(access_table_, system::AccessTable);
+def_path_fn!(tick_, tick::Tick);
+def_path_fn!(into_job_, job::IntoJob);
+def_path_fn!(job_trait_, job::Job);
+def_path_fn!(job_db_, job::JobDB);
+def_path_fn!(job_label_, job::JobLabel);
+def_path_fn!(job_group_, job::JobGroup);
+def_path_fn!(job_group_label_, job::JobGroupLabel);
+def_path_fn!(job_group_reg_, job::JobGroupReg);
+def_path_fn!(debug_location_, __macro_exports__::__DebugLocation);
+def_path_fn!(type_path_trait_, __macro_exports__::__TypePath);
+def_path_fn!(type_path_derive_, __macro_exports__::__TypePathDerive);
+def_path_fn!(submit_, __macro_exports__::__submit);
+def_path_fn!(schedule_label_, schedule::ScheduleLabel);
+def_path_fn!(message_, message::Message);
+def_path_fn!(query_data_, query::QueryData);
+def_path_fn!(readonly_query_data_, query::ReadOnlyQueryData);
+def_path_fn!(query_slice_, query::QuerySlice);
+def_path_fn!(component_access_, system::ComponentAccess);
+def_path_fn!(filter_param_builder_, system::FilterParamBuilder);
+def_path_fn!(table_, table::Table);
+def_path_fn!(table_row_, table::TableRow);
+def_path_fn!(entity_id_, entity::EntityId);

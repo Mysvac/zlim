@@ -320,7 +320,7 @@ impl<T, const N: usize> ArrayDeque<T, N> {
     pub const fn new() -> Self {
         assert! {
             const { N != 0 && N <= (usize::MAX >> 2) },
-            "the capacity of ArrayDeque cannot be `0` and exceed `usize::MAX / 4`",
+            "the capacity of ArrayDeque cannot be `0` or exceed `usize::MAX / 4`",
         }
 
         Self {

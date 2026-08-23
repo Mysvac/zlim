@@ -1,3 +1,5 @@
+//! Registry of all tables in a world.
+
 use core::cmp::Ordering;
 use core::fmt::{Debug, Formatter};
 use core::iter::FusedIterator;
@@ -7,21 +9,61 @@ use zlim_utils::hash::HashMap;
 use super::Table;
 use super::TableId;
 use crate::bundle::{BundleId, Bundles};
-use crate::component::{ComponentId, Components};
-use crate::utils::SlicePool;
+use crate::component::{ComponentCollector, ComponentId, Components};
+use crate::utils::{DebugCheckedUnwrap, SlicePool};
 
 // -----------------------------------------------------------------------------
 // Tables
-// -----------------------------------------------------------------------------
 
+/// Registry of all tables in a world, keyed by component set.
+///
+/// Provides O(1) lookup by exact component-set signature and lazily caches
+/// archetype transitions for bundle insertion and removal.
+///
+/// The registry is owned by the [`World`] and always contains at least one
+/// table: the empty table ([`TableId::EMPTY`]) for entities without
+/// components.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+/// use zlim_core::table::Tables;
+///
+/// #[derive(TypePath, Component, Clone)]
+/// struct Position {
+///     x: f32,
+/// }
+///
+/// let mut world = World::alloc();
+/// world.spawn((Position { x: 1.0 },), None);
+///
+/// // The registry owns the empty table plus one table per distinct
+/// // component set (archetype).
+/// let tables: &Tables = world.tables();
+/// assert_eq!(tables.len(), 2);
+///
+/// for _table in tables.iter() {
+///     // ...
+/// }
+/// ```
+///
+/// [`World`]: crate::world::World
 pub struct Tables {
     tables: Vec<Table>,
     mapper: HashMap<&'static [ComponentId], TableId>,
     bundles: Vec<Option<TableId>>,
 }
 
-impl Default for Tables {
-    fn default() -> Self {
+impl Debug for Tables {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        Debug::fmt(self.tables.as_slice(), f)
+    }
+}
+
+impl Tables {
+    pub(crate) fn new() -> Self {
         let mut val = Self {
             tables: Vec::with_capacity(32),
             mapper: HashMap::with_capacity(32),
@@ -35,15 +77,103 @@ impl Default for Tables {
     }
 }
 
-impl Debug for Tables {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Debug::fmt(self.tables.as_slice(), f)
+// -----------------------------------------------------------------------------
+// Basic methods
+
+impl Tables {
+    /// Returns `true` if there are no tables.
+    ///
+    /// This always returns `false`, because the empty table is always
+    /// registered.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.tables.is_empty()
+    }
+
+    /// Returns the number of registered tables.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.tables.len()
+    }
+
+    /// Returns the ID of the table exactly matching the given component set,
+    /// if any.
+    #[inline]
+    pub fn get_id(&self, components: &[ComponentId]) -> Option<TableId> {
+        self.mapper.get(components).copied()
+    }
+
+    /// Returns a reference to the table with the given ID, if it exists.
+    #[inline]
+    pub fn get(&self, id: TableId) -> Option<&Table> {
+        self.tables.get(id.index())
+    }
+
+    /// Returns a mutable reference to the table with the given ID, if it
+    /// exists.
+    #[inline]
+    pub fn get_mut(&mut self, id: TableId) -> Option<&mut Table> {
+        self.tables.get_mut(id.index())
+    }
+
+    /// Returns mutable references to the tables at indices `x` and `y`
+    /// at once.
+    ///
+    /// Returns `None` if either index is out of bounds or if `x == y`.
+    #[inline]
+    pub fn get_mut_2(&mut self, x: usize, y: usize) -> Option<[&mut Table; 2]> {
+        self.tables.get_disjoint_mut([x, y]).ok()
+    }
+
+    /// Returns a reference to the table with the given ID without bounds
+    /// checking.
+    ///
+    /// # Safety
+    /// - `id` must be a valid table ID obtained from this registry
+    #[inline(always)]
+    pub unsafe fn get_unchecked(&self, id: TableId) -> &Table {
+        debug_assert!(id.index() < self.tables.len());
+        unsafe { self.tables.get_unchecked(id.index()) }
+    }
+
+    /// Returns a mutable reference to the table with the given ID without
+    /// bounds checking.
+    ///
+    /// # Safety
+    /// - `id` must be a valid table ID obtained from this registry
+    #[inline(always)]
+    pub unsafe fn get_unchecked_mut(&mut self, id: TableId) -> &mut Table {
+        debug_assert!(id.index() < self.tables.len());
+        unsafe { self.tables.get_unchecked_mut(id.index()) }
+    }
+
+    /// Returns mutable references to the tables at indices `x` and `y`
+    /// without any checks.
+    ///
+    /// # Safety
+    /// - `x` and `y` must be valid indices into this registry (each
+    ///   `< self.len()`)
+    /// - `x != y`
+    #[inline]
+    pub unsafe fn get_unchecked_mut_2(&mut self, x: usize, y: usize) -> [&mut Table; 2] {
+        unsafe { self.tables.get_disjoint_unchecked_mut([x, y]) }
+    }
+
+    /// Returns an iterator over the tables.
+    #[inline]
+    pub fn iter(&self) -> impl FusedIterator<Item = &'_ Table> {
+        self.tables.iter()
+    }
+
+    /// Returns an iterator that allows modifying each table.
+    #[inline]
+    pub fn iter_mut(&mut self) -> impl FusedIterator<Item = &'_ mut Table> {
+        self.tables.iter_mut()
     }
 }
 
 // -----------------------------------------------------------------------------
 // register
-// -----------------------------------------------------------------------------
 
 impl Tables {
     /// Looks up or creates a table for the given component set.
@@ -185,7 +315,18 @@ impl Tables {
             let bundle_comps = unsafe { bundles.get_unchecked(bundle_id).components() };
 
             let subtracted = subtract_sorted(current_comps, bundle_comps);
-            let interned = SlicePool::component(&subtracted);
+
+            let mut collector = ComponentCollector::new(Some(components));
+
+            for &id in subtracted.iter() {
+                let db = unsafe { components.get_by_id(id).debug_checked_unwrap() };
+                if let Some(required) = db.required {
+                    required.collect(&mut collector);
+                }
+                collector.insert(id);
+            }
+
+            let interned = collector.finish();
             let target = this.register_dynamic(interned, components);
 
             let table = unsafe { this.get_unchecked_mut(current) };
@@ -199,98 +340,7 @@ impl Tables {
 }
 
 // -----------------------------------------------------------------------------
-// Basic methods
-// -----------------------------------------------------------------------------
-
-impl Tables {
-    /// Returns `true` if no tables.
-    ///
-    /// Always return `false` because `table[0]` is exist.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.tables.is_empty()
-    }
-
-    /// Returns the number of registered tables.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.tables.len()
-    }
-
-    /// Returns the ID of the table exactly matching the given component set,
-    /// if any.
-    #[inline]
-    pub fn get_id(&self, components: &[ComponentId]) -> Option<TableId> {
-        self.mapper.get(components).copied()
-    }
-
-    /// Returns a reference to the table with the given ID, if it exists.
-    #[inline]
-    pub fn get(&self, id: TableId) -> Option<&Table> {
-        self.tables.get(id.index())
-    }
-
-    /// Returns a mutable reference to the table with the given ID, if it
-    /// exists.
-    #[inline]
-    pub fn get_mut(&mut self, id: TableId) -> Option<&mut Table> {
-        self.tables.get_mut(id.index())
-    }
-
-    /// Returns mutable references to 2 indices at once.
-    #[inline]
-    pub fn get_mut_2(&mut self, x: usize, y: usize) -> Option<[&mut Table; 2]> {
-        self.tables.get_disjoint_mut([x, y]).ok()
-    }
-
-    /// Returns a reference to the table with the given ID without bounds
-    /// checking.
-    ///
-    /// # Safety
-    /// - `id` must be a valid table ID obtained from this registry
-    #[inline(always)]
-    pub unsafe fn get_unchecked(&self, id: TableId) -> &Table {
-        debug_assert!(id.index() < self.tables.len());
-        unsafe { self.tables.get_unchecked(id.index()) }
-    }
-
-    /// Returns a mutable reference to the table with the given ID without
-    /// bounds checking.
-    ///
-    /// # Safety
-    /// - `id` must be a valid table ID obtained from this registry
-    #[inline(always)]
-    pub unsafe fn get_unchecked_mut(&mut self, id: TableId) -> &mut Table {
-        debug_assert!(id.index() < self.tables.len());
-        unsafe { self.tables.get_unchecked_mut(id.index()) }
-    }
-
-    /// Returns mutable references to 2 indices at once, without doing any checks.
-    ///
-    /// # Safety
-    /// - `x` and `y` must be a valid table ID obtained from this registry
-    /// - `x != y`
-    #[inline]
-    pub unsafe fn get_unchecked_mut_2(&mut self, x: usize, y: usize) -> [&mut Table; 2] {
-        unsafe { self.tables.get_disjoint_unchecked_mut([x, y]) }
-    }
-
-    /// Returns an iterator over the tables.
-    #[inline]
-    pub fn iter(&self) -> impl FusedIterator<Item = &'_ Table> {
-        self.tables.iter()
-    }
-
-    /// Returns an iterator that allows modifying each table.
-    #[inline]
-    pub fn iter_mut(&mut self) -> impl FusedIterator<Item = &'_ mut Table> {
-        self.tables.iter_mut()
-    }
-}
-
-// -----------------------------------------------------------------------------
 // helpers
-// -----------------------------------------------------------------------------
 
 /// Merges two sorted `ComponentId` slices into a sorted union.
 #[inline]

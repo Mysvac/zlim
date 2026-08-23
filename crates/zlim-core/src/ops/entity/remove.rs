@@ -1,3 +1,5 @@
+//! Component-removal methods implemented on `EntityOwned`.
+
 use zlim_utils::debug::DebugLocation;
 
 use crate::bundle::{BundleId, DataBundle};
@@ -16,13 +18,61 @@ impl EntityOwned<'_> {
     /// Removes all components explicitly included in the `Bundle` from this
     /// entity.
     ///
+    /// A alias function of [`EntityOwned::remove_explicit`].
+    ///
+    /// Components that do not exist on the entity are silently ignored.
+    /// If the removal changes the entity's component set, the entity moves
+    /// to a different table.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::derive::Component;
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Hp(u32);
+    ///
+    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// struct Mana(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// let mut entity = world.spawn((Hp(100), Mana(50)), None);
+    ///
+    /// entity.remove::<Mana>().unwrap();
+    /// assert!(!entity.contains::<Mana>());
+    /// assert_eq!(entity.get::<Hp>(), Some(&Hp(100)));
+    /// ```
+    #[inline(always)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn remove<B: DataBundle>(&mut self) -> Result<&mut Self, EntityError> {
+        self.remove_explicit_with_caller::<B>(DebugLocation::caller())
+    }
+
+    /// Removes all components included in the `Bundle` from this entity.
+    ///
+    /// The required components included in the bundle will also be removed
+    /// (if they are not dependent on other components).
+    ///
     /// Components that do not exist on the entity are silently ignored.
     /// If the removal changes the entity's component set, the entity moves
     /// to a different table.
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn remove<B: DataBundle>(&mut self) -> Result<&mut Self, EntityError> {
-        self.remove_with_caller::<B>(DebugLocation::caller())
+    pub fn remove_required<B: DataBundle>(&mut self) -> Result<&mut Self, EntityError> {
+        self.remove_required_with_caller::<B>(DebugLocation::caller())
+    }
+
+    /// Removes all components explicitly included in the `Bundle` from this
+    /// entity.
+    ///
+    /// Components that do not exist on the entity are silently ignored.
+    /// If the removal changes the entity's component set, the entity moves
+    /// to a different table.
+    #[inline(always)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn remove_explicit<B: DataBundle>(&mut self) -> Result<&mut Self, EntityError> {
+        self.remove_explicit_with_caller::<B>(DebugLocation::caller())
     }
 
     /// Removes the components described by the given [`BundleId`] from
@@ -42,11 +92,21 @@ impl EntityOwned<'_> {
 
 impl EntityOwned<'_> {
     #[inline]
-    pub(crate) fn remove_with_caller<B: DataBundle>(
+    pub(crate) fn remove_explicit_with_caller<B: DataBundle>(
         &mut self,
         caller: DebugLocation,
     ) -> Result<&mut Self, EntityError> {
-        let bundle_id = unsafe { self.world.full_mut().register_bundle::<B>() };
+        let bundle_id = unsafe { self.world.full_mut().register_explicit_bundle::<B>() };
+
+        self.remove_dynamic_with_caller(bundle_id, caller)
+    }
+
+    #[inline]
+    pub(crate) fn remove_required_with_caller<B: DataBundle>(
+        &mut self,
+        caller: DebugLocation,
+    ) -> Result<&mut Self, EntityError> {
+        let bundle_id = unsafe { self.world.full_mut().register_required_bundle::<B>() };
 
         self.remove_dynamic_with_caller(bundle_id, caller)
     }
@@ -67,7 +127,11 @@ impl EntityOwned<'_> {
         let world_cell = self.world;
         let world = unsafe { world_cell.data_mut() };
 
-        let current_table_id = unsafe { self.storage.as_ref().debug_checked_unwrap().1.table_id };
+        // Peek at the storage instead of taking it: `remove_moved` below is
+        // the only consumer allowed to take the storage, and the no-op
+        // (same-table) path must leave it intact.
+        let location = unsafe { self.storage.as_ref().debug_checked_unwrap().1 };
+        let current_table_id = location.table_id;
 
         let new_table_id = world.tables.table_after_remove(
             current_table_id,

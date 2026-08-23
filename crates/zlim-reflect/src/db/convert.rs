@@ -2,6 +2,7 @@ use core::any::TypeId;
 use core::panic::Location;
 use std::sync::PoisonError;
 
+use zlim_log as log;
 use zlim_utils::mem::Global;
 
 use super::{IntoFunc, TypeDB, TypeDatabase};

@@ -1,42 +1,80 @@
-# CTOR-Based Metadata Collector
+A distributed data collector based on static initialization.
 
-Link-time registry for static metadata — values are registered through C-level constructors and collected into type-safe linked lists at runtime.
+## Declaring a Registry
 
-## Modules
+When you need to collect data of a type, use the `collect!` macro:
 
-- **`collect!`** — Declares a registry for a type.
-- **`submit!`** — Registers a static value; auto-invoked via linker constructors before `main()`.
-- **`iter`** — Iterates over all submitted values of a given type.
-
-## Platforms
-
-| Platform | Constructor mechanism |
-|----------|-----------------------|
-| Linux, Android, WASM, BSDs | `.init_array` |
-| Windows | `.CRT$XCU` |
-| macOS, iOS, tvOS | `__DATA,__mod_init_func` |
-
-WASM does **not** require a manual `__wasm_call_ctors` call — the crate invokes it automatically on first `iter`.
-
-## Safety
-
-Each registry is bound to exactly one concrete type, enforced by a `TypeId` check. Sharing a `Registry` across multiple types is undefined behavior. The `collect!` macro generates the correct implementation automatically, so users never need to implement `Collect` by hand.
-
-## Usage
-
-```rust
+```rust, ignore
 struct Plugin { name: &'static str }
 
 zlim_reg::collect!(Plugin);
+```
 
-zlim_reg::submit!(Plugin { name: "physics" } => Plugin);
-zlim_reg::submit!(Plugin { name: "render" }  => Plugin);
+`collect!` implements this crate's `Collect` trait for the type. Due to Rust's
+orphan rule, it can only be invoked in the crate that defines the type.
 
-for plugin in zlim_reg::iter::<Plugin>() {
-    println!("loaded: {}", plugin.name);
+In addition, the type must be concrete — it cannot contain unbound generic
+parameters:
+
+```rust, ignore
+struct Foo<T>(T);
+
+zlim_reg::collect!(Foo<u32>); // OK ✅ — Foo<u32> is a concrete type
+
+zlim_reg::collect!(Foo<T>);   // Compile error ❌ — T is unbound
+```
+
+## Submitting Data
+
+To submit data, use the `submit!` macro with the syntax `$expr => Type`:
+
+```rust, ignore
+zlim_reg::submit!(Plugin { name: "1" } => Plugin);
+```
+
+`submit!` is typically invoked at module scope (outside function bodies), as
+long as the registry's type is accessible.
+
+The expression passed in must be a constant expression, i.e. it must be
+evaluable at compile time.
+
+## Accessing Data
+
+Create an iterator with the `iter` function to traverse all data submitted via
+`submit!`:
+
+```rust, ignore
+for item in zlim_reg::iter::<Plugin>() {
+    std::println!("{}", item.name);
 }
 ```
 
-## License
+The iterator yields elements of type `&'static T`, which are the static
+variables defined inside the `submit!` macro.
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
+If you need to collect data that can only be created at runtime, consider
+collecting function pointers to "constructors" through this crate, then
+iterating and calling them at runtime.
+
+## Internal Implementation
+
+C supports the `__attribute__((constructor))` function attribute in GCC and
+Clang; marked functions are executed before `main`. This crate collects data
+in a similar way.
+
+1. `collect!` makes the type implement the `Collect` trait, providing a linked
+   list (the registry) for that type.
+
+2. `submit!` creates a static variable from the expression and declares a
+   function that runs before `main` to register the static variable's
+   reference into the linked list.
+
+3. `iter` returns an iterator that walks the linked list of the corresponding
+   type at runtime.
+
+---
+
+This crate's code is adapted from the inventory crate.
+
+This crate has built-in handling for wasm targets, so users don't need to call
+`__wasm_call_ctors` manually.

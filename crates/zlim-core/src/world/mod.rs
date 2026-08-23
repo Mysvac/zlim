@@ -12,12 +12,14 @@
 //!
 //! | Subsystem | Type | Purpose |
 //! |-----------|------|---------|
-//! | Entities | [`EntityAllocator`] + [`EntityTree`] | Allocates/recycles entity IDs; tracks spawn state, hierarchy, and storage location |
+//! | Entities | [`EntityAllocator`] + [`Entities`] | Allocates/recycles entity IDs; tracks spawn state, hierarchy, and storage location |
 //! | Components | [`Components`] | Per-world registry of component type metadata and hooks |
 //! | Tables | [`Tables`] | Dense columnar storage organised by component-set archetype |
 //! | Bundles | [`Bundles`] | Maps bundle types to their component sets |
-//! | Resources | [`Resources`] + [`ResourceSlots`] | Global singleton storage; slots hold the actual data |
+//! | Resources | [`Resources`] + [`Slots`] | Global singleton storage; slots hold the actual data |
 //! | Commands | [`CommandQueue`] | Deferred structural mutations (entity/resource add/remove) |
+//! | Schedules | [`Schedules`] | Named collection of executable schedules |
+//! | Messages | [`Messages`] | Message type registry and queue rotation |
 //! | Ticks | `last_run` / `this_run` | Change-detection epoch counters |
 //!
 //! # Access control
@@ -40,13 +42,15 @@
 //! detect which components changed since their previous execution.
 //!
 //! [`EntityAllocator`]: crate::entity::EntityAllocator
-//! [`EntityTree`]: crate::entity::EntityTree
+//! [`Entities`]: crate::entity::Entities
 //! [`Components`]: crate::component::Components
 //! [`Tables`]: crate::table::Tables
 //! [`Bundles`]: crate::bundle::Bundles
 //! [`Resources`]: crate::resource::Resources
-//! [`ResourceSlots`]: crate::slot::ResourceSlots
+//! [`Slots`]: crate::slot::Slots
 //! [`CommandQueue`]: crate::command::CommandQueue
+//! [`Schedules`]: crate::schedule::Schedules
+//! [`Messages`]: crate::message::Messages
 //! [`WorldCell`]: cell::WorldCell
 //! [`DeferredWorld`]: deferred::DeferredWorld
 
@@ -80,12 +84,17 @@ use zlim_utils::ext::CachePadded;
 use crate::bundle::Bundles;
 use crate::command::CommandQueue;
 use crate::component::Components;
+use crate::entity::Entities;
 use crate::entity::EntityAllocator;
-use crate::entity::EntityTree;
+use crate::entity::RemoteAllocator;
 use crate::error::ErrorHandler;
 use crate::error::default_error_handler;
+use crate::message::Messages;
+use crate::query::QueryCache;
 use crate::resource::Resources;
-use crate::slot::ResourceSlots;
+use crate::schedule::Schedules;
+use crate::slot::Slots;
+use crate::system::Systems;
 use crate::table::Tables;
 use crate::tick::CHECK_CYCLE;
 use crate::tick::Tick;
@@ -94,7 +103,18 @@ use crate::tick::Tick;
 // WorldId
 // -----------------------------------------------------------------------------
 
-define_atomic_id!(WorldId);
+define_atomic_id!(
+    /// Unique identifier for a [`World`] instance.
+    ///
+    /// `WorldId` values are handed out from a process-wide atomic counter, so no
+    /// two live worlds ever share the same id.  It is mainly useful for debugging
+    /// and logging; retrieve the id of a world with [`World::id`].
+    ///
+    /// Note that the id space is process-wide — creating an extremely large number
+    /// of worlds within one process can exhaust the 32-bit id space, at which
+    /// point allocation panics.
+    WorldId
+);
 
 impl Display for WorldId {
     #[inline]
@@ -115,12 +135,27 @@ impl Display for WorldId {
 ///
 /// # Examples
 ///
-/// ```no_run
-/// use zlim_core::world::World;
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// struct Position {
+///     x: f32,
+///     y: f32,
+/// }
 ///
 /// let mut world = World::alloc();
-/// let entity = world.spawn((), None);
+///
+/// // Spawn an entity with a component bundle.
+/// let entity = world.spawn(Position { x: 1.0, y: 2.0 }, None);
 /// assert!(entity.is_spawned());
+/// assert_eq!(entity.get::<Position>(), Some(&Position { x: 1.0, y: 2.0 }));
+///
+/// // Query entities by component.
+/// drop(entity); // release the world borrow before querying
+/// let total: f32 = world.query::<&Position, ()>().iter().map(|p| p.x).sum();
+/// assert_eq!(total, 1.0);
 /// ```
 #[repr(C)]
 pub struct World {
@@ -149,7 +184,7 @@ pub struct World {
     pub(crate) allocator: EntityAllocator,
 
     /// Entity tree holding spawn state, hierarchy, and storage locations.
-    pub(crate) entities: EntityTree,
+    pub(crate) entities: Entities,
 
     /// Per-world component type registry.
     pub(crate) components: Components,
@@ -164,10 +199,22 @@ pub struct World {
     pub(crate) resources: Resources,
 
     /// Global singleton resource data storage.
-    pub(crate) resource_slots: ResourceSlots,
+    pub(crate) slots: Slots,
 
     /// Queue of deferred structural commands (entity/resource add/remove).
     pub(crate) command_queue: CommandQueue,
+
+    /// Message type registry and queue rotation state.
+    pub(crate) messages: Messages,
+
+    /// Named collection of schedules that can be run against this world.
+    pub(crate) schedules: Schedules,
+
+    /// Type-erased cache of system instances, keyed by their SystemId.
+    pub(crate) systems: Systems,
+
+    /// Per-world memoisation of query states, keyed by query type.
+    pub(crate) query_cache: QueryCache,
 
     /// Current change-detection epoch, stored behind cache-line padding
     /// to reduce false sharing in multi-threaded contexts.
@@ -183,6 +230,7 @@ impl Debug for World {
             .field("entity_count", &self.entity_count())
             .field("resources", &self.resources)
             .field("components", &self.components)
+            .field("schedules", &self.schedules.len())
             .finish()
     }
 }
@@ -200,32 +248,46 @@ impl World {
     ///
     /// In debug builds (outside tests), the function logs the time taken to
     /// initialise the world.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// assert_eq!(world.entity_count(), 0);
+    ///
+    /// let entity = world.spawn_empty(None);
+    /// assert!(entity.is_spawned());
+    /// ```
     #[inline(never)]
     pub fn alloc() -> Box<World> {
         crate::cfg::debug! {
-            #[cfg(not(test))]
-            let start = ::std::time::Instant::now();
+            let start = ::zlim_os::time::Instant::now();
         }
 
         let ret = Box::new(World {
             id: WorldId::alloc(),
             last_run: Tick::new(0),
-            error_handler: default_error_handler,
             last_check: Tick::new(0),
-            allocator: Default::default(),
-            entities: Default::default(),
-            components: Components::default(),
-            tables: Tables::default(),
-            bundles: Bundles::default(),
-            resources: Resources::default(),
-            resource_slots: ResourceSlots::default(),
-            command_queue: CommandQueue::default(),
+            error_handler: default_error_handler,
+            allocator: EntityAllocator::new(),
+            entities: Entities::new(),
+            components: Components::new(),
+            tables: Tables::new(),
+            bundles: Bundles::new(),
+            resources: Resources::new(),
+            slots: Slots::new(),
+            command_queue: CommandQueue::new(),
+            messages: Messages::new(),
+            schedules: Schedules::new(),
+            systems: Systems::new(),
+            query_cache: QueryCache::new(),
             this_run: CachePadded::new(AtomicU32::new(1)),
         });
 
         crate::cfg::debug! {
-            #[cfg(not(test))]
-            log::debug!("World({}) initialized: {:?}`", ret.id, start.elapsed());
+            zlim_log::debug!("World({}) initialized: {:?}", ret.id, start.elapsed());
         }
 
         ret
@@ -264,26 +326,128 @@ impl World {
 }
 
 // -----------------------------------------------------------------------------
-// Statistics
+// Fields
 // -----------------------------------------------------------------------------
 
 impl World {
-    /// Returns the number of currently spawned (alive) entities.
-    #[inline]
-    pub fn entity_count(&self) -> usize {
-        self.entities.count_spawned()
+    /// Returns the world's lock-free entity ID allocator.
+    ///
+    /// The allocator hands out fresh entity indices and recycles freed ones;
+    /// it does **not** store component data.  See [`Entities`] for spawn
+    /// state, hierarchy, and storage locations.
+    #[inline(always)]
+    pub fn allocator(&self) -> &EntityAllocator {
+        &self.allocator
     }
 
-    /// Returns the number of registered component types in this world.
-    #[inline]
-    pub fn component_count(&self) -> usize {
-        self.components.len()
+    /// Returns the world's entity ID allocator for mutation.
+    ///
+    /// Prefer [`World::allocator`] unless you need to manually free or
+    /// recycle entity IDs.
+    #[inline(always)]
+    pub fn allocator_mut(&mut self) -> &mut EntityAllocator {
+        &mut self.allocator
     }
 
-    /// Returns the number of registered resource types in this world.
+    /// Returns a [`RemoteAllocator`] connected to this world's allocator.
+    ///
+    /// The remote allocator can allocate entity IDs from other threads (or
+    /// without direct `&World` access) while sharing the same underlying
+    /// free-list state as the world.
     #[inline]
-    pub fn resource_count(&self) -> usize {
-        self.resources.len()
+    pub fn remote_allocator(&self) -> RemoteAllocator {
+        self.allocator.remote()
+    }
+
+    /// Returns the world's sparse entity metadata storage.
+    ///
+    /// Tracks each entity's generation, spawn state, storage location, and
+    /// parent/child relationships.  See [`World::allocator`] for ID
+    /// allocation and [`Tables`] for component data storage.
+    ///
+    /// [`Tables`]: crate::table::Tables
+    #[inline(always)]
+    pub fn entities(&self) -> &Entities {
+        &self.entities
+    }
+
+    /// Returns the world's per-world component type registry.
+    ///
+    /// Contains metadata (hooks, layout, cloners) for every registered
+    /// component type in this world.
+    #[inline(always)]
+    pub fn components(&self) -> &Components {
+        &self.components
+    }
+
+    /// Returns the world's global resource type registry.
+    ///
+    /// This is the per-world snapshot of the global [`ResourceDB`]
+    /// registrations; resource **values** live in the world's [`Slots`].
+    ///
+    /// [`ResourceDB`]: crate::resource::ResourceDB
+    /// [`Slots`]: crate::slot::Slots
+    #[inline(always)]
+    pub fn resources(&self) -> &Resources {
+        &self.resources
+    }
+
+    /// Returns the world's message type registry.
+    ///
+    /// Records every message type registered through
+    /// [`World::register_message`] together with its queue rotation
+    /// function.
+    ///
+    /// [`World::register_message`]: crate::world::World::register_message
+    #[inline(always)]
+    pub fn messages(&self) -> &Messages {
+        &self.messages
+    }
+
+    /// Returns the collection of schedules stored in this world.
+    #[inline(always)]
+    pub fn schedules(&self) -> &Schedules {
+        &self.schedules
+    }
+
+    /// Returns the collection of schedules stored in this world for
+    /// mutation.
+    #[inline(always)]
+    pub fn schedules_mut(&mut self) -> &mut Schedules {
+        &mut self.schedules
+    }
+
+    /// Returns the world's dense columnar table storage, organised by
+    /// archetype (component-set).
+    ///
+    /// [`Tables`] holds the actual component data for every entity; see
+    /// [`World::entities`] for entity metadata.
+    #[inline(always)]
+    pub fn tables(&self) -> &Tables {
+        &self.tables
+    }
+
+    /// Returns the world's singleton resource data storage.
+    ///
+    /// Each [`crate::slot::Slot`] holds one resource value together with its
+    /// change-detection ticks; use [`World::resources`] for the type registry
+    /// and the typed accessors such as
+    /// [`World::resource`](crate::world::World::resource) for daily use.
+    #[inline(always)]
+    pub fn slots(&self) -> &Slots {
+        &self.slots
+    }
+
+    /// Returns the world's type-erased system storage.
+    #[inline(always)]
+    pub fn systems(&self) -> &Systems {
+        &self.systems
+    }
+
+    /// Returns the world's type-erased system storage for mutation.
+    #[inline(always)]
+    pub fn systems_mut(&mut self) -> &mut Systems {
+        &mut self.systems
     }
 }
 
@@ -383,7 +547,7 @@ impl World {
             let now = world.this_run_fast();
 
             let tables = &mut world.tables;
-            let slots = &mut world.resource_slots;
+            let slots = &mut world.slots;
 
             zlim_task::cfg::multi_thread! {
                 if {
@@ -408,31 +572,108 @@ impl World {
         let last_check = self.last_check.get();
 
         if this_run.wrapping_sub(last_check) >= CHECK_CYCLE {
+            self.last_check = Tick::new(this_run);
             clamp_ticks_cold(self)
         }
     }
 }
 
 // -----------------------------------------------------------------------------
-// Ticks — change detection
+// Statistics
 // -----------------------------------------------------------------------------
 
 impl World {
-    /// Synchronises the per-world registries with their global counterparts.
-    ///
-    /// Component and resource types registered via `#[derive(Component)]` /
-    /// `#[derive(Resource)]` are submitted to per-world registries
-    /// lazily.  This function pulls in any types that were registered since
-    /// the last update.
-    ///
-    /// This is called automatically during world initialisation and when
-    /// types are first used by spawn/insert operations.  Users rarely need
-    /// to call it directly.
-    #[inline(always)]
-    pub fn periodic_update(&mut self) {
-        self.clamp_ticks();
+    /// Returns the number of currently spawned (alive) entities.
+    #[inline]
+    pub fn entity_count(&self) -> usize {
+        self.entities.count_spawned()
+    }
 
-        self.resources.update();
-        self.components.update();
+    /// Returns the number of registered component types in this world.
+    #[inline]
+    pub fn component_count(&self) -> usize {
+        self.components.len()
+    }
+
+    /// Returns the number of registered resource types in this world.
+    #[inline]
+    pub fn resource_count(&self) -> usize {
+        self.resources.len()
     }
 }
+
+// -----------------------------------------------------------------------------
+// Periodic Update
+// -----------------------------------------------------------------------------
+
+impl World {
+    /// Periodic update function, usually called at the beginning of each frame.
+    ///
+    /// Note that this function is only used to update some internal data and
+    /// does not include processing logic for a single frame.
+    ///
+    /// It refreshes the world's resource and component registries
+    /// ([`World::resources`] / [`World::components`]) and runs the periodic
+    /// tick-clamp validation ([`World::clamp_ticks`]).  Message queues are
+    /// **not** rotated here — use [`World::update_messages`] for that.
+    ///
+    /// [`World::update_messages`]: crate::world::World::update_messages
+    pub fn update_basic(&mut self) {
+        self.resources.update();
+        self.components.update();
+
+        self.clamp_ticks();
+    }
+
+    /// Rotates every registered [`MessageQueue`], making messages written
+    /// since the previous update readable.
+    ///
+    /// Call this once per frame (or per update loop) before systems read
+    /// messages; new messages become visible only after the rotation.
+    ///
+    /// [`MessageQueue`]: crate::message::MessageQueue
+    pub fn update_messages(&mut self) {
+        let cell = self.cell();
+        let messages = unsafe { &cell.read_only().messages };
+
+        for meta in messages.as_slice() {
+            let update = meta.update();
+            unsafe { update(cell.data_mut()) };
+        }
+    }
+
+    /// Runs the per-frame update of every schedule stored in this world.
+    ///
+    /// In single-threaded builds each [`crate::schedule::Schedule::update`] is
+    /// run in turn; in multi-threaded builds the updates are dispatched to
+    /// the main task pool in parallel.
+    ///
+    /// `Schedule::update` must not mutate the world; this is enforced with a
+    /// `debug_assert` after the pass.
+    pub fn update_schedules(&mut self) {
+        let mut schedules = Schedules::new();
+
+        ::core::mem::swap(&mut schedules, &mut self.schedules);
+
+        zlim_task::cfg::single_thread! {
+            schedules.iter_mut().for_each(|s| s.update(self));
+        }
+
+        zlim_task::cfg::multi_thread! {{
+            zlim_task::MainTaskPool::get().scope(|s| {
+                for schedule in schedules.iter_mut() {
+                    s.spawn(async { schedule.update(self); });
+                }
+            });
+        }}
+
+        ::core::mem::swap(&mut schedules, &mut self.schedules);
+
+        debug_assert!(
+            schedules.is_empty(),
+            "Schedule::update should not modify world"
+        );
+    }
+}
+
+// -----------------------------------------------------------------------------

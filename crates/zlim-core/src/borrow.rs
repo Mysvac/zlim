@@ -1,4 +1,43 @@
-//! Borrow Containers
+//! Borrow containers: typed and untyped references with change detection.
+//!
+//! The ECS hands out access to component and resource data through the
+//! reference wrappers defined in this module. Every wrapper pairs the actual
+//! data pointer (or Rust reference) with the change-tick metadata required by
+//! [`DetectChanges`], so systems can observe whether a value was added or
+//! modified since their last run.
+//!
+//! # Typed wrappers
+//!
+//! - [`Ref`] / [`Mut`] — shared / exclusive references to a single component
+//!   value. Queries produce these for `&T` / `&mut T` component access.
+//! - [`SliceRef`] / [`SliceMut`] — shared / exclusive references to a
+//!   contiguous run of components of the same type, with per-element change
+//!   ticks.
+//! - [`Res`] / [`ResMut`] / [`NonSend`] / [`NonSendMut`] — resource
+//!   references. The four variants encode thread-safety: [`Res`] reads `Sync`
+//!   resources, [`ResMut`] writes `Send` resources, while `!Sync` / `!Send`
+//!   resources stay on the main thread and use [`NonSend`] / [`NonSendMut`].
+//!
+//! # Untyped wrappers
+//!
+//! [`UntypedRef`], [`UntypedMut`], [`UntypedSliceRef`], and
+//! [`UntypedSliceMut`] are the type-erased counterparts produced by the
+//! storage layer — table columns ([`crate::table`]) and resource slots
+//! ([`crate::slot`]). The concrete type is recovered with
+//! [`UntypedRef::with_type`], [`UntypedRef::into_resource`], or
+//! [`UntypedRef::into_non_send`].
+//!
+//! # Change detection
+//!
+//! All wrappers implement [`DetectChanges`]; the mutable wrappers additionally
+//! implement [`DetectChangesMut`]. See [`crate::tick`] for how ticks and
+//! wrap-around are handled.
+//!
+//! [`DetectChanges`]: crate::tick::DetectChanges
+//! [`DetectChangesMut`]: crate::tick::DetectChangesMut
+//! [`crate::table`]: crate::table
+//! [`crate::slot`]: crate::slot
+//! [`crate::tick`]: crate::tick
 
 use core::fmt::{Debug, Formatter};
 use core::iter::FusedIterator;
@@ -23,14 +62,48 @@ use crate::resource::Resource;
 // --------------------------------------------------------------------
 // Untyped
 
-/// An untyped shared reference to a component or resource.
+/// A type-erased shared reference to a component or resource.
 ///
-/// Provides read-only access without knowing the concrete type.
+/// Provides read-only access to a single value without knowing its concrete
+/// type at compile time. The type is recovered later with
+/// [`with_type`](UntypedRef::with_type) (for components) or
+/// [`into_resource`](UntypedRef::into_resource) /
+/// [`into_non_send`](UntypedRef::into_non_send) (for resources).
 ///
-/// This wrapper contains raw pointer metadata plus change ticks. Fields are
-/// intentionally public to support custom system-parameter implementations.
+/// The wrapper stores a raw [`Ptr`] together with the change-detection ticks
+/// ([`TicksRef`]); fields are intentionally public to support custom
+/// system-parameter implementations.
 ///
-/// These pointers are typically obtained from table accessors.
+/// Values are produced by the internal storage layer — table columns
+/// ([`crate::table`]) and resource slots ([`crate::slot`]) — and can also be
+/// obtained by downgrading a typed [`Ref`] via `From`.
+///
+/// # Change detection
+///
+/// `UntypedRef` implements [`DetectChanges`], so `is_added()` / `is_changed()`
+/// can be queried before the pointee type is recovered.
+///
+/// # Examples
+///
+/// ```ignore
+/// use zlim_core::borrow::{Ref, UntypedRef};
+/// use zlim_core::prelude::*;
+///
+/// fn process(untyped: UntypedRef<'_>) {
+///     if untyped.is_changed() {
+///         // Recover the concrete type and continue as a typed `Ref`.
+///         let typed: Ref<'_, f32> = unsafe { untyped.with_type::<f32>() };
+///         let value: &f32 = typed.into_inner();
+///         println!("value: {value}");
+///     }
+/// }
+/// ```
+///
+/// [`Ptr`]: zlim_ptr::Ptr
+/// [`TicksRef`]: crate::tick::TicksRef
+/// [`DetectChanges`]: crate::tick::DetectChanges
+/// [`crate::table`]: crate::table
+/// [`crate::slot`]: crate::slot
 pub struct UntypedRef<'w> {
     pub value: Ptr<'w>,
     pub ticks: TicksRef<'w>,
@@ -39,14 +112,47 @@ pub struct UntypedRef<'w> {
 // --------------------------------------------------------------------
 // UntypedMut
 
-/// An untyped exclusive reference to a component or resource.
+/// A type-erased exclusive reference to a component or resource.
 ///
-/// Provides mutable access without knowing the concrete type.
+/// Provides mutable access to a single value without knowing its concrete
+/// type at compile time. The type is recovered later with
+/// [`with_type`](UntypedMut::with_type) (for components) or
+/// [`into_resource`](UntypedMut::into_resource) /
+/// [`into_non_send`](UntypedMut::into_non_send) (for resources).
 ///
-/// This wrapper contains raw pointer metadata plus change ticks. Fields are
-/// intentionally public to support custom system-parameter implementations.
+/// The wrapper stores a raw [`PtrMut`] together with the change-detection
+/// ticks ([`TicksMut`]); fields are intentionally public to support custom
+/// system-parameter implementations.
 ///
-/// These pointers are typically obtained from table accessors.
+/// Values are produced by the internal storage layer — table columns
+/// ([`crate::table`]) and resource slots ([`crate::slot`]) — and can also be
+/// obtained by downgrading a typed [`Mut`] via `From`.
+///
+/// # Change detection
+///
+/// `UntypedMut` implements [`DetectChanges`] and [`DetectChangesMut`], so
+/// callers can both query and manually control the change markers.
+///
+/// # Examples
+///
+/// ```ignore
+/// use zlim_core::borrow::{Mut, UntypedMut};
+/// use zlim_core::prelude::*;
+///
+/// fn process(untyped: UntypedMut<'_>) {
+///     // Recover the concrete type; `with_type` does not set the changed flag.
+///     let typed: Mut<'_, f32> = unsafe { untyped.with_type::<f32>() };
+///     let value: &mut f32 = typed.into_inner(); // marks the value as changed
+///     *value += 1.0;
+/// }
+/// ```
+///
+/// [`PtrMut`]: zlim_ptr::PtrMut
+/// [`TicksMut`]: crate::tick::TicksMut
+/// [`DetectChanges`]: crate::tick::DetectChanges
+/// [`DetectChangesMut`]: crate::tick::DetectChangesMut
+/// [`crate::table`]: crate::table
+/// [`crate::slot`]: crate::slot
 pub struct UntypedMut<'w> {
     pub value: PtrMut<'w>,
     pub ticks: TicksMut<'w>,
@@ -55,12 +161,19 @@ pub struct UntypedMut<'w> {
 // --------------------------------------------------------------------
 // UntypedSliceRef
 
-/// An untyped shared reference to a slice of components.
+/// A type-erased shared reference to a slice of components.
 ///
-/// Provides read-only access to multiple components without knowing their type.
+/// Provides read-only access to multiple components of the same type without
+/// knowing that type at compile time. Each element keeps its own change tick,
+/// so per-element change tracking survives type erasure.
 ///
-/// This is currently used by type-erased access paths that still need slice
-/// semantics and per-element change tracking.
+/// The concrete element type is recovered with
+/// [`with_type`](UntypedSliceRef::with_type), which yields a [`SliceRef`].
+///
+/// Values are produced by the table column accessors and consumed by
+/// type-erased query paths.
+///
+/// [`TicksSliceRef`]: crate::tick::TicksSliceRef
 pub struct UntypedSliceRef<'w> {
     pub value: Ptr<'w>,
     pub ticks: TicksSliceRef<'w>,
@@ -69,12 +182,19 @@ pub struct UntypedSliceRef<'w> {
 // --------------------------------------------------------------------
 // UntypedSliceMut
 
-/// An untyped exclusive reference to a slice of components.
+/// A type-erased exclusive reference to a slice of components.
 ///
-/// Provides mutable access to multiple components without knowing their type.
+/// Provides mutable access to multiple components of the same type without
+/// knowing that type at compile time. Each element keeps its own change tick,
+/// so per-element change tracking survives type erasure.
 ///
-/// This is currently used by type-erased mutable access paths that still need
-/// slice semantics and per-element change tracking.
+/// The concrete element type is recovered with
+/// [`with_type`](UntypedSliceMut::with_type), which yields a [`SliceMut`].
+///
+/// Values are produced by the table column accessors and consumed by
+/// type-erased query paths.
+///
+/// [`TicksSliceMut`]: crate::tick::TicksSliceMut
 pub struct UntypedSliceMut<'w> {
     pub value: PtrMut<'w>,
     pub ticks: TicksSliceMut<'w>,
@@ -88,6 +208,8 @@ impl<'w> UntypedRef<'w> {
     ///
     /// The tick metadata is discarded; only the raw pointer to the
     /// component data is returned.
+    ///
+    /// [`Ptr`]: zlim_ptr::Ptr
     #[inline(always)]
     pub fn into_inner(self) -> Ptr<'w> {
         self.value
@@ -125,6 +247,8 @@ impl<'w> UntypedMut<'w> {
     /// component data is returned.
     ///
     /// This function does not set the changed flag.
+    ///
+    /// [`PtrMut`]: zlim_ptr::PtrMut
     #[inline(always)]
     pub fn into_inner(self) -> PtrMut<'w> {
         self.value
@@ -167,6 +291,8 @@ impl<'w> UntypedSliceRef<'w> {
     ///
     /// The tick metadata and slice length are discarded; only the raw
     /// pointer to the component data is returned.
+    ///
+    /// [`Ptr`]: zlim_ptr::Ptr
     #[inline]
     pub fn into_inner(self) -> Ptr<'w> {
         self.value
@@ -202,6 +328,11 @@ impl<'w> UntypedSliceMut<'w> {
     ///
     /// The tick metadata and slice length are discarded; only the raw
     /// pointer to the component data is returned.
+    ///
+    /// Unlike the typed [`SliceMut::into_inner`], this function does not mark
+    /// any element as changed.
+    ///
+    /// [`PtrMut`]: zlim_ptr::PtrMut
     #[inline]
     pub fn into_inner(self) -> PtrMut<'w> {
         self.value
@@ -317,8 +448,7 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
 // --------------------------------------------------------------------
 // Ref
 
-/// A shared reference to a component or resource with per-element change
-/// detection.
+/// A shared reference to a component value with change detection.
 ///
 /// `Ref` wraps an immutable borrow (`&'w T`) together with change-detection
 /// tick metadata so that systems can query whether the referenced data was
@@ -327,15 +457,40 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
 /// Use [`into_inner`] to extract the underlying `&T`, or [`map_type`] /
 /// [`try_map_type`] to transform the held type while preserving ticks.
 /// The type also implements [`DetectChanges`] for direct change queries
-/// ([`DetectChanges::is_added()`], [`DetectChanges::is_changed()`],
-/// etc.).
+/// (`is_added()`, `is_changed()`, and the tick accessors).
 ///
 /// This is the foundational immutable wrapper — resource types like [`Res`]
 /// and [`NonSend`] follow the same pattern but add thread-safety constraints.
 ///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::borrow::Ref;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// struct Health(u32);
+///
+/// fn report(health: Ref<Health>) -> u32 {
+///     // `Ref` implements `DetectChanges`, so the change markers can be
+///     // queried before the inner value is extracted.
+///     assert!(health.is_added());
+///     assert!(health.is_changed());
+///     health.into_inner().0
+/// }
+///
+/// let mut world = World::alloc();
+/// let entity = world.spawn(Health(100), None);
+/// let health: Ref<'_, Health> = entity.get_ref::<Health>().unwrap();
+/// // A freshly spawned component is both "added" and "changed".
+/// assert_eq!(report(health), 100);
+/// ```
+///
 /// [`into_inner`]: Ref::into_inner
 /// [`map_type`]: Ref::map_type
 /// [`try_map_type`]: Ref::try_map_type
+/// [`DetectChanges`]: crate::tick::DetectChanges
 pub struct Ref<'w, T: ?Sized> {
     pub(crate) value: &'w T,
     pub(crate) ticks: TicksRef<'w>,
@@ -344,8 +499,7 @@ pub struct Ref<'w, T: ?Sized> {
 // --------------------------------------------------------------------
 // Mut
 
-/// An exclusive reference to a component or resource with per-element change
-/// detection.
+/// An exclusive reference to a component value with change detection.
 ///
 /// `Mut` wraps a mutable borrow (`&'w mut T`) together with change-detection
 /// tick metadata. Calling [`into_inner`] consumes `self` and returns the
@@ -361,6 +515,27 @@ pub struct Ref<'w, T: ?Sized> {
 /// constraints and also implement [`DerefMut`] and [`AsMut`] for ergonomic
 /// access.
 ///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::borrow::Mut;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// struct Health(u32);
+///
+/// let mut world = World::alloc();
+/// let mut entity = world.spawn(Health(100), None);
+///
+/// // `get_mut` yields a change-aware `Mut`; `into_inner` returns the
+/// // `&mut T` and marks the value as changed.
+/// let health: Mut<'_, Health> = entity.get_mut::<Health>().unwrap();
+/// let raw: &mut Health = health.into_inner();
+/// raw.0 = raw.0.saturating_sub(10);
+/// assert_eq!(*raw, Health(90));
+/// ```
+///
 /// [`into_inner`]: Mut::into_inner
 /// [`reborrow`]: Mut::reborrow
 /// [`map_type`]: Mut::map_type
@@ -371,7 +546,7 @@ pub struct Mut<'w, T: ?Sized> {
 }
 
 // --------------------------------------------------------------------
-// SliceMut
+// SliceRef
 
 /// A shared reference to a slice of components.
 ///
@@ -386,13 +561,42 @@ pub struct Mut<'w, T: ?Sized> {
 /// This is a low-level wrapper used by storage/query internals — most
 /// application code will interact with slices through higher-level query
 /// abstractions.
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::borrow::SliceRef;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// struct Velocity(f32);
+///
+/// let mut world = World::alloc();
+/// world.spawn(Velocity(1.0), None);
+/// world.spawn(Velocity(2.0), None);
+///
+/// // `Query<Ref<T>>` yields change-aware items; `iter_slice` batches a
+/// // whole table column into one `SliceRef`.
+/// let query = world.query::<Ref<Velocity>, ()>();
+/// let slice: SliceRef<'_, Velocity> = query.iter_slice().next().unwrap();
+///
+/// // Read-only access to the whole run via `Deref`:
+/// assert_eq!(slice.len(), 2);
+/// assert_eq!(&slice[0], &Velocity(1.0));
+/// assert_eq!(&slice[1], &Velocity(2.0));
+///
+/// // Per-element change detection via iteration:
+/// let changed: usize = slice.into_iter().filter(|item| item.is_changed()).count();
+/// assert_eq!(changed, 2);
+/// ```
 pub struct SliceRef<'w, T> {
     pub(crate) value: ThinSlice<'w, T>,
     pub(crate) ticks: TicksSliceRef<'w>,
 }
 
 // --------------------------------------------------------------------
-// SliceRef
+// SliceMut
 
 /// An exclusive reference to a slice of components.
 ///
@@ -410,6 +614,35 @@ pub struct SliceRef<'w, T> {
 /// application code will interact with slices through higher-level query
 /// abstractions.
 ///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::borrow::SliceMut;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// struct Velocity(f32);
+///
+/// let mut world = World::alloc();
+/// world.spawn(Velocity(10.0), None);
+/// world.spawn(Velocity(20.0), None);
+///
+/// {
+///     let mut query = world.query_mut::<&mut Velocity, ()>();
+///     for mut slice in query.iter_slice_mut() {
+///         // `DerefMut` exposes `&mut [T]` and marks every element as changed.
+///         for velocity in slice.iter_mut() {
+///             velocity.0 -= 9.81;
+///         }
+///     }
+/// }
+///
+/// // Verify the bulk update through a read-only query.
+/// let total: f32 = world.query::<&Velocity, ()>().iter().map(|v| v.0).sum();
+/// assert_eq!(total, (10.0 - 9.81) + (20.0 - 9.81));
+/// ```
+///
 /// [`into_inner`]: SliceMut::into_inner
 /// [`into_iter`]: SliceMut::into_iter
 pub struct SliceMut<'w, T> {
@@ -421,10 +654,11 @@ pub struct SliceMut<'w, T> {
 // From Untyped
 
 impl<'w> UntypedRef<'w> {
-    /// Specifies the reference type and converts self to a [`Ref`].
+    /// Specifies the reference type and converts `self` to a [`Ref`].
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedRef`].
+    /// `T` must be the erased pointee type for this [`UntypedRef`], and the
+    /// underlying pointer must be aligned for `T`.
     #[inline(always)]
     pub unsafe fn with_type<T>(self) -> Ref<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -441,7 +675,8 @@ impl<'w> UntypedMut<'w> {
     /// This function does not set the changed flag.
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedMut`].
+    /// `T` must be the erased pointee type for this [`UntypedMut`], and the
+    /// underlying pointer must be aligned for `T`.
     #[inline(always)]
     pub unsafe fn with_type<T>(self) -> Mut<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -456,7 +691,8 @@ impl<'w> UntypedSliceRef<'w> {
     /// Specifies the reference type and converts `self` to a [`SliceRef`].
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedSliceRef`].
+    /// `T` must be the erased pointee type for this [`UntypedSliceRef`], and
+    /// the underlying pointer must be aligned for `T`.
     #[inline]
     pub unsafe fn with_type<T>(self) -> SliceRef<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -471,7 +707,8 @@ impl<'w> UntypedSliceMut<'w> {
     /// Specifies the reference type and converts `self` to a [`SliceMut`].
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedSliceMut`].
+    /// `T` must be the erased pointee type for this [`UntypedSliceMut`], and
+    /// the underlying pointer must be aligned for `T`.
     #[inline]
     pub unsafe fn with_type<T>(self) -> SliceMut<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -572,7 +809,25 @@ where
 }
 
 impl<'w, T: ?Sized> Ref<'w, T> {
-    /// Consumes self and returns the inner reference `&T` with the same lifetime.
+    /// Consumes `self` and returns the inner reference `&T` with the same
+    /// lifetime.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::borrow::Ref;
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// struct Health(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// let entity = world.spawn(Health(100), None);
+    /// let r: Ref<'_, Health> = entity.get_ref::<Health>().unwrap();
+    /// let value: &Health = r.into_inner();
+    /// assert_eq!(value, &Health(100));
+    /// ```
     #[inline(always)]
     pub fn into_inner(self) -> &'w T {
         self.value
@@ -595,6 +850,25 @@ impl<'w, T: ?Sized> Ref<'w, T> {
     /// Transforms the reference type via a function, preserving the lifetime.
     ///
     /// Returns the generic [`Ref`] container.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::borrow::Ref;
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// struct Outer {
+    ///     inner: f32,
+    /// }
+    ///
+    /// let mut world = World::alloc();
+    /// let entity = world.spawn(Outer { inner: 1.5 }, None);
+    /// let r: Ref<'_, Outer> = entity.get_ref::<Outer>().unwrap();
+    /// let inner: Ref<'_, f32> = r.map_type(|outer| &outer.inner);
+    /// assert_eq!(*inner.into_inner(), 1.5);
+    /// ```
     #[inline(always)]
     pub fn map_type<U: ?Sized>(self, f: impl FnOnce(&T) -> &U) -> Ref<'w, U> {
         Ref {
@@ -663,17 +937,58 @@ where
 }
 
 impl<'w, T: ?Sized> Mut<'w, T> {
-    /// Consumes self and returns the inner reference `&mut T` with the
+    /// Consumes `self` and returns the inner reference `&mut T` with the
     /// same lifetime, marking the target as changed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::borrow::Mut;
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// struct Score(f32);
+    ///
+    /// let mut world = World::alloc();
+    /// let mut entity = world.spawn(Score(3.0), None);
+    /// let m: Mut<'_, Score> = entity.get_mut::<Score>().unwrap();
+    /// let value: &mut Score = m.into_inner(); // marks the value as changed
+    /// value.0 *= 2.0;
+    /// assert_eq!(*value, Score(6.0));
+    /// ```
     #[inline]
     pub fn into_inner(self) -> &'w mut T {
         *self.ticks.changed = self.ticks.this_run;
         self.value
     }
 
-    /// Returns a shorter-lived version of self, with borrow checker guarantees.
+    /// Returns a shorter-lived version of `self`, with borrow checker
+    /// guarantees.
     ///
     /// This function does not mark the target as changed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::borrow::Mut;
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// struct Counter(u32);
+    ///
+    /// let mut world = World::alloc();
+    /// let mut entity = world.spawn(Counter(0), None);
+    ///
+    /// let mut m: Mut<'_, Counter> = entity.get_mut::<Counter>().unwrap();
+    /// // `reborrow` yields a shorter-lived view without consuming `m`.
+    /// let view: Mut<'_, Counter> = m.reborrow();
+    /// *view.into_inner() = Counter(1); // marks the value as changed
+    /// // The original borrow is still usable after the reborrow ends.
+    /// let again: &mut Counter = m.into_inner();
+    /// assert_eq!(*again, Counter(1));
+    /// ```
     #[inline]
     pub fn reborrow(&mut self) -> Mut<'_, T> {
         Mut {
@@ -692,8 +1007,8 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// Returns the generic [`Mut`] container.
     ///
     /// This function is assumed to only change the type, not modify data.
-    /// Modifying data through the mutable reference in the closure is undefined behavior
-    /// (data may be modified without triggering change events).
+    /// Modifying data through the mutable reference in the closure is a logic
+    /// error (data may be modified without triggering change events).
     #[inline]
     pub fn map_type<U: ?Sized>(self, f: impl FnOnce(&mut T) -> &mut U) -> Mut<'w, U> {
         Mut {
@@ -707,8 +1022,8 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// Returns the generic [`Mut`] container, or an error if the transformation fails.
     ///
     /// This function is assumed to only change the type, not modify data.
-    /// Modifying data through the mutable reference in the closure is undefined behavior
-    /// (data may be modified without triggering change events).
+    /// Modifying data through the mutable reference in the closure is a logic
+    /// error (data may be modified without triggering change events).
     #[inline]
     pub fn try_map_type<U: ?Sized, E>(
         self,
@@ -1077,25 +1392,32 @@ impl<'w, T> IntoIterator for SliceMut<'w, T> {
 // Res
 // -----------------------------------------------------------------------------
 
-/// A shared reference to a `Send + Sync` resource with change detection.
+/// A shared reference to a `Sync` resource with change detection.
 ///
-/// This is the read-only resource parameter for systems. `Res` always includes
-/// change detection ticks — there is no separate thin variant.
+/// This is the read-only resource parameter for systems. `Res` always carries
+/// change-detection ticks — there is no thin variant without tracking.
+///
+/// Use [`into_inner`](Self::into_inner) to extract the underlying `&T`, or
+/// [`map_type`](Self::map_type) / [`try_map_type`](Self::try_map_type) to
+/// project into a sub-field while preserving the ticks.
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # use zlim_core::resource::Resource;
-/// # use zlim_core::borrow::Res;
-/// # use zlim_core::tick::DetectChanges;
-/// struct Logger;
-/// impl Resource for Logger {}
+/// ```rust
+/// use zlim_core::borrow::Res;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
 ///
-/// fn system_a(logger: Res<Logger>) {
-///     if logger.is_changed() {
-///         println!("resource was changed!");
-///     }
-/// }
+/// #[derive(TypePath, Resource)]
+/// struct Logger;
+///
+/// let mut world = World::alloc();
+/// world.insert_resource(Logger);
+///
+/// let logger: Res<'_, Logger> = world.get_resource_ref::<Logger>().unwrap();
+/// // A freshly inserted resource is marked as changed.
+/// assert!(logger.is_changed());
+/// let _: &Logger = logger.into_inner();
 /// ```
 pub struct Res<'w, T: Resource + Sync> {
     pub(crate) value: &'w T,
@@ -1112,19 +1434,27 @@ pub struct Res<'w, T: Resource + Sync> {
 /// participates in the ECS borrow rules, so no other system can read or
 /// write the same resource at the same time.
 ///
+/// Writing through [`DerefMut`] or [`AsMut`] — or consuming the wrapper with
+/// [`into_inner`](Self::into_inner) — automatically marks the resource as
+/// changed.
+///
 /// # Examples
 ///
-/// ```ignore
-/// # use zlim_core::resource::Resource;
-/// # use zlim_core::borrow::ResMut;
-/// # use zlim_core::tick::DetectChanges;
-/// struct Logger;
-/// impl Resource for Logger {}
+/// ```rust
+/// use zlim_core::borrow::ResMut;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
 ///
-/// fn system_a(mut logger: ResMut<Logger>) {
-///     let _inner: &mut Logger = &mut logger;
-///     assert!(logger.is_changed());
-/// }
+/// #[derive(TypePath, Resource)]
+/// struct Logger;
+///
+/// let mut world = World::alloc();
+/// world.insert_resource(Logger);
+///
+/// let mut logger: ResMut<'_, Logger> = world.get_resource_mut::<Logger>().unwrap();
+/// // Writing through `DerefMut` marks the resource as changed.
+/// let _inner: &mut Logger = &mut logger;
+/// assert!(logger.is_changed());
 /// ```
 pub struct ResMut<'w, T: Resource + Send> {
     pub(crate) value: &'w mut T,
@@ -1149,16 +1479,28 @@ pub struct ResMut<'w, T: Resource + Send> {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// #[derive(Resource, /* ... */)]
-/// struct ThreadLocalState;
+/// ```rust
+/// use zlim_core::borrow::NonSend;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
 ///
-/// fn main_thread_system(state: NonSend<ThreadLocalState>) {
-///     if state.is_changed() {
-///         println!("local state was modified!");
-///     }
+/// // `Cell` is `Send` but not `Sync`, so this type cannot be shared across
+/// // threads — exactly the case `NonSend` is designed for.
+/// #[derive(TypePath, Resource)]
+/// struct ThreadLocalState {
+///     counter: core::cell::Cell<u32>,
 /// }
+///
+/// let mut world = World::alloc();
+/// world.insert_non_send(ThreadLocalState { counter: core::cell::Cell::new(0) });
+///
+/// let state: NonSend<'_, ThreadLocalState> =
+///     world.get_non_send_ref::<ThreadLocalState>().unwrap();
+/// // A freshly inserted resource is marked as changed.
+/// assert!(state.is_changed());
 /// ```
+///
+/// [`DetectChanges`]: crate::tick::DetectChanges
 pub struct NonSend<'w, T: Resource> {
     pub(crate) value: &'w T,
     pub(crate) ticks: TicksRef<'w>,
@@ -1185,14 +1527,21 @@ pub struct NonSend<'w, T: Resource> {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// #[derive(Resource, /* ... */)]
+/// ```rust
+/// use zlim_core::borrow::NonSendMut;
+/// use zlim_core::prelude::*;
+/// use zlim_reflect::derive::TypePath;
+///
+/// #[derive(TypePath, Resource)]
 /// struct RngState(u64);
 ///
-/// fn main_thread_system(mut rng: NonSendMut<RngState>) {
-///     rng.0 = rng.0.wrapping_mul(636413622).wrapping_add(1);
-///     assert!(rng.is_changed());
-/// }
+/// let mut world = World::alloc();
+/// world.insert_non_send(RngState(1));
+///
+/// let mut rng: NonSendMut<'_, RngState> = world.get_non_send_mut::<RngState>().unwrap();
+/// // Writing through `DerefMut` marks the resource as changed.
+/// rng.0 = rng.0.wrapping_mul(636413622).wrapping_add(1);
+/// assert!(rng.is_changed());
 /// ```
 pub struct NonSendMut<'w, T: Resource> {
     pub(crate) value: &'w mut T,
@@ -1391,7 +1740,7 @@ macro_rules! impl_resource_mut_methods {
             ///
             /// This function is assumed to only change the type, not modify
             /// data. Modifying data through the mutable reference in the
-            /// closure is undefined behavior.
+            /// closure is a logic error.
             #[inline]
             pub fn map_type<U: ?Sized>(
                 self,
@@ -1555,7 +1904,8 @@ impl<'w> UntypedRef<'w> {
     /// Converts to a typed [`Res`] for a `Send + Sync` resource.
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedRef`].
+    /// `T` must be the erased pointee type for this [`UntypedRef`], and the
+    /// underlying pointer must be aligned for `T`.
     #[inline(always)]
     pub unsafe fn into_resource<T: Resource + Sync>(self) -> Res<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -1568,7 +1918,8 @@ impl<'w> UntypedRef<'w> {
     /// Converts to a typed [`NonSend`] for a `!Sync` resource.
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedRef`].
+    /// `T` must be the erased pointee type for this [`UntypedRef`], and the
+    /// underlying pointer must be aligned for `T`.
     #[inline(always)]
     pub unsafe fn into_non_send<T: Resource>(self) -> NonSend<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -1583,7 +1934,8 @@ impl<'w> UntypedMut<'w> {
     /// Converts to a typed [`ResMut`] for a `Send` resource.
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedMut`].
+    /// `T` must be the erased pointee type for this [`UntypedMut`], and the
+    /// underlying pointer must be aligned for `T`.
     #[inline(always)]
     pub unsafe fn into_resource<T: Resource + Send>(self) -> ResMut<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -1596,7 +1948,8 @@ impl<'w> UntypedMut<'w> {
     /// Converts to a typed [`NonSendMut`] for a `!Send` resource.
     ///
     /// # Safety
-    /// `T` must be the erased pointee type for this [`UntypedMut`].
+    /// `T` must be the erased pointee type for this [`UntypedMut`], and the
+    /// underlying pointer must be aligned for `T`.
     #[inline(always)]
     pub unsafe fn into_non_send<T: Resource>(self) -> NonSendMut<'w, T> {
         self.value.debug_assert_aligned::<T>();
@@ -1606,3 +1959,5 @@ impl<'w> UntypedMut<'w> {
         }
     }
 }
+
+// -----------------------------------------------------------------------------

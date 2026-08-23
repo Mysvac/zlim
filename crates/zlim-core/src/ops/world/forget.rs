@@ -1,3 +1,6 @@
+//! Unsafe entity-forget method implemented on `World`.
+
+use zlim_log as log;
 use zlim_utils::debug::DebugLocation;
 
 use crate::entity::EntityId;
@@ -22,6 +25,8 @@ impl World {
         }
     }
 
+    /// # Safety
+    /// This operation is **extremely unsafe** and should be used with extreme caution.
     #[cold]
     #[inline(never)]
     pub(crate) unsafe fn forget_with_caller(&mut self, entity: EntityId, caller: DebugLocation) {

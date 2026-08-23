@@ -28,6 +28,7 @@
 use core::any::TypeId;
 use std::sync::{OnceLock, PoisonError, RwLock};
 
+use zlim_log as log;
 use zlim_ptr::{Ptr, PtrMut};
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::HashMap;
@@ -344,11 +345,10 @@ impl TypeDB {
         #[inline(never)]
         fn collect_internal() {
             use __internal__::__TypeReg__ as Reg;
-            use zlim_os::time::Instant;
-            const PRE: usize = 800;
+            const PRE: usize = 256;
 
-            let start = Instant::now();
-            log::info!("Collecting TypeDB registrations...");
+            let start = zlim_os::time::Instant::now();
+            log::debug!("Collecting TypeDB registrations...");
 
             {
                 // pre-reserve, for better register speed.
@@ -366,7 +366,7 @@ impl TypeDB {
                 (r.0)();
             });
 
-            {
+            let len: usize = {
                 // post-reserve, for better hash performance.
                 let len: usize = TYPE_REGISTRY
                     .read()
@@ -381,9 +381,10 @@ impl TypeDB {
                     .write()
                     .unwrap_or_else(PoisonError::into_inner)
                     .reserve(add);
-            }
+                len
+            };
 
-            log::info!("TypeDB collection finished in {:?}", start.elapsed());
+            log::debug!("TypeDB({len}) collection finished in {:?}", start.elapsed());
         }
 
         static ONCE: std::sync::Once = std::sync::Once::new();

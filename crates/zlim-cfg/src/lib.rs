@@ -24,9 +24,7 @@
 //! }
 //!
 //! // As a boolean literal, with empty content
-//! fn std_is_enabled() -> bool {
-//!     cfg::std!()
-//! }
+//! const STD_IS_ENABLED: bool = cfg::std!();
 //!
 //! // Control whether the internal code is active
 //! cfg::std!{
@@ -36,9 +34,9 @@
 //! // Conditional branching
 //! cfg::std!{
 //!     if {
-//!         mod std_impls{ /* ... */}
+//!         mod std_impls{ /* ... */ }
 //!     } else {
-//!         mod no_std_impls{ /* ... */}
+//!         mod no_std_impls{ /* ... */ }
 //!     }
 //! }
 //!
@@ -143,6 +141,63 @@ macro_rules! enabled {
     ($($p:tt)*) => { $($p)* };
 }
 
+/// Define aliases for compilation options.
+///
+/// The generated alias behaves like [`enabled`] or [`disabled`],
+/// depending on whether the compilation condition is active.
+///
+/// # Examples
+///
+/// ```
+/// use zlim_cfg as cfg;
+///
+/// cfg::define_alias!{
+///     #[cfg(test)] => test,
+/// };
+///
+/// // `test` is eq to 'cfg::enabled' in testing.
+/// // Otherwise it is eq to 'cfg::disabled'.
+/// let mut x = false;
+/// test!{ x = true; };
+///
+/// // Docs test is not Unit Test.
+/// // So `test!` is eq to 'cfg::disabled'.
+/// assert!(x == false);
+/// ```
+#[macro_export]
+macro_rules! define_alias {
+    ( #[cfg($meta:meta)] => { $(#[$id_meta:meta])* $id:ident } $(,)? ) => {
+        #[cfg($meta)]
+        #[doc = concat!("An alias for `#[cfg(", stringify!($meta), ")]` .\n")]
+        #[doc = "See [`zlim_cfg::define_alias`] for details."]
+        $(#[$id_meta])*
+        #[doc(inline)]
+        pub use $crate::enabled as $id;
+
+        #[cfg(not($meta))]
+        #[doc = concat!("An alias for `#[cfg(", stringify!($meta), ")]` .\n")]
+        #[doc = "See [`zlim_cfg::define_alias`] for details."]
+        $(#[$id_meta])*
+        #[doc(inline)]
+        pub use $crate::disabled as $id;
+    };
+    ( #[cfg($meta:meta)] => $id:ident $(,)? ) => {
+        $crate::define_alias! { #[cfg($meta)] => { $id } }
+    };
+    ( #[cfg($meta:meta)] => $id:ident , $( $rest:tt )+ ) => {
+        $crate::define_alias! { #[cfg($meta)] => { $id } }
+        $crate::define_alias! { $( $rest )+ }
+    };
+    ( #[cfg($meta:meta)] => { $(#[$id_meta:meta])* $id:ident } , $( $rest:tt )+ ) => {
+        $crate::define_alias! { #[cfg($meta)] => { $(#[$id_meta])* $id } }
+        $crate::define_alias! { $($rest)+ }
+    };
+    ( #[cfg($meta:meta)] => { $(#[$id_meta:meta])* $id:ident } $( $rest:tt )+ ) => {
+        $crate::define_alias! { #[cfg($meta)] => { $(#[$id_meta])* $id } }
+        $crate::define_alias! { $($rest)+ }
+    };
+}
+
 /// A conditional compilation macro similar to a `switch` statement.
 ///
 /// Allows matching against multiple compilation conditions,
@@ -192,65 +247,5 @@ macro_rules! switch {
     ( #[cfg($cfg:meta)] => { $($output:tt)* } $( $rest:tt )+ ) => {
         #[cfg($cfg)] $crate::switch! { _ => { $($output)* } }
         #[cfg(not($cfg))] $crate::switch! { $($rest)+ }
-    };
-}
-
-/// Define aliases for compilation options.
-///
-/// The generated alias behaves like [`enabled`] or [`disabled`],
-/// depending on whether the compilation condition is active.
-///
-/// # Examples
-///
-/// ```
-/// use zlim_cfg as cfg;
-///
-/// cfg::define_alias!{
-///     #[cfg(test)] => test,
-/// };
-///
-/// // `test` is eq to 'cfg::enabled' in testing.
-/// // Otherwise it is eq to 'cfg::disabled'.
-/// let mut x = false;
-/// test!{ x = true; };
-///
-/// // Docs test is not Unit Test.
-/// // So `test!` is eq to 'cfg::disabled'.
-/// assert!(x == false);
-/// ```
-#[macro_export]
-macro_rules! define_alias {
-    ( #[cfg($meta:meta)] => { $(#[$id_meta:meta])* $id:ident } $(,)? ) => {
-        $crate::switch! {
-            #[cfg($meta)] => {
-                #[doc = concat!("An alias for `#[cfg(", stringify!($meta), ")]` .\n")]
-                #[doc = "See [`zlim_cfg::define_alias`] for details."]
-                $(#[$id_meta])*
-                #[doc(inline)]
-                pub use $crate::enabled as $id;
-            }
-            _ => {
-                #[doc = concat!("An alias for `#[cfg(", stringify!($meta), ")]` .\n")]
-                #[doc = "See [`zlim_cfg::define_alias`] for details."]
-                $(#[$id_meta])*
-                #[doc(inline)]
-                pub use $crate::disabled as $id;
-            }
-        }
-    };
-    ( #[cfg($meta:meta)] => $id:ident $(,)? ) => {
-        $crate::define_alias! { #[cfg($meta)] => { $id } }
-    };
-    ( #[cfg($meta:meta)] => $id:ident , $( $rest:tt )+ ) => {
-        $crate::define_alias! { #[cfg($meta)] => { $id } }
-        $crate::define_alias! { $( $rest )+ }
-    };
-    ( #[cfg($meta:meta)] => { $(#[$id_meta:meta])* $id:ident } , $( $rest:tt )+ ) => {
-        $crate::define_alias! { #[cfg($meta)] => { $(#[$id_meta])* $id } }
-        $crate::define_alias! { $($rest)+ }
-    };
-    ( #[cfg($meta:meta)] => { $(#[$id_meta:meta])* $id:ident } $( $rest:tt )+ ) => {
-        $crate::define_alias! { #[cfg($meta)] => { $(#[$id_meta])* $id } }
-        $crate::define_alias! { $($rest)+ }
     };
 }

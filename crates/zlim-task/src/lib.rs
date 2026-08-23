@@ -12,15 +12,17 @@ pub mod cfg {
 // -----------------------------------------------------------------------------
 // Modules
 
+mod config;
 mod platform;
 mod slice;
 
 // -----------------------------------------------------------------------------
 // Exports
 
+pub use config::{TaskPoolConfig, TaskPoolConfigs};
 pub use platform::{AsyncTaskPool, IoTaskPool, MainTaskPool};
 pub use platform::{Scope, TaskPool, TaskPoolBuilder};
-pub use platform::{block_on, run_local};
+pub use platform::{block_on, block_on_main, run_local, set_main_thread};
 pub use slice::ParallelSlice;
 
 // -----------------------------------------------------------------------------

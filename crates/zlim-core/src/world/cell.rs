@@ -42,7 +42,7 @@ use super::World;
 ///
 /// # Access Modes
 ///
-/// `UnsafeWorld` exposes three explicit access modes:
+/// `WorldCell` exposes three explicit access modes:
 ///
 /// - [`Self::read_only`]: shared world access for read paths.
 ///   Typical use: inspect metadata while mutating separate local caches.
@@ -57,6 +57,33 @@ use super::World;
 ///
 /// The exposed methods are `unsafe` because the caller must uphold the borrow
 /// invariants required by Rust and by ECS world semantics.
+///
+/// # Examples
+///
+/// ```ignore
+/// use zlim_core::prelude::*;
+///
+/// let mut world = World::alloc();
+/// let entity = world.spawn_empty(None).id();
+///
+/// // `WorldCell` is `Copy` — cheap to pass around and store.
+/// let cell = world.cell();
+///
+/// // Shared read access.
+/// // SAFETY: no other borrow of `world` is alive.
+/// let read = unsafe { cell.read_only() };
+/// assert!(read.entities().contains(entity));
+///
+/// // Data-only mutable access (no structural changes).
+/// // SAFETY: `world` is exclusively borrowed for the duration of this call.
+/// {
+///     let _data = unsafe { cell.data_mut() };
+/// }
+///
+/// // Full mutable access, including structural mutations.
+/// // SAFETY: no other borrows of `world` are alive.
+/// unsafe { cell.full_mut() }.despawn(entity).unwrap();
+/// ```
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct WorldCell<'a> {
@@ -72,7 +99,7 @@ unsafe impl Sync for WorldCell<'_> {}
 // -----------------------------------------------------------------------------
 
 impl<'a> From<&'a World> for WorldCell<'a> {
-    /// Creates an [`WorldCell`] from a shared world reference.
+    /// Creates a [`WorldCell`] from a shared world reference.
     #[inline(always)]
     fn from(value: &'a World) -> Self {
         WorldCell {
@@ -83,7 +110,7 @@ impl<'a> From<&'a World> for WorldCell<'a> {
 }
 
 impl<'a> From<&'a mut World> for WorldCell<'a> {
-    /// Creates an [`WorldCell`] from an exclusive world reference.
+    /// Creates a [`WorldCell`] from an exclusive world reference.
     #[inline(always)]
     fn from(value: &'a mut World) -> Self {
         WorldCell {
@@ -118,6 +145,19 @@ impl<'a> WorldCell<'a> {
     /// - Access must remain read-only for the duration of the borrow.
     /// - The caller must ensure no concurrent mutable access that would violate
     ///   Rust aliasing rules.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use zlim_core::prelude::*;
+    ///
+    /// let world = World::alloc();
+    /// let cell = world.cell();
+    ///
+    /// // SAFETY: the returned reference is only used for reads.
+    /// let read = unsafe { cell.read_only() };
+    /// println!("{} entities", read.entity_count());
+    /// ```
     #[inline(always)]
     pub const unsafe fn read_only(self) -> &'a World {
         unsafe { &*self.world.as_ptr() }
@@ -135,6 +175,23 @@ impl<'a> WorldCell<'a> {
     ///   - do not add/remove entities or resources,
     ///   - do not register new types,
     ///   - do not allocate new ids.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use zlim_core::prelude::*;
+    ///
+    /// #[derive(Component, TypePath, Clone)]
+    /// struct Health(f32);
+    ///
+    /// let mut world = World::alloc();
+    /// let entity = world.spawn((Health(100.0),), None).id();
+    /// let cell = world.cell();
+    ///
+    /// // SAFETY: exclusive access; only existing component values are mutated.
+    /// let world = unsafe { cell.data_mut() };
+    /// world.entity_mut(entity).get_mut::<Health>().unwrap().0 -= 10.0;
+    /// ```
     #[inline(always)]
     pub const unsafe fn data_mut(self) -> &'a mut World {
         unsafe { &mut *self.world.as_ptr() }
@@ -147,6 +204,19 @@ impl<'a> WorldCell<'a> {
     /// # Safety
     /// - There must be no other active borrows (shared or mutable) that alias
     ///   this world for the returned lifetime.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let cell = world.cell();
+    ///
+    /// // SAFETY: `world` is exclusively borrowed for the duration of this call.
+    /// let entity = unsafe { cell.full_mut() }.spawn_empty(None);
+    /// assert!(entity.is_spawned());
+    /// ```
     #[inline(always)]
     pub const unsafe fn full_mut(self) -> &'a mut World {
         unsafe { &mut *self.world.as_ptr() }

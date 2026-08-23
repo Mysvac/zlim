@@ -1,6 +1,7 @@
 use core::any::TypeId;
 use core::panic::Location;
 
+use zlim_log as log;
 use zlim_utils::mem::Global;
 
 use super::{CtorFunc, TypeDB, TypeDatabase};

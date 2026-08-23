@@ -26,9 +26,9 @@ pub struct DebugLocation(
 
 impl Display for DebugLocation {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[cfg(any(debug_assertions, feature = "debug"))]
-        Display::fmt(self.1, f)?;
+        Display::fmt(self.1, _f)?;
 
         Ok(())
     }
@@ -36,9 +36,9 @@ impl Display for DebugLocation {
 
 impl Debug for DebugLocation {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[cfg(any(debug_assertions, feature = "debug"))]
-        Debug::fmt(self.1, f)?;
+        Debug::fmt(self.1, _f)?;
 
         Ok(())
     }

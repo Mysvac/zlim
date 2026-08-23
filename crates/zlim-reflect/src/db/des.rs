@@ -57,6 +57,7 @@ use erased_serde::Deserializer as ErasedDeserializer;
 use serde_core::de::{DeserializeSeed, IgnoredAny, MapAccess, Visitor};
 use serde_core::de::{EnumAccess, Error, SeqAccess, VariantAccess};
 use serde_core::{Deserialize, Deserializer};
+use zlim_log as log;
 use zlim_utils::format_smol;
 
 use super::{TypeDB, TypeDatabase};

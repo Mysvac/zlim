@@ -1,3 +1,5 @@
+//! Uninitialized-entity spawning method implemented on `World`.
+
 use zlim_utils::debug::DebugLocation;
 
 use crate::entity::{EntityId, Location};
@@ -9,42 +11,45 @@ use crate::world::World;
 impl World {
     /// Spawn a new entity with uninitialized component data.
     ///
-    /// Although the spawned entity has a `ChildOf` relationship, it will not
-    /// be automatically added to the parent entity's `Children` collection.
+    /// Although a `parent` may be given, the parent/child links are only
+    /// partially wired: the parent is recorded on the new entity, but the
+    /// new entity is **not** added to the parent's children.  In other
+    /// words, the input `parent` is just a placeholder — you must complete
+    /// the hierarchy manually (e.g. with [`EntityOwned::modify_parent`])
+    /// once the entity's data has been fully initialized.
     ///
-    /// In other words, the input `child_of` is just a placeholder, You must
-    /// manually complete it after the entity's data has been fully initialized.
-    ///
-    /// # Panic
-    /// - Panics if `child_of` is `Some` but the target entity is not spawned.
+    /// # Panics
+    /// - Panics if `parent` is `Some` but the target entity is not spawned.
     ///
     /// # Safety
     /// - The spawned entity's component data is uninitialized.
     ///   Accessing component data before initialization is undefined behavior.
     ///
-    /// - The input `TableId` must point to a intialized Table.
+    /// - The input `TableId` must point to an initialized Table.
+    ///
+    /// [`EntityOwned::modify_parent`]: crate::ops::EntityOwned::modify_parent
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub unsafe fn spawn_uninit(
         &mut self,
         table_id: TableId,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
     ) -> EntityMut<'_> {
         let caller = DebugLocation::caller();
-        unsafe { self.spawn_uninit_with_caller(table_id, caller, child_of) }
+        unsafe { self.spawn_uninit_with_caller(table_id, caller, parent) }
     }
 
     /// # Safety
     /// - The spawned entity's component data is uninitialized.
     ///   Accessing component data before initialization is undefined behavior.
     ///
-    /// - The input `TableId` must point to a intialized Table.
+    /// - The input `TableId` must point to an initialized Table.
     #[inline(never)]
     pub(crate) unsafe fn spawn_uninit_with_caller(
         &mut self,
         table_id: TableId,
         caller: DebugLocation,
-        child_of: Option<EntityId>,
+        parent: Option<EntityId>,
     ) -> EntityMut<'_> {
         let entity = self.allocator.alloc_mut();
 
@@ -53,7 +58,7 @@ impl World {
             ::core::hint::cold_path();
             panic!("entity {entity} cannot spawned: {e}.\n\t{caller}")
         }
-        // No need to check `child_of`, it's just a placeholder.
+        // No need to check `parent`, it's just a placeholder.
 
         let world = self.cell();
 
@@ -79,7 +84,7 @@ impl World {
 
         world
             .entities
-            .insert_uninit(entity, child_of, location)
+            .insert_uninit(entity, parent, location)
             .unwrap();
 
         ::core::mem::forget(guard);

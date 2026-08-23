@@ -346,9 +346,10 @@ impl<'sco, 'env, T: Send + 'env> Scope<'sco, 'env, T> {
 
     /// Spawns a future that must run on the main thread onto the scope.
     ///
-    /// The task is submitted to the `MainExecutor` and will be driven by
-    /// the main thread's executor during the scope. The future must be
-    /// `Send` because the `MainExecutor` can receive tasks from any thread.
+    /// On WASM this is equivalent to [`spawn_local`]: the task is driven by
+    /// the current scope and completes before [`TaskPool::scope`] returns.
+    /// The future must be `Send` for interface compatibility with
+    /// multi-threaded mode.
     ///
     /// As with [`spawn_local`], the future may borrow data with lifetime
     /// `'sco`, which is valid until [`TaskPool::scope`] returns.

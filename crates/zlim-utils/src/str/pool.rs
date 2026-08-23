@@ -7,11 +7,10 @@ use crate::hash::{HashSet, NoopState};
 
 // -----------------------------------------------------------------------------
 // Helper
-// -----------------------------------------------------------------------------
 
 struct HashStr<'a> {
-    s: &'a str,
     hash: u64,
+    s: &'a str,
 }
 
 impl Hash for HashStr<'_> {
@@ -26,7 +25,7 @@ impl<'a> HashStr<'a> {
     ///
     /// The hash is computed once at construction time using [`FixedState`].
     #[inline]
-    pub fn new(s: &'a str) -> HashStr<'a> {
+    fn new(s: &'a str) -> HashStr<'a> {
         let mut state = FixedState::HASHER;
         s.hash(&mut state);
         let hash = state.finish();
@@ -64,14 +63,12 @@ impl Equivalent<HS> for HashStr<'_> {
 
 // -----------------------------------------------------------------------------
 // Pool
-// -----------------------------------------------------------------------------
 
 /// Global interning pool.
 static POOL: RwLock<HashSet<HS, NoopState>> = RwLock::new(HashSet::with_hasher(NoopState));
 
 // -----------------------------------------------------------------------------
 // intern_str
-// -----------------------------------------------------------------------------
 
 /// Intern a string, returning a `&'static str` that lives until program exit.
 ///
@@ -118,7 +115,6 @@ pub fn intern_str<'a>(s: &'a str) -> &'static str {
 
 // -----------------------------------------------------------------------------
 // Tests
-// -----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

@@ -1,9 +1,9 @@
 use std::sync::{Mutex, PoisonError};
 use zlim_utils::hash::HashSet;
 
-use zlim_utils::mem::Global;
-
 use crate::component::{ComponentHook, ComponentId};
+use crate::job::JobId;
+use zlim_utils::mem::Global;
 
 /// Intern pool for deduplicating small immutable identifier slices.
 ///
@@ -34,24 +34,22 @@ macro_rules! define_methods {
     ($name:ident, $ty:ty) => {
         pub(crate) fn $name(idents: &[$ty]) -> &'static [$ty] {
             // SlicePool is actually only used on the main thread.
-            // So `Mutex` is faster then `RwLock`.
+            // So `Mutex` is faster than `RwLock`.
             static POOL: Mutex<HashSet<&[$ty]>> = Mutex::new(HashSet::new());
 
             if idents.is_empty() {
                 return &[];
             }
 
-            let guard = POOL.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut guard = POOL.lock().unwrap_or_else(PoisonError::into_inner);
             if let Some(&idents) = guard.get(idents) {
                 return idents;
             }
-            ::core::mem::drop(guard);
 
-            // Duplicate leak same slice is possible, but it's rare and acceptable.
-            let slice: &[$ty] = Global::alloc_slice(idents);
-            POOL.lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .insert(slice);
+            ::core::hint::cold_path();
+            let slice: &'static [$ty] = Global::alloc_slice(idents);
+            guard.insert(slice);
+
             slice
         }
     };
@@ -66,4 +64,10 @@ impl SlicePool {
     // Interns a slice of `(ComponentId, ComponentHook)` pairs.  Used by
     // the table construction path to deduplicate hook lists.
     define_methods!(component_hook, (ComponentId, ComponentHook));
+
+    // Interns a slice of `(u16, u16)` pairs.
+    define_methods!(u16x2, (u16, u16));
+
+    // Interns a slice of `JobId`.
+    define_methods!(job_id, JobId);
 }

@@ -3,7 +3,7 @@
 //! A bundle is a collection of components (and sub-bundles) that can be
 //! written to storage in a single operation.  When you spawn an entity,
 //! you provide a bundle, and the ECS writes every component inside it to
-//! the entity's archetype row.
+//! the entity's table row.
 //!
 //! # Bundle vs. Component
 //!
@@ -29,9 +29,23 @@
 //! applicable).  This lets you write inline spawn calls without defining a
 //! struct:
 //!
-//! ```ignore
-//! // Spawn with a tuple bundle
-//! world.spawn((Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 }), /* ... */);
+//! ```rust
+//! use zlim_core::prelude::*;
+//! use zlim_reflect::derive::TypePath;
+//!
+//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! struct Position { x: f32, y: f32 }
+//!
+//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! struct Velocity { dx: f32, dy: f32 }
+//!
+//! let mut world = World::alloc();
+//! let entity = world.spawn(
+//!     (Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 }),
+//!     None,
+//! );
+//! assert_eq!(entity.get::<Position>(), Some(&Position { x: 0.0, y: 0.0 }));
+//! assert_eq!(entity.get::<Velocity>(), Some(&Velocity { dx: 1.0, dy: 0.0 }));
 //! ```
 //!
 //! For larger bundles or reusable spawn patterns, use
@@ -41,21 +55,45 @@
 //!
 //! The recommended way to define a bundle is via `#[derive(Bundle)]`:
 //!
-//! ```ignore
+//! ```rust
 //! use zlim_core::prelude::*;
+//! use zlim_reflect::derive::TypePath;
+//!
+//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! struct Position { x: f32, y: f32 }
+//!
+//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! struct Velocity { dx: f32, dy: f32 }
+//!
+//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! struct Health(u32);
 //!
 //! #[derive(Bundle)]
 //! struct PlayerBundle {
 //!     position: Position,
 //!     velocity: Velocity,
 //!     health: Health,
-//!     sprite: Sprite,
 //! }
+//!
+//! let mut world = World::alloc();
+//! let entity = world.spawn(
+//!     PlayerBundle {
+//!         position: Position { x: 0.0, y: 0.0 },
+//!         velocity: Velocity { dx: 1.0, dy: 0.0 },
+//!         health: Health(100),
+//!     },
+//!     None,
+//! );
+//! assert_eq!(entity.get::<Position>(), Some(&Position { x: 0.0, y: 0.0 }));
+//! assert_eq!(entity.get::<Velocity>(), Some(&Velocity { dx: 1.0, dy: 0.0 }));
+//! assert_eq!(entity.get::<Health>(), Some(&Health(100)));
 //! ```
 //!
-//! This generates an `unsafe impl Bundle` (and `unsafe impl DataBundle`)
-//! that collects, writes, and applies effects for every field in declaration
-//! order.
+//! This generates an `unsafe impl Bundle` that collects, writes, and
+//! applies effects for every field in declaration order.  For pure-data
+//! bundles, add `#[bundle(no_effect)]` — this also emits an
+//! `unsafe impl DataBundle` and sets [`Bundle::NEED_APPLY_EFFECT`] to
+//! `false`.
 //!
 //! [`Component`]: crate::component::Component
 
@@ -64,7 +102,6 @@
 // -----------------------------------------------------------------------------
 
 mod bundle;
-mod helper;
 mod info;
 
 // -----------------------------------------------------------------------------
@@ -72,7 +109,6 @@ mod info;
 // -----------------------------------------------------------------------------
 
 pub use bundle::{Bundle, DataBundle};
-pub use helper::{ComponentCollector, ComponentWriter};
 pub use info::{BundleId, BundleInfo, Bundles};
 
 pub use zlim_core_derive::Bundle;

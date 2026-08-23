@@ -1,20 +1,20 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, Fields, Ident, Index, Type};
+use syn::{Data, Fields, Index, Type};
 
 // -----------------------------------------------------------------------------
 // Editor field metadata
 // -----------------------------------------------------------------------------
 
-/// Describes the editor visibility of a field.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EditorKind {
-    /// `#[editor(mutable)]` — field appears in both `FIELDS` and
-    /// `MUTABLE_FIELDS`; exposed via `field` and `field_mut`.
-    Mutable,
-    /// `#[editor(readonly)]` — field appears in `FIELDS` and
-    /// `READONLY_FIELDS`; exposed via `field` only.
-    Readonly,
+/// Describes the editor access of a field.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct EditorAccess {
+    /// `#[editor(get)]` — field appears in `GETTER`; readable via
+    /// `get_field`.
+    pub(crate) getter: bool,
+    /// `#[editor(set)]` — field appears in `SETTER`; writable via
+    /// `set_field`.
+    pub(crate) setter: bool,
 }
 
 /// A field annotated with `#[editor(…)]`, carrying its name/accessor and
@@ -26,31 +26,40 @@ pub(crate) struct EditorField<'a> {
     pub(crate) name_str: String,
     /// The field type.
     pub(crate) ty: &'a Type,
-    /// Mutable vs Readonly.
-    pub(crate) kind: EditorKind,
+    /// Getter / setter access.
+    pub(crate) kind: EditorAccess,
 }
 
 // -----------------------------------------------------------------------------
 // Attribute parsing
 // -----------------------------------------------------------------------------
 
-/// Parse `#[editor(mutable)]` / `#[editor(readonly)]` from the given
-/// attributes.  Returns `None` when the field has no editor annotation.
-pub(crate) fn parse_editor_kind(attrs: &[syn::Attribute]) -> Option<EditorKind> {
+/// Parse `#[editor(get)]` / `#[editor(set)]` (or a comma-separated
+/// combination) from the given attributes.  Returns `None` when the field
+/// has no editor annotation.
+pub(crate) fn parse_editor_kind(attrs: &[syn::Attribute]) -> Option<EditorAccess> {
+    let mut out = EditorAccess::default();
+
     for attr in attrs {
         if !attr.path().is_ident("editor") {
             continue;
         }
-        let Ok(param) = attr.parse_args::<Ident>() else {
+        let Ok(_) = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("get") {
+                out.getter = true;
+                Ok(())
+            } else if meta.path.is_ident("set") {
+                out.setter = true;
+                Ok(())
+            } else {
+                Err(meta.error("unsupported editor option; expected `get` or `set`."))
+            }
+        }) else {
             continue;
         };
-        match param.to_string().as_str() {
-            "mutable" => return Some(EditorKind::Mutable),
-            "readonly" => return Some(EditorKind::Readonly),
-            _ => continue,
-        }
     }
-    None
+
+    (out.getter || out.setter).then_some(out)
 }
 
 // -----------------------------------------------------------------------------
@@ -118,34 +127,36 @@ pub(crate) fn collect_editor_fields(data: &Data) -> Result<Vec<EditorField<'_>>,
 // Token generation helpers
 // -----------------------------------------------------------------------------
 
-/// Generates the `const FIELDS` / `MUTABLE_FIELDS` / `READONLY_FIELDS`
-/// and `fn field` / `fn field_mut` tokens from the collected editor fields.
+/// Generates the `const GETTER` / `const SETTER` lists and the
+/// `fn get_field` / `fn set_field` tokens from the collected editor fields.
 pub(crate) struct EditorTokens {
-    pub(crate) fields: TokenStream,
-    pub(crate) mutable_fields: TokenStream,
-    pub(crate) readonly_fields: TokenStream,
-    pub(crate) field_fn: TokenStream,
-    pub(crate) field_mut_fn: TokenStream,
+    pub(crate) getter: TokenStream,
+    pub(crate) setter: TokenStream,
+    pub(crate) get_field_fn: TokenStream,
+    pub(crate) set_field_fn: TokenStream,
 }
 
 /// Build all editor-related token streams from the collected fields.
+///
+/// `type_name` is the derive-time identifier of the type, embedded in the
+/// error messages returned by `set_field`.
 pub(crate) fn gen_editor_tokens(
     editor_fields: &[EditorField<'_>],
+    type_name: &str,
     reflect_: &TokenStream,
 ) -> EditorTokens {
-    let all_names: Vec<_> = editor_fields.iter().map(|f| &f.name_str).collect();
-    let mutable_names: Vec<_> = editor_fields
+    let getter_names: Vec<_> = editor_fields
         .iter()
-        .filter(|f| f.kind == EditorKind::Mutable)
+        .filter(|f| f.kind.getter)
         .map(|f| &f.name_str)
         .collect();
-    let readonly_names: Vec<_> = editor_fields
+    let setter_names: Vec<_> = editor_fields
         .iter()
-        .filter(|f| f.kind == EditorKind::Readonly)
+        .filter(|f| f.kind.setter)
         .map(|f| &f.name_str)
         .collect();
 
-    let field_arms = editor_fields.iter().map(|f| {
+    let getter_arms = editor_fields.iter().filter(|f| f.kind.getter).map(|f| {
         let name = &f.name_str;
         let access = &f.access;
         quote! {
@@ -155,36 +166,44 @@ pub(crate) fn gen_editor_tokens(
         }
     });
 
-    let mut_arms = editor_fields
-        .iter()
-        .filter(|f| f.kind == EditorKind::Mutable)
-        .map(|f| {
-            let name = &f.name_str;
-            let access = &f.access;
-            quote! {
-                #name => ::core::option::Option::Some(
-                    &mut self.#access as &mut dyn #reflect_
-                ),
-            }
-        });
+    let setter_arms = editor_fields.iter().filter(|f| f.kind.setter).map(|f| {
+        let name = &f.name_str;
+        let access = &f.access;
+        // Built at derive time — quote does not interpolate inside
+        // string literals.  `{{e}}` escapes to a runtime `{e}` capture.
+        let err_msg = format!("Type `{type_name}` failed to assign field `{name}`: {{e}}");
+        quote! {
+            #name => {
+                #reflect_::reflect_apply(&mut self.#access, value).map_err(|e| {
+                    ::std::format!(#err_msg)
+                })
+            },
+        }
+    });
+
+    // `{{name}}` escapes to a runtime `{name}` capture.
+    let missing_msg = format!("Type `{type_name}` is missing field `{{name}}`");
 
     EditorTokens {
-        fields: quote! { &[ #( #all_names ),* ] },
-        mutable_fields: quote! { &[ #( #mutable_names ),* ] },
-        readonly_fields: quote! { &[ #( #readonly_names ),* ] },
-        field_fn: quote! {
-            fn field(&self, name: &str) -> ::core::option::Option<&dyn #reflect_> {
+        getter: quote! { &[ #( #getter_names ),* ] },
+        setter: quote! { &[ #( #setter_names ),* ] },
+        get_field_fn: quote! {
+            fn get_field<'a>(&'a self, name: &str) -> ::core::option::Option<&'a dyn #reflect_> {
                 match name {
-                    #( #field_arms )*
+                    #( #getter_arms )*
                     _ => ::core::option::Option::None,
                 }
             }
         },
-        field_mut_fn: quote! {
-            fn field_mut(&mut self, name: &str) -> ::core::option::Option<&mut dyn #reflect_> {
+        set_field_fn: quote! {
+            fn set_field(
+                &mut self,
+                name: &str,
+                value: &dyn #reflect_,
+            ) -> ::core::result::Result<(), ::std::string::String> {
                 match name {
-                    #( #mut_arms )*
-                    _ => ::core::option::Option::None,
+                    #( #setter_arms )*
+                    _ => ::core::result::Result::Err(::std::format!(#missing_msg)),
                 }
             }
         },

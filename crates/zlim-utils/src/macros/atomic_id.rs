@@ -17,7 +17,9 @@
 /// ```
 #[macro_export]
 macro_rules! define_atomic_id {
-    ($atomic_id_type:ident) => {
+    ($(#[$type_attr:meta])* $atomic_id_type:ident) => {
+        $(#[$type_attr])*
+        ///
         /// Globally unique 32-bit id, guaranteed via atomics on a static global.
         ///
         /// Note that this means the id space is process-wide, as such it may potentially be exhausted

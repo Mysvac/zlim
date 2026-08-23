@@ -1,3 +1,5 @@
+//! The `FetchComponents` access trait and its implementations.
+
 use core::any::TypeId;
 
 use crate::borrow::{Mut, Ref};
@@ -6,14 +8,57 @@ use crate::table::Table;
 use crate::table::TableRow;
 use crate::tick::Tick;
 
+/// Internal trait describing an arbitrary component access pattern that can
+/// be fetched from a [`Table`] row.
+///
+/// Implemented for component references (`&T`, `&mut T`), change-aware
+/// wrappers ([`Ref`], [`Mut`]), optional components, and tuples of the
+/// above.  This is the pattern used by the entity-handle `fetch` methods
+/// ([`Entity::fetch`], [`EntityMut::fetch`], [`EntityOwned::fetch`]).
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::prelude::*;
+/// use zlim_core::borrow::Mut;
+/// use zlim_core::derive::Component;
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Hp(u32);
+///
+/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// struct Speed(f32);
+///
+/// let mut world = World::alloc();
+/// let mut entity = world.spawn((Hp(100), Speed(3.0)), None);
+///
+/// // `fetch` accepts any pattern that implements `FetchComponents`:
+/// // references, change-aware wrappers, options, and tuples.
+/// let (hp, speed) = entity.fetch::<(&Hp, Mut<Speed>)>().unwrap();
+/// assert_eq!(hp, &Hp(100));
+/// assert_eq!(speed.into_inner(), &Speed(3.0));
+/// ```
+///
 /// # Safety
-/// Internal Trait
+///
+/// Implementors must ensure that every reference produced by [`fetch`] is
+/// derived exclusively from the passed `table` borrow and the requested
+/// `table_row`, and that the same component type is never fetched mutably
+/// more than once.
+///
+/// [`Table`]: crate::table::Table
+/// [`fetch`]: FetchComponents::fetch
+/// [`Entity::fetch`]: crate::ops::Entity::fetch
+/// [`EntityMut::fetch`]: crate::ops::EntityMut::fetch
+/// [`EntityOwned::fetch`]: crate::ops::EntityOwned::fetch
 pub unsafe trait FetchComponents {
     /// The fetched output type.
     type Item<'a>;
 
+    /// Fetches this component access pattern from a table row.
+    ///
     /// # Safety
-    /// Given `TableRow` must be valid (in bound).
+    /// The given `TableRow` must be in bounds for `table`.
     unsafe fn fetch<'a>(
         mutable: bool,
         table: &'a mut Table,

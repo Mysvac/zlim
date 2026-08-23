@@ -1,6 +1,12 @@
+//! Error context metadata describing where an error originated.
+
 use core::fmt::Display;
 
 use zlim_utils::debug::DebugName;
+
+use crate::system::SystemId;
+
+use crate::tick::Tick;
 
 /// Context for a [`ZlimError`] to aid in debugging.
 ///
@@ -8,24 +14,16 @@ use zlim_utils::debug::DebugName;
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum ErrorContext {
-    /// An error originated from the engine core.
-    Engine {
-        // TODO
+    /// An error originated from a job execution.
+    Job {
+        name: &'static str,
+        group: &'static str,
+        tick: Tick,
     },
-    /// An error originated from a script execution.
-    Script {
-        // TODO
-    },
+    /// An error originated from an System.
+    System { id: SystemId, tick: Tick },
     /// An error originated from a command application.
     Command { name: DebugName },
-    /// An error originated from an observer callback.
-    Observer {
-        // TODO
-    },
-    /// An error originated from an entity script.
-    EntityScript {
-        // TODO
-    },
 }
 
 impl Display for ErrorContext {
@@ -36,13 +34,13 @@ impl Display for ErrorContext {
 
 impl ErrorContext {
     /// The name of the ECS construct that failed.
+    ///
+    /// Variants that do not carry a name yet return an empty string.
     pub fn name(&self) -> String {
         match self {
-            ErrorContext::Engine {} => todo!(),
-            ErrorContext::Script {} => todo!(),
+            ErrorContext::System { id, .. } => id.to_string(),
+            ErrorContext::Job { name, .. } => name.to_string(),
             ErrorContext::Command { name } => name.to_string(),
-            ErrorContext::Observer {} => todo!(),
-            ErrorContext::EntityScript {} => todo!(),
         }
     }
 
@@ -51,11 +49,9 @@ impl ErrorContext {
     /// This helper is intended for logging and telemetry labels.
     pub fn kind(&self) -> &'static str {
         match self {
-            ErrorContext::Engine { .. } => "Engine",
-            ErrorContext::Script { .. } => "Script",
+            ErrorContext::Job { .. } => "Job",
+            ErrorContext::System { .. } => "System",
             ErrorContext::Command { .. } => "Command",
-            ErrorContext::Observer { .. } => "Observer",
-            ErrorContext::EntityScript { .. } => "EntityScript",
         }
     }
 }

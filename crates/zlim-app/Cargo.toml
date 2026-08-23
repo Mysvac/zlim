@@ -1,0 +1,27 @@
+[package]
+name = "zlim-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+
+trace = []
+
+[dependencies]
+
+zlim-app-derive = { path = "derive" }
+
+zlim-os = { path = "../zlim-os", default-features = false }
+zlim-log = { path = "../zlim-log", default-features = false }
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+zlim-task = { path = "../zlim-task", default-features = false }
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
+
+zlim-core = { path = "../zlim-core", default-features = false }
+
+[lints]
+workspace = true

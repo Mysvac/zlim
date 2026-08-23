@@ -1,7 +1,10 @@
+//! The `CommandQueue` and its raw executor.
+
 use core::fmt::Debug;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 
+use zlim_log as log;
 use zlim_utils::debug::DebugLocation;
 
 use super::Command;
@@ -19,6 +22,29 @@ use crate::world::World;
 /// Internally, each queued item is encoded as `CommandMeta` followed by the
 /// command payload bytes. During application, `cursor` marks the already
 /// drained prefix, while the active pass processes `[start, stop)`.
+///
+/// # Examples
+///
+/// ```rust
+/// use zlim_core::command::spawn;
+/// use zlim_core::command::CommandQueue;
+/// use zlim_core::prelude::*;
+///
+/// let mut world = World::alloc();
+/// let mut queue = CommandQueue::new();
+///
+/// // Commands with `Output = ()` are pushed directly...
+/// queue.push(|world: &mut World| {
+///     world.spawn((), None);
+/// });
+///
+/// // ...while fallible commands must be converted first.
+/// queue.push(spawn((), None).handle_error());
+///
+/// // Applying executes every queued command and clears the queue.
+/// queue.apply(&mut world);
+/// assert_eq!(world.entity_count(), 2);
+/// ```
 pub struct CommandQueue {
     cursor: usize,
     bytes: Vec<MaybeUninit<u8>>,
@@ -66,8 +92,9 @@ impl RawCommandQueue {
     /// The internal pointers must be valid.
     #[inline]
     pub unsafe fn is_empty(&self) -> bool {
-        // SAFETY: Pointers are guaranteed to be valid by requirements on `.clone_unsafe`
-        // It should be `>=`, because the `append` function does not modify the cursor (maybe).
+        // SAFETY: the internal pointers are guaranteed valid by this method's
+        // `# Safety` contract. `>=` (not `>`), because `append` does not
+        // modify the cursor.
         unsafe { *self.cursor.as_ref() >= self.bytes.as_ref().len() }
     }
 
@@ -81,22 +108,12 @@ impl RawCommandQueue {
     /// The internal pointers must be valid.
     #[inline] // Inline to reduce moving overhead.
     pub unsafe fn push<C: Command<Output = ()>>(&mut self, command: C) {
-        // - `repr(C)` prevents the compiler from reordering the fields.
-        // - `repr(packed)` prevents the compiler from inserting padding bytes.
-        #[repr(C, packed)]
-        struct Packed<C: Command<Output = ()>> {
-            meta: CommandMeta,
-            command: C,
-        }
-
-        let _: () = const {
-            assert!(size_of::<CommandMeta>() + size_of::<C>() == size_of::<Packed<C>>());
-        };
-
         let meta = CommandMeta {
-            apply_or_drop: |command, world, cursor| {
+            apply_or_drop: |command: NonNull<u8>,
+                            world: Option<NonNull<World>>,
+                            cursor: &mut usize| {
                 // Move cursor to the end of this Command.
-                *cursor += size_of::<C>();
+                *cursor += const { size_of::<C>() };
 
                 // SAFETY: read_unaligned because the command pointer is unaligned.
                 let command: C = unsafe { command.cast::<C>().read_unaligned() };
@@ -116,17 +133,25 @@ impl RawCommandQueue {
 
         unsafe {
             // Write command to queue
-            let bytes = self.bytes.as_mut();
-            let old_len = bytes.len();
+            let bytes: &mut Vec<MaybeUninit<u8>> = self.bytes.as_mut();
+            let meta_offset: usize = bytes.len();
+            let data_offset: usize = meta_offset + size_of::<CommandMeta>();
 
-            bytes.reserve(size_of::<Packed<C>>());
+            let packed_length: usize = const { size_of::<CommandMeta>() + size_of::<C>() };
+            let new_length: usize = meta_offset + packed_length;
 
-            let ptr = bytes.as_mut_ptr().add(old_len);
+            bytes.reserve(packed_length);
+
+            // unpacked (meta, data)
+            let base_ptr: *mut MaybeUninit<u8> = bytes.as_mut_ptr();
+            let meta_ptr: *mut MaybeUninit<u8> = base_ptr.add(meta_offset);
+            let data_ptr: *mut MaybeUninit<u8> = base_ptr.add(data_offset);
 
             // SAFETY: write_unaligned because the command pointer is unaligned.
-            ptr.cast::<Packed<C>>()
-                .write_unaligned(Packed { meta, command });
-            bytes.set_len(old_len + size_of::<Packed<C>>());
+            meta_ptr.cast::<CommandMeta>().write_unaligned(meta);
+            data_ptr.cast::<C>().write_unaligned(command);
+
+            bytes.set_len(new_length);
         }
     }
 
@@ -168,7 +193,7 @@ impl RawCommandQueue {
         }
 
         while local_cursor < stop {
-            let bytes_ptr = unsafe { self.bytes.as_mut().as_mut_ptr() };
+            let bytes_ptr: *mut MaybeUninit<u8> = unsafe { self.bytes.as_mut().as_mut_ptr() };
 
             // SAFETY: The cursor is either at the start of the buffer, or just after the previous command.
             // Since we know that the cursor is in bounds, it must point to the start of a new command.
@@ -190,6 +215,8 @@ impl RawCommandQueue {
             });
 
             if let Err(payload) = ::std::panic::catch_unwind(f) {
+                ::core::hint::cold_path();
+
                 let panic_recovery = unsafe { self.panic_recovery.as_mut() };
                 let bytes = unsafe { self.bytes.as_mut() };
                 let current_stop = bytes.len();
@@ -325,6 +352,24 @@ impl CommandQueue {
     /// Calling `world.flush()` from inside command execution is supported:
     /// cursor bookkeeping ensures already-scheduled commands in the current
     /// pass are not re-applied.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::command::CommandQueue;
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let mut queue = CommandQueue::new();
+    /// queue.push(|world: &mut World| {
+    ///     world.spawn((), None);
+    /// });
+    ///
+    /// assert!(!queue.is_empty());
+    /// queue.apply(&mut world);
+    /// assert!(queue.is_empty());
+    /// assert_eq!(world.entity_count(), 1);
+    /// ```
     #[inline]
     pub fn apply(&mut self, world: &mut World) {
         world.apply_commands();
@@ -336,6 +381,24 @@ impl CommandQueue {
     /// Pushes a command into the queue.
     ///
     /// The command will be executed when [`apply`](Self::apply) is called.
+    ///
+    /// Only commands with `Output = ()` can be pushed directly; convert
+    /// fallible commands first with [`Command::handle_error`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::command::CommandQueue;
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let mut queue = CommandQueue::new();
+    /// queue.push(|world: &mut World| {
+    ///     world.spawn((), None);
+    /// });
+    /// queue.apply(&mut world);
+    /// assert_eq!(world.entity_count(), 1);
+    /// ```
     #[inline]
     pub fn push(&mut self, command: impl Command<Output = ()>) {
         unsafe {

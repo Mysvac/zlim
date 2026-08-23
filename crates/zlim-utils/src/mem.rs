@@ -145,34 +145,36 @@ impl Block {
 // -----------------------------------------------------------------------------
 // PagePool
 
-/// A bump-allocator pool that allocates memory in fixed-size pages.
+/// A bump-allocator pool that allocates memory in growing pages.
 ///
 /// `PagePool` is a simple, append-only memory pool that allocates data
 /// in pages. Each page is a contiguous block of memory that can hold
 /// multiple allocations. When a page is full, a new page is allocated
 /// and linked to the previous one.
 ///
-/// # Type Parameters
-///
-/// - `PAGE_SIZE`: The size of each page in bytes.
+/// Pages are not fixed-size. The pool tracks an internal size counter
+/// (see [`base`](Self::base)), and each new page is sized to the
+/// current counter. After allocating a page, the counter is multiplied
+/// by 1.5 (`size += size / 2`), so pages grow geometrically.
 ///
 /// # Drop Behavior
 ///
 /// When the pool is dropped, all allocated pages are deallocated.
 /// However, the pool does **not** call `drop` on the allocated data.
 #[derive(Debug)]
-struct PagePool<const PAGE_SIZE: usize> {
+struct PagePool {
+    size: Cell<usize>,
     tail: Cell<*mut usize>,
 }
 
 // SAFETY: !Sync, but Send.
-unsafe impl<const PAGE_SIZE: usize> Send for PagePool<PAGE_SIZE> {}
+unsafe impl Send for PagePool {}
 
-impl<const PAGE_SIZE: usize> UnwindSafe for PagePool<PAGE_SIZE> {}
+impl UnwindSafe for PagePool {}
 
-impl<const PAGE_SIZE: usize> RefUnwindSafe for PagePool<PAGE_SIZE> {}
+impl RefUnwindSafe for PagePool {}
 
-impl<const PAGE_SIZE: usize> Drop for PagePool<PAGE_SIZE> {
+impl Drop for PagePool {
     fn drop(&mut self) {
         let mut ptr = self.tail.get();
         while let Some(block) = Block::from_raw(ptr) {
@@ -190,15 +192,17 @@ impl<const PAGE_SIZE: usize> Drop for PagePool<PAGE_SIZE> {
     }
 }
 
-impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
+impl PagePool {
     /// An empty pool with no pages allocated.
-    #[expect(
-        clippy::declare_interior_mutable_const,
-        reason = "const used as a default/empty sentinel value"
-    )]
-    const EMPTY: Self = Self {
-        tail: Cell::new(ptr::null_mut()),
-    };
+    ///
+    /// The first page is sized to `size`, floored to 128 bytes.
+    /// Each subsequent page grows by 1.5× over the previous one.
+    const fn base(size: usize) -> Self {
+        Self {
+            size: Cell::new(if size < 128 { 128 } else { size }),
+            tail: Cell::new(ptr::null_mut()),
+        }
+    }
 
     /// Allocates memory with the given layout and returns a pointer to it.
     ///
@@ -294,11 +298,14 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
     /// 1. The pool is empty (no pages allocated yet), or
     /// 2. The current page does not have enough free space.
     ///
-    /// The page size is rounded up to the power of two and aligned to `usize`.
+    /// The page is sized to `max(current_size, need)`, rounded up to the
+    /// next power of two and aligned to `usize`. After allocation, the
+    /// internal size counter grows by 1.5× for the next page.
     #[inline(never)]
     fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
         let need = layout.size() + layout.align().max(ALIGN);
-        let unaligned = PAGE_SIZE.max(need).next_power_of_two();
+        let unaligned = self.size.get().max(need);
+        let unaligned = unaligned.max(unaligned.next_power_of_two().saturating_sub(24));
 
         // Ensure that page_size if aligned.
         const MASK: usize = ALIGN - 1;
@@ -308,6 +315,7 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
             let prev = self.tail.get();
             let block = Block::alloc(page_size, prev);
             self.tail.set(block.pointer.as_ptr());
+            self.size.update(|x| x + (x >> 1));
 
             block.try_insert(layout).expect("enough space")
         }
@@ -317,7 +325,8 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
 // -----------------------------------------------------------------------------
 // Bump
 
-/// A bump allocator with a small page size for temporary caches.
+/// A bump allocator for temporary caches whose pages start small
+/// and grow by 1.5× as needed.
 ///
 /// # When to Use
 ///
@@ -347,7 +356,7 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
 /// use zlim_utils::mem::Bump;
 ///
 /// fn process_data() {
-///     let cache = Bump::new();
+///     let cache = Bump::new(1000);
 ///
 ///     // Allocate temporary data
 ///     let temp_string = cache.alloc_str("Processing...");
@@ -360,21 +369,25 @@ impl<const PAGE_SIZE: usize> PagePool<PAGE_SIZE> {
 /// ```
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct Bump(PagePool<2000>);
+pub struct Bump(PagePool);
 
 impl Default for Bump {
-    /// Create a empty pool without additional memory.
+    /// Creates an empty pool without any pages allocated; the first
+    /// page will be 1000 bytes and grow by 1.5× from there.
     #[inline]
     fn default() -> Self {
-        Self(PagePool::EMPTY)
+        Self(PagePool::base(1000))
     }
 }
 
 impl Bump {
-    /// Create a empty pool without additional memory.
+    /// Creates an empty pool without any pages allocated.
+    ///
+    /// `base_size` is the size of the first page, floored to 256 bytes.
+    /// Later pages grow by 1.5× from there.
     #[inline]
-    pub const fn new() -> Self {
-        Self(PagePool::EMPTY)
+    pub const fn new(base_size: usize) -> Self {
+        Self(PagePool::base(base_size))
     }
 
     /// Allocates memory with the given layout and returns a pointer to it.
@@ -393,7 +406,7 @@ impl Bump {
     /// use zlim_utils::mem::Bump;
     /// use core::alloc::Layout;
     ///
-    /// let pool = Bump::new();
+    /// let pool = Bump::new(1000);
     /// let layout = Layout::new::<i32>();
     /// let ptr = pool.alloc(layout);
     ///
@@ -418,7 +431,7 @@ impl Bump {
     /// ```
     /// use zlim_utils::mem::Bump;
     ///
-    /// let pool = Bump::new();
+    /// let pool = Bump::new(1000);
     /// let s = pool.alloc_str("Hello, world!");
     /// assert_eq!(s, "Hello, world!");
     /// assert_ne!(s.as_ptr(), "Hello, world!".as_ptr());
@@ -443,7 +456,7 @@ impl Bump {
     /// ```
     /// use zlim_utils::mem::Bump;
     ///
-    /// let pool = Bump::new();
+    /// let pool = Bump::new(1000);
     /// let v1 = pool.alloc_value(123);
     /// let v2 = pool.alloc_value([1, 2, 3, 4]);
     ///
@@ -468,7 +481,7 @@ impl Bump {
     /// ```
     /// use zlim_utils::mem::Bump;
     ///
-    /// let pool = Bump::new();
+    /// let pool = Bump::new(1000);
     /// let original = [1, 2, 3, 4, 5];
     /// let slice = pool.alloc_slice(&original);
     ///
@@ -501,7 +514,7 @@ impl Bump {
     /// ```
     /// use zlim_utils::mem::Bump;
     ///
-    /// let pool = Bump::new();
+    /// let pool = Bump::new(1000);
     ///
     /// // i32 is fine — no Drop, no problem.
     /// let v = unsafe { pool.alloc_unchecked(42i32) };
@@ -547,8 +560,10 @@ cfg_select! {
         /// "If the heap specified by the `hHeap` parameter is a 'non-growable' heap,
         /// `dwBytes` must be less than 0x7FFF8."
         ///
+        /// The internal page size will be a power of 2, so the CHUNK_SIZE is slightly less than 512 K.
+        ///
         /// > <https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc>
-        const CHUNK_SIZE: usize = 512 * 1024 + 8;
+        const CHUNK_SIZE: usize = 512 * 1024 - 128;
     }
     target_os = "linux" => {
         /// # Linux
@@ -569,14 +584,15 @@ cfg_select! {
     }
 }
 
-struct Pool(PagePool<CHUNK_SIZE>);
+struct Pool(PagePool);
 
-static POOL: Mutex<Pool> = Mutex::new(Pool(PagePool::EMPTY));
+static POOL: Mutex<Pool> = Mutex::new(Pool(PagePool::base(CHUNK_SIZE)));
 
 /// A global, shared memory pool for static data.
 ///
 /// `Global` is a **mutex-protected** pool that is shared across all threads.
-/// It uses a large page size to efficiently manage long-lived static data.
+/// It starts with a large page size to efficiently manage long-lived
+/// static data, growing by 1.5× as needed.
 ///
 /// This pool is never deallocated, and all allocations live for the entire
 /// program duration.

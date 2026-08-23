@@ -674,14 +674,14 @@ mod tests {
         let create = make_create();
         let mut tls = ThreadLocal::new();
         assert_eq!(None, tls.get());
-        assert_eq!("ThreadLocal { local_data: None }", format!("{:?}", &tls));
+        assert_eq!("ThreadLocal { local_data: None }", format!("{:?}", tls));
         assert_eq!(0, *tls.get_or(|| create()));
         assert_eq!(Some(&0), tls.get());
         assert_eq!(0, *tls.get_or(|| create()));
         assert_eq!(Some(&0), tls.get());
         assert_eq!(0, *tls.get_or(|| create()));
         assert_eq!(Some(&0), tls.get());
-        assert_eq!("ThreadLocal { local_data: Some(0) }", format!("{:?}", &tls));
+        assert_eq!("ThreadLocal { local_data: Some(0) }", format!("{:?}", tls));
         tls.clear();
         assert_eq!(None, tls.get());
     }
