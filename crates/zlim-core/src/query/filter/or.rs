@@ -132,7 +132,7 @@ macro_rules! impl_tuple {
         impl<$($name: QueryFilter),*> InOr for ($($name),*) {}
 
         #[cfg_attr(docsrs, doc(hidden))]
-        unsafe impl<$($name: QueryFilter),*> ArchetypeFilter for Or<($($name),*)> {}
+        unsafe impl<$($name: ArchetypeFilter),*> ArchetypeFilter for Or<($($name),*)> {}
 
         #[cfg_attr(docsrs, doc(hidden))]
         unsafe impl<$($name: QueryFilter),*> QueryFilter for Or<($($name),*)> {

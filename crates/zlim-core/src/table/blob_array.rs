@@ -6,7 +6,6 @@ use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 use std::alloc as malloc;
 
-use zlim_log as log;
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
 
 use crate::utils::Dropper;
@@ -22,7 +21,7 @@ impl Drop for AbortOnDropFail {
     #[cold]
     #[inline(never)]
     fn drop(&mut self) {
-        log::error!("Aborting due to drop component panicked.");
+        zlim_log::error!("Aborting due to drop component panicked.");
         ::std::process::abort();
     }
 }
@@ -259,6 +258,8 @@ impl BlobArray {
 
     /// Swaps the item at `index` with the last item and returns the moved item.
     ///
+    /// Use `remove_item` instead if it's last item.
+    ///
     /// # Safety
     /// - `index` must be < `last_index`
     /// - Both `index` and `last_index` must be within bounds
@@ -282,6 +283,8 @@ impl BlobArray {
 
     /// Swaps the item at `index` with the last item and forget the moved item.
     ///
+    /// Use `forget_item` instead if it's last item.
+    ///
     /// # Safety
     /// - `index` must be < `last_index`
     /// - Both `index` and `last_index` must be within bounds
@@ -297,6 +300,8 @@ impl BlobArray {
     }
 
     /// Swaps the item at `index` with the last item and drops the moved item.
+    ///
+    /// Use `drop_item` instead if it's last item.
     ///
     /// # Safety
     /// - `index` must be < `last_index`

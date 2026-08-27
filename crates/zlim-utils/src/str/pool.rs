@@ -65,7 +65,10 @@ impl Equivalent<HS> for HashStr<'_> {
 // Pool
 
 /// Global interning pool.
-static POOL: RwLock<HashSet<HS, NoopState>> = RwLock::new(HashSet::with_hasher(NoopState));
+///
+/// Multiple pools to reduce lock race
+static POOL_0: RwLock<HashSet<HS, NoopState>> = RwLock::new(HashSet::with_hasher(NoopState));
+static POOL_1: RwLock<HashSet<HS, NoopState>> = RwLock::new(HashSet::with_hasher(NoopState));
 
 // -----------------------------------------------------------------------------
 // intern_str
@@ -90,8 +93,13 @@ pub fn intern_str<'a>(s: &'a str) -> &'static str {
     // Hash once outside the lock so the read path is as cheap as possible.
     let hs: HashStr<'a> = HashStr::new(s);
 
+    let delegate: usize = s.len() & 0b1;
+
     {
-        let pool = POOL.read().unwrap_or_else(PoisonError::into_inner);
+        let pool = match delegate {
+            0 => POOL_0.read().unwrap_or_else(PoisonError::into_inner),
+            _ => POOL_1.read().unwrap_or_else(PoisonError::into_inner),
+        };
 
         if let Some(hs) = pool.get(&hs) {
             return hs.s;
@@ -103,12 +111,13 @@ pub fn intern_str<'a>(s: &'a str) -> &'static str {
 
     let hs = HS { s, h: hs.hash };
 
+    let mut pool = match delegate {
+        0 => POOL_0.write().unwrap_or_else(PoisonError::into_inner),
+        _ => POOL_1.write().unwrap_or_else(PoisonError::into_inner),
+    };
     // High concurrency has a probability of multiple allocations
     // of the same string, but the probability is low and acceptable.
-    POOL.write()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get_or_insert(hs) // not `get_or_insert_with`, separate locks
-        .s
+    pool.get_or_insert(hs).s
     // ↑ If inserting concurrently, prioritize using internal values
     // to ensure consistency with string pointers.
 }

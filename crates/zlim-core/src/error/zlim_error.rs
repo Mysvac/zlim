@@ -5,6 +5,7 @@ use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::ops::ControlFlow;
 use core::ptr::NonNull;
+use std::backtrace::Backtrace;
 use std::panic::PanicHookInfo;
 
 // -----------------------------------------------------------------------------
@@ -102,7 +103,7 @@ type BoxedError = Box<dyn Error + Send + Sync + 'static>;
 struct InnerError {
     content: BoxedError,
     #[cfg(feature = "backtrace")]
-    backtrace: std::backtrace::Backtrace,
+    backtrace: Backtrace,
 }
 
 /// Compile-time guard: alignment must be at least 8.
@@ -139,27 +140,18 @@ impl ZlimError {
     ///
     /// Encodes `severity` into the low bits of the heap pointer via pointer-tagging.
     #[inline(never)]
-    fn new_boxed(severity: Severity, error: BoxedError) -> Self {
+    fn new_boxed(severity: Severity, content: BoxedError) -> Self {
         #[cfg(feature = "backtrace")]
         let backtrace = match severity {
-            Severity::Ignore | Severity::Debug | Severity::Info => {
-                std::backtrace::Backtrace::disabled()
-            }
-            Severity::Warning | Severity::Error => std::backtrace::Backtrace::capture(),
-            Severity::Panic => {
-                // Panic itself will capture backtrack.
-                std::backtrace::Backtrace::disabled()
-            }
+            Severity::Ignore | Severity::Debug | Severity::Info => Backtrace::disabled(),
+            Severity::Warning | Severity::Error | Severity::Panic => Backtrace::capture(),
         };
 
         #[cfg(not(feature = "backtrace"))]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content: error }));
+        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content }));
 
         #[cfg(feature = "backtrace")]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError {
-            content: error,
-            backtrace,
-        }));
+        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content, backtrace }));
 
         debug_assert!(
             (ptr as usize & MASKS) == 0,
@@ -350,6 +342,43 @@ impl Drop for ZlimError {
 // -----------------------------------------------------------------------------
 // Backtrace
 
+impl ZlimError {
+    #[inline(never)]
+    fn with_backtrace_boxed(severity: Severity, content: BoxedError, backtrace: Backtrace) -> Self {
+        #[cfg(not(feature = "backtrace"))]
+        let _ = backtrace;
+
+        #[cfg(not(feature = "backtrace"))]
+        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content }));
+
+        #[cfg(feature = "backtrace")]
+        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content, backtrace }));
+
+        debug_assert!(
+            (ptr as usize & MASKS) == 0,
+            "InnerError should be align of `8`"
+        );
+
+        unsafe {
+            let p: *mut () = (ptr as *mut ()).byte_add(severity as usize);
+            Self(NonNull::new_unchecked(p), PhantomData)
+        }
+    }
+
+    /// Constructs a new [`ZlimError`] with the given [`Severity`].
+    ///
+    /// Like [`ZlimError::new`], but if the `backtrace` cargo feature is enabled
+    /// it will use the supplied backtrace instead of capturing a new one.
+    #[inline]
+    pub fn with_backtrace(
+        severity: Severity,
+        error: impl Into<BoxedError>,
+        backtrace: Backtrace,
+    ) -> Self {
+        Self::with_backtrace_boxed(severity, error.into(), backtrace)
+    }
+}
+
 #[cfg(feature = "backtrace")]
 const FILTER_MESSAGE: &str = "NOTE: Some \"noisy\" backtrace lines have been filtered out. Run with `ZLIM_BACKTRACE=full` for a verbose backtrace.";
 
@@ -361,22 +390,21 @@ thread_local! {
 #[cfg(feature = "backtrace")]
 const NOISE_CONTENTS: &[&str] = &[
     "std::backtrace_rs::backtrace::",
-    "std::backtrace::Backtrace::",
+    "Backtrace::",
     "zlim_core::error::zlim_error::ZlimError::new_boxed",
 ];
 
 #[cfg(feature = "backtrace")]
-const STOP_SIGNAL: &[&str] = &["__rust_begin_short_backtrace"];
+const STOP_SIGNALS: &[&str] = &["__rust_begin_short_backtrace"];
 
 #[cfg(feature = "backtrace")]
 impl ZlimError {
     fn format_backtrace(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use std::backtrace::BacktraceStatus;
+
         let backtrace = unsafe { &(*self.get_ptr()).backtrace };
 
-        if !matches!(
-            backtrace.status(),
-            std::backtrace::BacktraceStatus::Captured
-        ) {
+        if !matches!(backtrace.status(), BacktraceStatus::Captured) {
             return Ok(());
         }
 
@@ -400,7 +428,7 @@ impl ZlimError {
                 continue;
             }
 
-            if STOP_SIGNAL.iter().any(|&x| line.contains(x)) {
+            if STOP_SIGNALS.iter().any(|&x| line.contains(x)) {
                 break;
             }
 

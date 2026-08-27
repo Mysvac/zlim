@@ -153,34 +153,47 @@ fn world_register_and_write() {
     assert!(world.contains_resource::<MessageQueue<Payload>>());
 
     // Messages written before rotation are readable immediately.
-    let key = world.write_message(Payload(42)).unwrap();
+    let key = world.write_message(Payload(42));
     assert_eq!(key.index(), 0);
     assert_eq!(world.resource::<MessageQueue<Payload>>().len(), 1);
 
     let keys: Vec<usize> = world
         .write_message_batch([Payload(43), Payload(44)])
-        .unwrap()
         .map(|key| key.index())
         .collect();
     assert_eq!(keys, vec![1, 2]);
 
     // One update keeps them readable; the next expires them.
-    world.update_messages();
+    World::refresh_metadata(&mut world);
     assert_eq!(world.resource::<MessageQueue<Payload>>().len(), 3);
-    world.update_messages();
+    World::refresh_metadata(&mut world);
     assert!(world.resource::<MessageQueue<Payload>>().is_empty());
 }
 
 #[test]
-fn write_unregistered_message_fails_softly() {
+fn write_unregistered_message_auto_registers() {
     let mut world = World::alloc();
 
-    assert!(world.write_message::<Payload>(Payload(1)).is_none());
-    assert!(
-        world
-            .write_message_batch::<Payload>([Payload(1), Payload(2)])
-            .is_none()
-    );
+    // A first write implicitly registers the type and its queue.
+    let key = world.write_message::<Payload>(Payload(1));
+    assert_eq!(key.index(), 0);
+    assert!(world.contains_resource::<MessageQueue<Payload>>());
+    assert_eq!(world.messages().len(), 1);
+
+    // Subsequent writes reuse the registered queue.
+    let key = world.write_message::<Payload>(Payload(2));
+    assert_eq!(key.index(), 1);
+    assert_eq!(world.messages().len(), 1);
+
+    // Batches follow the same implicit-registration path.
+    let mut world = World::alloc();
+    let keys: Vec<usize> = world
+        .write_message_batch::<Payload>([Payload(3), Payload(4)])
+        .map(|key| key.index())
+        .collect();
+    assert_eq!(keys, vec![0, 1]);
+    assert!(world.contains_resource::<MessageQueue<Payload>>());
+    assert_eq!(world.messages().len(), 1);
 }
 
 #[test]
@@ -221,33 +234,35 @@ fn system_params_end_to_end() {
     let mut reader = IntoSystem::into_system(sum_messages);
     reader.initialize(&world);
 
-    writer.run((), &mut world).unwrap();
+    world.invoke(write_messages, ()).unwrap();
+    world.invoke(clamp_messages, ()).unwrap();
 
-    // Cursors created before the writes still see the new messages.
-    mutator.run((), &mut world).unwrap();
-    assert_eq!(
-        world
-            .resource::<MessageQueue<Payload>>()
-            .get(0)
-            .map(|(_, m)| m.0),
-        Some(10)
-    );
-    assert_eq!(
-        world
-            .resource::<MessageQueue<Payload>>()
-            .get(1)
-            .map(|(_, m)| m.0),
-        Some(15)
-    );
+    let x = world
+        .resource::<MessageQueue<Payload>>()
+        .get(0)
+        .unwrap()
+        .1
+        .0;
+    let y = world
+        .resource::<MessageQueue<Payload>>()
+        .get(1)
+        .unwrap()
+        .1
+        .0;
+    assert_eq!(x, 10);
+    assert_eq!(y, 15);
 
-    assert_eq!(reader.run((), &mut world).unwrap(), 25);
+    let s = world.invoke(sum_messages, ()).unwrap();
+    assert_eq!(s, 25);
 
     // The reader cursor has consumed everything.
-    assert_eq!(reader.run((), &mut world).unwrap(), 0);
+    let s = world.invoke(sum_messages, ()).unwrap();
+    assert_eq!(s, 0);
 
     // New writes in the same frame are visible to the reader cursor.
     world.write_message(Payload(5));
-    assert_eq!(reader.run((), &mut world).unwrap(), 5);
+    let s = world.invoke(sum_messages, ()).unwrap();
+    assert_eq!(s, 5);
 }
 
 // -----------------------------------------------------------------------------

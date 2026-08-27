@@ -65,6 +65,7 @@ pub(super) static PATH_REGISTRY: RwLock<HashMap<&'static str, &'static ResourceD
 /// ```
 ///
 /// [`Resource`]: crate::resource::Resource
+#[repr(C)] // The determined field order can optimize access speed.
 pub struct ResourceDB {
     // --------------------------------
     // Ident

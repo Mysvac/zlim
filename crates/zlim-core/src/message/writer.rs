@@ -19,7 +19,6 @@ use crate::world::{World, WorldCell};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Collision {
@@ -38,7 +37,9 @@ use crate::world::{World, WorldCell};
 ///
 /// // `MessageWriter` appends into the write sequence of the backing queue:
 /// let mut queue = MessageQueue::<Collision>::default();
+///
 /// queue.write(Collision { lhs: 1, rhs: 2 });
+///
 /// queue.write_batch([
 ///     Collision { lhs: 10, rhs: 11 },
 ///     Collision { lhs: 20, rhs: 21 },

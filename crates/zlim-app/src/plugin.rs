@@ -37,11 +37,32 @@ pub enum DuplicateStrategy {
 // -----------------------------------------------------------------------------
 // Plugin
 
+/// A pluggable unit of [`App`] configuration.
+///
+/// Plugins are **lazy**: [`App::add_plugins`] only stores the plugin  —
+/// nothing runs until [`App::build`] (called automatically by [`App::run`])
+/// executes every plugin through its three lifecycle stages:
+///
+/// 1. [`build`](Self::build) — inspect the app, add dependency plugins and
+///    adjust the plugin execution order.
+/// 2. [`apply`](Self::apply) — apply the plugin, in installation order
+///    (dependencies first); main-app plugins run before every sub-app's.
+/// 3. [`cleanup`](Self::cleanup) — tear down temporary resources after all
+///    plugins have been applied.
+///
+/// The plugin itself must be `Send + Sync` (the app may be moved to the main
+/// thread before initialization).
+///
+/// [`App::run`]: crate::App::run
+/// [`App::build`]: crate::App::build
+/// [`App::add_plugins`]: crate::App::add_plugins
 pub trait Plugin: Any + Send + Sync + 'static {
     /// Initializes the plugin.
     ///
     /// inspects the app, adds dependency plugins
     /// and adjusts the plugin execution order.
+    ///
+    /// At this stage, you can insert other plugins into the app.
     fn build(&self, _app: &mut App) {
         // do nothing
     }
@@ -50,16 +71,20 @@ pub trait Plugin: Any + Send + Sync + 'static {
     ///
     /// Called once per plugin, in installation order (dependencies first)
     /// — main-app plugins before every sub-app's plugins.
+    ///
+    /// At this stage, the plugin list has stabilized and new additions are prohibited.
     fn apply(&self, app: &mut App);
 
     /// Runs after every plugin has been applied.
     ///
     /// Useful for tearing down temporary resources before the app schedules execute.
+    ///
+    /// At this stage, the plugin list has stabilized and new additions are prohibited.
     fn cleanup(&mut self, _app: &mut App) {
         // do nothing
     }
 
-    /// A unstable name for debugging.
+    /// The plugin's name, used in diagnostics and duplicate detection.
     fn name(&self) -> &'static str {
         core::any::type_name::<Self>()
     }
@@ -76,6 +101,7 @@ impl dyn Plugin {
         <dyn Any>::type_id(self)
     }
 
+    /// Returns `true` if this plugin is of type `T`.
     pub fn is<T: 'static>(&self) -> bool {
         <dyn Any>::type_id(self) == TypeId::of::<T>()
     }
@@ -84,8 +110,13 @@ impl dyn Plugin {
 // -----------------------------------------------------------------------------
 // PlaceholderPlugin
 
-#[derive(Debug, Clone, Copy)]
-pub struct PlaceholderPlugin;
+/// An internal sentinel used while swapping plugin objects in and out of the
+/// app during `build` / `apply` / `cleanup`.
+///
+/// It is never meant to be added by users; its
+/// [`duplicate_strategy`](Self::duplicate_strategy) is
+/// [`DuplicateStrategy::Panic`] so it cannot be inserted as a duplicate.
+pub(crate) struct PlaceholderPlugin;
 
 impl Plugin for PlaceholderPlugin {
     fn apply(&self, _: &mut App) {}
@@ -124,6 +155,9 @@ mod sealed {
 
 use sealed::*;
 
+/// Values that can be added to an [`App`] via
+/// [`App::add_plugins`](crate::App::add_plugins): an individual [`Plugin`],
+/// a [`PluginGroup`], or a tuple of plugin-like values (up to 8 items).
 pub trait Plugins<Marker>: Sealed<Marker> {
     fn unpack(self) -> impl Iterator<Item = Box<dyn Plugin>>;
 }

@@ -30,6 +30,8 @@ Uses the `EnvFilter` syntax (the same as `RUST_LOG`), controlling which logs
 are emitted by **target + level**. For example:
 
 ```rust
+use zlim_log::LogPlugin;
+
 let plugin = LogPlugin {
     filter: "wgpu=warn,naga=warn,zlim_core=debug".to_string(),
     ..Default::default()

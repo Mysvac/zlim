@@ -43,6 +43,7 @@ macro_rules! impl_simple_job {
                             last_run: Tick::new(0),
                         })
                     },
+                    run_if: &[],
                     location: DebugLocation::caller(),
                 }
             }
@@ -188,8 +189,8 @@ register_job!(GroupEnd);
 ///     jobs: [JobA, "group_job_b"],
 ///     order: [["group_job_b", JobA]],
 ///     weak_order: [
-///         ["Job1", "Job2", "Job3"],
-///         ["Job2", "Job5"],
+///         ["group_job_b", JobA],
+///         [JobA, "group_job_b"], // multiple weak chains
 ///     ],
 /// }
 ///
@@ -298,7 +299,7 @@ impl JobGroup {
     #[cold]
     #[inline(never)]
     fn missing(group: &str, job: &str, location: DebugLocation) {
-        log::error!("{location}: cannot find job `{job}` in group `{group}`");
+        panic!("{location}: cannot find job `{job}` in group `{group}`");
     }
 
     /// Builds a job group from its name, job list, condition, and ordering
@@ -576,11 +577,11 @@ pub trait JobGroupLabel {
 
 /// A CTOR-registry handle used to eagerly register job groups.
 #[repr(transparent)]
-pub struct JobGroupReg(fn());
+pub struct __JobGroupReg__(fn());
 
-zlim_reg::collect!(JobGroupReg);
+zlim_reg::collect!(__JobGroupReg__);
 
-impl JobGroupReg {
+impl __JobGroupReg__ {
     /// Creates a registration handle for a [`JobGroupLabel`].
     pub const fn of<T: JobGroupLabel>() -> Self {
         Self(T::register)
@@ -617,8 +618,8 @@ macro_rules! register_job_group {
         const _: () = {
             $(
                 $crate::__macro_exports__::__submit!(
-                    $crate::job::JobGroupReg::of::<$ty>()
-                    => $crate::job::JobGroupReg
+                    $crate::job::__JobGroupReg__::of::<$ty>()
+                    => $crate::job::__JobGroupReg__
                 );
             )*
         };
@@ -634,12 +635,12 @@ impl JobGroup {
         #[inline(never)]
         fn collect_internal() {
             zlim_task::cfg::single_thread! {
-                zlim_reg::iter::<JobGroupReg>().for_each(|f|(f.0)());
+                zlim_reg::iter::<__JobGroupReg__>().for_each(|f|(f.0)());
             }
 
             zlim_task::cfg::multi_thread! {
                 zlim_task::MainTaskPool::get().scope(|s| {
-                    zlim_reg::iter::<JobGroupReg>().for_each(|f| s.spawn(async { (f.0)() }));
+                    zlim_reg::iter::<__JobGroupReg__>().for_each(|f| s.spawn(async { (f.0)() }));
                 });
             }
         }

@@ -201,7 +201,9 @@ fn non_serializable_component_registers_without_serializer() {
     let db = ComponentDB::of::<NoSerde>();
     assert!(db.serialize.is_none());
     assert!(db.deserialize.is_none());
-    assert!(!NoSerde::SERIALIZE);
+    const {
+        assert!(!NoSerde::SERIALIZE);
+    }
 
     // The component still works in a world.
     let mut world = World::alloc();
@@ -216,7 +218,9 @@ fn serializable_component_registers_with_serializer() {
     let db = ComponentDB::of::<SerdeComp>();
     assert!(db.serialize.is_some());
     assert!(db.deserialize.is_some());
-    assert!(SerdeComp::SERIALIZE);
+    const {
+        assert!(SerdeComp::SERIALIZE);
+    }
 
     let probe = SerdeComp(9);
     assert_eq!(probe.0, 9);

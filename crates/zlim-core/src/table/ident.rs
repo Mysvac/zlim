@@ -58,9 +58,6 @@ impl TableId {
 /// # Example
 ///
 /// ```ignore
-/// use zlim_core::prelude::*;
-/// use zlim_core::table::{MovedEntityRow, Table, TableRow};
-///
 /// // Rows are dense and removal is a swap-remove: removing the last row
 /// // displaces nothing, but removing any other row moves the last row into
 /// // the gap.  `dealloc_row` / `move_row` report that displacement as a
@@ -88,7 +85,6 @@ pub struct TableRow(pub u32);
 /// ```rust
 /// use zlim_core::prelude::*;
 /// use zlim_core::table::TableCol;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Position {

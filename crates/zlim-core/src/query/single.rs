@@ -19,8 +19,6 @@ use crate::world::{World, WorldCell};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::query::Single;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Player { health: u32 }
@@ -42,12 +40,10 @@ use crate::world::{World, WorldCell};
 /// The default error handler logs the error instead of panicking.
 ///
 /// If the entity may not exist, or you want to run some logic when the
-/// condition is not satisfied, wrap the parameter in an `Option`:
+/// condition is not satisfied, wrap the parameter in an `Option` or `If`:
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::query::Single;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Player { health: u32 }
@@ -153,42 +149,6 @@ unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Si
 // -----------------------------------------------------------------------------
 // Basic
 
-unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam
-    for Option<Single<'_, D, F>>
-{
-    type State = QueryState<D, F>;
-    type Item<'world, 'state> = Option<Single<'world, D, F>>;
-
-    const DEFERRED: bool = false;
-    const NON_SEND: bool = false;
-    const EXCLUSIVE: bool = false;
-
-    fn init_state(world: &World) -> Self::State {
-        QueryState::build(world)
-    }
-
-    fn register_access(state: &Self::State, table: &mut AccessTable, strict: bool) -> bool {
-        state.register_access(table, strict)
-    }
-
-    unsafe fn build_param<'w, 's>(
-        state: &'s mut Self::State,
-        world: WorldCell<'w>,
-        last_run: Tick,
-        this_run: Tick,
-    ) -> Result<Self::Item<'w, 's>, SystemParamError> {
-        state.update(unsafe { world.read_only() });
-
-        match unsafe { Single::new(world, state, last_run, this_run) } {
-            Ok(ret) => Ok(Some(ret)),
-            Err(_) => Ok(None),
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Basic
-
 impl<'w, D: QueryData, F: QueryFilter> Single<'w, D, F> {
     /// Consumes this wrapper and returns the inner query item.
     ///
@@ -196,8 +156,6 @@ impl<'w, D: QueryData, F: QueryFilter> Single<'w, D, F> {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::query::Single;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Player { health: u32 }

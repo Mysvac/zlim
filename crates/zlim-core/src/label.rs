@@ -2,6 +2,7 @@
 //!
 //! This module provides a generic interner and type-erased equality/hash tools
 //! used by label traits such as `ScheduleLabel`.
+//!
 //! Most users will interact through derive macros and interned label handles,
 //! while contributors may implement low-level traits here.
 
@@ -294,7 +295,7 @@ macro_rules! define_label {
     (
         $(#[$label_attr:meta])*
         $label_trait_name:ident,
-        $interner_name:ident
+        $interner_name:ident $(,)?
     ) => {
         $crate::define_label!(
             $(#[$label_attr])*
@@ -308,8 +309,8 @@ macro_rules! define_label {
         $(#[$label_attr:meta])*
         $label_trait_name:ident,
         $interner_name:ident,
-        extra_methods: { $($trait_extra_methods:tt)* },
-        extra_methods_impl: { $($interned_extra_methods_impl:tt)* }
+        extra_methods: { $($trait_extra_methods:tt)* } ,
+        extra_methods_impl: { $($interned_extra_methods_impl:tt)* } $(,)?
     ) => {
 
         $(#[$label_attr])*

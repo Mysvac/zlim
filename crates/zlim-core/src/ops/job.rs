@@ -1,9 +1,10 @@
 use crate::error::ZlimError;
 use crate::job::JobDB;
+use crate::job::JobGroup;
 use crate::world::World;
 
 impl World {
-    /// Run a given job.
+    /// Run once a given job by name.
     ///
     /// Return `Err` if the job is not registered or run failed.
     ///
@@ -17,14 +18,14 @@ impl World {
     pub fn run_job(&mut self, name: &str) -> Result<(), ZlimError> {
         match JobDB::get(name) {
             Some(db) => {
-                let mut job = (db.ctor)("None");
+                // Standalone jobs run in the anonymous group.
+                let mut job = (db.ctor)(JobGroup::ANONYMOUS);
                 job.run(self).map_err(ZlimError::from)
             }
             None => {
                 ::core::hint::cold_path();
-                Err(ZlimError::error(format!(
-                    "Try run a unregistered job `{name}`."
-                )))
+                let msg = format!("Try run a unregistered job `{name}`.");
+                Err(ZlimError::error(msg))
             }
         }
     }

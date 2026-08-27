@@ -1,23 +1,37 @@
-//! Resource types, registration, and metadata.
+//! Resource types, registration, and storage.
 //!
-//! This module owns the core resource primitives:
+//! A resource is a singleton value identified by its concrete Rust type:
+//! at most one value of a given resource type exists in a [`World`] at any
+//! time.
 //!
-//! - [`Resource`] — the core trait for singleton resources.
-//! - [`ResourceDB`] — static per-type metadata in the global registry.
-//! - [`Resources`] — a local snapshot of the global registry.
-//! - [`ResourceId`] — a unique identifier for a resource type.
+//! Usually defined through `#[derive(Resource)]`.
 //!
-//! A resource is a singleton value identified by its concrete Rust type: at
-//! most one value of a given resource type exists in a [`World`] at any
-//! time.  Resource **metadata** (identity, reflection info, layout) lives in
-//! the global [`ResourceDB`] registry, while resource **values** are stored
-//! in the [`slot`] module.
+//! ```rust, no_run
+//! # use zlim_core::prelude::*;
+//! #
+//! #[derive(TypePath, Resource)]
+//! struct GlobalInstant(std::time::Instant);
+//! ```
 //!
-//! # Example
+//! Resource **metadata** (identity, reflection info, layout) lives in the
+//! global [`ResourceDB`] registry, while resource **values** are stored
+//! in the per-world [`Resources`] storage.
+//!
+//! ```rust
+//! # use zlim_core::prelude::*;
+//! #
+//! #[derive(TypePath, Resource)]
+//! struct GlobalInstant(std::time::Instant);
+//!
+//! // Look up (and lazily register) the resource's metadata:
+//! let db = ResourceDB::of::<GlobalInstant>();
+//! assert_eq!(db.type_name, "GlobalInstant");
+//! ```
+//!
+//! # Examples
 //!
 //! ```rust
 //! use zlim_core::prelude::*;
-//! use zlim_reflect::derive::TypePath;
 //!
 //! // Any `TypePath` type becomes a resource with the derive macro.
 //! #[derive(TypePath, Resource)]
@@ -25,24 +39,25 @@
 //!
 //! let mut world = World::alloc();
 //! world.insert_resource(Score(100));
-//! assert_eq!(world.get_resource::<Score>().unwrap().0, 100);
+//! assert_eq!(world.resource::<Score>().0, 100);
 //!
-//! // Metadata for a resource type is available from the world's snapshot.
-//! let db = world.resources().get::<Score>();
-//! assert_eq!(db.type_name, "Score");
+//! // Resource values live in the world's storage:
+//! let ty = core::any::TypeId::of::<Score>();
+//! assert!(world.resources().get(ty).is_some());
+//!
+//! // Metadata comes from the global registry:
+//! assert_eq!(ResourceDB::of::<Score>().type_name, "Score");
+//!
+//! // Access through System
+//! fn modify_score(mut score: ResMut<Score>) {
+//!     score.0 += 1_u32;
+//! }
+//!
+//! world.invoke_once(modify_score, ()).unwrap();
+//! assert_eq!(world.resource::<Score>().0, 101);
 //! ```
 //!
-//! # Submodules
-//!
-//! - `alias` — type-erased function pointer aliases.
-//! - `collect` — bulk (CTOR-driven) registration.
-//! - `db` — [`ResourceDB`] and the global lookup registries.
-//! - `id` — [`ResourceId`].
-//! - `register` — registration entry points.
-//! - `snapshot` — the [`Resources`] snapshot.
-//!
 //! [`World`]: crate::world::World
-//! [`slot`]: crate::slot
 
 // -----------------------------------------------------------------------------
 // Modules
@@ -54,7 +69,7 @@ mod db;
 mod id;
 mod register;
 mod resource;
-mod snapshot;
+mod storage;
 
 // -----------------------------------------------------------------------------
 // Exports
@@ -66,6 +81,6 @@ pub use db::ResourceDB;
 pub use id::ResourceId;
 pub use register::{register_base, register_serializable};
 pub use resource::Resource;
-pub use snapshot::Resources;
+pub use storage::{ResourceCell, Resources};
 
 pub use zlim_core_derive::Resource;

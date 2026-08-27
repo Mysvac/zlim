@@ -22,7 +22,6 @@ impl EntityOwned<'_> {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::derive::Component;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
     /// struct Foo;
@@ -56,13 +55,22 @@ impl EntityOwned<'_> {
         let entity = self.id;
         let world_cell = self.world;
 
-        let location = unsafe { self.storage.take().debug_checked_unwrap().1 };
+        // Peek at the storage instead of taking it: the no-op (empty-table)
+        // path must leave the cached storage intact, mirroring
+        // `remove_dynamic_with_caller`.
+        let location = unsafe { self.storage.as_ref().debug_checked_unwrap().1 };
 
         let old_table_id = location.table_id;
         let old_table_row = location.table_row;
 
         if old_table_id == TableId::EMPTY {
             return Ok(self);
+        }
+
+        // Only the move path consumes the cached storage; `relocate()`
+        // restores it afterwards.
+        unsafe {
+            self.storage.take().debug_checked_unwrap();
         }
 
         let guard = ForgetEntityOnPanic {

@@ -1,7 +1,5 @@
-use zlim_log as log;
-
 use crate::schedule::{Schedule, ScheduleLabel};
-use crate::world::World;
+use crate::world::{World, WorldCell};
 
 impl World {
     /// Inserts a schedule into the world, returning the old one if it
@@ -26,10 +24,35 @@ impl World {
     pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
         self.schedules.entry(label.intern())
     }
+}
 
+struct ReinsertGuard<'w> {
+    world: WorldCell<'w>,
+    schedule: Option<Schedule>,
+}
+
+impl Drop for ReinsertGuard<'_> {
+    fn drop(&mut self) {
+        let world = unsafe { self.world.full_mut() };
+        let schedule = self.schedule.take().unwrap();
+
+        if let Some(s) = world.schedules.insert(schedule) {
+            ::core::hint::cold_path();
+            let label = s.label();
+            zlim_log::warn!(
+                "Schedule `{label:?}` was inserted during a call to \
+                `World::schedule_scope`, its value has been overwritten."
+            );
+        }
+    }
+}
+
+impl World {
     /// Executes a closure with exclusive access to a schedule and the world.
     ///
-    /// Initializes a new empty schedule if it doesn't exist.
+    /// **Initializes a new empty schedule if it doesn't exist.**
+    ///
+    /// If you do not want to create a new schedule, use [`World::try_schedule_scope`] instead.
     ///
     /// This method temporarily removes the schedule from the world to satisfy
     /// Rust's borrowing rules, allowing the closure to mutably borrow both the
@@ -40,23 +63,19 @@ impl World {
         func: impl FnOnce(&mut World, &mut Schedule) -> R,
     ) -> R {
         let label = label.intern();
-        let mut schedule = self
-            .schedules
-            .remove(label)
-            .unwrap_or_else(|| Schedule::new(label));
+        let schedule = self.schedules.remove(label);
+        let schedule = schedule.or_else(|| {
+            ::core::hint::cold_path();
+            Some(Schedule::new(label))
+        });
 
-        let value = func(self, &mut schedule);
+        let world = self.cell();
+        let mut guard = ReinsertGuard { world, schedule };
 
-        let old = self.schedules.insert(schedule);
+        let world = unsafe { world.full_mut() };
+        let schedule = unsafe { guard.schedule.as_mut().unwrap_unchecked() };
 
-        if old.is_some() {
-            log::warn!(
-                "Schedule `{label:?}` was inserted during a call to \
-                `World::schedule_scope`: its value has been overwritten"
-            );
-        }
-
-        value
+        func(world, schedule)
     }
 
     /// Executes a closure with exclusive access to a schedule and the world.
@@ -72,25 +91,22 @@ impl World {
         func: impl FnOnce(&mut World, &mut Schedule) -> R,
     ) -> Option<R> {
         let label = label.intern();
-        let mut schedule = self.schedules.remove(label)?;
+        let schedule = Some(self.schedules.remove(label)?);
 
-        let value = func(self, &mut schedule);
+        let world = self.cell();
+        let mut guard = ReinsertGuard { world, schedule };
 
-        let old = self.schedules.insert(schedule);
+        let world = unsafe { world.full_mut() };
+        let schedule = unsafe { guard.schedule.as_mut().unwrap_unchecked() };
 
-        if old.is_some() {
-            log::warn!(
-                "Schedule `{label:?}` was inserted during a call to \
-                `World::schedule_scope`: its value has been overwritten"
-            );
-        }
-
-        Some(value)
+        Some(func(world, schedule))
     }
 
     /// Runs the schedule with the given label.
     ///
-    /// Initializes a new empty schedule if it doesn't exist.
+    /// **Initializes a new empty schedule if it doesn't exist.**
+    ///
+    /// If you do not want to create a new schedule, use [`World::try_run_schedule`] instead.
     ///
     /// This is a convenience method that combines `schedule_scope`
     /// with running the schedule.

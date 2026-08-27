@@ -28,6 +28,8 @@ LogPlugin::default().apply();
 使用 `EnvFilter` 语法(与 `RUST_LOG` 相同)，按 **target + 级别**控制哪些日志会输出，例如:
 
 ```rust
+use zlim_log::LogPlugin;
+
 let plugin = LogPlugin {
     filter: "wgpu=warn,naga=warn,zlim_core=debug".to_string(),
     ..Default::default()

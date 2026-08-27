@@ -138,7 +138,7 @@ macro_rules! impl_tuple {
         impl<$($name: QueryFilter),*> InAnd for ($($name),*) {}
 
         #[cfg_attr(docsrs, doc(hidden))]
-        unsafe impl<$($name: QueryFilter),*> ArchetypeFilter for And<($($name),*)> {}
+        unsafe impl<$($name: ArchetypeFilter),*> ArchetypeFilter for And<($($name),*)> {}
 
         #[cfg_attr(docsrs, doc(hidden))]
         unsafe impl<$($name: QueryFilter),*> QueryFilter for And<($($name),*)> {

@@ -6,7 +6,10 @@
 
 mod comp;
 mod entity;
+mod hierarchy;
 mod tuples;
+
+pub use hierarchy::{Children, Parent};
 
 // -----------------------------------------------------------------------------
 // QueryData

@@ -17,6 +17,7 @@ mod path;
 mod query_data;
 mod resource;
 mod schedule;
+mod schedule_stage;
 mod system_param;
 mod utils;
 
@@ -106,8 +107,9 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 /// # Default Behavior
 ///
 /// By default, all fields must implement `Bundle`.  The generated impl sets
-/// `NEED_APPLY_EFFECT = true` and calls `apply_effect` on each field in
-/// declaration order.
+/// `NEED_APPLY_EFFECT` to the logical OR of all field types' flags — a
+/// bundle needs `apply_effect` only when at least one of its sub-bundles
+/// does — and calls `apply_effect` on each field in declaration order.
 ///
 /// - Each field in the struct represents a sub-bundle that will be combined.
 /// - Components from all fields are collected and written in declaration
@@ -115,17 +117,17 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 /// - If duplicate components exist across fields, later fields override
 ///   earlier ones.
 ///
-/// # Data Bundles (no_effect)
+/// # Data Bundles (`#[bundle(data)]`)
 ///
-/// Adding `#[bundle(no_effect)]` tightens the field constraint to
-/// `DataBundle` (instead of `Bundle`), sets `NEED_APPLY_EFFECT = false`,
-/// and also emits a `DataBundle` impl.  Use this for bundles that contain
+/// Adding `#[bundle(data)]` tightens the field constraint to `DataBundle`
+/// (instead of `Bundle`) and also emits an explicit `DataBundle` impl, which
+/// requires `NEED_APPLY_EFFECT = false`.  Use this for bundles that contain
 /// only pure data with no post-spawn side effects.
 ///
 /// # Attribute
 ///
-/// - `#[bundle(no_effect)]` — opt out of effect processing for this bundle
-///   type.
+/// - `#[bundle(data)]` — mark the type as a pure-data bundle; every field
+///   must be a `DataBundle`, and the type itself implements `DataBundle`.
 ///
 /// # Limitations
 ///
@@ -142,7 +144,8 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 /// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
 /// struct Velocity { dx: f32, dy: f32 }
 ///
-/// // Default bundle — fields need Bundle.
+/// // Default bundle — fields need Bundle; `NEED_APPLY_EFFECT` is the OR of
+/// // the fields' flags.
 /// #[derive(Bundle)]
 /// struct SpawnBundle {
 ///     position: Position,
@@ -151,7 +154,7 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 ///
 /// // Data bundle — fields need DataBundle; also implements DataBundle.
 /// #[derive(Bundle)]
-/// #[bundle(no_effect)]
+/// #[bundle(data)]
 /// struct MovableBundle {
 ///     position: Position,
 ///     velocity: Velocity,
@@ -511,9 +514,12 @@ pub fn derive_query_data(input: TokenStream) -> TokenStream {
 /// # Generated code
 ///
 /// For a function `test_system`, this macro generates a marker struct named
-/// by the `type` argument that implements `JobLabel`:
+/// by the `type` argument that derives `TypePath` and implements
+/// `JobLabel`:
 ///
-/// - `name()` returns the `name` string.
+/// - `name()` returns the marker's `TypePath` — the `name` string when
+///   given, otherwise `<Self as TypePath>::type_path()` (i.e.
+///   `module_path!()::TypeName`).
 /// - `database()` constructs a `JobDB` whose `ctor` wraps the function
 ///   through `IntoJob`.
 ///
@@ -526,24 +532,40 @@ pub fn derive_query_data(input: TokenStream) -> TokenStream {
 /// | Argument | Description |
 /// |----------|-------------|
 /// | `type = Name` or `type = Name<GENERICS>` | Identifier of the generated marker type and its optional generic parameters. |
-/// | `name = "..."` | Unique string identifier of the job. |
+/// | `name = "..."` | Optional unique string identifier of the job; defaults to the marker's `TypePath` (`<Self as TypePath>::type_path()`). Must be a valid path when given. |
+/// | `run_if = expr` or `run_if = [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` that gates the job. |
 /// | `strict = true\|false` | Whether the job registers its access strictly (logs conflicts). Defaults to `true`. |
 ///
 /// # Generic functions
 ///
 /// Generic functions are supported: every type parameter must implement
-/// `TypePath`, and the marker type is derived `TypePath` with
-/// `#[type_path = "..."]` set to the `name` string.  `name()` then returns
+/// `TypePath`, and the marker type is derived `TypePath` (with
+/// `#[type_path = "..."]` when a `name` is given), so `name()` returns
 /// `Self::type_path()`.  Generic markers cannot be auto-registered — use
 /// `JobDB::register` manually.  Lifetime parameters are not supported.
 ///
 /// # Example
 ///
 /// ```ignore
+/// // Without `name`, the job name is the type's path.
+/// #[job_fn(type = PlayerMove)]
+/// fn player_move() {}
+///
+/// assert_eq!(PlayerMove::name(), <PlayerMove as TypePath>::type_path());
+///
+/// // With `name`
 /// #[job_fn(type = TestSystem, name = "test_system")]
 /// fn test_system() {}
 ///
 /// assert_eq!(TestSystem::name(), "test_system");
+///
+/// // With condition system
+/// fn condition() -> bool {
+///     true
+/// }
+///
+/// #[job_fn(type = TestSystem2, run_if = condition)]
+/// fn test_system2() {}
 /// ```
 #[proc_macro_attribute]
 pub fn job_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -567,15 +589,17 @@ pub fn job_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// | Argument | Description |
 /// |----------|-------------|
 /// | `type: Name` or `type: Name<GENERICS>` | The generated marker type and its generic parameters. |
-/// | `name: "..."` | Unique string identifier of the job. |
+/// | `name: "..."` | Optional unique string identifier of the job; defaults to the marker's `TypePath` (`<Self as TypePath>::type_path()`). Must be a valid path when given. |
+/// | `run_if: expr` or `run_if: [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` that gates the job. |
 /// | `system: EXPR` | The system expression wrapped by the job's `ctor`. |
 /// | `strict: true\|false` | Whether the job registers its access strictly (logs conflicts). Defaults to `true`. |
 ///
 /// # Generic markers
 ///
 /// When generics are declared, every type parameter must implement
-/// `TypePath`, the marker type is derived `TypePath` with
-/// `#[type_path = "..."]`, and no automatic registration is emitted.
+/// `TypePath`, the marker type is derived `TypePath` (with
+/// `#[type_path = "..."]` when a `name` is given), and no automatic
+/// registration is emitted.
 ///
 /// # Example
 ///
@@ -588,6 +612,14 @@ pub fn job_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///     name: "test_system",
 ///     system: test_system1.pipe(test_system2),
 /// }
+///
+/// // Without `name`, the job name is the type's path.
+/// job! {
+///     type: PlayerMove,
+///     system: test_system1.pipe(test_system2),
+/// }
+///
+/// assert_eq!(PlayerMove::name(), "my_module::PlayerMove");
 /// ```
 ///
 /// [`job_fn`]: macro@job_fn
@@ -639,7 +671,7 @@ pub fn job(input: TokenStream) -> TokenStream {
 /// `JobGroup::collect`.  Generic markers cannot be auto-registered (a
 /// startup static cannot reference generic parameters) — register each
 /// concrete instantiation manually, e.g. through
-/// `zlim_reg::submit!(JobGroupReg::of::<GenericGroup<u32>>() => JobGroupReg)`.
+/// `zlim_reg::submit!(__JobGroupReg__::of::<GenericGroup<u32>>() => __JobGroupReg__)`.
 ///
 /// # Ordering and conditions
 ///
@@ -700,6 +732,40 @@ pub fn job_group(input: TokenStream) -> TokenStream {
 pub fn derive_schedule_label(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     schedule::expand(ast).into()
+}
+
+/// Derives the `ScheduleStage` trait implementation.
+///
+/// # Supported Shapes
+///
+/// Only **unit structs** and **data-less enums** (every variant is a unit
+/// variant) are supported; generics, unions, structs with fields, and enums
+/// with data-carrying variants are rejected.  The target type must implement
+/// `TypePath`, usually obtained through `#[derive(TypePath)]`.
+///
+/// - Unit struct — `stage_name` returns `TypePath::type_path()` directly.
+/// - Enum — `stage_name` returns `format!("{}::{}", TypePath::type_path(),
+///   variant)` for the matched variant.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[derive(TypePath, ScheduleStage)]
+/// struct Startup;
+///
+/// #[derive(TypePath, ScheduleStage)]
+/// enum MainStage {
+///     Update,
+///     Render,
+/// }
+///
+/// assert_eq!(Startup.stage_name(), "crate_name::Startup");
+/// assert_eq!(MainStage::Update.stage_name(), "crate_name::MainStage::Update");
+/// ```
+#[proc_macro_derive(ScheduleStage)]
+pub fn derive_schedule_stage(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    schedule_stage::expand(ast).into()
 }
 
 /// Derives the `Message` trait implementation.

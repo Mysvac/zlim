@@ -444,10 +444,14 @@ impl AccessTable {
                 if !w1.is_disjoint(r2) || !w2.is_disjoint(r1) {
                     return false;
                 }
-                c1.iter().all(|(k, v)| {
-                    c2.iter()
-                        .all(|(x, y)| k.is_disjoint(x) || v.parallelizable(y))
-                })
+                for (k, v) in c1.iter() {
+                    for (x, y) in c2.iter() {
+                        if !k.is_disjoint(x) && !v.parallelizable(y) {
+                            return false;
+                        }
+                    }
+                }
+                true
             }
         }
     }

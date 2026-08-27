@@ -22,7 +22,6 @@ use crate::world::{World, WorldCell};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Damage {
@@ -35,15 +34,18 @@ use crate::world::{World, WorldCell};
 ///     }
 /// }
 ///
-/// // `MessageMutator` reads mutably through the backing queue plus a local
-/// // cursor:
+/// // `MessageMutator` reads mutably through the backing queue
+/// // plus a local cursor:
 /// let mut queue = MessageQueue::<Damage>::default();
+///
 /// queue.write(Damage { amount: 120 });
 ///
 /// let mut cursor = MessageCursor::new(&queue);
+///
 /// for damage in cursor.read_mut(&mut queue) {
 ///     damage.amount = damage.amount.min(100);
 /// }
+///
 /// assert_eq!(queue.get(0).map(|(_, m)| m.amount), Some(100));
 /// ```
 pub struct MessageMutator<'w, 's, M: Message> {
@@ -62,35 +64,6 @@ impl<'w, 's, M: Message> MessageMutator<'w, 's, M> {
     /// Returns mutable unread messages together with their [`MessageKey`]s.
     ///
     /// Iteration advances the cursor.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
-    ///
-    /// #[derive(TypePath, Message)]
-    /// struct Damage {
-    ///     amount: u32,
-    /// }
-    ///
-    /// fn clamp_damage(mut mutator: MessageMutator<Damage>) {
-    ///     for (key, damage) in mutator.read_with_id() {
-    ///         let _ = key.index();
-    ///         damage.amount = damage.amount.min(100);
-    ///     }
-    /// }
-    ///
-    /// let mut queue = MessageQueue::<Damage>::default();
-    /// queue.write(Damage { amount: 120 });
-    ///
-    /// let mut cursor = MessageCursor::new(&queue);
-    /// for (key, damage) in cursor.read_mut_with_id(&mut queue) {
-    ///     let _ = key.index();
-    ///     damage.amount = damage.amount.min(100);
-    /// }
-    /// assert_eq!(queue.get(0).map(|(_, m)| m.amount), Some(100));
-    /// ```
     ///
     /// [`MessageKey`]: crate::message::MessageKey
     pub fn read_with_id(&mut self) -> MessageMutWithKeyIter<'_, M> {

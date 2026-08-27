@@ -54,7 +54,7 @@ impl<T> SpinLock<T> {
     #[inline]
     pub const fn new(t: T) -> Self {
         SpinLock {
-            futex: Futex::UNLOCKED,
+            futex: Futex::new(),
             data: UnsafeCell::new(t),
         }
     }

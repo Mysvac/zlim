@@ -1,7 +1,8 @@
 //! Error handler types and the default severity dispatch.
 
+use core::cell::Cell;
+
 use super::{ErrorContext, Severity, ZlimError};
-use zlim_log as log;
 
 // -----------------------------------------------------------------------------
 // ErrorHandler
@@ -40,6 +41,34 @@ pub fn default_error_handler(e: ZlimError, ctx: ErrorContext) {
     }
 }
 
+std::thread_local! {
+    /// When deliberately throwing a panic in your [`ErrorHandler`],
+    /// set this to true to indicate to the executor that the panic
+    /// should not be turned back into a [`ZlimError`].
+    ///
+    /// For example, we will do this for `system` and `command` execution:
+    ///
+    /// ```rust, ignore
+    /// fn catch_and_resume(func: F, /* .. */) {
+    ///     // Reset this flag before function execution
+    ///     PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(false);
+    ///     // Run the given function and catch any panic
+    ///     if let Err(e) = catch_unwind(AssertUnwindSafe(func)) {
+    ///         if PANIC_ORIGINATES_FROM_ERROR_HANDLER.get() {
+    ///             // If the panic was thrown by ErrorHandler,
+    ///             // resume it directly.
+    ///             resume_unwind(e);
+    ///         }
+    ///         // Otherwise, convert it to ZlimError
+    ///         let e = ZlimError::panic( .. );
+    ///         let ctx = ErrorContext { .. };
+    ///         error_handler(e, ctx);
+    ///     }
+    /// }
+    /// ```
+    pub static PANIC_ORIGINATES_FROM_ERROR_HANDLER: Cell<bool>  = const { Cell::new(false) };
+}
+
 // -----------------------------------------------------------------------------
 // helper
 
@@ -58,6 +87,7 @@ macro_rules! inner {
 #[inline]
 #[track_caller]
 pub fn panic(error: ZlimError, ctx: ErrorContext) {
+    PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(true);
     inner!(panic, error, ctx);
 }
 
@@ -65,35 +95,35 @@ pub fn panic(error: ZlimError, ctx: ErrorContext) {
 #[inline]
 #[track_caller]
 pub fn error(error: ZlimError, ctx: ErrorContext) {
-    inner!(log::error, error, ctx);
+    inner!(zlim_log::error, error, ctx);
 }
 
 /// Error handler that logs the error at the `warn` level.
 #[inline]
 #[track_caller]
 pub fn warn(error: ZlimError, ctx: ErrorContext) {
-    inner!(log::warn, error, ctx);
+    inner!(zlim_log::warn, error, ctx);
 }
 
 /// Error handler that logs the error at the `info` level.
 #[inline]
 #[track_caller]
 pub fn info(error: ZlimError, ctx: ErrorContext) {
-    inner!(log::info, error, ctx);
+    inner!(zlim_log::info, error, ctx);
 }
 
 /// Error handler that logs the error at the `debug` level.
 #[inline]
 #[track_caller]
 pub fn debug(error: ZlimError, ctx: ErrorContext) {
-    inner!(log::debug, error, ctx);
+    inner!(zlim_log::debug, error, ctx);
 }
 
 /// Error handler that logs the error at the `trace` level.
 #[inline]
 #[track_caller]
 pub fn trace(error: ZlimError, ctx: ErrorContext) {
-    inner!(log::trace, error, ctx);
+    inner!(zlim_log::trace, error, ctx);
 }
 
 /// Error handler that ignores the error.

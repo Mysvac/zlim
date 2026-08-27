@@ -43,14 +43,16 @@ struct Slot<'a> {
 /// Writes component data into a target table row during spawn and insert
 /// operations.
 ///
-/// A `ComponentWriter` is built for a specific table row via
-/// [`from_table`](Self::from_table) and exposes one slot per component
-/// type present in that row. `Bundle` implementations fill the slots
-/// through [`write`](Self::write), [`write_raw`](Self::write_raw), and
-/// [`write_if_uninit`](Self::write_if_uninit); slots left unwritten stay
-/// uninitialised.
+/// A `ComponentWriter` is built for a specific table row via [`from_table`]
+/// and exposes one slot per component type present in that row. `Bundle`
+/// implementations fill the slots through [`write`], [`write_raw`], and
+/// [`write_if_uninit`]; slots left unwritten stay uninitialised.
 ///
 /// [`Table`]: crate::table::Table
+/// [`write`]: Self::write
+/// [`write_raw`]: Self::write_raw
+/// [`from_table`]: Self::from_table
+/// [`write_if_uninit`]: Self::write_if_uninit
 pub struct ComponentWriter<'a> {
     now: Tick,
     mapper: TypeMap<Slot<'a>>,
@@ -179,9 +181,6 @@ impl<'a> ComponentWriter<'a> {
     /// # Example
     ///
     /// ```ignore
-    /// use zlim_core::prelude::*;
-    /// use zlim_core::component::ComponentWriter;
-    ///
     /// // `table` / `row` come from a real spawn or insert flow; the writer
     /// // wraps a single target row. Building one requires `&mut Table`,
     /// // which is only reachable inside the ECS internals, so this snippet

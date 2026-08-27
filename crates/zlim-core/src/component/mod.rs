@@ -1,50 +1,35 @@
 //! Component types, registration, and metadata.
 //!
-//! This module owns the core component primitives:
+//! A component is any plain data type annotated with `#[derive(Component)]`.
 //!
-//! - [`Component`] — the core trait for all component types.
-//! - [`ComponentDB`] — static per-type metadata in the global registry.
-//! - [`Components`] — a local snapshot of the global registry.
-//! - [`ComponentId`] — a unique identifier for a component type.
-//! - [`Required`] / [`RequiredComponents`] — required-component support.
+//! ```rust, no_run
+//! # use zlim_core::prelude::*;
+//! #
+//! #[derive(TypePath, Component, Clone)]
+//! struct Position { x: f32, y: f32 }
+//! ```
 //!
-//! A component is any plain data type annotated with
-//! `#[derive(Component)]`. Component types are registered lazily (or in bulk
-//! through [`register_component!`]) into a process-global registry of
-//! [`ComponentDB`] entries, which each [`World`] snapshots into a local
-//! [`Components`] for fast, lock-free lookups.
+//! See [crate::table] module documents for storage details.
 //!
-//! # Example
+//! zlim-core collects some runtime type information of all components,
+//! and stores them within a [`ComponentDB`].
 //!
 //! ```rust
-//! use zlim_core::prelude::*;
-//! use zlim_reflect::derive::TypePath;
-//!
+//! # use zlim_core::prelude::*;
+//! #
 //! #[derive(TypePath, Component, Clone)]
-//! struct Position {
-//!     x: f32,
-//!     y: f32,
-//! }
+//! struct Position { x: f32, y: f32 }
 //!
 //! // Look up (and lazily register) the component's metadata:
 //! let db = ComponentDB::of::<Position>();
 //! assert_eq!(db.type_name, "Position");
 //! ```
 //!
-//! # Submodules
+//! Non-generic components implemented via macros are automatically collected
+//! through [`ComponentDB::collect`], but generic components may require explicit
+//! registration using the [`register_component!`] macro, or they can be
+//! automatically registered upon first use.
 //!
-//! - `alias` — type-erased function pointer aliases.
-//! - `collect` — bulk (CTOR-driven) registration.
-//! - `collector` — the [`ComponentCollector`] used during bundle collection.
-//! - `db` — [`ComponentDB`] and the global lookup registries.
-//! - `hook` — lifecycle [`hooks`](ComponentHook) and their [`context`](HookContext).
-//! - `id` — [`ComponentId`].
-//! - `register` — registration entry points.
-//! - `required` — required-component support.
-//! - `snapshot` — the [`Components`] snapshot.
-//! - `writer` — the [`ComponentWriter`] used during bundle writes.
-//!
-//! [`World`]: crate::world::World
 //! [`register_component!`]: crate::register_component
 
 // -----------------------------------------------------------------------------

@@ -11,7 +11,10 @@ use crate::resource::ResourceDB;
 fn init_internal() {
     let start = zlim_os::time::Instant::now();
 
-    zlim_log::info!("Engine CoreInit Start...");
+    #[cfg(feature = "trace")]
+    let _span = zlim_log::info_span!("core init").entered();
+
+    zlim_log::debug!("Engine CoreInit Start...");
 
     zlim_task::cfg::single_thread! {
         TypeDB::collect();
@@ -32,12 +35,12 @@ fn init_internal() {
         JobGroup::collect();
     }
 
-    zlim_log::info!("Engine CoreInit Completed: {:?}", start.elapsed());
+    zlim_log::debug!("Engine CoreInit Completed: {:?}", start.elapsed());
 }
 
 /// Runs all initialization functions exactly once.
 ///
-/// Called by `App::run`.
+/// Called by `App::run`, after `Log` and `TaskPool`'s initialization.
 #[inline]
 pub fn core_init() {
     static ONCE: std::sync::Once = std::sync::Once::new();

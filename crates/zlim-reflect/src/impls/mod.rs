@@ -32,7 +32,6 @@ mod alloc;
 mod common;
 mod core;
 mod features;
-mod helper;
 mod primitive;
 mod std;
 mod zlim_utils;

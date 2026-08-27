@@ -29,8 +29,8 @@ use crate::world::{DeferredWorld, FromWorld, World, WorldCell};
 ///
 /// let mut world = World::alloc();
 /// let handle = world.insert_system(count_runs);
-/// assert_eq!(world.run_system_handle(handle, ()).unwrap(), 1);
-/// assert_eq!(world.run_system_handle(handle, ()).unwrap(), 2); // `runs` is now 2
+/// assert_eq!(world.invoke_handle(handle, ()).unwrap(), 1);
+/// assert_eq!(world.invoke_handle(handle, ()).unwrap(), 2); // `runs` is now 2
 /// ```
 ///
 /// [`World::insert_system`]: crate::world::World::insert_system

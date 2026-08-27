@@ -38,8 +38,10 @@ struct MovableBundle {
 }
 
 #[test]
-fn named_bundle_needs_apply_effect() {
-    const { assert!(<MovableBundle as BundleTrait>::NEED_APPLY_EFFECT) };
+fn named_bundle_consts() {
+    // Plain component fields need no effect, so the OR of their flags is
+    // `false`.
+    const { assert!(!<MovableBundle as BundleTrait>::NEED_APPLY_EFFECT) };
 }
 
 #[test]
@@ -85,17 +87,17 @@ fn named_bundle_spawns_at_given_entity() {
 }
 
 // -----------------------------------------------------------------------------
-// Data bundles (no_effect)
+// Data bundles
 
 #[derive(Bundle)]
-#[bundle(no_effect)]
+#[bundle(data)]
 struct DataOnlyBundle {
     position: Position,
     health: Health,
 }
 
 #[test]
-fn no_effect_bundle_consts() {
+fn data_bundle_consts() {
     const { assert!(!<DataOnlyBundle as BundleTrait>::NEED_APPLY_EFFECT) };
 
     fn assert_data_bundle<T: DataBundle>() {}
@@ -103,7 +105,7 @@ fn no_effect_bundle_consts() {
 }
 
 #[test]
-fn no_effect_bundle_spawns() {
+fn data_bundle_spawns() {
     let mut world = World::alloc();
 
     let entity = world.spawn(
@@ -119,7 +121,7 @@ fn no_effect_bundle_spawns() {
 }
 
 #[test]
-fn no_effect_bundle_batch_spawns() {
+fn data_bundle_batch_spawns() {
     let mut world = World::alloc();
 
     let entities: Vec<EntityId> = world
@@ -146,7 +148,7 @@ fn no_effect_bundle_batch_spawns() {
 // Tuple struct bundles
 
 #[derive(Bundle)]
-#[bundle(no_effect)]
+#[bundle(data)]
 struct TupleBundle(Position, Velocity);
 
 #[test]
@@ -191,7 +193,7 @@ fn unit_bundle_spawns_empty_entity() {
 // Nested bundles
 
 #[derive(Bundle)]
-#[bundle(no_effect)]
+#[bundle(data)]
 struct NestedBundle {
     tuple: TupleBundle,
     health: Health,
@@ -223,14 +225,17 @@ struct GenericBundle<T> {
 }
 
 #[derive(Bundle)]
-#[bundle(no_effect)]
+#[bundle(data)]
 struct GenericDataBundle<T> {
     value: T,
 }
 
 #[test]
 fn generic_bundle_consts() {
-    const { assert!(<GenericBundle<Health> as BundleTrait>::NEED_APPLY_EFFECT) };
+    // Plain component fields keep the OR `false`...
+    const { assert!(!<GenericBundle<Health> as BundleTrait>::NEED_APPLY_EFFECT) };
+    // ...while an effectful field makes it `true`.
+    const { assert!(<GenericBundle<Effect> as BundleTrait>::NEED_APPLY_EFFECT) };
     const { assert!(!<GenericDataBundle<Health> as BundleTrait>::NEED_APPLY_EFFECT) };
 }
 

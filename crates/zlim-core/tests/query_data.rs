@@ -4,7 +4,6 @@ use zlim_core::borrow::Mut;
 use zlim_core::component::Component;
 use zlim_core::derive::QueryData;
 use zlim_core::query::{Query, Single};
-use zlim_core::system::{IntoSystem, System};
 use zlim_core::world::World;
 use zlim_reflect::TypePath;
 
@@ -80,9 +79,8 @@ fn derived_readonly_iterates() {
     world.spawn((Score(1), Name("a".into()), Tag), None);
     world.spawn((Score(2), Name("b".into())), None);
 
-    let mut system = IntoSystem::into_system(sum_readonly);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), 6);
+    let s = world.invoke_once(sum_readonly, ()).unwrap();
+    assert_eq!(s, 6);
 }
 
 // -----------------------------------------------------------------------------
@@ -100,7 +98,7 @@ fn modify_players(mut query: Query<Player>) -> (u32, u32) {
     (total, name_chars)
 }
 
-fn read_through_companion(query: Query<Player>) -> (u32, u32) {
+fn read_companion(query: Query<Player>) -> (u32, u32) {
     // `PlayerReadOnly` is the generated companion: `score` becomes `Ref`.
     let mut via_ro = 0;
     let mut names = 0;
@@ -117,13 +115,8 @@ fn derived_mut_modifies_and_readonly_view() {
     world.spawn((Score(1), Name("a".into())), None);
     world.spawn((Score(2), Name("b".into())), None);
 
-    let mut system = IntoSystem::into_system(modify_players);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), (23, 2));
-
-    let mut system = IntoSystem::into_system(read_through_companion);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), (23, 2));
+    assert_eq!(world.invoke_once(modify_players, ()).unwrap(), (23, 2));
+    assert_eq!(world.invoke_once(read_companion, ()).unwrap(), (23, 2));
 }
 
 // -----------------------------------------------------------------------------
@@ -141,10 +134,8 @@ fn derived_tuple_and_unit() {
         (pair_sum, query.iter().count() as u32, units.iter().count())
     };
 
-    let mut system = IntoSystem::into_system(s);
-    system.initialize(&world);
     // name lengths 1+1+1 plus scores 1+2+3.
-    assert_eq!(system.run((), &mut world).unwrap(), (9, 3, 3));
+    assert_eq!(world.invoke_once(s, ()).unwrap(), (9, 3, 3));
 }
 
 // -----------------------------------------------------------------------------
@@ -170,13 +161,8 @@ fn derived_generic() {
     world.spawn((Score(1),), None);
     world.spawn((Score(2),), None);
 
-    let mut system = IntoSystem::into_system(sum_generic);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), 3);
-
-    let mut system = IntoSystem::into_system(bump_generic);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), 13);
+    assert_eq!(world.invoke_once(sum_generic, ()).unwrap(), 3);
+    assert_eq!(world.invoke_once(bump_generic, ()).unwrap(), 13);
 }
 
 // -----------------------------------------------------------------------------
@@ -189,9 +175,7 @@ fn derived_single() {
 
     let s = |query: Single<ReadPlayer>| (query.score.0, query.name.0.len() as u32);
 
-    let mut system = IntoSystem::into_system(s);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), (7, 4));
+    assert_eq!(world.invoke_once(s, ()).unwrap(), (7, 4));
 }
 
 // -----------------------------------------------------------------------------
@@ -247,24 +231,18 @@ fn derived_query_slice() {
     world.spawn((Score(3), Name("c".into())), None);
 
     // readonly, generic
-    let mut system = IntoSystem::into_system(sum_slice);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), 6);
+    assert_eq!(world.invoke_once(sum_slice, ()).unwrap(), 6);
 
     // readonly, concrete
-    let mut system = IntoSystem::into_system(sum_slice_readonly);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), 6);
+    assert_eq!(world.invoke_once(sum_slice_readonly, ()).unwrap(), 6);
 
     // mutable slice + readonly view of it
-    let mut system = IntoSystem::into_system(bump_slice_mut);
-    system.initialize(&world);
     // scores 1+2+3 + 300, plus name lengths 1+1+1.
-    assert_eq!(system.run((), &mut world).unwrap(), 309);
-
-    let mut system = IntoSystem::into_system(read_slice_through_readonly);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), (306, 3));
+    assert_eq!(world.invoke_once(bump_slice_mut, ()).unwrap(), 309);
+    assert_eq!(
+        world.invoke_once(read_slice_through_readonly, ()).unwrap(),
+        (306, 3)
+    );
 }
 
 // -----------------------------------------------------------------------------

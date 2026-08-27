@@ -29,9 +29,9 @@ use super::{Component, ComponentCollector, ComponentWriter};
 /// # Example
 ///
 /// ```rust
+/// use core::any::TypeId;
 /// use zlim_core::prelude::*;
 /// use zlim_core::component::Required;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Default)]
 /// struct Health {
@@ -53,8 +53,8 @@ use super::{Component, ComponentCollector, ComponentWriter};
 /// required.register(); // registers both types (idempotent)
 ///
 /// // The manual registration registered both types:
-/// assert!(ComponentDB::get_by_type(core::any::TypeId::of::<Health>()).is_some());
-/// assert!(ComponentDB::get_by_type(core::any::TypeId::of::<Armor>()).is_some());
+/// assert!(ComponentDB::get_by_type(TypeId::of::<Health>()).is_some());
+/// assert!(ComponentDB::get_by_type(TypeId::of::<Armor>()).is_some());
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct Required {

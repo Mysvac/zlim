@@ -68,9 +68,13 @@ fn derive_serialize_flag() {
     let db = ResourceDB::of::<SerializeRes>();
     assert!(db.serialize.is_some());
     assert!(db.deserialize.is_some());
-    assert!(SerializeRes::SERIALIZE);
+    const {
+        assert!(SerializeRes::SERIALIZE);
+    }
     // The default is `false` for unmarked resources.
-    assert!(!Health::SERIALIZE);
+    const {
+        assert!(!Health::SERIALIZE);
+    }
 }
 
 #[test]
@@ -307,47 +311,65 @@ fn resource_mut_panics_on_missing() {
 fn non_send_insert_and_get() {
     let mut world = World::alloc();
 
-    world.insert_non_send(Health { value: 7 });
-    assert!(world.contains_non_send::<Health>());
-    assert_eq!(world.get_non_send::<Health>(), Some(&Health { value: 7 }));
-    assert_eq!(world.non_send::<Health>(), &Health { value: 7 });
+    world.with_non_send_mut(|w| {
+        w.insert_non_send(Health { value: 7 });
+    });
+    world.with_non_send(|w| {
+        assert!(w.contains_non_send::<Health>());
+        assert_eq!(w.get_non_send::<Health>(), Some(&Health { value: 7 }));
+        assert_eq!(w.non_send::<Health>(), &Health { value: 7 });
+    });
 }
 
 #[test]
 fn non_send_remove_and_drop() {
     let mut world = World::alloc();
 
-    world.insert_non_send(Score { points: 200 });
+    world.with_non_send_mut(|w| {
+        w.insert_non_send(Score { points: 200 });
+    });
     assert_eq!(
-        world.remove_non_send::<Score>(),
+        world.with_non_send_mut(|w| w.remove_non_send::<Score>()),
         Some(Score { points: 200 })
     );
-    assert!(!world.contains_non_send::<Score>());
+    assert!(!world.with_non_send(|w| w.contains_non_send::<Score>()));
 
-    world.insert_non_send(Score { points: 300 });
-    world.drop_non_send::<Score>();
-    assert!(!world.contains_non_send::<Score>());
+    world.with_non_send_mut(|w| {
+        w.insert_non_send(Score { points: 300 });
+    });
+    world.with_non_send_mut(|w| {
+        w.drop_non_send::<Score>();
+    });
+    assert!(!world.with_non_send(|w| w.contains_non_send::<Score>()));
 }
 
 #[test]
 fn non_send_ref_change_detection() {
     let mut world = World::alloc();
-    world.insert_non_send(Health { value: 3 });
+    world.with_non_send_mut(|w| {
+        w.insert_non_send(Health { value: 3 });
+    });
 
-    let r = world.non_send_ref::<Health>();
-    assert!(r.is_added());
-    assert!(r.is_changed());
-    assert_eq!(r.value, 3);
+    world.with_non_send(|w| {
+        let r = w.non_send_ref::<Health>();
+        assert!(r.is_added());
+        assert!(r.is_changed());
+        assert_eq!(r.value, 3);
+    });
 }
 
 #[test]
 fn non_send_mut_change_detection() {
     let mut world = World::alloc();
-    world.insert_non_send(Health { value: 5 });
+    world.with_non_send_mut(|w| {
+        w.insert_non_send(Health { value: 5 });
+    });
 
-    let mut r = world.non_send_mut::<Health>();
-    r.value = 55;
-    assert_eq!(r.value, 55);
+    world.with_non_send_mut(|w| {
+        let mut r = w.non_send_mut::<Health>();
+        r.value = 55;
+        assert_eq!(r.value, 55);
+    });
 }
 
 // -----------------------------------------------------------------------------
@@ -359,9 +381,13 @@ fn send_and_non_send_share_slot() {
     let mut world = World::alloc();
 
     world.insert_resource(Health { value: 10 });
-    assert_eq!(world.get_non_send::<Health>(), Some(&Health { value: 10 }));
+    world.with_non_send(|w| {
+        assert_eq!(w.get_non_send::<Health>(), Some(&Health { value: 10 }));
+    });
 
-    world.insert_non_send(Health { value: 20 });
+    world.with_non_send_mut(|w| {
+        w.insert_non_send(Health { value: 20 });
+    });
     assert_eq!(world.get_resource::<Health>(), Some(&Health { value: 20 }));
 }
 
@@ -369,7 +395,7 @@ fn send_and_non_send_share_slot() {
 fn contains_resource_false_for_uninserted() {
     let world = World::alloc();
     assert!(!world.contains_resource::<Health>());
-    assert!(!world.contains_non_send::<Health>());
+    assert!(!world.with_non_send(|w| w.contains_non_send::<Health>()));
 }
 
 #[test]

@@ -2,7 +2,7 @@ use std::sync::{Mutex, PoisonError};
 use zlim_utils::hash::HashSet;
 
 use crate::component::{ComponentHook, ComponentId};
-use crate::job::JobId;
+use crate::job::{Job, JobId};
 use zlim_utils::mem::Global;
 
 /// Intern pool for deduplicating small immutable identifier slices.
@@ -19,20 +19,20 @@ use zlim_utils::mem::Global;
 ///   program, so this is a deliberate space-time trade-off.
 /// - A `Mutex` protects the pool because `SlicePool` is only accessed
 ///   from the main thread; a `RwLock` would add unnecessary overhead.
-pub(crate) struct SlicePool;
+pub struct SlicePool;
 
 /// Internal helper macro that generates a typed interning method for
 /// `SlicePool`.  Each method manages its own static pool.
 ///
 /// # Generated method
 ///
-/// - `pub(crate) fn $name(idents: &[$ty]) -> &'static [$ty]`
+/// - `pub fn $name(idents: &[$ty]) -> &'static [$ty]`
 ///
 ///   Returns the interned `&'static` slice.  If the input is empty, the
 ///   static empty slice `&[]` is returned directly without locking.
 macro_rules! define_methods {
     ($name:ident, $ty:ty) => {
-        pub(crate) fn $name(idents: &[$ty]) -> &'static [$ty] {
+        pub fn $name(idents: &[$ty]) -> &'static [$ty] {
             // SlicePool is actually only used on the main thread.
             // So `Mutex` is faster than `RwLock`.
             static POOL: Mutex<HashSet<&[$ty]>> = Mutex::new(HashSet::new());
@@ -70,4 +70,8 @@ impl SlicePool {
 
     // Interns a slice of `JobId`.
     define_methods!(job_id, JobId);
+
+    // Interns a slice of run-condition constructors, each taking the job's
+    // group name.
+    define_methods!(run_if, fn(&'static str) -> Box<dyn Job>);
 }

@@ -27,7 +27,8 @@ macro_rules! impl_zon_zero {
             }
 
             fn stringify(&self) -> String {
-                self.to_string()
+                let mut buf = core::fmt::NumBuffer::new();
+                ToOwned::to_owned(self.get().format_into(&mut buf))
             }
         }
     };

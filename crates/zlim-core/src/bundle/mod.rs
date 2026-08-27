@@ -19,9 +19,13 @@
 //!
 //! - [`Bundle`] — the core trait.  Collects, writes, and optionally applies
 //!   post-spawn side effects.
+//!
 //! - [`DataBundle`] — marker supertrait for bundles that contain only pure
 //!   data (no side effects).  All components and tuples of `DataBundle`
 //!   implement this automatically.
+//!
+//! Side Effect allows you to implement some special bundles, such as automatically
+//! spawn some children entity .
 //!
 //! # Tuple Bundles
 //!
@@ -31,7 +35,6 @@
 //!
 //! ```rust
 //! use zlim_core::prelude::*;
-//! use zlim_reflect::derive::TypePath;
 //!
 //! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 //! struct Position { x: f32, y: f32 }
@@ -40,24 +43,21 @@
 //! struct Velocity { dx: f32, dy: f32 }
 //!
 //! let mut world = World::alloc();
-//! let entity = world.spawn(
-//!     (Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 }),
-//!     None,
-//! );
+//!
+//! let bundle = (Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 });
+//!
+//! let entity = world.spawn(bundle, None); // None: parent is none
+//!
 //! assert_eq!(entity.get::<Position>(), Some(&Position { x: 0.0, y: 0.0 }));
 //! assert_eq!(entity.get::<Velocity>(), Some(&Velocity { dx: 1.0, dy: 0.0 }));
 //! ```
-//!
-//! For larger bundles or reusable spawn patterns, use
-//! `#[derive(Bundle)]` on a struct.
 //!
 //! # Derive Macro
 //!
 //! The recommended way to define a bundle is via `#[derive(Bundle)]`:
 //!
-//! ```rust
+//! ```rust, no_run
 //! use zlim_core::prelude::*;
-//! use zlim_reflect::derive::TypePath;
 //!
 //! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 //! struct Position { x: f32, y: f32 }
@@ -65,35 +65,35 @@
 //! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 //! struct Velocity { dx: f32, dy: f32 }
 //!
-//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
-//! struct Health(u32);
-//!
 //! #[derive(Bundle)]
-//! struct PlayerBundle {
+//! #[bundle(data)] // derive DataBundle
+//! struct MovableBundle {
 //!     position: Position,
 //!     velocity: Velocity,
-//!     health: Health,
 //! }
 //!
 //! let mut world = World::alloc();
-//! let entity = world.spawn(
-//!     PlayerBundle {
-//!         position: Position { x: 0.0, y: 0.0 },
-//!         velocity: Velocity { dx: 1.0, dy: 0.0 },
-//!         health: Health(100),
-//!     },
-//!     None,
-//! );
+//!
+//! let bundle = MovableBundle {
+//!     position: Position { x: 0.0, y: 0.0 },
+//!     velocity: Velocity { dx: 1.0, dy: 0.0 },
+//! };
+//! let entity = world.spawn(bundle, None);
+//!
 //! assert_eq!(entity.get::<Position>(), Some(&Position { x: 0.0, y: 0.0 }));
 //! assert_eq!(entity.get::<Velocity>(), Some(&Velocity { dx: 1.0, dy: 0.0 }));
-//! assert_eq!(entity.get::<Health>(), Some(&Health(100)));
 //! ```
 //!
 //! This generates an `unsafe impl Bundle` that collects, writes, and
-//! applies effects for every field in declaration order.  For pure-data
-//! bundles, add `#[bundle(no_effect)]` — this also emits an
-//! `unsafe impl DataBundle` and sets [`Bundle::NEED_APPLY_EFFECT`] to
+//! applies effects for every field in declaration order.
+//!
+//! `NEED_APPLY_EFFECT` is the logical OR of the field types' flags.
+//!
+//! For pure-data bundles, add `#[bundle(data)]` — this also emits an
+//! `unsafe impl DataBundle`, which requires `NEED_APPLY_EFFECT` to be
 //! `false`.
+//!
+//! > Duplicate document with Bundle Trait.
 //!
 //! [`Component`]: crate::component::Component
 

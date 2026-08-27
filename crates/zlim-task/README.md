@@ -57,11 +57,11 @@ Worker threads use a work-stealing scheduler: each worker has its own local queu
 
 Each pool creates at least one worker thread; idle workers sleep and are woken one by one to avoid thundering herds.
 
-In a real application, call [`set_main_thread`] before creating any `TaskPool` to mark the current thread as the main thread — no fake thread is spawned then, and the marked thread drives the `MainExecutor` itself (via `scope` or `run_local`).
+By default, multi-threaded mode starts a **fake main thread** on the first `TaskPool` creation: it owns the global `MainExecutor` and keeps polling it until the process exits. Therefore, regardless of which thread created the task pool, `spawn_to_main` tasks are always routed to this thread, which ensures consistent behavior in test environments.
 
-Otherwise, multi-threaded mode starts a dedicated **fake main thread** on the first `TaskPool` creation:
+In real applications, however, it is recommended to call [`designate_main_thread`] at the very beginning of the program to mark the current thread as the main thread; in that case, creating a `TaskPool` will not spawn the fake main thread. The `#[zlim_main]` macro provided by the `zlim_app` module calls it automatically at the start of the main function.
 
-It owns the global `MainExecutor` and keeps polling it until the process exits, so `spawn_to_main` tasks are always executed regardless of which thread created the pool — real applications, tests, and multi-threaded creators all behave the same. Applications hand main-thread work (initialization, per-frame logic) to this thread via `spawn_to_main`.
+Note that `designate_main_thread` should not be used in test environments. Test cases run on various child threads; marking a child thread with `designate_main_thread` can easily cause long sleeps (deadlocks).
 
 ### Single-Threaded Mode
 
@@ -101,7 +101,7 @@ In single-threaded mode (including WASM), all tasks created by `scope` go to the
 
 Multi-threaded mode is more complex: `spawn` sends the task to any worker thread, `spawn_local` puts it in the current thread's local queue, and `spawn_to_main` sends it to the "main thread".
 
-Thanks to the main thread (a dedicated fake one unless [`set_main_thread`] was called up front), none of the three usually deadlocks. But be aware of the program's semantics: consider handing the main-function logic to the main thread at startup (via `spawn_to_main`).
+Thanks to the main thread (a dedicated fake one unless [`designate_main_thread`] was called up front), none of the three usually deadlocks. But be aware of the program's semantics: consider handing the main-function logic to the main thread at startup (via `spawn_to_main`).
 
 ## Performance
 
@@ -129,7 +129,7 @@ let task = pool.spawn_to_main(async { 3 - 1 });
 
 ### Scope
 
-```rust, ignore
+```rust
 use zlim_task::TaskPool;
 let pool = TaskPool::new();
 
@@ -172,7 +172,7 @@ Three global singleton pools for different workloads:
 
 Each pool is lazily initialized: the first call to `get()` (or any `Deref` usage) implicitly creates a `TaskPool` with the default configuration shown above. No explicit setup is required for typical use:
 
-```rust
+```rust, ignore
 use zlim_task::{MainTaskPool, TaskPool};
 
 // Implicit init on first access — just use it
@@ -181,7 +181,7 @@ let task = MainTaskPool::get().spawn(async { /* ... */ });
 
 For custom configuration, call `try_init` before the first access:
 
-```rust
+```rust, ignore
 use zlim_task::{MainTaskPool, TaskPoolBuilder};
 
 // Custom init — must be called before first get()
@@ -193,25 +193,26 @@ let did_init = MainTaskPool::try_init(|| {
 });
 
 assert!(did_init); // true on first call, false if already initialized
+// In single threaded mode, `try_init`may always return false.
 ```
 
 **Multi-threaded mode:** `try_init` returns `true` when the pool was not yet initialized (custom config applied), or `false` if already initialized.
 
 **Single-threaded / WASM mode:** all three pools share a single global `TaskPool`. `try_init` always returns `false` — custom initialization is not supported in these modes.
 
-### TaskPoolPlugin
+### TaskPoolConfigs
 
-[`TaskPoolPlugin`] initializes all three global pools in one call, splitting the available threads according to its [`TaskPoolConfig`]s — by default `25%` for `IoTaskPool`, `25%` for `AsyncTaskPool`, and the remaining threads for `MainTaskPool`:
+[`TaskPoolConfigs`] initializes all three global pools in one call, splitting the available threads according to its per-pool [`TaskPoolConfig`] fields — by default `25%` for `IoTaskPool`, `25%` for `AsyncTaskPool`, and the remaining threads for `MainTaskPool`:
 
 ```rust
-use zlim_task::TaskPoolPlugin;
+use zlim_task::TaskPoolConfigs;
 
-TaskPoolPlugin::default().apply();
+TaskPoolConfigs::default().apply();
 ```
 
 Call it once during startup, before any pool is first accessed (e.g. via `MainTaskPool::get()`). In single-threaded / WASM mode it is a no-op; in a test environment it returns early if a pool was already initialized.
 
-Note: if you use `MainTaskPool`, `AsyncTaskPool`, or other global pools with implicit initialization, make sure their "first access" happens before other task pools are created — unless [`set_main_thread`] was called up front, the fake main thread is started by the first `TaskPool` creation, and `spawn_to_main` tasks are routed to it.
+Note: if you use `MainTaskPool`, `AsyncTaskPool`, or other global pools with implicit initialization, make sure their "first access" happens before other task pools are created — unless [`designate_main_thread`] was called up front, the fake main thread is started by the first `TaskPool` creation, and `spawn_to_main` tasks are routed to it.
 
 ## ParallelSlice
 
@@ -236,11 +237,27 @@ let result = zlim_task::block_on(async { 42 });
 assert_eq!(result, 42);
 ```
 
-In multi-threaded mode, it delegates to `futures_lite::future::block_on` by default.
+Blocks the current thread on a future while simultaneously driving the
+async executors to avoid deadlock.
 
-With the `async_io` feature enabled, it uses `async_io::block_on` instead.
+- On the **main thread** (multi-threaded mode), the `MainExecutor` and
+  `LocalExecutor` are driven while blocking.
+- On a **worker thread**, the pool executor and the `LocalExecutor` are
+  driven while blocking.
+- In single-threaded / WASM mode, the executors are driven while blocking.
 
-In single-threaded / WASM mode, it busy-waits polling the future.
+The thread is parked via `futures_lite::future::block_on` by default, or
+`async_io::block_on` when the `async_io` feature is enabled.
+
+## invoke_on_main
+
+Sends a single closure to the main thread for execution and blocks until
+the result is available.
+
+If called from a worker thread, the worker's own tasks are **not** driven
+during the wait — in extreme cases this may cause all threads to sleep
+(deadlock). It is therefore mainly called from the top-level entry point
+and is usually only used internally by `App::run`.
 
 ## Cargo Features
 

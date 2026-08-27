@@ -1,13 +1,49 @@
 //! Entity identifiers, allocation, mapping, and the entity tree.
 //!
-//! This module owns the core entity primitives:
+//! # EntityId
 //!
-//! - [`EntityId`] — a generation-checked entity handle, plus [`Location`]
-//!   describing where a spawned entity's components are stored.
+//! [`EntityId`] is a unique identifier for an entity, composed of a 32-bit
+//! index and a non-zero 32-bit generation.
+//!
+//! ```text
+//! EntityId { index: u32, generation: NonZeroU32 }
+//! ```
+//!
+//! The index names the slot the entity occupies, while the generation
+//! distinguishes between successive occupants of that slot. `NonZero`
+//! is used for niche optimization.
+//!
+//! ```text
+//! Entities [
+//!     index(0): { generation(..), other_data },
+//!     index(1): { generation(..), other_data },
+//!     ..
+//! ]
+//! ```
+//!
+//! # Entities
+//!
+//! [`Entities`] maintain an entity tree.
+//!
+//! Unlike the standard ECS architecture, the implementation of this crate
+//! comes with hierarchical relationships inherent in the entities storage.
+//!
+//! ```text
+//! Entities [
+//!     index(0): { generation(..), parent, children, .. },
+//!     index(1): { generation(..), parent, children, },
+//!     ..
+//! ]
+//! ```
+//!
+//! This does not affect archetype query efficiency, as the table storage
+//! provides a separate entity column that ensures cache locality during queries.
+//!
+//! # Others
+//!
 //! - [`EntityAllocator`] / [`RemoteAllocator`] — lock-free ID allocation,
 //!   with [`AllocEntitiesIter`] for batched allocation.
-//! - [`Entities`] — sparse storage for entity metadata and hierarchy,
-//!   backed by [`EntityNode`] and reporting failures as [`EntityError`].
+//!
 //! - [`EntityMap`] / [`EntityMapper`] / [`MapEntities`] — entity remapping
 //!   support for cloning and scene instantiation.
 //!

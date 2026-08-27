@@ -17,9 +17,6 @@ use crate::world::{World, WorldCell};
 /// convention. A `false` / `Ok(false)` result is mapped to
 /// [`SystemError::None`] — a benign early exit that prevents dependent jobs
 /// from running — while `()` / `Ok(())` map to success.
-///
-/// A `PhantomData<T>` output always succeeds, letting generic jobs use a type
-/// parameter in their signature without producing an actual value.
 pub trait IntoJobResult {
     /// Converts `this` into a scheduler result.
     fn into_job_result(this: Self) -> Result<(), SystemError>;
@@ -49,87 +46,64 @@ impl<E: Into<ZlimError>> IntoJobResult for Result<bool, E> {
     }
 }
 
-// A `PhantomData` output carries no runtime data, so it always succeeds.
-// This lets generic jobs use a type parameter in their signature without
-// producing an actual value.
-impl<T: 'static> IntoJobResult for core::marker::PhantomData<T> {
-    #[inline(always)]
-    fn into_job_result(_: Self) -> Result<(), SystemError> {
-        Ok(())
-    }
-}
-
 // -----------------------------------------------------------------------------
 // JobSystem
 
-/// A [`Job`] adapter that wraps a system and registers non-strict access.
+/// A [`Job`] adapter that wraps a system.
 #[repr(C)]
-pub struct JobSystem<O, S: System<Input = (), Output = O>> {
+pub struct JobSystem<O, S, const STRICT: bool>
+where
+    O: IntoJobResult + 'static,
+    S: System<Input = (), Output = O>,
+{
     system: S,
     id: JobId,
 }
 
-/// A [`Job`] adapter that wraps a system and registers strict access.
-///
-/// Strict access makes the scheduler log access-conflict diagnostics that
-/// non-strict jobs would silently allow.
-#[repr(C)]
-pub struct StrictJobSystem<O, S: System<Input = (), Output = O>> {
-    system: S,
-    id: JobId,
-}
+impl<O, S, const STRICT: bool> Job for JobSystem<O, S, STRICT>
+where
+    O: IntoJobResult + 'static,
+    S: System<Input = (), Output = O>,
+{
+    fn id(&self) -> JobId {
+        self.id
+    }
 
-macro_rules! impl_job_for {
-    ($ty:ident, $strict:expr) => {
-        impl<O, S> Job for $ty<O, S>
-        where
-            O: IntoJobResult + 'static,
-            S: System<Input = (), Output = O>,
-        {
-            fn id(&self) -> JobId {
-                self.id
-            }
+    fn flags(&self) -> SystemFlags {
+        self.system.flags()
+    }
 
-            fn flags(&self) -> SystemFlags {
-                self.system.flags()
-            }
+    fn last_run(&self) -> Tick {
+        self.system.last_run()
+    }
 
-            fn last_run(&self) -> Tick {
-                self.system.last_run()
-            }
+    fn clamp_ticks(&mut self, now: Tick) {
+        self.system.clamp_ticks(now);
+    }
 
-            fn clamp_ticks(&mut self, now: Tick) {
-                self.system.clamp_ticks(now);
-            }
+    fn set_last_run(&mut self, last_run: Tick) {
+        self.system.set_last_run(last_run);
+    }
 
-            fn set_last_run(&mut self, last_run: Tick) {
-                self.system.set_last_run(last_run);
-            }
+    fn initialize(&mut self, world: &World) {
+        self.system.initialize(world);
+    }
 
-            fn initialize(&mut self, world: &World) {
-                self.system.initialize(world);
-            }
+    fn register_access(&self, table: &mut AccessTable) {
+        self.system.register_access(table, STRICT);
+    }
 
-            fn register_access(&self, table: &mut AccessTable) {
-                self.system.register_access(table, $strict);
-            }
-
-            unsafe fn run_raw(&mut self, world: WorldCell<'_>) -> Result<(), SystemError> {
-                unsafe {
-                    let ret = self.system.run_raw((), world)?;
-                    IntoJobResult::into_job_result(ret)
-                }
-            }
-
-            fn apply_deferred(&mut self, world: &mut World) {
-                self.system.apply_deferred(world);
-            }
+    unsafe fn run_raw(&mut self, world: WorldCell<'_>) -> Result<(), SystemError> {
+        unsafe {
+            let ret = self.system.run_raw((), world)?;
+            IntoJobResult::into_job_result(ret)
         }
-    };
-}
+    }
 
-impl_job_for!(JobSystem, false);
-impl_job_for!(StrictJobSystem, true);
+    fn apply_deferred(&mut self, world: &mut World) {
+        self.system.apply_deferred(world);
+    }
+}
 
 // -----------------------------------------------------------------------------
 // IntoJob
@@ -174,13 +148,9 @@ where
         name: &'static str,
         group: &'static str,
     ) -> Box<dyn Job> {
-        let system = IntoSystem::into_system(this);
         let id = JobId::new(name, group);
-        if STRICT {
-            Box::new(StrictJobSystem { system, id })
-        } else {
-            Box::new(JobSystem { system, id })
-        }
+        let system: T::System = IntoSystem::into_system(this);
+        Box::new(JobSystem::<O, T::System, STRICT> { system, id })
     }
 }
 

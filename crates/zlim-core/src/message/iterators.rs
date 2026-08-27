@@ -306,7 +306,6 @@ impl<M: Message> FusedIterator for MessageWithKeyIter<'_, M> {}
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Hit;
@@ -462,7 +461,6 @@ impl<M: Message> FusedIterator for MessageMutWithKeyIter<'_, M> {}
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Damage {
@@ -477,12 +475,15 @@ impl<M: Message> FusedIterator for MessageMutWithKeyIter<'_, M> {}
 ///
 /// // `MessageMutator` mutates through the backing queue plus a local cursor:
 /// let mut queue = MessageQueue::<Damage>::default();
+///
 /// queue.write(Damage { amount: 120 });
 ///
 /// let mut cursor = MessageCursor::new(&queue);
+///
 /// for msg in cursor.read_mut(&mut queue) {
 ///     msg.amount = msg.amount.min(100);
 /// }
+///
 /// assert_eq!(queue.get(0).map(|(_, m)| m.amount), Some(100));
 /// ```
 #[derive(Debug)]

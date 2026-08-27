@@ -34,10 +34,9 @@ use super::{InternedScheduleLabel, Schedule, ScheduleLabel};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::schedule::ScheduleLabel;
 ///
 /// #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-/// enum Stage {
+/// enum Step {
 ///     Update,
 ///     Render,
 /// }
@@ -46,18 +45,18 @@ use super::{InternedScheduleLabel, Schedule, ScheduleLabel};
 /// fn render_frame() {}
 ///
 /// let mut schedules = Schedules::new();
-/// schedules.insert(Schedule::new(Stage::Update));
-/// schedules.entry(Stage::Render).insert::<RenderFrame>();
+/// schedules.insert(Schedule::new(Step::Update));
+/// schedules.entry(Step::Render).insert::<RenderFrame>(());
 ///
 /// // Move the standalone schedules into a world and run them by label.
 /// let mut world = World::alloc();
-/// for stage in [Stage::Update, Stage::Render] {
+/// for stage in [Step::Update, Step::Render] {
 ///     if let Some(schedule) = schedules.remove(stage) {
 ///         world.schedules_mut().insert(schedule);
 ///     }
 /// }
-/// world.run_schedule(Stage::Render);
-/// assert!(world.schedules().contains(Stage::Render));
+/// world.run_schedule(Step::Render);
+/// assert!(world.schedules().contains(Step::Render));
 /// ```
 ///
 /// [`World`]: crate::world::World
@@ -99,6 +98,14 @@ impl Default for Schedules {
 }
 
 impl Schedules {
+    /// Inserts `schedule`, replacing any existing schedule with the same
+    /// label, and returns a mutable reference to the stored schedule.
+    pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Schedule {
+        let label = schedule.label();
+        self.inner.insert(label, schedule);
+        self.inner.get_mut(&label).unwrap()
+    }
+
     /// Inserts `schedule`, returning the previously stored schedule with the
     /// same label, if any.
     pub fn insert(&mut self, schedule: Schedule) -> Option<Schedule> {
@@ -106,12 +113,9 @@ impl Schedules {
         self.inner.insert(label, schedule)
     }
 
-    /// Inserts `schedule`, replacing any existing schedule with the same
-    /// label, and returns a mutable reference to the stored schedule.
-    pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Schedule {
-        let label = schedule.label();
-        self.inner.insert(label, schedule);
-        self.inner.get_mut(&label).unwrap()
+    /// Removes and returns the schedule stored under `label`.
+    pub fn remove(&mut self, label: impl ScheduleLabel) -> Option<Schedule> {
+        self.inner.remove(&label.intern())
     }
 
     /// Returns the schedule stored under `label`.
@@ -127,11 +131,6 @@ impl Schedules {
     /// Returns `true` if a schedule is stored under `label`.
     pub fn contains(&self, label: impl ScheduleLabel) -> bool {
         self.inner.contains_key(&label.intern())
-    }
-
-    /// Removes and returns the schedule stored under `label`.
-    pub fn remove(&mut self, label: impl ScheduleLabel) -> Option<Schedule> {
-        self.inner.remove(&label.intern())
     }
 
     /// Gets the entry for `label` for in-place manipulation.

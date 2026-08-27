@@ -494,7 +494,6 @@ impl ComponentCloner {
     /// ```rust
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::ComponentCloner;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
     /// struct Name(String);
@@ -552,7 +551,6 @@ impl ComponentCloner {
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// #[component(cloner = clone_link)]
@@ -628,7 +626,6 @@ impl ComponentCloner {
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
 /// struct Position { x: f32, y: f32 }
@@ -703,7 +700,6 @@ impl<'w> EntityCloner<'w> {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
     /// struct Position { x: f32, y: f32 }
@@ -745,7 +741,6 @@ impl<'w> EntityCloner<'w> {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
     /// struct Health { value: u32 }

@@ -57,7 +57,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for AndroidLayer {
         }
     }
 
-    #[expect(unsafe_code, reason = "__android_log_write")]
+    #[expect(unsafe_code, reason = "`__android_log_write` is unsafe")]
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
         fn sanitize(string: &str) -> CString {
             let bytes: &[u8] = string.as_bytes();

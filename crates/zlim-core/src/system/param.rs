@@ -38,7 +38,7 @@ use crate::world::{DeferredWorld, World, WorldCell};
 /// }
 ///
 /// let mut world = World::alloc();
-/// world.run_once(greet_system, ()).unwrap();
+/// world.invoke_once(greet_system, ()).unwrap();
 /// ```
 ///
 /// # Safety

@@ -11,7 +11,7 @@ use zlim_core::system::SystemFlags;
 use zlim_core::system::SystemParam as SystemParamTrait;
 use zlim_core::system::SystemTick;
 use zlim_core::system::{AccessTable, ExclusiveMarker, IntoSystem, Local, NonSendMarker};
-use zlim_core::world::World;
+use zlim_core::world::{NonSendWorld, World};
 use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
@@ -65,14 +65,12 @@ fn score_param_runs_end_to_end() {
     world.insert_resource(Score(10));
     world.insert_resource(Delta(0));
 
-    let mut system = IntoSystem::into_system(score_system);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), 11);
+    // `invoke` caches the instance, so `Local` state persists between
+    // runs.
+    assert_eq!(world.invoke(score_system, ()).unwrap(), 11);
     assert_eq!(world.resource::<Delta>().0, 1);
 
-    // `Local` state persists between runs.
-    assert_eq!(system.run((), &mut world).unwrap(), 12);
+    assert_eq!(world.invoke(score_system, ()).unwrap(), 12);
     assert_eq!(world.resource::<Delta>().0, 3);
 }
 
@@ -109,7 +107,7 @@ fn commands_param_applies_deferred_commands() {
     system.initialize(&world);
     assert!(system.flags().contains(SystemFlags::DEFERRED));
 
-    system.run((), &mut world).unwrap();
+    world.invoke_once(commands_system, ()).unwrap();
     assert_eq!(world.resource::<Score>().0, 99);
 }
 
@@ -132,10 +130,7 @@ fn world_ref_param_sees_world_state() {
     world.spawn((), None);
     world.spawn((), None);
 
-    let mut system = IntoSystem::into_system(world_ref_system);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), 2);
+    assert_eq!(world.invoke_once(world_ref_system, ()).unwrap(), 2);
 }
 
 #[derive(SystemParam)]
@@ -147,7 +142,8 @@ struct WorldMutParam<'w, 's> {
 #[test]
 fn world_mut_param_flags() {
     const { assert!(!<WorldMutParam as SystemParamTrait>::DEFERRED) };
-    const { assert!(<WorldMutParam as SystemParamTrait>::NON_SEND) };
+    // `&mut World` is exclusive but `Send` — it may run on any thread.
+    const { assert!(!<WorldMutParam as SystemParamTrait>::NON_SEND) };
     const { assert!(<WorldMutParam as SystemParamTrait>::EXCLUSIVE) };
 }
 
@@ -163,7 +159,89 @@ fn world_mut_param_runs() {
     system.initialize(&world);
     assert!(system.flags().contains(SystemFlags::EXCLUSIVE));
 
-    system.run((), &mut world).unwrap();
+    world.invoke_once(world_mut_system, ()).unwrap();
+}
+
+// -----------------------------------------------------------------------------
+// NonSendWorld access params
+
+#[derive(TypePath, Resource)]
+struct NonSendCounter(core::cell::Cell<u32>);
+
+#[derive(SystemParam)]
+struct NonSendWorldRefParam<'w, 's> {
+    world: &'w NonSendWorld,
+    _marker: PhantomData<(&'w (), &'s ())>,
+}
+
+#[test]
+fn non_send_world_ref_param_flags() {
+    const { assert!(!<NonSendWorldRefParam as SystemParamTrait>::DEFERRED) };
+    const { assert!(<NonSendWorldRefParam as SystemParamTrait>::NON_SEND) };
+    const { assert!(!<NonSendWorldRefParam as SystemParamTrait>::EXCLUSIVE) };
+}
+
+fn non_send_world_ref_system(param: NonSendWorldRefParam) -> u32 {
+    param
+        .world
+        .get_non_send::<NonSendCounter>()
+        .unwrap()
+        .0
+        .get()
+}
+
+#[test]
+fn non_send_world_ref_param_runs() {
+    let mut world = World::alloc();
+    world.with_non_send_mut(|w| {
+        w.insert_non_send(NonSendCounter(core::cell::Cell::new(9)));
+    });
+
+    let mut system = IntoSystem::into_system(non_send_world_ref_system);
+    system.initialize(&world);
+    assert!(system.flags().contains(SystemFlags::NON_SEND));
+    assert!(!system.flags().contains(SystemFlags::EXCLUSIVE));
+
+    assert_eq!(world.invoke_once(non_send_world_ref_system, ()).unwrap(), 9);
+}
+
+#[derive(SystemParam)]
+struct NonSendWorldMutParam<'w, 's> {
+    world: &'w mut NonSendWorld,
+    _marker: PhantomData<(&'w (), &'s ())>,
+}
+
+#[test]
+fn non_send_world_mut_param_flags() {
+    const { assert!(!<NonSendWorldMutParam as SystemParamTrait>::DEFERRED) };
+    const { assert!(<NonSendWorldMutParam as SystemParamTrait>::NON_SEND) };
+    const { assert!(<NonSendWorldMutParam as SystemParamTrait>::EXCLUSIVE) };
+}
+
+fn non_send_world_mut_system(param: NonSendWorldMutParam) {
+    param
+        .world
+        .insert_non_send(NonSendCounter(core::cell::Cell::new(3)));
+    param
+        .world
+        .get_non_send_mut::<NonSendCounter>()
+        .unwrap()
+        .0
+        .set(7);
+}
+
+#[test]
+fn non_send_world_mut_param_runs() {
+    let mut world = World::alloc();
+
+    let mut system = IntoSystem::into_system(non_send_world_mut_system);
+    system.initialize(&world);
+    assert!(system.flags().contains(SystemFlags::NON_SEND));
+
+    world.invoke_once(non_send_world_mut_system, ()).unwrap();
+    world.with_non_send(|w| {
+        assert_eq!(w.get_non_send::<NonSendCounter>().unwrap().0.get(), 7);
+    });
 }
 
 // -----------------------------------------------------------------------------
@@ -183,11 +261,10 @@ fn tick_system(param: TickParam) -> (u32, u32) {
 fn tick_param_tracks_runs() {
     let mut world = World::alloc();
 
-    let mut system = IntoSystem::into_system(tick_system);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), (0, 1));
-    assert_eq!(system.run((), &mut world).unwrap(), (1, 2));
+    // The cached instance keeps its `last_run` baseline, so the second run
+    // observes the window advanced by the first.
+    assert_eq!(world.invoke(tick_system, ()).unwrap(), (0, 1));
+    assert_eq!(world.invoke(tick_system, ()).unwrap(), (1, 2));
 }
 
 // -----------------------------------------------------------------------------
@@ -207,13 +284,10 @@ fn option_system(param: OptionParam) -> Option<u32> {
 fn option_param_handles_missing_resource() {
     let mut world = World::alloc();
 
-    let mut system = IntoSystem::into_system(option_system);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), None);
+    assert_eq!(world.invoke_once(option_system, ()).unwrap(), None);
 
     world.insert_resource(Score(5));
-    assert_eq!(system.run((), &mut world).unwrap(), Some(5));
+    assert_eq!(world.invoke_once(option_system, ()).unwrap(), Some(5));
 }
 
 // -----------------------------------------------------------------------------
@@ -231,10 +305,7 @@ fn tuple_param_runs() {
     let mut world = World::alloc();
     world.insert_resource(Score(41));
 
-    let mut system = IntoSystem::into_system(tuple_system);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), 41);
+    assert_eq!(world.invoke_once(tuple_system, ()).unwrap(), 41);
 }
 
 // -----------------------------------------------------------------------------
@@ -251,10 +322,7 @@ fn unit_system(_: UnitParam) -> u8 {
 fn unit_param_runs() {
     let mut world = World::alloc();
 
-    let mut system = IntoSystem::into_system(unit_system);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), 7);
+    assert_eq!(world.invoke_once(unit_system, ()).unwrap(), 7);
 }
 
 // -----------------------------------------------------------------------------
@@ -286,10 +354,7 @@ fn generic_param_runs() {
     let mut world = World::alloc();
     world.insert_resource(Score(77));
 
-    let mut system = IntoSystem::into_system(generic_system);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), 77);
+    assert_eq!(world.invoke_once(generic_system, ()).unwrap(), 77);
 }
 
 // -----------------------------------------------------------------------------

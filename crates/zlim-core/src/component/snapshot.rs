@@ -85,7 +85,6 @@ impl Components {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position;
@@ -94,8 +93,9 @@ impl Components {
     ///
     /// // Register the component, then look it up through the world's
     /// // per-world snapshot:
-    /// ComponentDB::of::<Position>();
+    /// let _ = ComponentDB::of::<Position>();
     /// let components = world.components();
+    ///
     /// assert_eq!(components.get::<Position>().type_name, "Position");
     /// ```
     pub fn get<C: Component>(&self) -> &'static ComponentDB {
@@ -186,6 +186,7 @@ impl Components {
     /// Picks up any component types that were registered after this
     /// `Components` instance was created. New entries are appended to
     /// `dbs`, `type_map`, and `path_map`.
+    #[inline]
     pub(crate) fn update(&mut self) {
         let r = ID_REGISTRY.read().unwrap_or_else(PoisonError::into_inner);
         let data = r.as_slice();
@@ -193,6 +194,7 @@ impl Components {
         let old_len = self.dbs.len();
 
         if old_len < new_len {
+            ::core::hint::cold_path();
             self.dbs.extend_from_slice(&data[old_len..]);
 
             ::core::mem::drop(r);

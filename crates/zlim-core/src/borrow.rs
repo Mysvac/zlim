@@ -6,6 +6,17 @@
 //! [`DetectChanges`], so systems can observe whether a value was added or
 //! modified since their last run.
 //!
+//! ```ignore
+//! fn system(query: Query<Ref<Name>>, logger: Res<Logger>) {
+//!     for name in query.iter() {
+//!         let _: bool = name.is_changed();
+//!     }
+//!     let _: bool = logger.is_changed();
+//!     let _: bool = logger.is_added();
+//!     // ......
+//! }
+//! ```
+//!
 //! # Typed wrappers
 //!
 //! - [`Ref`] / [`Mut`] — shared / exclusive references to a single component
@@ -22,8 +33,8 @@
 //!
 //! [`UntypedRef`], [`UntypedMut`], [`UntypedSliceRef`], and
 //! [`UntypedSliceMut`] are the type-erased counterparts produced by the
-//! storage layer — table columns ([`crate::table`]) and resource slots
-//! ([`crate::slot`]). The concrete type is recovered with
+//! storage layer — table columns ([`crate::table`]) and resource storage
+//! ([`crate::resource::Resources`]). The concrete type is recovered with
 //! [`UntypedRef::with_type`], [`UntypedRef::into_resource`], or
 //! [`UntypedRef::into_non_send`].
 //!
@@ -36,7 +47,7 @@
 //! [`DetectChanges`]: crate::tick::DetectChanges
 //! [`DetectChangesMut`]: crate::tick::DetectChangesMut
 //! [`crate::table`]: crate::table
-//! [`crate::slot`]: crate::slot
+//! [`crate::resource::Resources`]: crate::resource::Resources
 //! [`crate::tick`]: crate::tick
 
 use core::fmt::{Debug, Formatter};
@@ -75,7 +86,7 @@ use crate::resource::Resource;
 /// system-parameter implementations.
 ///
 /// Values are produced by the internal storage layer — table columns
-/// ([`crate::table`]) and resource slots ([`crate::slot`]) — and can also be
+/// ([`crate::table`]) and resource storage ([`crate::resource::Resources`]) — and can also be
 /// obtained by downgrading a typed [`Ref`] via `From`.
 ///
 /// # Change detection
@@ -86,9 +97,6 @@ use crate::resource::Resource;
 /// # Examples
 ///
 /// ```ignore
-/// use zlim_core::borrow::{Ref, UntypedRef};
-/// use zlim_core::prelude::*;
-///
 /// fn process(untyped: UntypedRef<'_>) {
 ///     if untyped.is_changed() {
 ///         // Recover the concrete type and continue as a typed `Ref`.
@@ -103,7 +111,7 @@ use crate::resource::Resource;
 /// [`TicksRef`]: crate::tick::TicksRef
 /// [`DetectChanges`]: crate::tick::DetectChanges
 /// [`crate::table`]: crate::table
-/// [`crate::slot`]: crate::slot
+/// [`crate::resource::Resources`]: crate::resource::Resources
 pub struct UntypedRef<'w> {
     pub value: Ptr<'w>,
     pub ticks: TicksRef<'w>,
@@ -125,7 +133,7 @@ pub struct UntypedRef<'w> {
 /// system-parameter implementations.
 ///
 /// Values are produced by the internal storage layer — table columns
-/// ([`crate::table`]) and resource slots ([`crate::slot`]) — and can also be
+/// ([`crate::table`]) and resource storage ([`crate::resource::Resources`]) — and can also be
 /// obtained by downgrading a typed [`Mut`] via `From`.
 ///
 /// # Change detection
@@ -136,9 +144,6 @@ pub struct UntypedRef<'w> {
 /// # Examples
 ///
 /// ```ignore
-/// use zlim_core::borrow::{Mut, UntypedMut};
-/// use zlim_core::prelude::*;
-///
 /// fn process(untyped: UntypedMut<'_>) {
 ///     // Recover the concrete type; `with_type` does not set the changed flag.
 ///     let typed: Mut<'_, f32> = unsafe { untyped.with_type::<f32>() };
@@ -152,7 +157,7 @@ pub struct UntypedRef<'w> {
 /// [`DetectChanges`]: crate::tick::DetectChanges
 /// [`DetectChangesMut`]: crate::tick::DetectChangesMut
 /// [`crate::table`]: crate::table
-/// [`crate::slot`]: crate::slot
+/// [`crate::resource::Resources`]: crate::resource::Resources
 pub struct UntypedMut<'w> {
     pub value: PtrMut<'w>,
     pub ticks: TicksMut<'w>,
@@ -454,20 +459,18 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
 /// tick metadata so that systems can query whether the referenced data was
 /// added or modified since the last time they ran.
 ///
+/// `Ref` implements [`Deref`] and [`AsRef`] for ergonomic access.
+///
 /// Use [`into_inner`] to extract the underlying `&T`, or [`map_type`] /
 /// [`try_map_type`] to transform the held type while preserving ticks.
 /// The type also implements [`DetectChanges`] for direct change queries
 /// (`is_added()`, `is_changed()`, and the tick accessors).
-///
-/// This is the foundational immutable wrapper — resource types like [`Res`]
-/// and [`NonSend`] follow the same pattern but add thread-safety constraints.
+
 ///
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::Ref;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);
@@ -502,25 +505,25 @@ pub struct Ref<'w, T: ?Sized> {
 /// An exclusive reference to a component value with change detection.
 ///
 /// `Mut` wraps a mutable borrow (`&'w mut T`) together with change-detection
-/// tick metadata. Calling [`into_inner`] consumes `self` and returns the
-/// `&mut T`, automatically marking the data as changed so that downstream
-/// consumers can observe the modification.
+/// tick metadata.
+///
+/// `Mut` implements [`Deref`] / [`DerefMut`] and [`AsRef`] / [`AsMut`] for
+/// ergonomic access; every mutable deref or `as_mut` (like [`into_inner`])
+/// marks the value as changed.
+///
+/// Calling [`into_inner`] consumes `self` and returns the `&mut T`, automatically
+/// marking the data as changed so that downstream consumers can observe the
+/// modification.
 ///
 /// Use [`reborrow`] to obtain a shorter-lived view without consuming `self`,
 /// or [`map_type`] / [`try_map_type`] to project into a sub-field while
 /// preserving ticks.
-///
-/// This is the foundational mutable wrapper — resource types like [`ResMut`]
-/// and [`NonSendMut`] follow the same pattern but add thread-safety
-/// constraints and also implement [`DerefMut`] and [`AsMut`] for ergonomic
-/// access.
+
 ///
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::Mut;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);
@@ -565,9 +568,7 @@ pub struct Mut<'w, T: ?Sized> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::SliceRef;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Velocity(f32);
@@ -617,9 +618,7 @@ pub struct SliceRef<'w, T> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::SliceMut;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Velocity(f32);
@@ -794,6 +793,57 @@ impl<'w, T> From<SliceMut<'w, T>> for SliceRef<'w, T> {
 }
 
 // --------------------------------------------------------------------
+// Deref
+
+impl<'w, T: ?Sized> Deref for Ref<'w, T> {
+    type Target = T;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+impl<'w, T: ?Sized> Deref for Mut<'w, T> {
+    type Target = T;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+impl<'w, T: ?Sized> DerefMut for Mut<'w, T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.set_changed();
+        self.value
+    }
+}
+
+impl<'w, T> AsRef<T> for Ref<'w, T> {
+    #[inline(always)]
+    fn as_ref(&self) -> &T {
+        self.value
+    }
+}
+
+impl<'w, T> AsRef<T> for Mut<'w, T> {
+    #[inline(always)]
+    fn as_ref(&self) -> &T {
+        self.value
+    }
+}
+
+impl<'w, T> AsMut<T> for Mut<'w, T> {
+    #[inline(always)]
+    fn as_mut(&mut self) -> &mut T {
+        self.set_changed();
+        self.value
+    }
+}
+
+// --------------------------------------------------------------------
 // Ref Methods
 
 impl<'w, 'a, T> IntoIterator for &'a Ref<'w, T>
@@ -815,9 +865,7 @@ impl<'w, T: ?Sized> Ref<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_core::borrow::Ref;
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Health(u32);
@@ -854,9 +902,7 @@ impl<'w, T: ?Sized> Ref<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_core::borrow::Ref;
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Outer {
@@ -943,9 +989,7 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_core::borrow::Mut;
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Score(f32);
@@ -971,9 +1015,7 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_core::borrow::Mut;
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Counter(u32);
@@ -1385,10 +1427,6 @@ impl<'w, T> IntoIterator for SliceMut<'w, T> {
 }
 
 // -----------------------------------------------------------------------------
-// Service & NonSend
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
 // Res
 // -----------------------------------------------------------------------------
 
@@ -1441,9 +1479,7 @@ pub struct Res<'w, T: Resource + Sync> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::ResMut;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct Logger;
@@ -1480,9 +1516,7 @@ pub struct ResMut<'w, T: Resource + Send> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::NonSend;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// // `Cell` is `Send` but not `Sync`, so this type cannot be shared across
 /// // threads — exactly the case `NonSend` is designed for.
@@ -1492,12 +1526,16 @@ pub struct ResMut<'w, T: Resource + Send> {
 /// }
 ///
 /// let mut world = World::alloc();
-/// world.insert_non_send(ThreadLocalState { counter: core::cell::Cell::new(0) });
+/// world.with_non_send_mut(|w| {
+///     w.insert_non_send(ThreadLocalState { counter: core::cell::Cell::new(0) });
+/// });
 ///
-/// let state: NonSend<'_, ThreadLocalState> =
-///     world.get_non_send_ref::<ThreadLocalState>().unwrap();
-/// // A freshly inserted resource is marked as changed.
-/// assert!(state.is_changed());
+/// world.with_non_send(|w| {
+///     let state: NonSend<'_, ThreadLocalState> =
+///         w.get_non_send_ref::<ThreadLocalState>().unwrap();
+///     // A freshly inserted resource is marked as changed.
+///     assert!(state.is_changed());
+/// });
 /// ```
 ///
 /// [`DetectChanges`]: crate::tick::DetectChanges
@@ -1528,20 +1566,22 @@ pub struct NonSend<'w, T: Resource> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::NonSendMut;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct RngState(u64);
 ///
 /// let mut world = World::alloc();
-/// world.insert_non_send(RngState(1));
+/// world.with_non_send_mut(|w| {
+///     w.insert_non_send(RngState(1));
+/// });
 ///
-/// let mut rng: NonSendMut<'_, RngState> = world.get_non_send_mut::<RngState>().unwrap();
-/// // Writing through `DerefMut` marks the resource as changed.
-/// rng.0 = rng.0.wrapping_mul(636413622).wrapping_add(1);
-/// assert!(rng.is_changed());
+/// world.with_non_send_mut(|w| {
+///     let mut rng: NonSendMut<'_, RngState> = w.get_non_send_mut::<RngState>().unwrap();
+///     // Writing through `DerefMut` marks the resource as changed.
+///     rng.0 = rng.0.wrapping_mul(636413622).wrapping_add(1);
+///     assert!(rng.is_changed());
+/// });
 /// ```
 pub struct NonSendMut<'w, T: Resource> {
     pub(crate) value: &'w mut T,

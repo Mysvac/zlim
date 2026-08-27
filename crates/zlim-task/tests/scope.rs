@@ -2,7 +2,7 @@
 //!
 //! `scope` drives the thread-local `LocalExecutor` and the pool's workers.
 //! `spawn_to_main` tasks are executed by the fake main thread that
-//! multi-threaded mode starts when `set_main_thread` is not called — so
+//! multi-threaded mode starts when `designate_main_thread` is not called — so
 //! they complete even under `cargo test`, where every test runs on its own
 //! thread and there is no real main thread.
 

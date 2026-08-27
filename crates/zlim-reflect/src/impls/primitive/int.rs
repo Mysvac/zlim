@@ -11,7 +11,7 @@ use crate::ops::{ApplyError, CloneError};
 // -----------------------------------------------------------------------------
 
 macro_rules! impl_opaque_typed {
-    ($ty:ty) => {
+    (@ $ty:ty) => {
         impl $crate::path::TypePath for $ty {
             #[inline]
             fn type_path() -> &'static str {
@@ -33,6 +33,49 @@ macro_rules! impl_opaque_typed {
                 &INFO
             }
         }
+    };
+    (char: $ty:ty) => {
+        impl_opaque_typed!(@$ty);
+
+        impl $crate::ops::Opaque for $ty {
+            #[inline]
+            fn apply_str(&mut self, v: &str) -> Result<(), String> {
+                match v.parse::<$ty>() {
+                    Ok(val) => {
+                        *self = val;
+                        Ok(())
+                    }
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            #[inline]
+            fn stringify(&self) -> String {
+                String::from(*self)
+            }
+        }
+    };
+    (bool: $ty:ty) => {
+        impl_opaque_typed!(@$ty);
+
+        impl $crate::ops::Opaque for $ty {
+            #[inline]
+            fn apply_str(&mut self, v: &str) -> Result<(), String> {
+                match v.parse::<$ty>() {
+                    Ok(val) => {
+                        *self = val;
+                        Ok(())
+                    }
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            #[inline]
+            fn stringify(&self) -> String {
+                if *self { String::from("true") } else { String::from("false") }
+            }
+        }
+    };
+    (float: $ty:ty) => {
+        impl_opaque_typed!(@$ty);
 
         impl $crate::ops::Opaque for $ty {
             #[inline]
@@ -51,24 +94,45 @@ macro_rules! impl_opaque_typed {
             }
         }
     };
+    (num: $ty:ty) => {
+        impl_opaque_typed!(@$ty);
+
+        impl $crate::ops::Opaque for $ty {
+            #[inline]
+            fn apply_str(&mut self, v: &str) -> Result<(), String> {
+                match v.parse::<$ty>() {
+                    Ok(val) => {
+                        *self = val;
+                        Ok(())
+                    }
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            #[inline]
+            fn stringify(&self) -> String {
+                let mut buf = core::fmt::NumBuffer::new();
+                ToOwned::to_owned((*self).format_into(&mut buf))
+            }
+        }
+    };
 }
 
-impl_opaque_typed!(bool);
-impl_opaque_typed!(char);
-impl_opaque_typed!(i8);
-impl_opaque_typed!(i16);
-impl_opaque_typed!(i32);
-impl_opaque_typed!(i64);
-impl_opaque_typed!(i128);
-impl_opaque_typed!(isize);
-impl_opaque_typed!(u8);
-impl_opaque_typed!(u16);
-impl_opaque_typed!(u32);
-impl_opaque_typed!(u64);
-impl_opaque_typed!(u128);
-impl_opaque_typed!(usize);
-impl_opaque_typed!(f32);
-impl_opaque_typed!(f64);
+impl_opaque_typed!(bool: bool);
+impl_opaque_typed!(char: char);
+impl_opaque_typed!(num: i8);
+impl_opaque_typed!(num: i16);
+impl_opaque_typed!(num: i32);
+impl_opaque_typed!(num: i64);
+impl_opaque_typed!(num: i128);
+impl_opaque_typed!(num: isize);
+impl_opaque_typed!(num: u8);
+impl_opaque_typed!(num: u16);
+impl_opaque_typed!(num: u32);
+impl_opaque_typed!(num: u64);
+impl_opaque_typed!(num: u128);
+impl_opaque_typed!(num: usize);
+impl_opaque_typed!(float: f32);
+impl_opaque_typed!(float: f64);
 
 // -----------------------------------------------------------------------------
 // Reflect

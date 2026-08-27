@@ -16,6 +16,7 @@ use core::fmt::Debug;
 use core::iter::FusedIterator;
 use core::mem::MaybeUninit;
 use core::num::NonZeroU32;
+use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::sync::atomic::Ordering;
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
 use core::{ptr, slice};
@@ -142,6 +143,8 @@ struct Chunk {
 // are reads of an already-published, immutable region. See the module docs.
 unsafe impl Sync for Chunk {}
 unsafe impl Send for Chunk {}
+impl UnwindSafe for Chunk {}
+impl RefUnwindSafe for Chunk {}
 
 impl Chunk {
     /// An empty [`Chunk`] with a null pointer.

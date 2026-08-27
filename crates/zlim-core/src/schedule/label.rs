@@ -7,9 +7,8 @@
 //! [`Schedules`]: crate::schedule::Schedules
 
 use crate::define_label;
+use crate::derive::ScheduleLabel;
 use crate::label::Interned;
-
-pub use zlim_core_derive::ScheduleLabel;
 
 // -----------------------------------------------------------------------------
 // ScheduleLabel

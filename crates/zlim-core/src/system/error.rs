@@ -75,7 +75,7 @@ impl SystemParamError {
 /// let mut world = World::alloc();
 /// // The `Missing` resource is never inserted, so the run fails with a
 /// // `Param` error instead of panicking.
-/// let result = world.run_once(needs_resource, ());
+/// let result = world.invoke_once(needs_resource, ());
 /// assert!(matches!(result, Err(SystemError::Param(_))));
 /// ```
 #[derive(Debug, Error)]

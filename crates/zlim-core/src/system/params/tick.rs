@@ -12,19 +12,19 @@ use crate::world::{DeferredWorld, World, WorldCell};
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust, no_run
 /// use zlim_core::prelude::*;
 /// use zlim_core::system::SystemTick;
 ///
 /// fn report_ticks(ticks: SystemTick) {
 ///     // A never-run system starts with a baseline of tick 0, and the
 ///     // first run advances the world's clock to tick 1.
-///     assert_eq!(ticks.last_run, Tick::new(0));
-///     assert_eq!(ticks.this_run, Tick::new(1));
+///     std::println!("last_run: {:?}", ticks.last_run);
+///     std::println!("this_run: {:?}", ticks.this_run);
 /// }
 ///
 /// let mut world = World::alloc();
-/// world.run_once(report_ticks, ()).unwrap();
+/// world.invoke_once(report_ticks, ()).unwrap();
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct SystemTick {

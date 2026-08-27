@@ -22,7 +22,7 @@ use crate::utils::DebugCheckedUnwrap;
 /// A cheap, type-safe handle to a system cached in the world.
 ///
 /// Obtained from [`World::insert_system`] and passed to
-/// [`World::run_system_handle`].  The `I`/`O` type parameters tie the
+/// [`World::invoke_handle`].  The `I`/`O` type parameters tie the
 /// handle to the system's input/output signature so cache lookups stay
 /// type-checked.
 ///
@@ -40,14 +40,14 @@ use crate::utils::DebugCheckedUnwrap;
 /// // Insert the system once, then run it through its handle.
 /// let handle = world.insert_system(tick);
 /// assert_eq!(handle.id(), tick.system_id());
-/// world.run_system_handle(handle, ()).unwrap();
+/// world.invoke_handle(handle, ()).unwrap();
 ///
 /// // Handles are `Copy`, so the same handle can be reused.
-/// world.run_system_handle(handle, ()).unwrap();
+/// world.invoke_handle(handle, ()).unwrap();
 /// ```
 ///
 /// [`World::insert_system`]: crate::world::World::insert_system
-/// [`World::run_system_handle`]: crate::world::World::run_system_handle
+/// [`World::invoke_handle`]: crate::world::World::invoke_handle
 pub struct SystemHandle<I, O> {
     id: SystemId,
     _marker: PhantomData<(I, O)>,
@@ -149,17 +149,17 @@ type SystemBox<I, O> = Box<dyn System<Input = I, Output = O>>;
 /// with different input/output types.  Every [`World`] owns one.
 ///
 /// [`World`]: crate::world::World
-pub struct Systems {
+pub(crate) struct SystemCache {
     mapper: TypeMap<Box<dyn Any + Send + Sync + 'static>>,
 }
 
-impl Debug for Systems {
+impl Debug for SystemCache {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Systems").finish_non_exhaustive()
+        f.debug_struct("SystemCache").finish_non_exhaustive()
     }
 }
 
-impl Systems {
+impl SystemCache {
     pub(crate) const fn new() -> Self {
         Self {
             mapper: TypeMap::new(),
@@ -167,7 +167,7 @@ impl Systems {
     }
 }
 
-impl Systems {
+impl SystemCache {
     #[inline]
     fn with<I, O>(&mut self) -> &mut SystemMap<I, O>
     where
@@ -208,19 +208,6 @@ impl Systems {
         self.with::<I, O>().entry(handle.id).or_default()
     }
 
-    /// Returns the cache slot for `handle` without creating a new map.
-    #[inline(never)]
-    pub fn get_mut<I, O>(
-        &mut self,
-        handle: SystemHandle<I, O>,
-    ) -> Option<&mut Option<SystemBox<I, O>>>
-    where
-        I: SystemInput + 'static,
-        O: 'static,
-    {
-        self.try_with::<I, O>()?.get_mut(&handle.id)
-    }
-
     /// Caches `system`, returning the previously cached instance with the
     /// same id, if any.
     #[inline(never)]
@@ -241,24 +228,6 @@ impl Systems {
         O: 'static,
     {
         self.try_with::<I, O>()?.remove(&handle.id)?
-    }
-
-    /// Returns `true` if an instance is cached for `handle`.
-    #[inline(never)]
-    pub fn contains<I, O>(&self, handle: SystemHandle<I, O>) -> bool
-    where
-        I: SystemInput + 'static,
-        O: 'static,
-    {
-        match self.mapper.get(TypeId::of::<SystemHandle<I, O>>()) {
-            Some(erased) => unsafe {
-                erased
-                    .downcast_ref::<SystemMap<I, O>>()
-                    .debug_checked_unwrap()
-                    .contains_key(&handle.id)
-            },
-            None => false,
-        }
     }
 }
 

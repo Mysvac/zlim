@@ -1,5 +1,5 @@
 use core::cell::{RefCell, RefMut};
-use core::fmt::Debug;
+use core::fmt::{Debug, Formatter};
 
 use crate::ext::ThreadLocal;
 
@@ -12,7 +12,7 @@ pub struct Parallel<T: Send> {
 }
 
 impl<T: Send> Debug for Parallel<T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.pad("Parallel { .. }")
     }
 }

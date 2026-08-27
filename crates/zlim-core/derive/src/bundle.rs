@@ -6,32 +6,42 @@ use crate::utils::field_type_constraint;
 
 /// Parsed `#[bundle(...)]` type-level attributes.
 struct BundleAttrs {
-    no_effect: bool,
+    data: bool,
 }
 
 fn parse_bundle_attrs(attrs: &[syn::Attribute]) -> syn::Result<BundleAttrs> {
-    let mut x = BundleAttrs { no_effect: false };
+    let mut x = BundleAttrs { data: false };
 
     for attr in attrs {
         if attr.path().is_ident("bundle") {
             let Ok(param) = attr.parse_args::<syn::Ident>() else {
-                return Err(syn::Error::new_spanned(
-                    attr,
-                    "expected `bundle(no_effect)`",
-                ));
+                return Err(syn::Error::new_spanned(attr, "expected `bundle(data)`"));
             };
-            if param == "no_effect" {
-                x.no_effect = true;
+            if param == "data" {
+                x.data = true;
             } else {
-                return Err(syn::Error::new_spanned(
-                    attr,
-                    "expected `bundle(no_effect)`",
-                ));
+                return Err(syn::Error::new_spanned(attr, "expected `bundle(data)`"));
             }
         }
     }
 
     Ok(x)
+}
+
+/// Emits `unsafe impl DataBundle for Type`, asserting that the type is a
+/// pure-data bundle (no post-spawn side effects).
+fn data_bundle_impl(
+    data_bundle_: &TokenStream,
+    type_ident: &syn::Ident,
+    impl_generics: &syn::ImplGenerics<'_>,
+    ty_generics: &syn::TypeGenerics<'_>,
+    where_clause: Option<&syn::WhereClause>,
+) -> TokenStream {
+    quote! {
+        #[automatically_derived]
+        #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
+        unsafe impl #impl_generics #data_bundle_ for #type_ident #ty_generics #where_clause {}
+    }
 }
 
 pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
@@ -43,7 +53,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     let entity_owned_ = crate::path::entity_owned_(&zlim_core);
     let owning_ptr_ = crate::path::owning_ptr_(&zlim_core);
 
-    let BundleAttrs { no_effect } = match parse_bundle_attrs(&ast.attrs) {
+    let BundleAttrs { data } = match parse_bundle_attrs(&ast.attrs) {
         Ok(v) => v,
         Err(e) => return e.into_compile_error(),
     };
@@ -63,12 +73,12 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
             .push(parse_quote! { Self: 'static });
     }
 
-    // Default: fields must be Bundle (effect mode).
-    // With #[bundle(no_effect)]: fields only need DataBundle.
-    let field_constraint = if no_effect { &data_bundle_ } else { &bundle_ };
+    // Default: fields must be Bundle.
+    // With #[bundle(data)]: fields only need DataBundle.
+    let field_constraint = if data { &data_bundle_ } else { &bundle_ };
 
     let field_access: Vec<(TokenStream, &Type)> = match &ast.data {
-        Data::Struct(data) => match &data.fields {
+        Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields) => fields
                 .named
                 .iter()
@@ -92,6 +102,17 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                 .collect(),
             Fields::Unit => {
                 let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+                let data_bundle_impl = if data {
+                    data_bundle_impl(
+                        &data_bundle_,
+                        &type_ident,
+                        &impl_generics,
+                        &ty_generics,
+                        where_clause,
+                    )
+                } else {
+                    TokenStream::new()
+                };
                 return quote! {
                     const _: () = {
                         #[automatically_derived]
@@ -109,9 +130,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                             #[inline(always)]
                             unsafe fn apply_effect(_ptr: #owning_ptr_<'_>, _entity: &mut #entity_owned_<'_>) {}
                         }
-                        #[automatically_derived]
-                        #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
-                        unsafe impl #impl_generics #data_bundle_ for #type_ident #ty_generics #where_clause {}
+                        #data_bundle_impl
                     };
                 };
             }
@@ -151,8 +170,16 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
         }
     });
 
+    // `NEED_APPLY_EFFECT` is the logical OR of all field types' flags — a
+    // bundle needs `apply_effect` if any of its sub-bundles does.
+    let need_apply_effect = field_access.iter().map(|(_, ty)| {
+        quote! { || <#ty as #bundle_>::NEED_APPLY_EFFECT }
+    });
+
+    // `#[bundle(data)]` fields are `DataBundle`s whose `apply_effect` is a
+    // no-op, so no calls are emitted.
     let apply_effect_calls = field_access.iter().map(|(ident, ty)| {
-        if no_effect {
+        if data {
             TokenStream::new()
         } else {
             quote! {
@@ -170,7 +197,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
         TokenStream::new()
     };
 
-    let apply_mut = if !field_access.is_empty() && !no_effect {
+    let apply_mut = if !field_access.is_empty() && !data {
         quote! { mut }
     } else {
         TokenStream::new()
@@ -178,12 +205,14 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let data_bundle_impl = if no_effect {
-        quote! {
-            #[automatically_derived]
-            #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
-            unsafe impl #impl_generics #data_bundle_ for #type_ident #ty_generics #where_clause {}
-        }
+    let data_bundle_impl = if data {
+        data_bundle_impl(
+            &data_bundle_,
+            &type_ident,
+            &impl_generics,
+            &ty_generics,
+            where_clause,
+        )
     } else {
         TokenStream::new()
     };
@@ -193,7 +222,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
             #[automatically_derived]
             #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
             unsafe impl #impl_generics #bundle_ for #type_ident #ty_generics #where_clause {
-                const NEED_APPLY_EFFECT: bool = !#no_effect;
+                const NEED_APPLY_EFFECT: bool = false #(#need_apply_effect)*;
 
                 fn collect_explicit(__collector__: &mut #component_collector_) {
                     #(#collect_explicit_calls)*
@@ -211,9 +240,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                     #(#write_required_calls)*
                 }
 
-                #[inline(never)]
                 unsafe fn apply_effect(#apply_mut __ptr__: #owning_ptr_<'_>, __entity__: &mut #entity_owned_<'_>) {
-                    #(#apply_effect_calls)*
+                    if <Self as #bundle_>::NEED_APPLY_EFFECT { #(#apply_effect_calls)* }
                 }
             }
 

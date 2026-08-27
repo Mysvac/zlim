@@ -1,7 +1,4 @@
 //! Hash primitives and container aliases.
-//!
-//! This module re-exports `hashbrown` / `foldhash` and provides crate-level
-//! hash builders plus map/set aliases for common usage patterns.
 
 // -----------------------------------------------------------------------------
 // Modules

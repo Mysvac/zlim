@@ -234,7 +234,6 @@ impl World {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -272,7 +271,6 @@ impl World {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Player { health: u32 }
@@ -313,7 +311,6 @@ impl World {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -355,7 +352,6 @@ impl World {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Player { health: u32 }

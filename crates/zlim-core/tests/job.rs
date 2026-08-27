@@ -1,13 +1,12 @@
 //! Integration tests for the `job_fn` attribute macro and the
 //! `job!` macro.
 
-use core::marker::PhantomData;
-
 use zlim_core::system::{In, IntoSystem};
 use zlim_core::world::World;
 use zlim_core::{job, job_fn, job_group};
 
 use job::{IntoJob, JobDB, JobGroup, JobGroupLabel, JobLabel};
+use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Attribute macro — non-generic
@@ -44,9 +43,7 @@ fn job_attr_non_generic_registered() {
 // Attribute macro — generic
 
 #[job_fn(type = GenericSystem<T: Default>, name = "attr_generic")]
-fn generic_system<T: Default>() -> PhantomData<T> {
-    PhantomData
-}
+fn generic_system<T: Default>() {}
 
 #[test]
 fn job_attr_generic_name() {
@@ -130,6 +127,39 @@ fn job_generic() {
 }
 
 // -----------------------------------------------------------------------------
+// name omitted — defaults to the marker's TypePath
+
+#[job_fn(type = NoNameJob)]
+fn no_name_job() {}
+
+#[job_fn(type = NoNameGeneric<T: Default>)]
+fn no_name_generic<T: Default>() {}
+
+job! {
+    type: NoNamePipeJob,
+    system: pipe1.pipe(pipe2),
+}
+
+#[test]
+fn job_name_defaults_to_type_path() {
+    assert_eq!(NoNameJob::name(), NoNameJob::type_path());
+    assert_eq!(
+        NoNameGeneric::<u32>::name(),
+        <NoNameGeneric::<u32>>::type_path()
+    );
+    assert_eq!(NoNamePipeJob::name(), NoNamePipeJob::type_path());
+}
+
+#[test]
+fn job_name_default_database_and_registration() {
+    let db = NoNameJob::database();
+    assert_eq!(db.name, NoNameJob::name());
+
+    JobDB::collect();
+    assert!(JobDB::get(NoNameJob::name()).is_some());
+}
+
+// -----------------------------------------------------------------------------
 // strict parameter
 
 #[job_fn(type = StrictJob, name = "strict_job", strict = true)]
@@ -191,6 +221,57 @@ fn into_job_strict_const_generic() {
 
     assert_eq!(strict.id().name(), "direct_strict");
     assert_eq!(lax.id().name(), "direct_lax");
+}
+
+// -----------------------------------------------------------------------------
+// run_if
+
+fn condition_a() -> bool {
+    true
+}
+
+fn condition_b() -> bool {
+    false
+}
+
+#[job_fn(type = RunIfJob, name = "run_if_job", run_if = condition_a)]
+fn run_if_job() {}
+
+job! {
+    type: RunIfPipeJob,
+    name: "run_if_pipe",
+    system: pipe1.pipe(pipe2),
+    run_if: [condition_a, condition_b],
+}
+
+#[test]
+fn job_run_if_single_and_list() {
+    // A single `run_if` expression becomes a one-element slice; the
+    // condition constructor takes the job's group name explicitly.
+    let db = RunIfJob::database();
+    assert_eq!(db.run_if.len(), 1);
+    let cond = (db.run_if[0])("group");
+    assert_eq!(cond.id().name(), "run_if_job#run_if<0>#condition_a");
+    assert_eq!(cond.id().group(), "group");
+
+    // A list keeps the order
+    let db = RunIfPipeJob::database();
+    assert_eq!(db.run_if.len(), 2);
+    assert_eq!(
+        (db.run_if[0])("group").id().name(),
+        "run_if_pipe#run_if<0>#condition_a"
+    );
+    assert_eq!(
+        (db.run_if[1])("group").id().name(),
+        "run_if_pipe#run_if<1>#condition_b"
+    );
+}
+
+#[test]
+fn job_run_if_empty() {
+    // Without `run_if` the slice is empty (and stays `'static`).
+    let db = SimpleSystem::database();
+    assert!(db.run_if.is_empty());
 }
 
 // -----------------------------------------------------------------------------
@@ -284,9 +365,7 @@ fn job_group_generic_not_auto_registered() {
 // register() registers the group's job labels
 
 #[job_fn(type = GenericGroupJob<T: Default>, name = "generic_group_job")]
-fn generic_group_job<T: Default>() -> PhantomData<T> {
-    PhantomData
-}
+fn generic_group_job<T: Default>() {}
 
 job_group! {
     type: RegisterGroup<T: Default>,

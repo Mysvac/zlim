@@ -21,6 +21,8 @@ trace = [
     "zlim-app/trace",
 ]
 
+backtrace = ["zlim-core/backtrace"]
+
 trace_tracy = ["zlim-log/trace_tracy"]
 
 trace_memory = ["zlim-log/trace_memory"]

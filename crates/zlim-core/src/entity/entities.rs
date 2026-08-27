@@ -505,12 +505,12 @@ impl Entities {
     /// let other = world.spawn((), None).id();
     /// let child = world.spawn((), Some(root)).id();
     ///
-    /// // `EntityOwned::modify_parent` drives `Entities::modify_parent`.
-    /// world.entity_owned(child).modify_parent(Some(other)).unwrap();
+    /// // `EntityOwned::reparent` drives `Entities::modify_parent`.
+    /// world.entity_owned(child).reparent(Some(other)).unwrap();
     /// assert_eq!(world.entity(child).parent(), Some(other));
     ///
     /// // Making an entity its own parent would create a cycle.
-    /// assert!(world.entity_owned(child).modify_parent(Some(child)).is_err());
+    /// assert!(world.entity_owned(child).reparent(Some(child)).is_err());
     /// ```
     pub fn modify_parent(
         &mut self,

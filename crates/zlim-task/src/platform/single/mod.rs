@@ -5,39 +5,16 @@ use super::{LocalExecutor, MainExecutor};
 
 mod task_pool;
 
-pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
-
-// -----------------------------------------------------------------------------
-// block_on
-
-/// Blocks on the supplied `future`.
-/// 
-/// This implementation will busy-wait until it is completed.
-pub fn block_on<T>(future: impl Future<Output = T>) -> T {
-    use core::task::{Context, Poll};
-
-    // Pin the future on the stack.
-    let mut future = core::pin::pin!(future);
-    // We don't care about the waker as we're just going to poll as fast as possible.
-    let cx = &mut Context::from_waker(core::task::Waker::noop());
-
-    // Keep polling until the future is ready.
-    loop {
-        match future.as_mut().poll(cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => core::hint::spin_loop(),
-        }
-    }
-}
+pub use task_pool::{Scope, TaskPool, TaskPoolBuilder};
 
 // -----------------------------------------------------------------------------
 // tick_local
 
 /// Drives local tasks to completion.
-/// 
+///
 /// This function continuously ticks executors in a loop
 /// until all queued tasks have been processed.
-/// 
+///
 /// For single threaded mode, this function drives both
 /// `LocalExecutor` and `MainExecutor`.
 ///
@@ -61,30 +38,23 @@ pub fn run_local() {
 }
 
 // -----------------------------------------------------------------------------
-// set_main_thread
+// block_on
 
-/// Directly marks the current thread as the main thread.
+/// Blocks the current thread on a future.
 ///
-/// In single-threaded mode this is a no-op: there is no separate
-/// `MainExecutor` driver thread to avoid, so there is nothing to set up.
-/// (The `zlim_main` macro inserts this call for API parity.)
-#[inline(always)]
-pub fn set_main_thread() {
-    /* do nothing */
-}
-
-// -----------------------------------------------------------------------------
-// block_on_main
-
-/// Send a single task to the main thread for execution and wait for the result.
+/// Simultaneously drive async executors to avoid deadlock.
 /// 
-/// In single threaded mode, it is equivalent to direct execution.
+/// # Examples
+/// 
+/// ```
+/// use zlim_task::block_on;
+/// 
+/// let val = block_on(async { 1 + 2 });
+/// 
+/// assert_eq!(val, 3);
+/// ```
 #[inline]
-pub fn block_on_main<T, F>(future: F) -> T
-where
-    T: Send + 'static,
-    F: Future<Output = T> + Send + 'static,
-{
+pub fn block_on<T>(future: impl Future<Output = T>) -> T {
     use core::task::{Context, Poll};
 
     // Pin the future on the stack.
@@ -96,9 +66,37 @@ where
     loop {
         match future.as_mut().poll(cx) {
             Poll::Ready(output) => return output,
-            Poll::Pending => core::hint::spin_loop(),
+            Poll::Pending => run_local(),
         }
     }
+}
+
+// -----------------------------------------------------------------------------
+// invoke_on_main
+
+/// Send a single task to the main thread for execution and wait for the result.
+///
+/// In single threaded mode, it is equivalent to direct execution.
+#[inline(always)]
+pub fn invoke_on_main<T, F>(func: F) -> T
+where
+    T: Send,
+    F: FnOnce() -> T + Send,
+{
+    func()
+}
+
+// -----------------------------------------------------------------------------
+// designate_main_thread
+
+/// Directly marks the current thread as the main thread.
+///
+/// In single-threaded mode this is a no-op: there is no separate
+/// `MainExecutor` driver thread to avoid, so there is nothing to set up.
+/// (The `zlim_main` macro inserts this call for API parity.)
+#[inline(always)]
+pub fn designate_main_thread() {
+    /* do nothing */
 }
 
 // -----------------------------------------------------------------------------
@@ -145,8 +143,7 @@ impl MainTaskPool {
     ///
     /// Custom initialization is not supported — all three pool newtypes
     /// share a single static [`TaskPool`].
-    pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
-        let _ = f;
+    pub fn try_init(_f: impl FnOnce() -> TaskPool) -> bool {
         false
     }
 
@@ -178,8 +175,7 @@ impl AsyncTaskPool {
     ///
     /// Custom initialization is not supported — all three pool newtypes
     /// share a single static [`TaskPool`].
-    pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
-        let _ = f;
+    pub fn try_init(_f: impl FnOnce() -> TaskPool) -> bool {
         false
     }
 
@@ -211,8 +207,7 @@ impl IoTaskPool {
     ///
     /// Custom initialization is not supported — all three pool newtypes
     /// share a single static [`TaskPool`].
-    pub fn try_init(f: impl FnOnce() -> TaskPool) -> bool {
-        let _ = f;
+    pub fn try_init(_f: impl FnOnce() -> TaskPool) -> bool {
         false
     }
 

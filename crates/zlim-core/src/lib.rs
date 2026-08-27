@@ -1,56 +1,7 @@
+#![doc = include_str!("../README.md")]
 #![cfg_attr(docsrs, expect(internal_features, reason = "needed for fake_variadic"))]
 #![cfg_attr(docsrs, feature(doc_cfg, rustdoc_internals))]
 #![expect(unsafe_code, reason = "performance optimization")]
-
-//! The ECS (entity–component–system) core of the `zlim` game engine.
-//!
-//! This crate provides the data model and orchestration layers that make up
-//! the engine's runtime:
-//!
-//! - [`World`], the central container holding entities, components, resources,
-//!   messages, and schedules, with a safe-access layer ([`WorldCell`] and
-//!   [`DeferredWorld`]).
-//! - Entities ([`EntityId`]) and components ([`Component`]) stored in
-//!   columnar [`table`]s, composed into [`bundle`]s, and referenced through
-//!   the [`borrow`] system.
-//! - The [`job`] system ([`Job`], [`JobDB`], [`JobGroup`]) that turns
-//!   functions into schedulable units of work.
-//! - The [`schedule`] system ([`Schedule`], [`Schedules`], and single- or
-//!   multi-threaded executors) that orders and runs jobs.
-//! - A double-buffered [`message`] pipeline ([`Message`], [`MessageQueue`],
-//!   and the [`MessageReader`] / [`MessageWriter`] / [`MessageMutator`] system
-//!   parameters).
-//! - Wrap-around-safe change detection through [`tick`]s.
-//! - The [`error`] types ([`ZlimError`], [`Severity`]) used across the engine.
-//!
-//! Most user-facing types are re-exported from [`prelude`].
-//!
-//! [`World`]: world::World
-//! [`WorldCell`]: world::WorldCell
-//! [`DeferredWorld`]: world::DeferredWorld
-//! [`EntityId`]: entity::EntityId
-//! [`Component`]: component::Component
-//! [`table`]: table
-//! [`bundle`]: bundle
-//! [`borrow`]: borrow
-//! [`job`]: mod@job
-//! [`Job`]: job::Job
-//! [`JobDB`]: job::JobDB
-//! [`JobGroup`]: job::JobGroup
-//! [`schedule`]: schedule
-//! [`Schedule`]: schedule::Schedule
-//! [`Schedules`]: schedule::Schedules
-//! [`message`]: message
-//! [`Message`]: message::Message
-//! [`MessageQueue`]: message::MessageQueue
-//! [`MessageReader`]: message::MessageReader
-//! [`MessageWriter`]: message::MessageWriter
-//! [`MessageMutator`]: message::MessageMutator
-//! [`tick`]: tick
-//! [`error`]: error
-//! [`ZlimError`]: error::ZlimError
-//! [`Severity`]: error::Severity
-//! [`prelude`]: prelude
 
 // -----------------------------------------------------------------------------
 
@@ -58,6 +9,7 @@
 pub mod cfg {
     zlim_cfg::define_alias! {
         #[cfg(any(feature = "debug", debug_assertions))] => debug,
+        #[cfg(feature = "backtrace")] => backtrace,
     }
 }
 
@@ -94,10 +46,10 @@ pub mod query;
 pub mod resource;
 pub mod scene;
 pub mod schedule;
-pub mod slot;
 pub mod system;
 pub mod table;
 pub mod tick;
+pub mod time;
 pub mod utils;
 pub mod world;
 
@@ -115,6 +67,7 @@ pub mod __macro_exports__ {
     pub use zlim_reflect::path::TypePath as __TypePath;
     pub use zlim_reg::submit as __submit;
     pub use zlim_utils::debug::DebugLocation as __DebugLocation;
+    pub use zlim_utils::str::intern_str as __intern_str;
 }
 
 // -----------------------------------------------------------------------------
@@ -123,32 +76,52 @@ pub mod __macro_exports__ {
 pub mod prelude {
     pub use crate::{register_component, register_job, register_job_group, register_resource};
     pub use zlim_core_derive::{job, job_fn, job_group};
-    pub use zlim_reflect::TypePath;
+    pub use zlim_reflect::derive::TypePath;
 
-    pub use crate::borrow::{Mut, NonSend, NonSendMut, Ref, Res, ResMut, SliceMut, SliceRef};
-    pub use crate::bundle::{Bundle, DataBundle};
-    pub use crate::clone::EntityCloner;
-    pub use crate::command::CommandQueue;
-    pub use crate::command::{Command, Commands, EntityCommand, EntityCommands};
-    pub use crate::component::{Component, ComponentDB, Required};
-    pub use crate::component::{ComponentHook, ComponentId, Components, HookContext};
-    pub use crate::entity::{EntityId, EntityMap, EntityMapper, MapEntities};
+    pub use crate::tick::{DetectChanges, DetectChangesMut, Tick};
+
+    pub use crate::world::{DeferredWorld, World, WorldCell};
+    pub use crate::world::{FromWorld, NonSendWorld, WorldId};
+
     pub use crate::error::{Error, Severity, ZlimError};
-    pub use crate::job::{IntoJob, Job, JobDB, JobGroup, JobGroupLabel, JobId, JobLabel};
+
+    pub use crate::resource::{Resource, ResourceDB};
+
+    pub use crate::entity::{EntityId, EntityMap, EntityMapper, MapEntities};
+
+    pub use crate::component::{Component, ComponentDB, ComponentId, Required};
+    pub use crate::component::{ComponentHook, Components, HookContext};
+
+    pub use crate::ops::{Entity, EntityMut, EntityOwned, EntityRef};
+
+    pub use crate::borrow::{Mut, Ref, SliceMut, SliceRef};
+    pub use crate::borrow::{NonSend, NonSendMut, Res, ResMut};
+
+    pub use crate::bundle::{Bundle, DataBundle};
+
+    pub use crate::command::{Command, EntityCommand};
+    pub use crate::command::{CommandQueue, Commands, EntityCommands};
+
+    pub use crate::clone::EntityCloner;
+
+    pub use crate::job::{IntoJob, Job, JobDB, JobId};
+    pub use crate::job::{JobGroup, JobGroupLabel, JobLabel};
+
     pub use crate::message::MessageCursor;
     pub use crate::message::{Message, MessageId, MessageKey, MessageQueue};
     pub use crate::message::{MessageMutator, MessageReader, MessageWriter};
-    pub use crate::ops::{Entity, EntityMut, EntityOwned, EntityRef};
+
     pub use crate::query::{Added, And, Changed, Or, Query, With, Without};
-    pub use crate::query::{ArchetypeFilter, QueryData, QueryFilter, QuerySlice};
+    pub use crate::query::{ArchetypeFilter, Children, Parent, QueryData, QueryFilter, QuerySlice};
     pub use crate::query::{QueryIter, QuerySingleError, QuerySliceIter, Single};
     pub use crate::query::{QueryState, ReadOnlyQueryData};
-    pub use crate::resource::{Resource, ResourceDB};
-    pub use crate::schedule::{Schedule, ScheduleLabel, Schedules};
-    pub use crate::system::{ExclusiveMarker, Local, NonSendMarker};
+
+    pub use crate::schedule::{Schedule, ScheduleLabel, ScheduleStage, Schedules};
+
+    pub use crate::system::{ExclusiveMarker, If, Local, NonSendMarker};
     pub use crate::system::{In, InMut, InRef, IntoSystem, SystemParam};
     pub use crate::system::{System, SystemError, SystemHandle, SystemId};
-    pub use crate::tick::{DetectChanges, DetectChangesMut, Tick};
-    pub use crate::world::{DeferredWorld, World, WorldCell};
-    pub use crate::world::{FromWorld, WorldId};
+
+    pub use crate::time::{Fixed, Real, Time, TimeState, Virtual};
+    pub use crate::time::{TimeSnapshot, TimeUpdateStrategy, Timer, TimerMode};
 }

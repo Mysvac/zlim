@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 use async_task::Task;
 
-use super::{block_on, LocalExecutor, MainExecutor};
+use super::{LocalExecutor, MainExecutor, block_on};
 
 // -----------------------------------------------------------------------------
 // TaskPoolBuilder
@@ -128,6 +128,7 @@ impl TaskPoolBuilder {
 /// [`spawn_local`]: Self::spawn_local
 /// [`spawn_to_main`]: Self::spawn_to_main
 /// [`scope`]: Self::scope
+/// [`run_local`]: crate::run_local
 #[derive(Debug, Default)]
 pub struct TaskPool(pub(super) ()); // (()):  Prohibit direct creation
 
@@ -240,7 +241,7 @@ impl TaskPool {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use zlim_task::TaskPool;
 ///
 /// let pool = TaskPool::new();
@@ -444,14 +445,15 @@ impl TaskPool {
         // SAFETY: As above, all futures must complete in this function so we can change the lifetime
         let results: RefCell<Vec<Option<T>>> = RefCell::new(Vec::new());
         let results_ref: &'env RefCell<Vec<Option<T>>> = unsafe {
-            core::mem::transmute::<&RefCell<Vec<Option<T>>>, &'env RefCell<Vec<Option<T>>>>(&results)
+            core::mem::transmute::<&RefCell<Vec<Option<T>>>, &'env RefCell<Vec<Option<T>>>>(
+                &results,
+            )
         };
 
         // SAFETY: As above, all futures must complete in this function so we can change the lifetime
         let pending: Cell<usize> = Cell::new(0);
-        let pending_ref: &'env Cell<usize> = unsafe {
-            core::mem::transmute::<&Cell<usize>, &'env Cell<usize>>(&pending)
-        };
+        let pending_ref: &'env Cell<usize> =
+            unsafe { core::mem::transmute::<&Cell<usize>, &'env Cell<usize>>(&pending) };
 
         // SAFETY: As above, all futures must complete in this function so we can change the lifetime
         let scope: Scope<'_, 'env, T> = Scope {
@@ -461,9 +463,8 @@ impl TaskPool {
             _marker2: PhantomData,
             _marker3: PhantomData,
         };
-        let scope_ref: &'env Scope<'_, 'env, T> = unsafe {
-            core::mem::transmute::<&Scope<T>, &'env Scope<T>>(&scope)
-        };
+        let scope_ref: &'env Scope<'_, 'env, T> =
+            unsafe { core::mem::transmute::<&Scope<T>, &'env Scope<T>>(&scope) };
 
         // Spawn Tasks
         f(scope_ref);
@@ -474,9 +475,9 @@ impl TaskPool {
                 futures_lite::future::yield_now().await;
             }
         };
-        // For single-threaded task pool, we must tick both
-        // `LocalExecutor` and `MainExecutor`. Otherwise, deadlock may occur.
-        block_on(LocalExecutor::run(MainExecutor::run(stop_signal)));
+
+        // Block_on will drive the local executor.
+        block_on(stop_signal);
 
         // Collect Results
         results.take().into_iter().map(Option::unwrap).collect()

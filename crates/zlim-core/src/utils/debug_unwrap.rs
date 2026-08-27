@@ -1,6 +1,4 @@
 //! Debug-checked unwrap helpers — fail fast in debug, go unchecked in release.
-//!
-//! See [`DebugCheckedUnwrap`] for details.
 
 /// A debug checked version of [`Option::unwrap_unchecked`].
 ///

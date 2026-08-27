@@ -62,7 +62,7 @@ impl TaskPoolConfig {
 /// Sets up the default task pools: [`AsyncTaskPool`], [`MainTaskPool`],
 /// [`IoTaskPool`].
 ///
-/// In single-threaded mode this plugin has no effect.
+/// In single-threaded mode this configuration has no effect.
 ///
 /// In multi-threaded mode, [`apply`](Self::apply) proceeds as follows:
 ///
@@ -159,8 +159,7 @@ impl TaskPoolConfigs {
     }
 
     /// Initializes the global task pools ([`MainTaskPool`],
-    /// [`AsyncTaskPool`], [`IoTaskPool`]) according to this plugin's
-    /// configuration.
+    /// [`AsyncTaskPool`], [`IoTaskPool`]) according to this configuration.
     ///
     /// In single-threaded mode this is a no-op. In multi-threaded mode, if a
     /// global pool was already initialized (e.g. by an earlier implicit
@@ -168,7 +167,7 @@ impl TaskPoolConfigs {
     /// untouched.
     pub fn apply(&mut self) {
         if crate::cfg::single_thread!() {
-            zlim_log::info!("TaskPoolPlugin was ignored in single-threaded mode.");
+            zlim_log::info!("TaskPoolConfigs was ignored in single-threaded mode.");
             return;
         }
 
@@ -207,7 +206,7 @@ impl TaskPoolConfigs {
             } else {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
-                    "Static TaskPool already initialized before `TaskPoolPlugin::apply`."
+                    "Static TaskPool already initialized before `TaskPoolConfigs::apply`."
                 );
                 return;
             }
@@ -239,7 +238,7 @@ impl TaskPoolConfigs {
             } else {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
-                    "Static TaskPool already initialized before `TaskPoolPlugin::apply`."
+                    "Static TaskPool already initialized before `TaskPoolConfigs::apply`."
                 );
                 return;
             }
@@ -271,7 +270,7 @@ impl TaskPoolConfigs {
             } else {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
-                    "Static TaskPool already initialized before `TaskPoolPlugin::apply`."
+                    "Static TaskPool already initialized before `TaskPoolConfigs::apply`."
                 );
             }
         }

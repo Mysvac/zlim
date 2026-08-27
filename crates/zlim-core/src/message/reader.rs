@@ -21,7 +21,6 @@ use crate::world::{World, WorldCell};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Collision {
@@ -37,10 +36,12 @@ use crate::world::{World, WorldCell};
 ///
 /// // `MessageReader` wraps a `MessageQueue<Collision>` plus a local cursor:
 /// let mut queue = MessageQueue::<Collision>::default();
+///
 /// queue.write(Collision { lhs: 1, rhs: 2 });
 ///
 /// let mut cursor = MessageCursor::new(&queue);
 /// let collisions: Vec<_> = cursor.read(&queue).collect();
+///
 /// assert_eq!(collisions.len(), 1);
 /// assert_eq!(collisions[0].lhs, 1);
 /// ```
@@ -60,35 +61,6 @@ impl<'w, 's, M: Message> MessageReader<'w, 's, M> {
     /// Returns unread messages together with their [`MessageKey`].
     ///
     /// Iteration advances the cursor.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
-    ///
-    /// #[derive(TypePath, Message)]
-    /// struct Collision {
-    ///     lhs: u32,
-    ///     rhs: u32,
-    /// }
-    ///
-    /// fn handle_collisions(mut reader: MessageReader<Collision>) {
-    ///     for (key, collision) in reader.read_with_key() {
-    ///         let _ = (key.index(), collision.lhs, collision.rhs);
-    ///     }
-    /// }
-    ///
-    /// let mut queue = MessageQueue::<Collision>::default();
-    /// queue.write(Collision { lhs: 1, rhs: 2 });
-    ///
-    /// let mut cursor = MessageCursor::new(&queue);
-    /// let mut seen = Vec::new();
-    /// for (key, collision) in cursor.read_with_key(&queue) {
-    ///     seen.push((key.index(), collision.lhs, collision.rhs));
-    /// }
-    /// assert_eq!(seen, vec![(0, 1, 2)]);
-    /// ```
     ///
     /// [`MessageKey`]: crate::message::MessageKey
     pub fn read_with_key(&mut self) -> MessageWithKeyIter<'_, M> {

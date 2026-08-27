@@ -4,16 +4,17 @@
 //!
 //! The table module implements Bevy-style archetype-based storage:
 //!
-//! | Type | Role |
-//! |------|------|
-//! | [`Table`] | A dense columnar store for one archetype (fixed component set).  Each row is an entity, each column is a component type. |
-//! | [`Tables`] | Registry of all tables in a world.  Provides O(1) lookup by component-set signature and lazy table-transition caching. |
-//! | [`Column`] | Low-level untyped primitive: one `BlobArray` for component bytes + two `TickArray`s for change detection. |
-//! | `BlobArray` | Internal raw heap-allocated byte array with optional drop semantics.  The building block of [`Column`]. |
-//! | `TickArray` | Internal contiguous tick storage for change-detection epochs.  Used by [`Column`] for `added`/`changed` tracking. |
-//! | [`TableId`] | Niche-optimised identifier for a [`Table`] within a world. |
-//! | [`TableRow`] / [`TableCol`] | Positional indices within a table (row = entity slot, col = component slot). |
-//! | [`MovedEntityRow`] | Return value recording the side-effects of entity movement between tables. |
+//! Every table belongs to one *archetype*: a fixed set of component types.
+//! All entities in a table share exactly that component set, which is what
+//! makes the storage dense — each column stores one component type for every
+//! row, with no per-entity type tags or gaps.
+//!
+//! |           | Component A | Component B | Component C | .. |
+//! |-----------|-------------|-------------|-------------|----|
+//! | Entity A  | /* data */  | /* data */  | /* data */  | .. |
+//! | Entity B  | /* data */  | /* data */  | /* data */  | .. |
+//! | Entity C  | /* data */  | /* data */  | /* data */  | .. |
+//! | ........  | ..........  | ..........  | ..........  | .. |
 //!
 //! # Entity movement
 //!
@@ -26,7 +27,6 @@
 //!
 //! ```rust
 //! use zlim_core::prelude::*;
-//! use zlim_reflect::derive::TypePath;
 //! use zlim_core::table::Tables;
 //!
 //! #[derive(TypePath, Component, Clone)]
@@ -38,8 +38,8 @@
 //! let mut world = World::alloc();
 //!
 //! // Entities with the same component set share one table (archetype).
-//! world.spawn((Position { x: 0.0, y: 0.0 },), None);
-//! world.spawn((Position { x: 1.0, y: 2.0 },), None);
+//! world.spawn((Position { x: 0.0, y: 0.0 }), None);
+//! world.spawn((Position { x: 1.0, y: 2.0 }), None);
 //!
 //! // The world's `Tables` registry owns every table, including the always-
 //! // present empty table for entities without components.
@@ -51,7 +51,7 @@
 //!
 //! for table in tables.iter() {
 //!     // Each row is an entity, each column is a component type.
-//!     for &_entity in table.entities() {
+//!     for &entity in table.entities() {
 //!         // ...
 //!     }
 //! }

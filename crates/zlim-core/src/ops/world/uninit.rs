@@ -15,7 +15,7 @@ impl World {
     /// partially wired: the parent is recorded on the new entity, but the
     /// new entity is **not** added to the parent's children.  In other
     /// words, the input `parent` is just a placeholder — you must complete
-    /// the hierarchy manually (e.g. with [`EntityOwned::modify_parent`])
+    /// the hierarchy manually (e.g. with [`EntityOwned::reparent`])
     /// once the entity's data has been fully initialized.
     ///
     /// # Panics
@@ -27,7 +27,7 @@ impl World {
     ///
     /// - The input `TableId` must point to an initialized Table.
     ///
-    /// [`EntityOwned::modify_parent`]: crate::ops::EntityOwned::modify_parent
+    /// [`EntityOwned::reparent`]: crate::ops::EntityOwned::reparent
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub unsafe fn spawn_uninit(

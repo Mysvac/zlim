@@ -234,11 +234,11 @@ impl<'w, D: QuerySlice, F: ArchetypeFilter> Iterator for QuerySliceIter<'w, '_, 
     type Item = D::SliceItem<'w>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Important optimization: skip entity filtering.
+        debug_assert!(!F::ENABLE_ENTITY_FILTER);
+
         loop {
             self.update_slice()?;
-
-            // Important optimization: skip entity filtering.
-            debug_assert!(!F::ENABLE_ENTITY_FILTER);
 
             let d_state = &self.state.d_state;
             let d_cache = &mut self.d_cache;

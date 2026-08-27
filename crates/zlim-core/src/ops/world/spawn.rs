@@ -134,7 +134,7 @@ impl<'a> BundleSpawner<'a> {
         if !world.command_queue.is_empty() {
             unsafe {
                 world.flush();
-                storage = cell.full_mut().entities.locate(entity).ok().map(|x| {
+                storage = world.entities.locate(entity).ok().map(|x| {
                     let tables = &mut cell.full_mut().tables;
                     (tables.get_unchecked_mut(x.table_id), x)
                 });
@@ -158,7 +158,6 @@ impl World {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::derive::Component;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
     /// struct Health(u32);
@@ -175,7 +174,7 @@ impl World {
     /// let sidekick_id = world.spawn(Health(50), Some(hero_id)).id();
     ///
     /// let mut hero = world.entity_owned(hero_id);
-    /// assert!(hero.as_view().children().any(|id| id == sidekick_id));
+    /// assert!(hero.as_view().children().iter().any(|&id| id == sidekick_id));
     /// ```
     #[inline(always)] // We enable inlining to avoid copying data
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
@@ -332,7 +331,11 @@ where
     I::Item: DataBundle,
 {
     fn drop(&mut self) {
-        self.by_ref().for_each(|_| {});
+        // The panicked item was cleaned up by
+        // its `ForgetEntityOnPanic` guard.
+        if !std::thread::panicking() {
+            self.by_ref().for_each(|_| {});
+        }
 
         let world = unsafe { self.spawner.world.full_mut() };
 
@@ -390,7 +393,6 @@ impl World {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::derive::Component;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
     /// struct X(f32);
@@ -399,13 +401,15 @@ impl World {
     ///
     /// // Spawn one entity per bundle, all under a common parent.
     /// let root_id = world.spawn((), None).id();
+    ///
     /// let ids: Vec<EntityId> = world
     ///     .spawn_batch([X(1.0), X(2.0), X(3.0)], Some(root_id))
     ///     .collect();
+    ///
     /// assert_eq!(ids.len(), 3);
     ///
     /// let mut root = world.entity_owned(root_id);
-    /// assert_eq!(root.child_count(), 3);
+    /// assert_eq!(root.children().unwrap().len(), 3);
     /// ```
     #[inline(always)] // We enable inlining to avoid copying data
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
@@ -443,8 +447,8 @@ impl World {
         );
 
         let inner = iter.into_iter();
-        let count = inner.size_hint().0 as u32;
-        let allocator = spawner.alloc_many(count);
+        let count = inner.size_hint().0.min(0xfffff);
+        let allocator = spawner.alloc_many(count as u32);
 
         SpawnBatchIter {
             inner,

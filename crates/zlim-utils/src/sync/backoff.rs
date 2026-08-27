@@ -1,5 +1,5 @@
 use core::cell::Cell;
-use core::fmt;
+use core::fmt::{Debug, Formatter};
 
 /// The maximum exponent of spin count.
 const SPIN_LIMIT: u32 = 5;
@@ -67,8 +67,8 @@ impl Backoff {
     }
 }
 
-impl fmt::Debug for Backoff {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for Backoff {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Backoff").field("step", &self.step).finish()
     }
 }

@@ -30,15 +30,15 @@ use crate::world::{DeferredWorld, World, WorldCell};
 /// let mut world = World::alloc();
 ///
 /// // `pipe` chains two systems, feeding the first's output to the second.
-/// let result = world.run_once(produce.pipe(double), ()).unwrap();
+/// let result = world.invoke_once(produce.pipe(double), ()).unwrap();
 /// assert_eq!(result, 84);
 ///
 /// // `map` transforms a system's output with a closure.
-/// let result = world.run_once(produce.map(|n| n + 1), ()).unwrap();
+/// let result = world.invoke_once(produce.map(|n| n + 1), ()).unwrap();
 /// assert_eq!(result, 43);
 ///
 /// // `with_input` fixes the input, leaving a system with `()` input.
-/// let result = world.run_once(double.with_input(5), ()).unwrap();
+/// let result = world.invoke_once(double.with_input(5), ()).unwrap();
 /// assert_eq!(result, 10);
 /// ```
 ///
@@ -83,6 +83,18 @@ pub trait IntoSystem<I: SystemInput, O, M>: Sized + 'static {
         I::Data<'static>: Clone,
     {
         IntoWithInputSystem { s: self, i: input }
+    }
+
+    /// Merge two systems, if the former returns true, run the latter.
+    ///
+    /// Users should not override this implementation.
+    #[inline]
+    fn run_if<A, MA>(self, other: A) -> IntoRunIfSystem<A, Self>
+    where
+        O: 'static,
+        A: IntoSystem<(), bool, MA>,
+    {
+        IntoRunIfSystem { a: other, b: self }
     }
 
     /// Chains two systems, feeding the output of `self` as the input to `other`.
@@ -433,6 +445,118 @@ where
 
     fn apply_deferred(&mut self, world: &mut World) {
         self.s.apply_deferred(world);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// RunIfSystem
+
+/// Marker type distinguishing the `PipeSystem` [`IntoSystem`] implementation.
+pub struct RunIfSystemMarker;
+
+/// Pending `pipe` combinator: two systems to chain output-to-input.
+#[derive(Clone, Copy)]
+pub struct IntoRunIfSystem<A, B> {
+    a: A,
+    b: B,
+}
+
+/// A system that chains two systems, feeding the first's output into the second.
+pub struct RunIfSystem<A, B> {
+    id: SystemId,
+    a: A,
+    b: B,
+}
+
+#[rustfmt::skip]
+impl<BI, BO, A, B, MA, MB>
+    IntoSystem<BI, BO, (RunIfSystemMarker, (MA, MB, fn() -> bool, fn(BI) -> BO), (A, B))>
+    for IntoRunIfSystem<A, B>
+where
+    BI: SystemInput,
+    A: IntoSystem<(), bool, MA>,
+    B: IntoSystem<BI, BO, MB>,
+{
+    type System = RunIfSystem<A::System, B::System>;
+
+    fn into_system(this: Self) -> Self::System {
+        RunIfSystem {
+            id: Self::system_id(&this),
+            a: IntoSystem::into_system(this.a),
+            b: IntoSystem::into_system(this.b),
+        }
+    }
+
+    fn system_id(&self) -> SystemId {
+        struct RunIf;
+        SystemId::of::<(B, RunIf, A)>()
+    }
+}
+
+impl<BI, BO, A, B> System for RunIfSystem<A, B>
+where
+    BI: SystemInput,
+    A: System<Input = (), Output = bool>,
+    B: System<Input = BI, Output = BO>,
+{
+    type Input = BI;
+    type Output = BO;
+
+    fn id(&self) -> SystemId {
+        self.id
+    }
+
+    fn flags(&self) -> SystemFlags {
+        self.a.flags().union(self.b.flags())
+    }
+
+    fn last_run(&self) -> Tick {
+        self.a.last_run()
+    }
+
+    fn set_last_run(&mut self, last_run: Tick) {
+        self.a.set_last_run(last_run);
+        self.b.set_last_run(last_run);
+    }
+
+    fn clamp_ticks(&mut self, now: Tick) {
+        self.a.clamp_ticks(now);
+        self.b.clamp_ticks(now);
+    }
+
+    fn initialize(&mut self, world: &World) {
+        self.a.initialize(world);
+        self.b.initialize(world);
+    }
+
+    fn register_access(&self, table: &mut AccessTable, strict: bool) {
+        let mut t = AccessTable::new();
+        self.a.register_access(table, strict);
+        self.b.register_access(&mut t, strict);
+        table.merge(t);
+    }
+
+    unsafe fn run_raw(
+        &mut self,
+        input: <Self::Input as SystemInput>::Data<'_>,
+        world: WorldCell<'_>,
+    ) -> Result<Self::Output, SystemError> {
+        let condition = unsafe { self.a.run_raw((), world)? };
+        if condition {
+            Err(SystemError::None)
+        } else {
+            unsafe { self.b.run_raw(input, world) }
+        }
+    }
+
+    fn queue_deferred(&mut self, mut world: DeferredWorld) {
+        self.a.queue_deferred(world.reborrow());
+        self.b.queue_deferred(world.reborrow());
+    }
+
+    fn apply_deferred(&mut self, world: &mut World) {
+        self.a.apply_deferred(world);
+        self.b.apply_deferred(world);
     }
 }
 

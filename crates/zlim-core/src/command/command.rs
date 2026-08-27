@@ -25,8 +25,8 @@ use crate::world::World;
 /// # Blanket implementations
 ///
 /// Any `FnOnce(&mut World) -> O` (where `O: IntoZlimResult<()>`) implements
-/// `Command`, so closures can be used directly as commands.  The module's
-/// function helpers (e.g. [`spawn_empty`]) also return `impl Command`.
+/// `Command`, so closures can be used directly as commands.  The
+/// [`Commands`] helpers (e.g. [`spawn_empty`]) also queue `impl Command`s.
 ///
 /// # Error handling
 ///
@@ -39,11 +39,9 @@ use crate::world::World;
 /// Closures with the right signature are [`Command`]s automatically:
 ///
 /// ```rust
-/// # use zlim_core::command::CommandQueue;
-/// # use zlim_core::derive::Component;
-/// # use zlim_core::prelude::*;
-/// # use zlim_reflect::derive::TypePath;
-/// #
+/// use zlim_core::command::CommandQueue;
+/// use zlim_core::prelude::*;
+///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Health(u32);
 ///
@@ -60,7 +58,8 @@ use crate::world::World;
 /// assert_eq!(world.entity_count(), 1);
 /// ```
 ///
-/// [`spawn_empty`]: super::spawn_empty
+/// [`Commands`]: crate::command::Commands
+/// [`spawn_empty`]: crate::command::Commands::spawn_empty
 /// [`handle_error`]: Self::handle_error
 /// [`handle_error_with`]: Self::handle_error_with
 /// [`ignore_error`]: Self::ignore_error
@@ -132,7 +131,7 @@ pub trait Command: Send + Sized + 'static {
         move |world: &mut World| {
             if let Err(e) = self.apply(world).into_zlim_result() {
                 let name = DebugName::type_name::<Self>();
-                (world.error_handler)(e, ErrorContext::Command { name });
+                (world.error_handler())(e, ErrorContext::Command { name });
             }
         }
     }
@@ -165,10 +164,8 @@ pub trait Command: Send + Sized + 'static {
 /// Closures over an [`EntityOwned`] are [`EntityCommand`]s automatically:
 ///
 /// ```rust
-/// # use zlim_core::derive::Component;
-/// # use zlim_core::prelude::*;
-/// # use zlim_reflect::derive::TypePath;
-/// #
+/// use zlim_core::prelude::*;
+///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);
 ///
@@ -213,9 +210,7 @@ pub trait EntityCommand: Send + Sized + 'static {
     ///
     /// ```rust
     /// use zlim_core::command::CommandQueue;
-    /// use zlim_core::derive::Component;
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Health(u32);

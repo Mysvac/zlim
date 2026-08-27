@@ -2,12 +2,12 @@
 
 use core::cell::{Cell, RefCell};
 use core::marker::PhantomData;
-use core::panic::{UnwindSafe, RefUnwindSafe};
+use core::panic::{RefUnwindSafe, UnwindSafe};
 use std::borrow::Cow;
 
 use async_task::Task;
 
-use super::{block_on, LocalExecutor, MainExecutor};
+use super::{LocalExecutor, MainExecutor, block_on};
 
 // -----------------------------------------------------------------------------
 // TaskPoolBuilder
@@ -120,7 +120,7 @@ impl TaskPoolBuilder {
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use zlim_task::TaskPool;
 ///
 /// let pool = TaskPool::new();
@@ -238,7 +238,7 @@ impl TaskPool {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```
 /// use zlim_task::TaskPool;
 ///
 /// let pool = TaskPool::new();
@@ -474,9 +474,9 @@ impl TaskPool {
                 futures_lite::future::yield_now().await;
             }
         };
-        // For web assembly task pool, we must tick both
-        // `LocalExecutor` and `MainExecutor`. Otherwise, deadlock may occur.
-        block_on(LocalExecutor::run(MainExecutor::run(stop_signal)));
+
+        // Block_on will drive the local executor.
+        block_on(stop_signal);
 
         // Collect Results
         results.take().into_iter().map(Option::unwrap).collect()

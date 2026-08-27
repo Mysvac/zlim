@@ -19,10 +19,11 @@ use crate::world::{World, WorldCell};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::Job;
 ///
-/// // `#[job_fn]` generates a `JobLabel` marker whose `database()` builds a
-/// // boxed `Job` from a plain function:
+/// // `#[job_fn]` generates a `JobLabel` marker whose `database()`
+/// // builds a boxed `Job` from a plain function.  Doc comments on the
+/// // function are forwarded to the generated marker type (`MyJob`):
+/// /// Runs the greeting job.
 /// #[job_fn(type = MyJob, name = "my_job")]
 /// fn my_job() {}
 ///
@@ -32,13 +33,9 @@ use crate::world::{World, WorldCell};
 /// assert_eq!(job.id().name(), "my_job");
 /// assert_eq!(job.id().group(), "my_group");
 ///
-/// // Jobs are initialized once against the world they run in:
-/// let world = World::alloc();
-/// job.initialize(&world);
+/// let mut world = World::alloc();
 ///
-/// // Execution is an `unsafe` operation performed by the scheduler through
-/// // a raw `WorldCell`:
-/// // let _ = unsafe { job.run(world.cell()) };
+/// let _ = job.run(&mut world);
 /// ```
 ///
 /// [`JobDB`]: super::JobDB
@@ -95,20 +92,22 @@ pub trait Job: Send + Sync + 'static {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```no_run
     /// use zlim_core::prelude::*;
-    /// use zlim_core::job::{Job, JobDB};
     ///
-    /// #[job_fn(type = GreetJob, name = "greet_job")]
+    /// #[job_fn(type = GreetJob)]
     /// fn greet_job() {}
     ///
-    /// let mut job = GreetJob::database().ctor("");
-    /// let world = World::alloc();
+    /// let mut job = (GreetJob::database().ctor)("");
+    /// let mut world = World::alloc();
     /// job.initialize(&world);
     ///
-    /// // The scheduler hands the job a `WorldCell` and propagates failures
-    /// // as `SystemError`:
-    /// let result = unsafe { job.run(world.cell()) };
+    /// // The scheduler hands the job a `WorldCell` and
+    /// // propagates failures as `SystemError`:
+    /// let result = unsafe { job.run_raw(world.cell()) };
+    ///
+    /// job.apply_deferred(&mut world);
+    ///
     /// assert!(result.is_ok());
     /// ```
     ///
@@ -117,8 +116,7 @@ pub trait Job: Send + Sync + 'static {
 
     /// Applies queued deferred commands to the world.
     ///
-    /// The scheduler calls this only for jobs whose flags include
-    /// `DEFERRED`.
+    /// The scheduler calls this only for jobs whose flags include `DEFERRED`.
     fn apply_deferred(&mut self, world: &mut World);
 }
 

@@ -4,8 +4,8 @@ use core::fmt::Display;
 
 use zlim_utils::debug::DebugName;
 
+use crate::job::JobId;
 use crate::system::SystemId;
-
 use crate::tick::Tick;
 
 /// Context for a [`ZlimError`] to aid in debugging.
@@ -15,11 +15,7 @@ use crate::tick::Tick;
 #[non_exhaustive]
 pub enum ErrorContext {
     /// An error originated from a job execution.
-    Job {
-        name: &'static str,
-        group: &'static str,
-        tick: Tick,
-    },
+    Job { id: JobId, tick: Tick },
     /// An error originated from an System.
     System { id: SystemId, tick: Tick },
     /// An error originated from a command application.
@@ -38,8 +34,8 @@ impl ErrorContext {
     /// Variants that do not carry a name yet return an empty string.
     pub fn name(&self) -> String {
         match self {
+            ErrorContext::Job { id, .. } => id.to_string(),
             ErrorContext::System { id, .. } => id.to_string(),
-            ErrorContext::Job { name, .. } => name.to_string(),
             ErrorContext::Command { name } => name.to_string(),
         }
     }
@@ -49,9 +45,9 @@ impl ErrorContext {
     /// This helper is intended for logging and telemetry labels.
     pub fn kind(&self) -> &'static str {
         match self {
-            ErrorContext::Job { .. } => "Job",
-            ErrorContext::System { .. } => "System",
-            ErrorContext::Command { .. } => "Command",
+            ErrorContext::Job { .. } => "job",
+            ErrorContext::System { .. } => "system",
+            ErrorContext::Command { .. } => "command",
         }
     }
 }

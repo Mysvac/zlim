@@ -19,7 +19,6 @@ use crate::tick::Tick;
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::derive::Component;
 ///
 /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
 /// struct Position { x: f32, y: f32 }

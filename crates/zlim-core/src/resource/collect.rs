@@ -70,6 +70,19 @@ impl ResourceDB {
                     .reserve(PRE);
             }
 
+            {
+                // We hope that the built-in resources occupy a smaller ID.
+                use crate::time::{DelayedCommandQueues, TimeSnapshot};
+                use crate::time::{Fixed, Real, Time, TimeState, Virtual};
+                Time::<()>::register();
+                Time::<Real>::register();
+                Time::<Fixed>::register();
+                Time::<Virtual>::register();
+                TimeState::register();
+                TimeSnapshot::register();
+                DelayedCommandQueues::register();
+            }
+
             zlim_reg::iter::<Reg>().for_each(|r| {
                 (r.0)();
             });

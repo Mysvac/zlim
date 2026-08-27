@@ -1,7 +1,5 @@
 //! Deferred command application (`apply_commands` / `flush`) on `World`.
 
-use core::ptr::NonNull;
-
 use crate::command::{Commands, EntityCommands};
 use crate::ops::{Entity, EntityOwned};
 use crate::world::{DeferredWorld, World, WorldCell};
@@ -9,23 +7,14 @@ use crate::world::{DeferredWorld, World, WorldCell};
 impl World {
     /// Drains and executes queued deferred commands.
     ///
-    /// Each command failure is forwarded to the active default error handler,
-    /// and command application continues with remaining commands.
-    #[inline]
-    pub fn apply_commands(&mut self) {
-        unsafe {
-            let world = Some(NonNull::from_mut(self));
-            self.command_queue.raw().apply_or_drop(world);
-        }
-    }
-
-    /// Drains and executes queued deferred commands.
-    ///
-    /// Currently, this function is equivalent to [`World::apply_commands`],
-    /// but additional behaviors may be added in the future.
+    /// Currently, this function simply drains and executes the world's
+    /// queued commands; additional behaviors may be added in the future.
     #[inline]
     pub fn flush(&mut self) {
-        self.apply_commands();
+        if self.command_start < self.command_queue.len() {
+            ::core::hint::cold_path();
+            crate::command::flush_world(self); // not inline
+        }
     }
 
     /// Returns a [`Commands`] interface bound to this world and command queue.

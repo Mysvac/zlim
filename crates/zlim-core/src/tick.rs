@@ -15,8 +15,16 @@
 //!
 //! Every [`CHECK_CYCLE`] ticks, all component/resource tick markers are validated
 //! to ensure their age does not exceed [`MAX_TICK_AGE`]. This can introduce a
-//! periodic pause, but the work is chunked and spread
-//! across threads, so the runtime impact is typically small.
+//! periodic pause, but the work is chunked and spread across threads, so the
+//! runtime impact is typically small.
+//!
+//! World holds its own Tick and updates it each frame. This means that the change
+//! detection can only detect for changes that have occurred in the current frame.
+//!
+//! Job systems holds its own Ticks too, but it updates during the execution of the
+//! job itself, so cross frame detection can be achieved.
+//!
+//! The systems that manually runned, use world's Tick directly.
 
 // -----------------------------------------------------------------------------
 // Configuration

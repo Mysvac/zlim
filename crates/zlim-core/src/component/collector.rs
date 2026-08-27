@@ -63,14 +63,16 @@ impl<'a> ComponentCollector<'a> {
     /// ```rust
     /// use zlim_core::prelude::*;
     /// use zlim_core::component::ComponentCollector;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position;
     ///
     /// let mut collector = ComponentCollector::new(None);
+    ///
     /// collector.collect_explicit::<Position>();
+    ///
     /// let ids = collector.finish();
+    ///
     /// assert_eq!(ids, &[ComponentDB::of::<Position>().id]);
     /// ```
     #[inline(never)]

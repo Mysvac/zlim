@@ -1,36 +1,146 @@
 use core::any::Any;
 use core::any::TypeId;
+use core::fmt::{Debug, Formatter};
 use std::collections::BTreeSet;
 
+use zlim_core::error::ErrorHandler;
 use zlim_core::schedule::InternedScheduleLabel;
 use zlim_core::world::World;
 use zlim_log::LogPlugin;
 use zlim_task::TaskPoolConfigs;
 use zlim_utils::hash::HashMap;
 
-use super::{AppExit, InternedAppLabel};
-use super::{DuplicateStrategy, PlaceholderPlugin};
-use super::{Plugin, Plugins, PluginsState};
+use crate::AppLabel;
+use crate::DuplicateStrategy;
+use crate::plugin::PlaceholderPlugin;
+use crate::{AppExit, InternedAppLabel};
+use crate::{Plugin, Plugins, PluginsState};
 
 // -----------------------------------------------------------------------------
 // RunnerFn
 
 /// The external application loop.
 pub type RunnerFn = Box<dyn FnOnce(App) -> AppExit + Send>;
+
+/// Copies data from the main world into a sub-app's world, called once per
+/// frame before the sub-app's schedule runs.
 pub type ExtractFn = Box<dyn FnMut(&mut World, &mut World) + Send>;
 
 // -----------------------------------------------------------------------------
 // App & SubApp
 
+/// [`App`] is the primary API for writing user applications.
+///
+/// # How it works
+///
+/// An [`App`] owns a **main** [`SubApp`] — a [`World`] with its own plugins
+/// and update schedule — plus any number of additional sub-apps, each with
+/// its own world.
+///
+/// Functionality is added as [`Plugin`]s: they are stored lazily by
+/// [`App::add_plugins`] and take effect during [`App::build`], which runs
+/// every plugin in dependency order (`build` → `apply` → `cleanup`).
+///
+/// Once built, [`App::run`] hands the app to a runner ([`App::set_runner`];
+/// the default runs a single frame).
+///
+/// A typical game loop calls [`App::update`] repeatedly, which:
+///
+/// 1. refreshes the main world's metadata and runs its update schedule
+///    (see [`MainSchedulePlugin`] for the default schedules);
+///
+/// 2. for each sub-app, copies data from the main world via its extract
+///    step, refreshes metadata and runs the sub-app's update schedule.
+///
+/// The loop ends when an [`AppExit`] message is raised (check with [`App::should_exit`]).
+///
+/// [`App`] methods only affect the main sub-app; access other sub-apps with
+/// [`get_sub_app`](App::get_sub_app) or [`get_sub_app_mut`](App::get_sub_app_mut).
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_app::{App, Plugin};
+///
+/// struct GreetPlugin;
+///
+/// impl Plugin for GreetPlugin {
+///     fn apply(&self, _: &mut App) {
+///         // Register schedules, resources, jobs, ...
+///     }
+/// }
+///
+/// // `App::new` wires up the main schedules and core engine features.
+/// let mut app = App::new();
+/// app.add_plugins(GreetPlugin);
+///
+/// // `App::run` builds all plugins, then drives the runner until an
+/// // `AppExit` is raised.  For a real game loop, set a custom runner with
+/// // `App::set_runner`.
+/// let exit = app.run();
+/// assert!(exit.is_success());
+/// ```
+///
+/// # Lifecycle
+///
+/// 1. **Adding** — plugins are stored via [`App::add_plugins`]; nothing
+///    runs yet.
+///
+/// 2. **build** — [`App::build`] (called automatically by [`App::run`])
+///    initializes logging and the task pools, then executes every plugin in
+///    dependency order (`build` → `apply` → `cleanup`).
+///
+/// 3. **run** — [`App::run`] hands the built app to the runner, which
+///    drives [`App::update`] until an [`AppExit`] is raised.
+///
+/// [`MainSchedulePlugin`]: crate::MainSchedulePlugin
 #[must_use]
 pub struct App {
     pub(crate) main: SubApp,
     pub(crate) runner: Option<RunnerFn>,
     pub(crate) sub_apps: HashMap<InternedAppLabel, SubApp>,
+    pub(crate) error_handler: Option<ErrorHandler>,
     pub(crate) log_plugin: Option<Box<LogPlugin>>,
-    pub(crate) task_pool_plugin: Option<Box<TaskPoolConfigs>>,
+    pub(crate) task_pool_configs: Option<Box<TaskPoolConfigs>>,
 }
 
+/// A self-contained [`World`] with its own plugins, update schedule and
+/// extract step.
+///
+/// The [`App`] itself is a `SubApp` (its "main" sub-app); additional
+/// sub-apps are added with [`App::insert_sub_app`] and driven once per
+/// frame by [`App::update`]: first the registered extract function
+/// ([`SubApp::set_extract`]) copies data from the main world into this
+/// sub-app's world, then its update schedule runs.
+///
+/// This is the pipelining primitive: a render world is typically a sub-app
+/// that extracts a snapshot of the main world each frame and renders it
+/// without blocking the main world.
+///
+/// # Example
+///
+/// ```rust
+/// use zlim_app::SubApp;
+/// use zlim_core::prelude::*;
+///
+/// #[derive(TypePath, Resource, Clone, Copy)]
+/// struct Score(u32);
+///
+/// let mut sub_app = SubApp::new();
+///
+/// // Every sub-app has its own world:
+/// sub_app.world_mut().insert_resource(Score(0));
+/// assert_eq!(sub_app.world().get_resource::<Score>().unwrap().0, 0);
+///
+/// // The extract step copies data from the main world each frame:
+/// sub_app.set_extract(|main, sub| {
+///     if let Some(score) = main.get_resource::<Score>() {
+///         sub.insert_resource(*score);
+///     }
+/// });
+/// ```
+///
+/// [`World`]: zlim_core::world::World
 pub struct SubApp {
     pub(crate) world: Option<Box<World>>,
     pub(crate) plugins: Vec<Box<dyn Plugin>>,
@@ -45,6 +155,7 @@ pub struct SubApp {
 // App Run
 
 impl App {
+    /// Creates a new, empty app with no plugins and the default single-frame runner.
     pub fn empty() -> Self {
         Self {
             main: SubApp {
@@ -58,11 +169,19 @@ impl App {
             },
             runner: None,
             sub_apps: HashMap::new(),
+            error_handler: None,
             log_plugin: None,
-            task_pool_plugin: None,
+            task_pool_configs: None,
         }
     }
 
+    /// Enables the log plugin with the given configuration.
+    ///
+    /// By default, logging is disabled. If multiple apps enable logging, only the
+    /// first one's configuration will take effect, as logging is process-global.
+    ///
+    /// # Panics
+    /// Panics if called after the app has entered the `Building` stage.
     #[inline]
     pub fn with_log_plugin(&mut self, plugin: LogPlugin) -> &mut Self {
         assert_eq!(
@@ -74,6 +193,16 @@ impl App {
         self
     }
 
+    /// Configures the parameters of the global task pool.
+    ///
+    /// If not set, default parameters will be used.
+    ///
+    /// The global task pool is shared across the entire process. If multiple apps
+    /// attempt to configure it, only the first configuration will take effect;
+    /// subsequent calls will emit a warning and be ignored.
+    ///
+    /// # Panics
+    /// Panics if called after the app has entered the `Building` stage.
     #[inline]
     pub fn config_task_pool(&mut self, configs: TaskPoolConfigs) -> &mut Self {
         assert_eq!(
@@ -82,10 +211,15 @@ impl App {
             "TaskPoolConfigs can only set in `Adding` stage (before `App::build` and `App::run`)."
         );
 
-        self.task_pool_plugin = Some(Box::new(configs));
+        self.task_pool_configs = Some(Box::new(configs));
         self
     }
 
+    /// Builds the app (idempotent) and runs it with the runner — the default
+    /// runner drives a single frame (`update` + `should_exit`).
+    ///
+    /// In multi-threaded mode the sub-apps' schedule states are initialized
+    /// in parallel before the runner starts.
     pub fn run(&mut self) -> AppExit {
         let mut app = App {
             main: SubApp {
@@ -99,8 +233,9 @@ impl App {
             },
             runner: None,
             sub_apps: HashMap::new(),
+            error_handler: None,
             log_plugin: None,
-            task_pool_plugin: None,
+            task_pool_configs: None,
         };
 
         core::mem::swap(self, &mut app);
@@ -116,10 +251,11 @@ impl App {
         zlim_task::cfg::multi_thread! {
             zlim_task::MainTaskPool::get().scope(|s| {
                 let main_world = app.main.world.as_mut().unwrap();
-                s.spawn(async move{ main_world.update_schedules(); });
+                s.spawn(async move{ World::update_schedules(main_world) });
+
                 for sub_app in app.sub_apps.values_mut() {
                     let world = sub_app.world.as_mut().unwrap();
-                    s.spawn(async move{ world.update_schedules(); });
+                    s.spawn(async move{ World::update_schedules(world) });
                 }
             });
         }
@@ -134,7 +270,7 @@ impl App {
         // Sent to the main thread for execution.
         // If `App` in the main function and annotated as `#[zlim_main]`,
         // this will be executed directly on the current thread.
-        zlim_task::block_on_main(async move { runner(app) })
+        zlim_task::invoke_on_main(move || runner(app))
     }
 }
 
@@ -142,6 +278,18 @@ impl App {
 // Add_plugins
 
 impl App {
+    /// Adds one or more plugins (a [`Plugin`], a [`PluginGroup`], or a
+    /// tuple of them) to the main sub-app.
+    ///
+    /// Plugins are **lazy**: they are only stored here and take effect when
+    /// [`App::build`] runs.  Duplicates are handled per the plugin's [`duplicate_strategy`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if called outside the `Adding` stage (after `build`/`run`).
+    ///
+    /// [`PluginGroup`]: crate::PluginGroup
+    /// [`duplicate_strategy`]: Plugin::duplicate_strategy
     pub fn add_plugins<M>(&mut self, plugins: impl Plugins<M>) -> &mut Self {
         #[cfg(feature = "trace")]
         let _app_add_plugins_span = zlim_log::info_span!("app add_plugins").entered();
@@ -212,8 +360,9 @@ impl SubApp {
             },
             runner: None,
             sub_apps: HashMap::new(),
+            error_handler: None,
             log_plugin: None,
-            task_pool_plugin: None,
+            task_pool_configs: None,
         };
 
         core::mem::swap(self, &mut app.main);
@@ -224,6 +373,7 @@ impl SubApp {
         assert!(app.sub_apps.is_empty());
     }
 
+    /// Adds one or more plugins to this sub-app (lazy; see [`App::add_plugins`]).
     #[inline]
     pub fn add_plugins<M>(&mut self, plugins: impl Plugins<M>) {
         self.app_scope(|app| {
@@ -322,7 +472,7 @@ impl App {
             #[cfg(feature = "trace")]
             let _span = zlim_log::info_span!("plugin apply", plugin = plugin.name()).entered();
 
-            plugin.build(self);
+            plugin.apply(self);
 
             if self.main.plugins[index].is::<PlaceholderPlugin>() {
                 core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
@@ -346,7 +496,7 @@ impl App {
         #[cfg(feature = "trace")]
         let _clean_span = zlim_log::info_span!("cleanup plugins").entered();
 
-        let index = 0usize;
+        let mut index = 0usize;
         while index < self.main.plugins.len() {
             let mut plugin: Box<dyn Plugin> = Box::new(PlaceholderPlugin);
 
@@ -359,6 +509,7 @@ impl App {
 
             if self.main.plugins[index].is::<PlaceholderPlugin>() {
                 core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
+                index += 1;
                 continue;
             }
 
@@ -371,6 +522,7 @@ impl App {
                 panic!("The plugin `{x}` has been replaced with a different type `{y}`.");
             }
             // else: There are duplicate plugins inserted, and the old plugins have been replaced.
+            index += 1;
         }
         // clean data
         let _ = core::mem::take(&mut self.main.plugins);
@@ -391,27 +543,23 @@ impl App {
 }
 
 impl App {
+    /// Builds the app: initializes logging and the task pools, then executes
+    /// every plugin in dependency order (`build` → `apply` → `cleanup`) for
+    /// the main sub-app and each sub-app.
+    ///
+    /// Idempotent: once `cleanup` has run for all plugins (state
+    /// [`PluginsState::Cleaned`]) subsequent calls return immediately.
+    ///
+    /// Called automatically at the start of [`App::run`].
     pub fn build(&mut self) -> &mut Self {
         #[cfg(feature = "trace")]
-        let _app_build_span = zlim_log::info_span!("App build").entered();
+        let _app_build_span = zlim_log::info_span!("app build").entered();
 
         match self.main.plugins_state {
             PluginsState::Adding => (),
             PluginsState::Built => panic!("find a nested App::build in `Build` stage"),
             PluginsState::Ready => panic!("find a nested App::build in `Apply` stage"),
             PluginsState::Cleaned => return self,
-        }
-
-        // Initialize Log
-        if let Some(log_plugin) = self.log_plugin.take() {
-            log_plugin.apply();
-        }
-
-        // Initialize TaskPool
-        if let Some(mut task_pool_plugin) = self.task_pool_plugin.take() {
-            task_pool_plugin.apply();
-        } else {
-            TaskPoolConfigs::default().apply();
         }
 
         // Collect all types of information:
@@ -421,6 +569,18 @@ impl App {
         // - ECS Job Registry
         // - ECS Job Group Registry
         zlim_core::init::core_init();
+
+        // Initialize Log
+        if let Some(log_plugin) = self.log_plugin.take() {
+            log_plugin.apply();
+        }
+
+        // Initialize TaskPool
+        if let Some(mut task_pool_configs) = self.task_pool_configs.take() {
+            task_pool_configs.apply();
+        } else {
+            TaskPoolConfigs::default().apply();
+        }
 
         self.build_plugins();
         self.apply_plugins();
@@ -435,6 +595,11 @@ impl App {
 
 impl SubApp {
     /// Check if the plugin has been added.
+    ///
+    /// This function can only be used during the plugin build(or apply) phase.
+    ///
+    /// Cannot be used as the logic of a app runner, as the plugin will be
+    /// removed after it is built.
     pub fn contains_plugin<T: Plugin>(&self) -> bool {
         let id = TypeId::of::<T>();
         match self.plugins_state {
@@ -452,6 +617,11 @@ impl SubApp {
     /// has been temporarily removed at this time.
     ///
     /// Note: `contains_plugin` is not affected by this `temporarily remove`.
+    ///
+    /// This function can only be used during the plugin build(or apply) phase.
+    ///
+    /// Cannot be used as the logic of a app runner, as the plugin will be
+    /// removed after it is built.
     pub fn plugin<T: Plugin>(&self) -> Option<&T> {
         self.plugins
             .iter()
@@ -465,6 +635,11 @@ impl SubApp {
     /// has been temporarily removed at this time.
     ///
     /// Note: `contains_plugin` is not affected by this `temporarily remove`.
+    ///
+    /// This function can only be used during the plugin build(or apply) phase.
+    ///
+    /// Cannot be used as the logic of a app runner, as the plugin will be
+    /// removed after it is built.
     pub fn plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
         self.plugins
             .iter_mut()
@@ -506,6 +681,11 @@ impl SubApp {
 
 impl App {
     /// Check if the plugin has been added.
+    ///
+    /// This function can only be used during the plugin build(or apply) phase.
+    ///
+    /// Cannot be used as the logic of a app runner, as the plugin will be
+    /// removed after it is built.
     pub fn contains_plugin<T: Plugin>(&self) -> bool {
         self.main.contains_plugin::<T>()
     }
@@ -517,6 +697,11 @@ impl App {
     /// has been temporarily removed at this time.
     ///
     /// Note: `contains_plugin` is not affected by this `temporarily remove`.
+    ///
+    /// This function can only be used during the plugin build(or apply) phase.
+    ///
+    /// Cannot be used as the logic of a app runner, as the plugin will be
+    /// removed after it is built.
     pub fn plugin<T: Plugin>(&self) -> Option<&T> {
         self.main.plugin::<T>()
     }
@@ -528,6 +713,11 @@ impl App {
     /// has been temporarily removed at this time.
     ///
     /// Note: `contains_plugin` is not affected by this `temporarily remove`.
+    ///
+    /// This function can only be used during the plugin build(or apply) phase.
+    ///
+    /// Cannot be used as the logic of a app runner, as the plugin will be
+    /// removed after it is built.
     pub fn plugin_mut<T: Plugin>(&mut self) -> Option<&mut T> {
         self.main.plugin_mut::<T>()
     }
@@ -547,6 +737,9 @@ impl App {
 
 impl App {
     /// Sets the function that will be called when the app is run.
+    ///
+    /// If no runner is set, the app will run only a single frame by
+    /// default, similar to calling [`App::update`] once.
     #[inline]
     pub fn set_runner(&mut self, f: impl FnOnce(App) -> AppExit + Send + 'static) -> &mut Self {
         self.runner = Some(Box::new(f));
@@ -555,9 +748,12 @@ impl App {
 }
 
 impl SubApp {
-    /// Sets the method that will be called by [`extract`](Self::extract).
+    /// Sets the method that will be called by [`extract`].
     ///
-    /// The first argument is the `World` to extract data from, the second argument is the app `World`.
+    /// The first argument is the `World` to extract data from,
+    /// the second argument is the app `World`.
+    ///
+    /// [`extract`]: Self::extract
     pub fn set_extract<F>(&mut self, extract: F) -> &mut Self
     where
         F: FnMut(&mut World, &mut World) + Send + 'static,
@@ -566,8 +762,10 @@ impl SubApp {
         self
     }
 
-    /// Take the function that will be called by [`extract`](Self::extract)
+    /// Take the function that will be called by [`extract`]
     /// out of the app, if any was set, and replace it with `None`.
+    ///
+    /// [`extract`]: Self::extract
     pub fn take_extract(&mut self) -> Option<ExtractFn> {
         self.extract.take()
     }
@@ -609,15 +807,20 @@ impl SubApp {
             None => missing_world(),
         };
 
+        World::refresh_metadata(world);
+
         if let Some(label) = self.update_schedule {
             world.run_schedule(label);
         }
-        world.update_basic();
+
         world.clear_trackers();
     }
 }
 
 impl App {
+    /// Drives one frame: refresh metadata and run the main schedule, then
+    /// for each sub-app refresh metadata, extract from the main world and
+    /// run its schedule.
     pub fn update(&mut self) {
         assert_eq!(self.main.plugins_state, PluginsState::Cleaned);
 
@@ -631,6 +834,8 @@ impl App {
                 Some(world) => world,
                 None => missing_world(),
             };
+
+            World::refresh_metadata(world);
 
             match self.main.update_schedule {
                 Some(label) => world.run_schedule(label),
@@ -646,20 +851,23 @@ impl App {
 
             let world: &mut World = match &mut sub_app.world {
                 Some(world) => world,
-                None => unreachable!("Missing World"),
+                None => missing_world(),
             };
 
             if let Some(f) = sub_app.extract.as_mut() {
                 f(main_world, world);
             }
+
+            // should we refresh before world::extract ?
+            World::refresh_metadata(world);
+
             if let Some(label) = sub_app.update_schedule {
                 world.run_schedule(label);
             }
-            world.update_basic();
+
             world.clear_trackers();
         }
 
-        main_world.update_basic();
         main_world.clear_trackers();
     }
 
@@ -696,5 +904,248 @@ impl App {
             .unwrap_or(AppExit::Success);
 
         Some(exit)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// world & sub app
+
+#[cold]
+#[inline(never)]
+fn missing_sub_app(label: InternedAppLabel) -> ! {
+    panic!("No sub-app with label '{label:?}' exists.")
+}
+
+impl SubApp {
+    /// Return a shared reference of [`World`] in this SubApp.
+    #[inline(always)]
+    pub fn world(&self) -> &World {
+        match &self.world {
+            Some(world) => world,
+            None => missing_world(),
+        }
+    }
+
+    /// Return a mutable reference of [`World`] in this SubApp.
+    #[inline(always)]
+    pub fn world_mut(&mut self) -> &mut World {
+        match &mut self.world {
+            Some(world) => world,
+            None => missing_world(),
+        }
+    }
+}
+
+impl App {
+    /// Returns a reference to the main [`SubApp`].
+    #[inline(always)]
+    pub fn main(&self) -> &SubApp {
+        &self.main
+    }
+
+    /// Returns a mutable reference to the main [`SubApp`].
+    #[inline(always)]
+    pub fn main_mut(&mut self) -> &mut SubApp {
+        &mut self.main
+    }
+
+    /// Returns a shared reference to the main [`SubApp`]'s [`World`].
+    ///
+    /// This is the same as calling [`app.main().world()`].
+    ///
+    /// [`app.main().world()`]: SubApp::world
+    #[inline(always)]
+    pub fn main_world(&self) -> &World {
+        match &self.main.world {
+            Some(world) => world,
+            None => missing_world(),
+        }
+    }
+
+    /// Returns a mutable reference to the main [`SubApp`]'s [`World`].
+    ///
+    /// This is the same as calling [`app.main_mut().world_mut()`].
+    ///
+    /// [`app.main_mut().world_mut()`]: SubApp::world_mut
+    #[inline(always)]
+    pub fn main_world_mut(&mut self) -> &mut World {
+        match &mut self.main.world {
+            Some(world) => world,
+            None => missing_world(),
+        }
+    }
+
+    /// Returns a reference to the [`SubApp`] with the given label.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the [`SubApp`] doesn't exist.
+    #[inline]
+    pub fn sub_app(&self, label: impl AppLabel) -> &SubApp {
+        let label = label.intern();
+        self.get_sub_app(label)
+            .unwrap_or_else(|| missing_sub_app(label))
+    }
+
+    /// Returns a reference to the [`SubApp`] with the given label.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the [`SubApp`] doesn't exist.
+    #[inline]
+    pub fn sub_app_mut(&mut self, label: impl AppLabel) -> &mut SubApp {
+        let label = label.intern();
+        self.get_sub_app_mut(label)
+            .unwrap_or_else(|| missing_sub_app(label))
+    }
+
+    /// Returns a reference to the [`SubApp`] with the given label, if it exists.
+    #[inline]
+    pub fn get_sub_app(&self, label: impl AppLabel) -> Option<&SubApp> {
+        self.sub_apps.get(&label.intern())
+    }
+
+    /// Returns a mutable reference to the [`SubApp`] with the given label, if it exists.
+    #[inline]
+    pub fn get_sub_app_mut(&mut self, label: impl AppLabel) -> Option<&mut SubApp> {
+        self.sub_apps.get_mut(&label.intern())
+    }
+}
+
+// -----------------------------------------------------------------------------
+// error_handler
+
+impl App {
+    /// Sets a default error handler.
+    ///
+    /// This applies the given handler to all worlds that do not
+    /// have an error handler configured.
+    ///
+    /// This also affects SubApps added later.
+    ///
+    /// Note: This function only takes effect on the first call.
+    /// Once set, the value cannot be overridden.
+    pub fn set_error_handler(&mut self, error_handler: ErrorHandler) {
+        if self.error_handler.replace(error_handler).is_some() {
+            zlim_log::warn!(
+                "Cannot replace error handler. The existing handler will continue to be used."
+            );
+            return;
+        }
+
+        self.main_world_mut().try_set_error_handler(error_handler);
+
+        for sub_apps in self.sub_apps.values_mut() {
+            sub_apps.world_mut().try_set_error_handler(error_handler);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// insert & remove sub_app
+
+impl App {
+    /// Inserts a [`SubApp`] with the given label.
+    pub fn insert_sub_app(&mut self, label: impl AppLabel, mut sub_app: SubApp) {
+        if let Some(handler) = self.error_handler {
+            sub_app.world_mut().try_set_error_handler(handler);
+        }
+        self.sub_apps.insert(label.intern(), sub_app);
+    }
+
+    /// Removes the [`SubApp`] with the given label, if it exists.
+    pub fn remove_sub_app(&mut self, label: impl AppLabel) -> Option<SubApp> {
+        self.sub_apps.remove(&label.intern())
+    }
+}
+
+// -----------------------------------------------------------------------------
+// New & Default
+
+impl App {
+    /// Creates a new [`App`] with some default structure to enable
+    /// core engine features.
+    ///
+    /// This is the preferred constructor for most use cases.
+    ///
+    /// This does not include an [`AppRunner`] or [`LogPlugin`];
+    /// these should be set up manually if needed.
+    ///
+    /// [`AppRunner`]: RunnerFn
+    pub fn new() -> Self {
+        use super::main_schedule::Main;
+        use super::main_schedule::MainSchedulePlugin;
+        use zlim_core::schedule::ScheduleLabel;
+
+        let mut app = App::empty();
+        app.main.update_schedule = Some(Main.intern());
+
+        app.add_plugins(MainSchedulePlugin);
+
+        let main_world = app.main.world.as_mut().unwrap();
+        main_world.register_message::<AppExit>();
+
+        app
+    }
+}
+
+impl Default for App {
+    /// Creates a new [`App`] with some default structure to enable
+    /// core engine features.
+    ///
+    /// As same as [`App::new`], this is the preferred constructor for
+    /// most use cases.
+    ///
+    /// This does not include an [`AppRunner`] or [`LogPlugin`];
+    /// these should be set up manually if needed.
+    ///
+    /// [`AppRunner`]: RunnerFn
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SubApp {
+    /// Returns a default, empty [`SubApp`].
+    pub fn new() -> Self {
+        Self {
+            world: Some(World::alloc()),
+            plugins: Vec::new(),
+            plugin_names: Vec::new(),
+            plugin_graph: HashMap::new(),
+            plugins_state: PluginsState::Adding,
+            update_schedule: None,
+            extract: None,
+        }
+    }
+}
+
+impl Default for SubApp {
+    /// Returns a default, empty [`SubApp`].
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Debug
+
+impl Debug for SubApp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SubApp")
+            .field("plugins", &self.plugin_names)
+            .field("update_schedule", &self.update_schedule)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Debug for App {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("App")
+            .field("plugins", &self.main.plugin_names)
+            .field("log_plugin", &self.log_plugin.is_some())
+            .field("update_schedule", &self.main.update_schedule)
+            .field("sub_apps", &self.sub_apps)
+            .finish()
     }
 }

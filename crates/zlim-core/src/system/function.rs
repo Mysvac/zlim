@@ -265,10 +265,9 @@ struct FunctionState<P: SystemParam> {
 ///
 /// let mut world = World::alloc();
 ///
-/// // `IntoSystem::into_system` wraps the function in a `FunctionSystem`.
-/// let mut system = IntoSystem::into_system(hello);
-/// system.initialize(&world);
-/// let result = system.run((), &mut world);
+/// // `IntoSystem::into_system` wraps the function in a `FunctionSystem`,
+/// // and `World::invoke_once` builds, initializes, and runs a fresh instance.
+/// let result = world.invoke_once(hello, ());
 /// assert!(result.is_ok());
 /// ```
 pub struct FunctionSystem<M, F: SystemFunction<M>> {
@@ -340,6 +339,7 @@ impl<M: 'static, F: SystemFunction<M> + 'static> System for FunctionSystem<M, F>
                 #[cfg(any(debug_assertions, feature = "debug"))]
                 world_id: world.id,
             });
+            self.meta.last_run = world.last_run;
         }
     }
 

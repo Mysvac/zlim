@@ -60,14 +60,16 @@ Windows、Linux、macOS 和 Android 上的默认模式。
 
 每个池至少创建一个工作线程；工作线程空闲时休眠，逐个唤醒以避免惊群效应。
 
-在真实应用中，请在创建任何 `TaskPool` 之前调用 [`set_main_thread`]，将当前线程标记为
-主线程——此后不会启动虚假主线程，由被标记的线程自行驱动 `MainExecutor`
-（通过 `scope` 或 `run_local`）。
+默认情况下，多线程模式会在第一次创建 `TaskPool` 时启动一个虚假的主线程,
+它独占全局 `MainExecutor` 并持续轮询直到进程结束。因此无论哪个线程创建了任务池，
+`spawn_to_main` 的任务都会被送往此线程执行，这保证了测试环境的行为一致性。
 
-否则，多线程模式会在第一次创建 `TaskPool` 时启动一个虚假的主线程：
-它独占全局 `MainExecutor` 并持续轮询直到进程结束，因此无论哪个线程创建了任务池，
-`spawn_to_main` 的任务都会被执行——真实应用、测试、多线程创建者行为完全一致。
-应用可通过 `spawn_to_main` 将主线程工作（初始化、逐帧逻辑）交给该线程。
+但在真实应用中，推荐在程序代码的开头通过 [`designate_main_thread`] 将当前线程标记为主线程，
+此时创建 `TaskPool` 将不会启动虚拟主线程。`zlim_app` 模块提供的 `#[zlim_main]` 宏
+会自动在主函数开头调用它。
+
+注意 `designate_main_thread` 不应在测试环境中使用。测试用例分散在各个子线程执行，将子
+线程标记为 `designate_main_thread` 很容易导致程序出现长久睡眠（死锁）。
 
 ### 单线程模式
 
@@ -110,10 +112,6 @@ Windows、Linux、macOS 和 Android 上的默认模式。
 多线程模式中，`spawn` 会将任务送往任意工作线程，`spawn_local` 送入当前线程的
 本地队列，而 `spawn_to_main` 则送往“主线程”。
 
-由于主线程（除非先调用 [`set_main_thread`]，否则是自动启用的虚假主线程）的存在，
-三者通常都不会出现任务卡死的情况。但此时需要注意程序的语义，
-考虑在程序启动时主动将主函数逻辑送至主线程执行。
-
 ## 性能说明
 
 - **单线程模式**：任务分发速度大约是 `bevy_tasks` 的 2 倍。任务直接使用线程局部存储的块状链表（`BlockList`），
@@ -141,7 +139,7 @@ let task = pool.spawn_to_main(async { 3 - 1 });
 
 ### Scope
 
-```rust, ignore
+```rust
 use zlim_task::TaskPool;
 let pool = TaskPool::new();
 
@@ -185,7 +183,7 @@ assert_eq!(&results, &[1, 1]);
 每个池都是惰性初始化的：首次调用 `get()`（或任何 `Deref` 用法）会隐式创建一个
 采用上表默认配置的 `TaskPool`。典型使用无需显式设置：
 
-```rust
+```rust, ignore
 use zlim_task::{MainTaskPool, TaskPool};
 
 // 首次访问时隐式初始化——直接用即可
@@ -194,7 +192,7 @@ let task = MainTaskPool::get().spawn(async { /* ... */ });
 
 如需自定义配置，请在首次访问前调用 `try_init`：
 
-```rust
+```rust, ignore
 use zlim_task::{MainTaskPool, TaskPoolBuilder};
 
 // 自定义初始化——必须在首次 get() 之前调用
@@ -206,6 +204,7 @@ let did_init = MainTaskPool::try_init(|| {
 });
 
 assert!(did_init); // 首次调用返回 true，已初始化则返回 false
+// 单线程模式中，可能始终返回 false 。
 ```
 
 **多线程模式：** 当池尚未初始化时 `try_init` 返回 `true`（应用自定义配置），
@@ -214,16 +213,16 @@ assert!(did_init); // 首次调用返回 true，已初始化则返回 false
 **单线程 / WASM 模式：** 三个池共享同一个全局 `TaskPool`。
 `try_init` 始终返回 `false`——这些模式不支持自定义初始化。
 
-### TaskPoolPlugin
+### TaskPoolConfigs
 
-[`TaskPoolPlugin`] 通过一次调用初始化全部三个全局池，按内部的 [`TaskPoolConfig`]
-分配可用线程——默认 `IoTaskPool` 占 `25%`、`AsyncTaskPool` 占 `25%`、
+[`TaskPoolConfigs`] 通过一次调用初始化全部三个全局池，按内部的 [`TaskPoolConfig`]
+字段分配可用线程——默认 `IoTaskPool` 占 `25%`、`AsyncTaskPool` 占 `25%`、
 其余线程归 `MainTaskPool`：
 
 ```rust
-use zlim_task::TaskPoolPlugin;
+use zlim_task::TaskPoolConfigs;
 
-TaskPoolPlugin::default().apply();
+TaskPoolConfigs::default().apply();
 ```
 
 请在启动时、任何池被首次访问（例如 `MainTaskPool::get()`）之前调用一次。
@@ -231,7 +230,7 @@ TaskPoolPlugin::default().apply();
 `apply` 会直接返回。
 
 注意：如果通过隐式初始化使用 `MainTaskPool`、`AsyncTaskPool` 等全局池，
-请保证它们的"第一次获取"先于其他任务池——除非先调用 [`set_main_thread`]，
+请保证它们的"第一次获取"先于其他任务池——除非先调用 [`designate_main_thread`]，
 虚假主线程由第一个创建的 `TaskPool` 启动，`spawn_to_main` 的任务会路由到该线程。
 
 ## ParallelSlice
@@ -258,11 +257,23 @@ let result = zlim_task::block_on(async { 42 });
 assert_eq!(result, 42);
 ```
 
-在多线程模式下，默认委托给 `futures_lite::future::block_on`。
+在当前线程阻塞等待一个 future，同时驱动异步执行器以避免死锁。
 
-启用 `async_io` feature 时使用 `async_io::block_on`。
+- **主线程**上（多线程模式）：阻塞期间同时驱动 `MainExecutor` 与
+  `LocalExecutor`。
+- **工作线程**上：阻塞期间同时驱动池执行器与 `LocalExecutor`。
+- 单线程 / WASM 模式下：阻塞期间驱动执行器。
 
-在单线程 / WASM 模式下，忙等轮询该 future。
+底层通过 `futures_lite::future::block_on` 停放线程；启用 `async_io` feature
+时改用 `async_io::block_on`。
+
+## invoke_on_main
+
+将单个闭包送往主线程执行，并阻塞等待结果。
+
+如果在工作线程上调用，等待期间**不会**驱动该工作线程自身的任务——极端情况下
+可能导致所有线程休眠（死锁）。因此它主要由程序顶层入口调用，通常仅用于
+`App::run` 的内部实现。
 
 ## Cargo Features
 

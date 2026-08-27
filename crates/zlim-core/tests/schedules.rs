@@ -2,9 +2,9 @@
 //! integration.
 
 use zlim_core::borrow::ResMut;
-use zlim_core::derive::{Resource, ScheduleLabel};
+use zlim_core::derive::Resource;
 use zlim_core::job::{JobDB, job_fn};
-use zlim_core::schedule::{Schedule, ScheduleLabel as _, Schedules};
+use zlim_core::schedule::{Schedule, ScheduleLabel, Schedules};
 use zlim_core::world::World;
 use zlim_reflect::TypePath;
 
@@ -60,7 +60,7 @@ fn get_mut_allows_in_place_building() {
     schedules.insert(Schedule::new(Update));
 
     let schedule = schedules.get_mut(Update).unwrap();
-    assert!(schedule.insert_by_name("sched_inc_counter"));
+    assert!(schedule.insert_by_name("sched_inc_counter", ()));
 
     let schedule = schedules.get_mut(Update).unwrap();
     assert_eq!(schedule.jobs().len(), 1);
@@ -118,7 +118,7 @@ fn world_run_schedule_executes_jobs() {
     JobDB::collect();
 
     let mut schedule = Schedule::new(Update);
-    assert!(schedule.insert_by_name("sched_inc_counter"));
+    assert!(schedule.insert_by_name("sched_inc_counter", ()));
 
     let mut world = World::alloc();
     world.insert_resource(Counter(0));
@@ -144,7 +144,7 @@ fn world_owns_schedules() {
 
     {
         let mut schedule = Schedule::new(Update);
-        assert!(schedule.insert_by_name("sched_inc_counter"));
+        assert!(schedule.insert_by_name("sched_inc_counter", ()));
         world.schedules_mut().insert(schedule);
     }
 

@@ -18,6 +18,8 @@ default_log_level = [
 debug = []
 trace = ["dep:tracing-error"]
 
+# Log based performance analysis
+# wasm target is not supported.
 trace_tracy = ["dep:tracing-tracy"]
 trace_memory = ["dep:tracy-client"]
 trace_chrome = ["dep:tracing-chrome"]
@@ -46,9 +48,9 @@ tracing-chrome = { version = "0.7.2", optional = true }
 # feature: trace_memory
 tracy-client = { version = "0.18.4", optional = true }
 
-# Platform Adapters
+# Platform Adapters:
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(target_family = "wasm")'.dependencies]
 tracing-wasm = "0.2.1"
 
 [target.'cfg(target_os = "ios")'.dependencies]

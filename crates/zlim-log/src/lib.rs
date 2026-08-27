@@ -1,7 +1,16 @@
 #![doc = include_str!("../README.md")]
+
+// `zlim_log` is used as the crate alias inside the README's intra-doc links,
+// so we re-export `crate` under that name (see the `extern crate self` in
+// zlim-core for the same pattern).
+extern crate self as zlim_log;
+
 use core::fmt::{Debug, Formatter};
 use tracing_subscriber::layer::Layered;
 use tracing_subscriber::{EnvFilter, Layer, Registry};
+
+// -----------------------------------------------------------------------------
+// Modules
 
 #[cfg(target_os = "android")]
 mod android_layer;
@@ -22,6 +31,7 @@ static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
 // -----------------------------------------------------------------------------
 // Re-exoprt
 
+pub use tracing::span::EnteredSpan;
 pub use tracing::{Event, Level, Span};
 pub use tracing::{debug, debug_span};
 pub use tracing::{error, error_span};
@@ -35,18 +45,19 @@ pub use tracing_subscriber;
 // -----------------------------------------------------------------------------
 // Alias
 
-type CustomSubscriber = Layered<Option<Box<dyn Layer<Registry> + Send + Sync>>, Registry>;
+type CustomSubscriber = Layered<Option<BoxedLayer>, Registry>;
 
-type BaseSubscriber = Layered<EnvFilter, CustomSubscriber>;
+type FilteredSubscriber = Layered<EnvFilter, CustomSubscriber>;
 
 #[cfg(feature = "trace")]
-type FormatSubscriber = Layered<tracing_error::ErrorLayer<BaseSubscriber>, BaseSubscriber>;
+type PreFormatSubscriber =
+    Layered<tracing_error::ErrorLayer<FilteredSubscriber>, FilteredSubscriber>;
 
 #[cfg(not(feature = "trace"))]
-type FormatSubscriber = BaseSubscriber;
+type PreFormatSubscriber = FilteredSubscriber;
 
 pub type BoxedLayer = Box<dyn Layer<Registry> + Send + Sync + 'static>;
-pub type BoxedFmtLayer = Box<dyn Layer<FormatSubscriber> + Send + Sync + 'static>;
+pub type BoxedFmtLayer = Box<dyn Layer<PreFormatSubscriber> + Send + Sync + 'static>;
 
 // -----------------------------------------------------------------------------
 // DEFAULT_FILTER
@@ -152,22 +163,25 @@ impl LogPlugin {
 
         let env_filter: EnvFilter = self.build_filter_layer();
         let subscriber: CustomSubscriber = subscriber.with(self.custom_layer);
-        let subscriber: BaseSubscriber = subscriber.with(env_filter);
+        let subscriber: FilteredSubscriber = subscriber.with(env_filter);
 
         #[cfg(feature = "trace")]
         let subscriber = subscriber.with(tracing_error::ErrorLayer::default());
 
         cfg_select! {
-            target_arch = "wasm32" => {
+            target_family = "wasm" => {
+                let enable_tracy_ignored: bool = true;
                 let format_layer_ignored = self.format_layer.is_some();
                 let wasm_layer_config = tracing_wasm::WASMLayerConfig::default();
                 let subscriber = subscriber.with(tracing_wasm::WASMLayer::new(wasm_layer_config));
             }
             target_os = "ios" => {
+                let enable_tracy_ignored: bool = true;
                 let format_layer_ignored = self.format_layer.is_some();
                 let subscriber = subscriber.with(tracing_oslog::OsLogger::default());
             }
             target_os = "android" => {
+                let enable_tracy_ignored: bool = false;
                 let format_layer_ignored = self.format_layer.is_some();
                 #[cfg(feature = "trace_tracy")]
                 let tracy_layer = self.enable_tracy.then(|| tracing_tracy::TracyLayer::default());
@@ -176,6 +190,7 @@ impl LogPlugin {
                 let subscriber = subscriber.with(android_layer::AndroidLayer);
             }
             _ => {
+                let enable_tracy_ignored: bool = false;
                 let format_layer_ignored: bool = false;
                 let format_layer: BoxedFmtLayer = self.format_layer.unwrap_or_else(|| {
                     // note: the implementation of `Default` reads from the env var NO_COLOR
@@ -214,15 +229,24 @@ impl LogPlugin {
             tracing::info!("`format_layer` is ignored due to the unsupported platform.");
         }
 
+        #[cfg(not(feature = "trace_tracy"))]
         if self.enable_tracy {
-            #[cfg(feature = "trace_tracy")]
+            let _ = enable_tracy_ignored;
+            tracing::info!(
+                "`LogPlugin::enable_tracy` is `true` but `trace_tracy` feature is not enabled, skipped."
+            );
+        }
+
+        #[cfg(feature = "trace_tracy")]
+        if self.enable_tracy && enable_tracy_ignored {
+            tracing::info!("`enable_tracy` is ignored due to the unsupported platform.");
+        } else if self.enable_tracy {
             tracing::warn!(
                 "Tracing with Tracy is active, memory consumption will grow until a client is connected."
             );
-
-            #[cfg(not(feature = "trace_tracy"))]
+        } else {
             tracing::info!(
-                "`LogPlugin::enable_tracy` is `true` but `trace_tracy` feature is not enabled, skipped."
+                "`trace_tracy` feature is enabled but `LogPlugin::enable_tracy` is `false`, skipped."
             );
         }
 

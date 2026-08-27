@@ -28,7 +28,6 @@ use crate::utils::{DebugCheckedUnwrap, SlicePool};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 /// use zlim_core::table::Tables;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -81,17 +80,9 @@ impl Tables {
 // Basic methods
 
 impl Tables {
-    /// Returns `true` if there are no tables.
-    ///
-    /// This always returns `false`, because the empty table is always
-    /// registered.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.tables.is_empty()
-    }
-
     /// Returns the number of registered tables.
     #[inline]
+    #[expect(clippy::len_without_is_empty, reason = "useless")]
     pub fn len(&self) -> usize {
         self.tables.len()
     }

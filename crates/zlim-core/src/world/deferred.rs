@@ -43,7 +43,6 @@ use super::{World, WorldCell};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Position {

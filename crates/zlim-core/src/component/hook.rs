@@ -47,14 +47,13 @@ pub struct HookContext {
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
-/// use std::sync::atomic::{AtomicUsize, Ordering};
+/// use core::sync::atomic::{AtomicUsize, Ordering};
 ///
 /// // Count hook invocations so the example can assert the hook fires.
 /// static INSERTS: AtomicUsize = AtomicUsize::new(0);
 ///
 /// fn on_insert(world: DeferredWorld, ctx: HookContext) {
-///     log::info!("component {:?} inserted on entity {:?}", ctx.id, ctx.entity);
+///     zlim_log::info!("component {:?} inserted on entity {:?}", ctx.id, ctx.entity);
 ///     // `world` derefs to `&World`, so read-only access is available.
 ///     let _count = world.entity_count();
 ///     INSERTS.fetch_add(1, Ordering::Relaxed);
@@ -68,6 +67,7 @@ pub struct HookContext {
 ///
 /// let mut world = World::alloc();
 /// let entity = world.spawn(Health { value: 100.0 }, None);
+///
 /// // Spawning the entity ran the `on_insert` hook exactly once:
 /// assert_eq!(INSERTS.load(Ordering::Relaxed), 1);
 /// assert_eq!(entity.get::<Health>(), Some(&Health { value: 100.0 }));

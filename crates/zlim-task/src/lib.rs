@@ -22,7 +22,7 @@ mod slice;
 pub use config::{TaskPoolConfig, TaskPoolConfigs};
 pub use platform::{AsyncTaskPool, IoTaskPool, MainTaskPool};
 pub use platform::{Scope, TaskPool, TaskPoolBuilder};
-pub use platform::{block_on, block_on_main, run_local, set_main_thread};
+pub use platform::{block_on, designate_main_thread, invoke_on_main, run_local};
 pub use slice::ParallelSlice;
 
 // -----------------------------------------------------------------------------

@@ -25,7 +25,6 @@ impl EntityOwned<'_> {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::derive::Component;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
     /// struct Hp(u32);
@@ -61,7 +60,6 @@ impl EntityOwned<'_> {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::derive::Component;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
     /// struct Hp(u32);
@@ -211,7 +209,10 @@ fn insert_local(
                 hook(deferred, ctx);
             }
         }
-        world.flush();
+        // NOTE: hook-queued commands must NOT be flushed here — `flush()`
+        // can create new tables (reallocating the `Table` vector, dangling
+        // `table` above) or move/despawn the entity (stale `table_row`).
+        // The single flush at the end of this function applies them safely.
     }
 
     // --- write data into the current row ---

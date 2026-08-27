@@ -23,7 +23,7 @@
 /// }
 ///
 /// let mut world = World::alloc();
-/// assert_eq!(world.run_once(double, 21).unwrap(), 42);
+/// assert_eq!(world.invoke_once(double, 21).unwrap(), 42);
 /// ```
 pub trait SystemInput: Sized {
     /// The borrowed data type passed to system execution.
@@ -50,7 +50,7 @@ pub trait SystemInput: Sized {
 /// }
 ///
 /// let mut world = World::alloc();
-/// assert_eq!(world.run_once(double, 21).unwrap(), 42);
+/// assert_eq!(world.invoke_once(double, 21).unwrap(), 42);
 /// ```
 #[derive(Debug)]
 #[repr(transparent)]
@@ -81,7 +81,7 @@ impl<T: 'static> SystemInput for In<T> {
 /// }
 ///
 /// let mut world = World::alloc();
-/// assert_eq!(world.run_once(len_of, "hello").unwrap(), 5);
+/// assert_eq!(world.invoke_once(len_of, "hello").unwrap(), 5);
 /// ```
 #[derive(Debug)]
 #[repr(transparent)]
@@ -114,7 +114,7 @@ impl<T: ?Sized + 'static> SystemInput for InRef<'_, T> {
 ///
 /// let mut world = World::alloc();
 /// let value: &'static mut u32 = Box::leak(Box::new(5));
-/// assert_eq!(world.run_once(increment, value).unwrap(), 6);
+/// assert_eq!(world.invoke_once(increment, value).unwrap(), 6);
 /// ```
 #[derive(Debug)]
 #[repr(transparent)]

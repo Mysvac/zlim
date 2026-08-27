@@ -170,7 +170,7 @@ register_reflect!(Foo<u32>, Foo<i32>);
 
 ## 基于反射的序列化
 
-反射系统基于 serde 提供序列化与反序列化支持，入口在 `TypeDB` 上，分为两种格式：
+反射系统基于 serde 提供序列化与反序列化支持，集成在 `TypeDB` 中，分为两种格式：
 
 - `reflect_serialize` / `reflect_deserialize`：**自描述**格式。
   序列化出的数据会包一层以类型路径为键的映射，比如 `{"my_crate::A":{"x":3,"y":4}}`

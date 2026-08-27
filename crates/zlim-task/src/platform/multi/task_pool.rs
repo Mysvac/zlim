@@ -18,7 +18,7 @@ use async_task::Task;
 
 use super::fake_main::main_thread_id;
 use super::executors::PoolExecutor;
-use super::{LocalExecutor, MainExecutor, block_on};
+use super::{LocalExecutor, MainExecutor, raw_block_on};
 
 // -----------------------------------------------------------------------------
 // OnDrop
@@ -210,7 +210,7 @@ const MAX_THREADS: usize = 19;
 /// thread-safe queue. The task can be submitted from any thread, and is
 /// executed on the main thread — a dedicated fake one unless the
 /// application marked the current thread up front with
-/// [`set_main_thread`](crate::set_main_thread). This is useful for
+/// [`designate_main_thread`](crate::designate_main_thread). This is useful for
 /// tasks that must interact with main-thread-only APIs (e.g., rendering,
 /// UI updates).
 ///
@@ -379,15 +379,13 @@ impl TaskPool {
 
                         // Loop working
                         loop {
-                            // Future's panic will be propagated to Task, we do not handle here.
-                            let res = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                                block_on(executor.run(LocalExecutor::run(&mut listener)))
-                            }));
+                            let local = LocalExecutor::run(&mut listener);
+                            let future = PoolExecutor::run_with(&executor, local);
+                            let closure = AssertUnwindSafe(|| raw_block_on(future));
 
-                            // Err -> panicked
-                            // Ok(()) -> TaskPool Dropped (channel closed)
-                            if res.is_ok() {
-                                return;
+                            match std::panic::catch_unwind(closure) {
+                                Ok(_) => return, // TaskPool Dropped (channel closed)
+                                Err(_) => ::core::hint::cold_path(), // panicked, continue.
                             }
                         }
                     })
@@ -509,7 +507,7 @@ impl TaskPool {
     /// queue. It can be submitted from any thread, and is executed on the
     /// main thread — a dedicated fake one unless the application marked the
     /// current thread up front with
-    /// [`set_main_thread`](crate::set_main_thread).
+    /// [`designate_main_thread`](crate::designate_main_thread).
     ///
     /// This is useful for tasks that must interact with main-thread-only
     /// APIs (e.g., rendering, UI updates).
@@ -579,7 +577,9 @@ impl<T> Drop for Scope<'_, '_, T> {
                 task.cancel().await;
             }
         };
-        block_on(future);
+
+        // Use block_on instead of raw_block_on.
+        super::block_on(future);
     }
 }
 
@@ -646,7 +646,7 @@ impl<'sco, 'env, T: Send + 'env> Scope<'sco, 'env, T> {
     ///
     /// Submits the task to the `MainExecutor` — analogous to
     /// [`TaskPool::spawn_to_main`]. The task is executed on the main thread
-    /// — a dedicated fake one unless [`set_main_thread`](crate::set_main_thread)
+    /// — a dedicated fake one unless [`designate_main_thread`](crate::designate_main_thread)
     /// was called up front (see [`TaskPool::scope`]).
     ///
     /// The future's result will be included in the vector returned by
@@ -680,7 +680,7 @@ impl TaskPool {
     /// For the duration of the scope, the calling thread drives the
     /// thread-local `LocalExecutor` and the pool's workers. `spawn_to_main`
     /// tasks are executed on the main thread — a dedicated fake one unless
-    /// [`set_main_thread`](crate::set_main_thread) was called up front —
+    /// [`designate_main_thread`](crate::designate_main_thread) was called up front —
     /// which keeps polling the `MainExecutor` until the process exits.
     ///
     /// This is analogous to [`std::thread::scope`] and `rayon::scope`.
@@ -783,9 +783,9 @@ impl TaskPool {
         };
 
         if std::thread::current().id() == self.thread_id {
-            block_on(MainExecutor::run(LocalExecutor::run(stop_signal)))
+            raw_block_on(MainExecutor::run(LocalExecutor::run(stop_signal)))
         } else {
-            block_on(LocalExecutor::run(executor.run(stop_signal)))
+            raw_block_on(PoolExecutor::run_with(executor, LocalExecutor::run(stop_signal)))
         }
     }
 }

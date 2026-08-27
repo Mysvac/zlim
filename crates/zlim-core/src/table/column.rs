@@ -343,6 +343,7 @@ impl Column {
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
     /// - The item at `index` must be properly initialized
+    #[inline]
     pub unsafe fn get_ref(&self, index: usize, last_run: Tick, this_run: Tick) -> UntypedRef<'_> {
         unsafe {
             UntypedRef {
@@ -362,6 +363,7 @@ impl Column {
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
     /// - The item at `index` must be properly initialized
+    #[inline]
     pub unsafe fn get_mut(
         &mut self,
         index: usize,
@@ -386,7 +388,7 @@ impl Column {
     /// # Safety
     /// - `len` must be <= capacity
     /// - All items in `0..len` must be properly initialized
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_slice_ref(
         &self,
         len: usize,
@@ -412,7 +414,7 @@ impl Column {
     /// # Safety
     /// - `len` must be <= capacity
     /// - All items in `0..len` must be properly initialized
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_slice_mut(
         &mut self,
         len: usize,

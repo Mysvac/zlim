@@ -1,5 +1,6 @@
 use core::num::NonZeroU8;
 
+use zlim_core::derive::ScheduleStage;
 use zlim_core::message::Message;
 use zlim_reflect::TypePath;
 
@@ -64,3 +65,7 @@ impl std::process::Termination for AppExit {
         }
     }
 }
+
+/// The schedule stage that handles application exit logic.
+#[derive(TypePath, ScheduleStage, Debug, Clone, Copy)]
+pub struct AppExitStage;

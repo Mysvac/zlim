@@ -2,8 +2,6 @@
 
 use std::sync::PoisonError;
 
-use zlim_log as log;
-
 use super::component::Component;
 use super::db::{ComponentDB, ID_REGISTRY, PATH_REGISTRY, TYPE_REGISTRY};
 
@@ -28,7 +26,7 @@ impl ComponentDB {
             const PRE: usize = 100;
 
             let start = zlim_os::time::Instant::now();
-            log::debug!("Collecting ComponentDB registrations...");
+            zlim_log::debug!("Collecting ComponentDB registrations...");
 
             {
                 // pre-reserve, for better register speed.
@@ -68,7 +66,7 @@ impl ComponentDB {
                 len
             };
 
-            log::debug!(
+            zlim_log::debug!(
                 "ComponentDB({len}) collection finished in {:?}",
                 start.elapsed()
             );
@@ -127,7 +125,6 @@ pub mod __internal__ {
 ///
 /// ```no_run
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Transform;

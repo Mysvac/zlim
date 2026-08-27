@@ -36,13 +36,13 @@ pub(super) struct Futex {
 }
 
 impl Futex {
-    #[expect(
-        clippy::declare_interior_mutable_const,
-        reason = "const used as a default/empty sentinel value"
-    )]
-    pub const UNLOCKED: Self = Self {
-        state: AtomicBool::new(false),
-    };
+    /// Create a default (unlocked) Futex.
+    #[inline(always)]
+    pub(super) const fn new() -> Self {
+        Self {
+            state: AtomicBool::new(false),
+        }
+    }
 
     /// Return `true` if futex is locked.
     #[inline(always)]

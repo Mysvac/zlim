@@ -58,7 +58,6 @@ use crate::ops::EntityOwned;
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Position { x: f32, y: f32 }
@@ -67,6 +66,7 @@ use crate::ops::EntityOwned;
 /// struct Velocity { dx: f32, dy: f32 }
 ///
 /// #[derive(Bundle)]
+/// #[bundle(data)] // derive DataBundle
 /// struct MovableBundle {
 ///     position: Position,
 ///     velocity: Velocity,
@@ -74,13 +74,11 @@ use crate::ops::EntityOwned;
 ///
 /// let mut world = World::alloc();
 ///
-/// let entity = world.spawn(
-///     MovableBundle {
-///         position: Position { x: 0.0, y: 0.0 },
-///         velocity: Velocity { dx: 1.0, dy: 0.0 },
-///     },
-///     None,
-/// );
+/// let bundle = MovableBundle {
+///     position: Position { x: 0.0, y: 0.0 },
+///     velocity: Velocity { dx: 1.0, dy: 0.0 },
+/// };
+/// let entity = world.spawn(bundle, None);
 ///
 /// assert_eq!(entity.get::<Position>(), Some(&Position { x: 0.0, y: 0.0 }));
 /// assert_eq!(entity.get::<Velocity>(), Some(&Velocity { dx: 1.0, dy: 0.0 }));
@@ -91,9 +89,8 @@ use crate::ops::EntityOwned;
 /// Tuples up to arity 12 implement `Bundle`.  This lets you spawn with
 /// inline component lists:
 ///
-/// ```rust
+/// ```rust, no_run
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Position { x: f32, y: f32 }
@@ -102,10 +99,11 @@ use crate::ops::EntityOwned;
 /// struct Velocity { dx: f32, dy: f32 }
 ///
 /// let mut world = World::alloc();
-/// let entity = world.spawn(
-///     (Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 }),
-///     None,
-/// );
+///
+/// let bundle = (Position { x: 0.0, y: 0.0 }, Velocity { dx: 1.0, dy: 0.0 });
+///
+/// let entity = world.spawn(bundle, None); // None: parent is none
+///
 /// assert_eq!(entity.get::<Position>(), Some(&Position { x: 0.0, y: 0.0 }));
 /// assert_eq!(entity.get::<Velocity>(), Some(&Velocity { dx: 1.0, dy: 0.0 }));
 /// ```
@@ -126,8 +124,9 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
     /// work that requires access to the newly-created entity handle.
     ///
     /// For pure-data bundles (the common case), leave this `false`.
-    /// `#[derive(Bundle)]` sets this to `true`, while adding
-    /// `#[bundle(no_effect)]` sets it to `false`.
+    /// `#[derive(Bundle)]` computes this as the logical OR of all field
+    /// types' flags, while adding `#[bundle(data)]` requires every field
+    /// to be a [`DataBundle`], so the flag is always `false`.
     ///
     /// [`apply_effect`]: Bundle::apply_effect
     const NEED_APPLY_EFFECT: bool;
@@ -204,8 +203,8 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
 /// All [`Component`] types and the empty tuple `()` implement this trait
 /// automatically.  Tuples implement `DataBundle` when **every** element
 /// implements it, and a `#[derive(Bundle)]` struct implements it when
-/// declared with `#[bundle(no_effect)]` (which also requires every field
-/// to be a `DataBundle`).
+/// declared with `#[bundle(data)]` (which also requires every field to be
+/// a `DataBundle`).
 ///
 /// # Contract
 ///
@@ -216,7 +215,6 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Position { x: f32, y: f32 }
@@ -224,18 +222,19 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
 /// #[derive(TypePath, Component, Clone)]
 /// struct Velocity { dx: f32, dy: f32 }
 ///
-/// // `#[bundle(no_effect)]` marks the struct as a pure-data bundle.
+/// // `#[bundle(data)]` marks the struct as a pure-data bundle.
 /// #[derive(Bundle)]
-/// #[bundle(no_effect)]
+/// #[bundle(data)]
 /// struct MovableBundle {
 ///     position: Position,
 ///     velocity: Velocity,
 /// }
 ///
 /// fn assert_data_bundle<B: DataBundle>() {}
+///
 /// assert_data_bundle::<MovableBundle>();
 ///
-/// // `no_effect` bundles never run a post-spawn side effect.
+/// // `data` bundles never run a post-spawn side effect.
 /// assert!(!MovableBundle::NEED_APPLY_EFFECT);
 /// ```
 ///

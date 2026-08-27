@@ -56,7 +56,7 @@ unsafe impl<T: ?Sized> SystemParam for PhantomData<T> {
 /// }
 ///
 /// let mut world = World::alloc();
-/// assert!(world.run_once(main_thread_system, ()).unwrap());
+/// assert!(world.invoke_once(main_thread_system, ()).unwrap());
 /// ```
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NonSendMarker;
@@ -112,7 +112,7 @@ unsafe impl SystemParam for NonSendMarker {
 /// }
 ///
 /// let mut world = World::alloc();
-/// assert!(world.run_once(exclusive_system, ()).unwrap());
+/// assert!(world.invoke_once(exclusive_system, ()).unwrap());
 /// ```
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExclusiveMarker;

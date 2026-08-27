@@ -31,13 +31,13 @@ use crate::world::WorldCell;
 ///     println!("Hello, world!");
 /// }
 ///
-/// let mut world = World::alloc();
+/// fn spawn_one(world: &mut World) {
+///     world.spawn_empty(None);
+/// }
 ///
-/// // `IntoSystem::into_system` converts the function into a `System`.
-/// let mut system = IntoSystem::into_system(hello);
-/// system.initialize(&world);
-/// let result = system.run((), &mut world);
-/// assert!(result.is_ok());
+/// let mut world = World::alloc();
+/// world.invoke_once(hello, ());
+/// world.invoke_once(spawn_one, ());
 /// ```
 ///
 /// [`IntoSystem`]: crate::system::IntoSystem
@@ -94,8 +94,11 @@ pub trait System: Send + Sync + 'static {
     /// Due to the uncertain accessibility of World, this function will not
     /// handle delayed commands submitted.
     ///
-    /// The safe [`System::run`] method wraps  `initialize`, this and
-    /// `apply_deferred` pass afterwards.
+    /// The safe [`World::invoke_once`] / [`World::invoke`] helpers wrap
+    /// `initialize`, this, and `apply_deferred` in a single call.
+    ///
+    /// [`World::invoke_once`]: crate::world::World::invoke_once
+    /// [`World::invoke`]: crate::world::World::invoke
     ///
     /// # Safety
     ///
@@ -112,21 +115,6 @@ pub trait System: Send + Sync + 'static {
         input: <Self::Input as SystemInput>::Data<'_>,
         world: WorldCell<'_>,
     ) -> Result<Self::Output, SystemError>;
-
-    /// Executes the system's logic against the provided world, then applies
-    /// any queued deferred effects.
-    ///
-    /// This function will also automatically initialize the job.
-    fn run(
-        &mut self,
-        input: <Self::Input as SystemInput>::Data<'_>,
-        world: &mut World,
-    ) -> Result<Self::Output, SystemError> {
-        self.initialize(world);
-        let result = unsafe { self.run_raw(input, world.into()) };
-        self.apply_deferred(world);
-        result
-    }
 
     /// Moves this system's queued deferred effects into the provided
     /// [`DeferredWorld`] view, so they can be applied later.

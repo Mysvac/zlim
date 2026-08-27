@@ -1,5 +1,4 @@
 //! Bundle metadata and the per-world bundle registry.
-#![expect(clippy::len_without_is_empty, reason = "useless")]
 
 use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
@@ -179,6 +178,7 @@ impl Bundles {
 impl Bundles {
     /// Returns the number of registered bundles (including the empty bundle).
     #[inline(always)]
+    #[expect(clippy::len_without_is_empty, reason = "useless")]
     pub fn len(&self) -> usize {
         self.infos.len()
     }

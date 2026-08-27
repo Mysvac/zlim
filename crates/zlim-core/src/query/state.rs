@@ -133,7 +133,6 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// ```rust
     /// use zlim_core::prelude::*;
     /// use zlim_core::query::QueryState;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -204,7 +203,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     }
 
     /// Return `true` if this QueryState should update.
-    pub fn should_update(&mut self, world: &World) -> bool {
+    pub fn should_update(&self, world: &World) -> bool {
         debug_assert!(self.world_id == world.id());
         // SAFETY: It must be '>'. When it is `=`, it **cannot** be updated.
         world.tables.len() > self.version as usize

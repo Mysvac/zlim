@@ -13,8 +13,8 @@ use zlim_reflect::Reflect;
 use zlim_utils::mem::{Bump, Global};
 
 use super::alias::{DeserializeFunc, SerializeFunc};
-use super::db::{ComponentDB, ID_REGISTRY, PATH_REGISTRY, TYPE_REGISTRY};
-use super::{Component, ComponentId};
+use super::db::{ID_REGISTRY, PATH_REGISTRY, TYPE_REGISTRY};
+use super::{Component, ComponentDB, ComponentId};
 use crate::entity::EntityMapper;
 
 // -----------------------------------------------------------------------------
@@ -36,7 +36,6 @@ use crate::entity::EntityMapper;
 /// ```rust
 /// use zlim_core::prelude::*;
 /// use zlim_core::component::register_base;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Position;
@@ -68,7 +67,6 @@ pub fn register_base<C: Component>() -> &'static ComponentDB {
 /// use zlim_core::clone::ComponentCloner;
 /// use zlim_core::component::register_serializable;
 /// use serde::{Deserialize, Serialize};
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Clone, Serialize, Deserialize)]
 /// struct Position;

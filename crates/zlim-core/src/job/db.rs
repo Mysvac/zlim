@@ -45,6 +45,9 @@ pub struct JobDB {
     /// Constructor that builds a boxed job for the given group; `group` is
     /// the group name, empty for standalone jobs.
     pub ctor: fn(group: &'static str) -> Box<dyn Job>,
+    /// Constructors for the job's run conditions (`run_if`), each taking
+    /// the job's group name.
+    pub run_if: &'static [fn(group: &'static str) -> Box<dyn Job>],
     /// Source location where the job was defined.
     pub location: DebugLocation,
 }
@@ -93,21 +96,7 @@ impl JobDB {
             let start = zlim_os::time::Instant::now();
             log::debug!("Collecting JobDB registrations...");
 
-            let mut registry = REGISTRY.write().unwrap_or_else(PoisonError::into_inner);
-
-            for db in zlim_reg::iter::<JobDB>() {
-                if let Some(old) = registry.insert(db.name, db) {
-                    ::core::hint::cold_path();
-                    log::warn! {
-                        "duplicated job name `{}`, first location is `{}`, second location is `{}`",
-                        db.name, old.location, db.location,
-                    }
-                }
-            }
-
-            ::core::mem::drop(registry);
-
-            for reg in zlim_reg::iter::<JobReg>() {
+            for reg in zlim_reg::iter::<__JobReg__>() {
                 (reg.0)();
             }
 
@@ -122,8 +111,6 @@ impl JobDB {
         ONCE.call_once(collect_internal);
     }
 }
-
-zlim_reg::collect!(JobDB);
 
 // -----------------------------------------------------------------------------
 // Dynamic Register
@@ -198,7 +185,6 @@ pub trait JobLabel {
         }
 
         core::hint::cold_path();
-
         JobDB::register(Self::database());
     }
 }
@@ -207,11 +193,11 @@ pub trait JobLabel {
 
 /// A CTOR-registry handle used to eagerly register jobs.
 #[repr(transparent)]
-pub struct JobReg(fn());
+pub struct __JobReg__(fn());
 
-zlim_reg::collect!(JobReg);
+zlim_reg::collect!(__JobReg__);
 
-impl JobReg {
+impl __JobReg__ {
     /// Creates a registration handle for a [`JobLabel`].
     pub const fn of<T: JobLabel>() -> Self {
         Self(T::register)
@@ -225,16 +211,14 @@ impl JobReg {
 ///
 /// ```no_run
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::JobDB;
-/// use zlim_core::register_job;
 ///
-/// #[job_fn(type = MyJob, name = "my_job")]
+/// #[job_fn(type = MyJob)]
 /// fn my_job() {}
 ///
 /// register_job!(MyJob);
 ///
 /// JobDB::collect();
-/// assert!(JobDB::get("my_job").is_some());
+/// assert!(JobDB::get(MyJob::name()).is_some());
 /// ```
 #[macro_export]
 macro_rules! register_job {
@@ -242,8 +226,8 @@ macro_rules! register_job {
         const _: () = {
             $(
                 $crate::__macro_exports__::__submit!(
-                    $crate::job::JobReg::of::<$ty>()
-                    => $crate::job::JobReg
+                    $crate::job::__JobReg__::of::<$ty>()
+                    => $crate::job::__JobReg__
                 );
             )*
         };

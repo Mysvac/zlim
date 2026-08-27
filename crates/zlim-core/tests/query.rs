@@ -3,7 +3,6 @@
 
 use zlim_core::component::Component;
 use zlim_core::query::{Query, Single, With};
-use zlim_core::system::{IntoSystem, System};
 use zlim_core::world::World;
 use zlim_reflect::TypePath;
 
@@ -48,10 +47,7 @@ fn query_iterates_components() {
     world.spawn((Pos { x: 1.0, y: 0.0 }, Vel { x: 0.0, y: 0.0 }), None);
     world.spawn((Pos { x: 2.0, y: 0.0 },), None);
 
-    let mut system = IntoSystem::into_system(sum_x);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), 3.0);
+    assert_eq!(world.invoke_once(sum_x, ()).unwrap(), 3.0);
 }
 
 #[test]
@@ -60,11 +56,8 @@ fn query_applies_filters() {
     world.spawn((Pos { x: 1.0, y: 0.0 }, Vel { x: 0.0, y: 0.0 }), None);
     world.spawn((Pos { x: 2.0, y: 0.0 },), None);
 
-    let mut system = IntoSystem::into_system(sum_x_with_filter);
-    system.initialize(&world);
-
     // Only the entity with `Vel` matches.
-    assert_eq!(system.run((), &mut world).unwrap(), 1.0);
+    assert_eq!(world.invoke_once(sum_x_with_filter, ()).unwrap(), 1.0);
 }
 
 #[test]
@@ -72,10 +65,7 @@ fn query_iter_mut_modifies() {
     let mut world = World::alloc();
     let a = world.spawn((Pos { x: 1.0, y: 0.0 },), None).id();
 
-    let mut system = IntoSystem::into_system(count_mut);
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), 1);
+    assert_eq!(world.invoke_once(count_mut, ()).unwrap(), 1);
     assert_eq!(world.entity(a).get::<Pos>().unwrap().x, 101.0);
 }
 
@@ -85,15 +75,20 @@ fn query_get_and_contains() {
     let a = world.spawn((Pos { x: 1.0, y: 0.0 },), None).id();
     let b = world.spawn((Pos { x: 2.0, y: 0.0 },), None).id();
 
-    let mut system = IntoSystem::into_system(move |query: Query<&Pos>| -> (f32, bool, bool) {
-        let x = query.get(a).unwrap().x;
-        let has_a = query.contains(a);
-        let has_b = query.contains(b);
-        (x, has_a, has_b)
-    });
-    system.initialize(&world);
-
-    assert_eq!(system.run((), &mut world).unwrap(), (1.0, true, true));
+    assert_eq!(
+        world
+            .invoke_once(
+                move |query: Query<&Pos>| -> (f32, bool, bool) {
+                    let x = query.get(a).unwrap().x;
+                    let has_a = query.contains(a);
+                    let has_b = query.contains(b);
+                    (x, has_a, has_b)
+                },
+                (),
+            )
+            .unwrap(),
+        (1.0, true, true),
+    );
 }
 
 #[test]
@@ -101,21 +96,15 @@ fn query_single_param() {
     let mut world = World::alloc();
     world.spawn((Pos { x: 5.0, y: 0.0 }, Vel { x: 1.0, y: 0.0 }), None);
 
-    let mut system = IntoSystem::into_system(single_vel);
-    system.initialize(&world);
-    assert_eq!(system.run((), &mut world).unwrap(), 1.0);
+    assert_eq!(world.invoke_once(single_vel, ()).unwrap(), 1.0);
 
     // Multiple matches fail parameter construction.
     world.spawn((Pos { x: 6.0, y: 0.0 }, Vel { x: 2.0, y: 0.0 }), None);
-    let mut system = IntoSystem::into_system(single_vel);
-    system.initialize(&world);
-    assert!(system.run((), &mut world).is_err());
+    assert!(world.invoke_once(single_vel, ()).is_err());
 
     // Zero matches fail too.
     let mut world = World::alloc();
-    let mut system = IntoSystem::into_system(single_vel);
-    system.initialize(&world);
-    assert!(system.run((), &mut world).is_err());
+    assert!(world.invoke_once(single_vel, ()).is_err());
 }
 
 // -----------------------------------------------------------------------------

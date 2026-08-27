@@ -54,8 +54,9 @@ impl LocalExecutor {
     /// Submits a new thread-local task to the executor queue.
     ///
     /// The task will not run until the executor is ticked.
-    #[cfg(not(target_family = "wasm"))] // wasm: use `web_task` instead
     #[inline]
+    #[expect(clippy::allow_attributes, reason = "may be used")]
+    #[allow(unused, reason = "maybe unused in some implementation")]
     pub fn spawn<T: 'static, F>(future: F) -> Task<T>
     where
         F: Future<Output = T> + 'static,
@@ -110,7 +111,6 @@ impl LocalExecutor {
     /// Attempts to run one queued task synchronously.
     ///
     /// Returns `true` if a task was executed, `false` if the queue was empty.
-    #[cfg(not(target_family = "wasm"))] // wasm: `run_local` does nothing
     #[inline]
     pub fn try_tick() -> bool {
         match LOCALEX.with_borrow_mut(|ex| ex.queue.pop_front()) {
@@ -146,6 +146,8 @@ impl LocalExecutor {
     ///
     /// The executor processes queued tasks in a loop. When the `stop_signal`
     /// completes, this function returns the signal's output.
+    #[expect(clippy::allow_attributes, reason = "may be used")]
+    #[allow(unused, reason = "maybe unused in some implementation")]
     pub async fn run<T>(stop_signal: impl Future<Output = T>) -> T {
         let tick_forever = async {
             loop {
@@ -153,7 +155,7 @@ impl LocalExecutor {
             }
         };
 
-        tick_forever.or(stop_signal).await
+        stop_signal.or(tick_forever).await
     }
 }
 
@@ -169,7 +171,7 @@ static MAINEX: MainExecutor = MainExecutor {
 ///
 /// This executor can receive tasks from any thread (via `spawn`) and execute them
 /// on the thread that drives it. In multi-threaded mode that is the main thread —
-/// a dedicated fake one unless [`set_main_thread`](crate::set_main_thread) was
+/// a dedicated fake one unless [`designate_main_thread`](crate::designate_main_thread) was
 /// called up front — and applications hand main-thread work to it via
 /// `spawn_to_main`. It uses a concurrent queue and atomic waker to handle
 /// cross-thread submissions.
@@ -182,7 +184,7 @@ static MAINEX: MainExecutor = MainExecutor {
 /// [`try_tick`]: Self::try_tick
 ///
 /// Driven by the main thread — the dedicated fake one, or the thread marked
-/// by [`set_main_thread`](crate::set_main_thread) — or by `run_local` /
+/// by [`designate_main_thread`](crate::designate_main_thread) — or by `run_local` /
 /// `scope` in single-threaded mode.
 ///
 /// # Deadlock Warning
@@ -215,8 +217,9 @@ impl MainExecutor {
     /// must be `Send` and `'static`.
     ///
     /// The task will not run until the main thread ticks the executor.
-    #[cfg(not(target_family = "wasm"))] // wasm: use `web_task` instead
     #[inline]
+    #[expect(clippy::allow_attributes, reason = "may be used")]
+    #[allow(unused, reason = "maybe unused in some implementation")]
     pub fn spawn<T, F>(future: F) -> Task<T>
     where
         T: Send + 'static,
@@ -266,7 +269,6 @@ impl MainExecutor {
     ///
     /// Thread-safe: may be called from any thread, e.g. by
     /// [`run_local`](crate::run_local) or a scope.
-    #[cfg(not(target_family = "wasm"))] // wasm: `run_local` does nothing
     #[inline]
     pub fn try_tick() -> bool {
         match MAINEX.queue.pop() {
@@ -287,7 +289,7 @@ impl MainExecutor {
     /// itself. In multi-threaded mode it is driven by the dedicated fake
     /// main thread started by the `TaskPool` machinery (see
     /// [`TaskPool`](crate::TaskPool)).
-    pub async fn tick() {
+    async fn tick() {
         fn poll_tick(ctx: &mut Context<'_>) -> Poll<Runnable> {
             MAINEX.waker.register(ctx.waker());
             match MAINEX.queue.pop() {
@@ -307,6 +309,8 @@ impl MainExecutor {
     /// In multi-threaded mode this is driven by the dedicated fake main
     /// thread started by the `TaskPool` machinery (see
     /// [`TaskPool`](crate::TaskPool)).
+    #[expect(clippy::allow_attributes, reason = "may be used")]
+    #[allow(unused, reason = "maybe unused in some implementation")]
     pub async fn run<T>(stop_signal: impl Future<Output = T>) -> T {
         let tick_forever = async {
             loop {
@@ -314,6 +318,6 @@ impl MainExecutor {
             }
         };
 
-        tick_forever.or(stop_signal).await
+        stop_signal.or(tick_forever).await
     }
 }

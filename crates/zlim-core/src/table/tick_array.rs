@@ -88,7 +88,7 @@ impl TickArray {
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
     #[inline(always)]
-    pub const unsafe fn set(&mut self, index: usize, value: Tick) {
+    pub unsafe fn set(&mut self, index: usize, value: Tick) {
         unsafe {
             ptr::write(self.data.as_ptr().add(index), value);
         }
@@ -99,7 +99,7 @@ impl TickArray {
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
     #[inline(always)]
-    pub const unsafe fn get(&self, index: usize) -> Tick {
+    pub unsafe fn get(&self, index: usize) -> Tick {
         unsafe { *self.data.as_ptr().add(index) }
     }
 
@@ -108,7 +108,7 @@ impl TickArray {
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
     #[inline(always)]
-    pub const unsafe fn get_ref(&self, index: usize) -> &Tick {
+    pub unsafe fn get_ref(&self, index: usize) -> &Tick {
         unsafe { &*self.data.as_ptr().add(index) }
     }
 
@@ -117,7 +117,7 @@ impl TickArray {
     /// # Safety
     /// - `index` must be within bounds (0..capacity)
     #[inline(always)]
-    pub const unsafe fn get_mut(&mut self, index: usize) -> &mut Tick {
+    pub unsafe fn get_mut(&mut self, index: usize) -> &mut Tick {
         unsafe { &mut *self.data.as_ptr().add(index) }
     }
 
@@ -127,7 +127,7 @@ impl TickArray {
     /// The returned [`Slice`] is only valid until the array is reallocated
     /// or deallocated; the caller must enforce that.
     #[inline(always)]
-    pub const unsafe fn get_slice(&self) -> Slice<'_, Tick> {
+    pub unsafe fn get_slice(&self) -> Slice<'_, Tick> {
         unsafe { Slice::from_raw(self.data) }
     }
 
@@ -138,7 +138,7 @@ impl TickArray {
     /// reallocated or deallocated, and must not alias any other reference
     /// into the array; the caller must enforce that.
     #[inline(always)]
-    pub const unsafe fn get_slice_mut(&mut self) -> SliceMut<'_, Tick> {
+    pub unsafe fn get_slice_mut(&mut self) -> SliceMut<'_, Tick> {
         unsafe { SliceMut::from_raw(self.data) }
     }
 
@@ -152,7 +152,7 @@ impl TickArray {
     /// - `to` must be < `last` (nonoverlapping)
     /// - Both `to` and `last` must be within bounds
     #[inline(always)]
-    pub const unsafe fn move_last_to(&mut self, last: usize, to: usize) {
+    pub unsafe fn move_last_to(&mut self, last: usize, to: usize) {
         let base_ptr = self.data.as_ptr();
 
         unsafe {

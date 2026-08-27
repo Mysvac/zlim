@@ -56,6 +56,8 @@ debug = ["zlim-internal/debug"]
 
 trace = ["zlim-internal/trace"]
 
+backtrace = ["zlim-internal/backtrace"]
+
 trace_tracy = ["zlim-internal/trace_tracy"]
 
 trace_memory = ["zlim-internal/trace_memory"]

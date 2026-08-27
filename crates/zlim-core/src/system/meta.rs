@@ -147,7 +147,7 @@ impl SystemMeta {
             flags: SystemFlags::empty(),
             last_run: Tick::new(0),
             #[cfg(feature = "trace")]
-            span: zlim_log::info_span!(parent: None, "system", name = name.to_string()),
+            span: zlim_log::info_span!(parent: None, "system", name = ?name),
         }
     }
 

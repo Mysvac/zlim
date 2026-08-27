@@ -530,7 +530,7 @@ impl Worker {
     /// 
     /// - Return Ready and set **Working** if succeeded.
     /// - Return Pending and set **Sleeping** if repeatedly failed.
-    async fn runnable(&self) -> Runnable {
+    fn runnable(&self) -> impl Future<Output = Runnable> {
         poll_fn(|cx| {
             loop {
                 if let Some(r) = self.fetch_runnable() {
@@ -551,7 +551,6 @@ impl Worker {
                 }
             }
         })
-        .await
     }
 
     /// Worker thread:
@@ -561,6 +560,9 @@ impl Worker {
     /// Never returns on its own (`-> !`): it is meant to run as the
     /// never-ending half of `run_forever.or(stop_signal)`, which terminates
     /// it once `stop_signal` completes.
+    /// 
+    /// # Safety
+    /// Worker must be initialzied through `bind_local_worker`.
     async fn worker_run() -> ! {
         /// Number of tasks processed before a worker yields to the scheduler.
         /// This prevents long-running tasks from starving other work.
@@ -710,7 +712,7 @@ impl PoolExecutor {
             worker.state.set(state);
 
             for (index, seat) in state.seats.iter().enumerate()  {
-                if !seat.occupied.swap(true, Ordering::AcqRel) {
+                if !seat.occupied.swap(true, Ordering::Relaxed) {
                     worker.queue.set(&seat.queue);
                     worker.seat_index.set(index);
                     worker.xor_shift.randomize();
@@ -809,13 +811,13 @@ impl PoolExecutor {
     }
 
     /// Runs the executor until the given future completes
-    pub async fn run<T>(&self, stop_signal: impl Future<Output = T>) -> T {
+    pub async fn run_with<T>(this: &Self, stop_signal: impl Future<Output = T>) -> T {
         // `worker_run` runs on bound worker threads; `assist_run` runs on
         // any unbound thread (e.g. a `scope` caller) and helps drain the
         // worker seats. The fake main thread never calls `run` — it only
         // drives `MainExecutor`.
         let is_worker = WORKER.with(|w: &Worker| !w.queue.get().is_null());
-        let state: &State = &self.state;
+        let state: &State = &this.state;
 
         let run_forever = async move {
             if is_worker {
@@ -823,6 +825,24 @@ impl PoolExecutor {
             } else {
                 ::core::hint::cold_path();
                 Worker::assist_run(state).await;
+            }
+        };
+
+        // Run until stop signal completes
+        stop_signal.or(run_forever).await
+    }
+
+    /// Runs the executor until the given future completes
+    /// 
+    /// If it is not on the working thread, it will not run. (always pending).
+    pub async fn run<T>(stop_signal: impl Future<Output = T>) -> T {
+        let is_worker = WORKER.with(|w: &Worker| !w.queue.get().is_null());
+
+        let run_forever = async move {
+            if is_worker {
+                Worker::worker_run().await
+            } else {
+                futures_lite::future::pending::<T>().await
             }
         };
 

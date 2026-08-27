@@ -14,6 +14,8 @@ trace = []
 
 zlim-app-derive = { path = "derive" }
 
+zlim-cfg = { path = "../zlim-cfg", default-features = false }
+
 zlim-os = { path = "../zlim-os", default-features = false }
 zlim-log = { path = "../zlim-log", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
@@ -22,6 +24,12 @@ zlim-task = { path = "../zlim-task", default-features = false }
 zlim-reflect = { path = "../zlim-reflect", default-features = false }
 
 zlim-core = { path = "../zlim-core", default-features = false }
+
+[target.'cfg(any(all(unix, not(target_os = "horizon")), windows))'.dependencies]
+ctrlc = { version = "3.5.2" }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+console_error_panic_hook = { version = "0.1.7" }
 
 [lints]
 workspace = true

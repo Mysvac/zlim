@@ -31,7 +31,6 @@ use crate::utils::Dropper;
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 /// use std::collections::BTreeSet;
 ///
 /// // Basic usage. Deriving also auto-submits the type for bulk

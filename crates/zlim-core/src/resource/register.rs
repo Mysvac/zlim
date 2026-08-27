@@ -38,7 +38,6 @@ use super::resource::Resource;
 /// ```rust
 /// use zlim_core::prelude::*;
 /// use zlim_core::resource::register_base;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct Score(u32);

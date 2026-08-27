@@ -25,7 +25,6 @@ use zlim_reflect::path::TypePath;
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Collision;
@@ -33,11 +32,10 @@ use zlim_reflect::path::TypePath;
 /// let mut world = World::alloc();
 /// world.register_message::<Collision>();
 ///
-/// assert!(world.write_message(Collision).is_some());
-/// assert_eq!(
-///     world.get_resource::<MessageQueue<Collision>>().unwrap().len(),
-///     1
-/// );
+/// world.write_message(Collision);
+///
+/// let queue = world.get_resource::<MessageQueue<Collision>>().unwrap();
+/// assert_eq!(queue.len(), 1);
 /// ```
 ///
 /// # Using MessageQueue In Systems
@@ -52,7 +50,6 @@ use zlim_reflect::path::TypePath;
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Damage {
@@ -79,12 +76,15 @@ use zlim_reflect::path::TypePath;
 /// // per-system `MessageCursor`. Drive the same machinery directly to verify
 /// // the writer/mutator/reader roles:
 /// let mut queue = MessageQueue::<Damage>::default();
+///
 /// queue.write(Damage { amount: 120 });
 ///
 /// let mut mutator_cursor = MessageCursor::new(&queue);
+///
 /// for damage in mutator_cursor.read_mut(&mut queue) {
 ///     damage.amount = damage.amount.min(100);
 /// }
+///
 /// assert_eq!(queue.get(0).map(|(_, m)| m.amount), Some(100));
 ///
 /// // A fresh cursor still observes the message: cursors are independent.

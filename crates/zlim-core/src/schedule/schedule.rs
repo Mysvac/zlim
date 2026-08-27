@@ -1,16 +1,16 @@
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
 use core::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BTreeSet, BinaryHeap};
 
 use zlim_log as log;
 use zlim_utils::debug::DebugLocation;
-use zlim_utils::hash::{HashMap, HashSet, NoopState};
+use zlim_utils::hash::{HashMap, HashSet, NoopState, SparseState};
 use zlim_utils::mem::Bump;
 
 use super::{ConflictTable, ExecutorKind, JobSchedule};
 use super::{Dag, Node, ToposortError};
-use super::{InternedScheduleLabel, JobExecutor, ScheduleLabel};
+use super::{InternedScheduleLabel, JobExecutor, ScheduleLabel, ScheduleStage};
 use super::{MultiThreadedExecutor, SingleThreadedExecutor};
 use crate::job::{Job, JobDB, JobGroup, JobGroupLabel, JobId, JobLabel};
 use crate::system::{AccessTable, SystemError, SystemFlags};
@@ -18,35 +18,67 @@ use crate::tick::Tick;
 use crate::world::{World, WorldCell};
 
 // -----------------------------------------------------------------------------
+// Types
 
-enum Slot<T> {
-    Empty(u16),
-    Data((u16, T)),
+// -------------------------------------------------------------
+
+struct JobEntry {
+    node: Node,
+    stage: Option<&'static str>,
+    object: Option<Box<dyn Job>>,
+    access: Option<AccessTable>,
 }
 
-struct JobObject {
-    job: Box<dyn Job>,
-    access: AccessTable,
-}
+// -------------------------------------------------------------
 
 #[derive(Default)]
-struct Allocator {
-    slots: Vec<Slot<JobId>>,
-    mapper: HashMap<JobId, Node, NoopState>,
+struct Jobs {
+    jobs: Vec<JobEntry>,
+    nodes: HashMap<JobId, Node, NoopState>,
+    idents: HashMap<Node, JobId, SparseState>,
+    uninit: Vec<Node>,
     reusable: BinaryHeap<Reverse<u16>>,
 }
 
-#[derive(Default)]
-struct Buffer {
-    slots: Vec<Slot<Option<JobObject>>>,
-    uninit: Vec<Node>,
+// -------------------------------------------------------------
+
+struct GroupEntry {
+    group: JobGroup,
+    stage: Option<&'static str>,
 }
+
+type Groups = HashMap<&'static str, GroupEntry>;
+
+// -------------------------------------------------------------
+
+struct StageEntry {
+    begin: Node,
+    end: Node,
+    jobs: BTreeSet<Node>,
+    groups: BTreeSet<&'static str>,
+}
+
+type Stages = HashMap<&'static str, StageEntry>;
+
+// -------------------------------------------------------------
+
+#[derive(Default)]
+struct Hierarchy {
+    parents: BTreeSet<Node>,
+    children: BTreeSet<Node>,
+}
+
+type Hierarchies = HashMap<Node, Hierarchy>;
+
+// -------------------------------------------------------------
 
 #[derive(Default)]
 struct OrderingGraph {
     order: Dag,
     weak_order: Dag,
 }
+
+// -------------------------------------------------------------
 
 #[derive(Default)]
 struct ConflictGraph {
@@ -55,173 +87,152 @@ struct ConflictGraph {
 }
 
 // -----------------------------------------------------------------------------
-// Allocator Implementation
+// Jobs Methods
 
-impl Allocator {
-    fn get_node(&self, id: JobId) -> Option<Node> {
-        self.mapper.get(&id).copied()
-    }
-
+impl Jobs {
+    /// Returns the job id registered at `node`, if the tag is still valid.
     fn get_id(&self, node: Node) -> Option<JobId> {
-        let slot = self.slots.get(node.index())?;
-        match slot {
-            Slot::Empty(_) => None,
-            Slot::Data((tag, id)) => (*tag == node.tag).then_some(*id),
-        }
+        self.idents.get(&node).copied()
     }
 
+    /// Returns the node of the job, if it is registered.
+    fn get_node(&self, id: JobId) -> Option<Node> {
+        self.nodes.get(&id).copied()
+    }
+
+    /// Returns whether the job is registered.
     fn contains(&self, id: JobId) -> bool {
-        self.mapper.contains_key(&id)
+        self.nodes.contains_key(&id)
+    }
+}
+
+impl Jobs {
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
     }
 
-    fn insert(&mut self, id: JobId) -> Node {
-        if let Some(node) = self.mapper.get(&id).copied() {
-            *self.slots.get_mut(node.index()).unwrap() = Slot::Data((node.tag, id));
-            return node;
+    fn insert(&mut self, id: JobId, job: Box<dyn Job>) -> Node {
+        if let Some(&node) = self.nodes.get(&id) {
+            ::core::hint::cold_path(); // unreachable ?
+            let entry = &mut self.jobs[node.index()];
+            debug_assert_eq!(entry.node, node);
+            return entry.node;
         }
 
         if let Some(Reverse(idx)) = self.reusable.pop() {
-            let slot = self.slots.get_mut(idx as usize).unwrap();
-            let tag: u16 = match slot {
-                Slot::Empty(t) => *t,
-                Slot::Data((t, _)) => *t,
-            };
-            let new_tag = tag.wrapping_add(1);
-            let node = Node { idx, tag: new_tag };
-            *slot = Slot::Data((new_tag, id));
-            self.mapper.insert(id, node);
+            let entry = &mut self.jobs[idx as usize];
+            entry.node.tag = entry.node.tag.wrapping_add(1);
+            entry.object = Some(job);
+            entry.access = None;
+            entry.stage = None;
+            let node = entry.node;
+            self.uninit.push(node);
+            self.nodes.insert(id, node);
+            self.idents.insert(node, id);
             return node;
         }
 
         assert! {
-            self.slots.len() < u16::MAX as usize,
+            self.jobs.len() < u16::MAX as usize,
             "too many Job in a Schedule, cannot exceed u16::MAX",
         }
 
-        let idx = self.slots.len() as u16;
-        let tag = 1;
-        let node = Node { idx, tag };
+        let idx = self.jobs.len() as u16;
+        let node = Node { idx, tag: 1 };
+        self.jobs.push(JobEntry {
+            node,
+            stage: None,
+            object: Some(job),
+            access: None,
+        });
 
-        self.slots.push(Slot::Data((tag, id)));
-        self.mapper.insert(id, node);
-
+        self.uninit.push(node);
+        self.nodes.insert(id, node);
+        self.idents.insert(node, id);
         node
     }
 
     fn remove(&mut self, id: JobId) -> Option<Node> {
-        let node = self.mapper.remove(&id)?;
+        let node = self.nodes.remove(&id)?;
+        self.idents.remove(&node);
 
-        let slot = self.slots.get_mut(node.index()).unwrap();
+        let entry = &mut self.jobs[node.index()];
+        entry.node.tag = entry.node.tag.wrapping_add(1);
+        entry.stage = None;
+        entry.object = None;
+        entry.access = None;
 
-        match slot {
-            Slot::Data((tag, id)) if *tag == node.tag => {
-                let current_tag = *tag;
-                *slot = Slot::Empty(current_tag);
-                self.reusable.push(Reverse(node.idx));
-                Some(node)
-            }
-            _ => None,
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Buffer Implementation
-
-impl Buffer {
-    fn insert(&mut self, node: Node, job: Box<dyn Job>) {
-        let obj = JobObject {
-            job,
-            access: AccessTable::new(),
-        };
-        while self.slots.len() <= node.index() {
-            self.slots.push(Slot::Empty(0));
+        // The slot no longer needs initialization; drop any pending entry.
+        if let Some(index) = self.uninit.iter().position(|&n| n == node) {
+            self.uninit.swap_remove(index);
         }
 
-        unsafe {
-            *self.slots.get_unchecked_mut(node.index()) = Slot::Data((node.tag, Some(obj)));
-        }
-
-        self.uninit.push(node);
+        self.reusable.push(Reverse(node.idx));
+        Some(node)
     }
 
-    fn remove(&mut self, node: Node) {
-        let index = node.index();
-
-        if let Some(slot) = self.slots.get_mut(index) {
-            if let Slot::Data((tag, _)) = slot
-                && *tag == node.tag
-            {
-                *slot = Slot::Empty(node.tag);
-            }
-            if let Some(index) = self.uninit.iter().position(|value| *value == node) {
-                self.uninit.swap_remove(index);
-            }
-        }
+    fn stage(&self, node: Node) -> Option<&'static str> {
+        let entry = self.jobs.get(node.index())?;
+        (entry.node.tag == node.tag).then_some(entry.stage)?
     }
 
-    /// Reinserts a compiled job together with its access table.
-    ///
-    /// Unlike [`Buffer::insert`], recycled jobs are not added to the
-    /// uninitialized list: their access table stays valid and they skip
-    /// re-initialization on the next rebuild.
-    ///
-    /// [`Buffer::insert`]: Buffer::insert
+    fn get_job(&self, node: Node) -> Option<&dyn Job> {
+        let entry = self.jobs.get(node.index())?;
+        (entry.node.tag == node.tag).then_some(entry.object.as_deref())?
+    }
+
+    fn get_job_mut(&mut self, node: Node) -> Option<&mut dyn Job> {
+        let entry = self.jobs.get_mut(node.index())?;
+        (entry.node.tag == node.tag).then_some(entry.object.as_deref_mut())?
+    }
+
+    fn get_entry_mut(&mut self, node: Node) -> Option<&mut JobEntry> {
+        let entry = self.jobs.get_mut(node.index())?;
+        (entry.node.tag == node.tag).then_some(entry)
+    }
+
+    fn access_table(&self, node: Node) -> Option<&AccessTable> {
+        let entry = self.jobs.get(node.index())?;
+        (entry.node.tag == node.tag).then_some(entry.access.as_ref())?
+    }
+
+    fn set_access_table(&mut self, node: Node, access: AccessTable) {
+        let entry = &mut self.jobs[node.index()];
+        debug_assert_eq!(entry.node.tag, node.tag);
+        entry.access = Some(access);
+    }
+
+    fn take(&mut self, node: Node) -> (Box<dyn Job>, AccessTable) {
+        let entry = &mut self.jobs[node.index()];
+        debug_assert_eq!(entry.node.tag, node.tag);
+        (
+            entry.object.take().expect("job should be present"),
+            entry.access.take().expect("job should be initialized"),
+        )
+    }
+
     fn recycle(&mut self, node: Node, job: Box<dyn Job>, access: AccessTable) {
-        let obj = JobObject { job, access };
-        debug_assert!(self.slots.len() > node.index());
-
-        unsafe {
-            *self.slots.get_unchecked_mut(node.index()) = Slot::Data((node.tag, Some(obj)));
+        let entry = &mut self.jobs[node.index()];
+        if entry.node.tag != node.tag {
+            return; // already be removed
         }
+        entry.object = Some(job);
+        entry.access = Some(access);
     }
 
-    /// Iterates the nodes of every job currently stored in the buffer.
-    fn nodes(&self) -> Vec<Node> {
-        self.slots
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, slot)| match slot {
-                Slot::Data((tag, Some(_))) => Some(Node {
-                    idx: idx as u16,
-                    tag: *tag,
-                }),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn get_job(&self, node: Node) -> Option<&JobObject> {
-        let slot = self.slots.get(node.index())?;
-
-        if let Slot::Data((tag, data)) = slot {
-            debug_assert_eq!(*tag, node.tag);
-            data.as_ref()
-        } else {
-            None
+    fn present_nodes(&self) -> Vec<Node> {
+        use core::hint::assert_unchecked;
+        let mut buf = Vec::with_capacity(self.jobs.len());
+        for entry in &self.jobs {
+            if entry.object.is_some() {
+                unsafe {
+                    assert_unchecked(buf.len() < buf.capacity());
+                    buf.push(entry.node);
+                }
+            }
         }
-    }
-
-    fn get_job_mut(&mut self, node: Node) -> Option<&mut JobObject> {
-        let slot = self.slots.get_mut(node.index())?;
-
-        if let Slot::Data((tag, data)) = slot {
-            debug_assert_eq!(*tag, node.tag);
-            data.as_mut()
-        } else {
-            None
-        }
-    }
-
-    fn take_job(&mut self, node: Node) -> JobObject {
-        let slot = self.slots.get_mut(node.index()).unwrap();
-
-        if let Slot::Data((tag, data)) = slot {
-            debug_assert_eq!(*tag, node.tag);
-            data.take().unwrap()
-        } else {
-            unreachable!()
-        }
+        buf
     }
 }
 
@@ -272,17 +283,17 @@ impl ConflictGraph {
     fn remove(&mut self, node: Node) {
         self.exclusive.remove(&node);
         if let Some(a_set) = self.conflicts.remove(&node) {
-            a_set.iter().for_each(|b| {
+            for b in a_set.iter() {
                 if let Some(b_set) = self.conflicts.get_mut(b) {
                     b_set.remove(&node);
                 }
-            });
+            }
         }
     }
 }
 
 // -----------------------------------------------------------------------------
-// Groups
+// SyncPoint
 
 struct SyncPoint {
     id: JobId,
@@ -297,9 +308,7 @@ impl Job for SyncPoint {
 
     #[inline]
     fn flags(&self) -> SystemFlags {
-        SystemFlags::NO_OP
-            .union(SystemFlags::EXCLUSIVE)
-            .union(SystemFlags::NON_SEND)
+        SystemFlags::NO_OP.union(SystemFlags::EXCLUSIVE)
     }
 
     #[inline]
@@ -337,7 +346,7 @@ impl Job for SyncPoint {
 impl SyncPoint {
     #[inline]
     fn new(name: JobId, after: JobId) -> Self {
-        let buf = format!("#SyncPoint<{name}, {after}>");
+        let buf = format!("#Sync<{name}, {after}>");
         let this_name = zlim_utils::str::intern_str(&buf);
         let id = JobId::isolated(this_name);
         Self {
@@ -365,7 +374,6 @@ impl SyncPoint {
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::schedule::ScheduleLabel;
 ///
 /// #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// enum MainSchedule {
@@ -379,8 +387,10 @@ impl SyncPoint {
 /// fn render_step() {}
 ///
 /// let mut schedule = Schedule::new(MainSchedule::Update);
-/// schedule.insert::<PhysicsStep>();
-/// schedule.insert::<RenderStep>();
+///
+/// schedule.insert::<PhysicsStep>(());
+/// schedule.insert::<RenderStep>(());
+///
 /// assert_eq!(schedule.jobs().len(), 2);
 ///
 /// let mut world = World::alloc();
@@ -395,16 +405,13 @@ impl SyncPoint {
 /// [`Schedule::with_executor`]: Schedule::with_executor
 pub struct Schedule {
     label: InternedScheduleLabel,
-    allocator: Allocator,
-    buffer: Buffer,
+    jobs: Jobs,
+    groups: Groups,
+    stages: Stages,
+    hierarchies: Hierarchies,
     ordering: OrderingGraph,
-    /// Access-conflict graph between jobs.  Only maintained when the
-    /// executor is [`ExecutorKind::MultiThreaded`]; single-threaded
-    /// schedules leave it empty.
     confict: ConflictGraph,
     schedule: JobSchedule,
-    groups: HashMap<&'static str, JobGroup>,
-    sync_points: HashMap<JobId, Vec<JobId>, NoopState>,
     executor: Box<dyn JobExecutor>,
     executor_initialized: bool,
     is_changed: bool,
@@ -425,12 +432,12 @@ impl Schedule {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::schedule::ScheduleLabel;
     ///
     /// #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
     /// struct Startup;
     ///
     /// let schedule = Schedule::new(Startup);
+    ///
     /// assert_eq!(schedule.label(), Startup.intern());
     /// assert_eq!(schedule.jobs().len(), 0);
     /// ```
@@ -451,31 +458,27 @@ impl Schedule {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_core::schedule::{
-    ///     ExecutorKind, MultiThreadedExecutor, ScheduleLabel, SingleThreadedExecutor,
-    /// };
-    ///
-    /// #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    /// struct Update;
+    /// use zlim_core::schedule::{MultiThreadedExecutor, SingleThreadedExecutor};
+    /// use zlim_core::schedule::{AnonymousSchedule, ExecutorKind};
     ///
     /// // Force serial execution regardless of the platform default.
-    /// let serial = Schedule::with_executor(Update, Box::new(SingleThreadedExecutor::new()));
+    /// let serial = Schedule::with_executor(AnonymousSchedule, Box::new(SingleThreadedExecutor::new()));
     /// assert_eq!(serial.executor_kind(), ExecutorKind::SingleThreaded);
     ///
     /// // Or explicitly opt into parallel execution.
-    /// let parallel = Schedule::with_executor(Update, Box::new(MultiThreadedExecutor::new()));
+    /// let parallel = Schedule::with_executor(AnonymousSchedule, Box::new(MultiThreadedExecutor::new()));
     /// assert_eq!(parallel.executor_kind(), ExecutorKind::MultiThreaded);
     /// ```
     pub fn with_executor(label: impl ScheduleLabel, executor: Box<dyn JobExecutor>) -> Self {
         Self {
             label: label.intern(),
-            allocator: Default::default(),
-            buffer: Default::default(),
+            jobs: Default::default(),
+            groups: Default::default(),
+            stages: Default::default(),
+            hierarchies: Default::default(),
             ordering: Default::default(),
             confict: Default::default(),
             schedule: Default::default(),
-            groups: Default::default(),
-            sync_points: HashMap::with_hasher(NoopState),
             executor,
             executor_initialized: false,
             is_changed: false,
@@ -489,7 +492,7 @@ impl Schedule {
 
     /// Iterates all registered job ids in this schedule.
     pub fn jobs(&self) -> impl ExactSizeIterator<Item = JobId> + '_ {
-        self.allocator.mapper.keys().copied()
+        self.jobs.nodes.keys().copied()
     }
 
     /// Iterates the names of all inserted groups in this schedule.
@@ -497,14 +500,28 @@ impl Schedule {
         self.groups.keys().copied()
     }
 
+    /// Iterates the names of all inserted stages in this schedule.
+    pub fn stages(&self) -> impl ExactSizeIterator<Item = &'static str> + '_ {
+        self.stages.keys().copied()
+    }
+
     /// Returns `true` if the job is registered in this schedule.
     pub fn contains_job(&self, id: JobId) -> bool {
-        self.allocator.contains(id)
+        self.jobs.contains(id)
     }
 
     /// Returns `true` if the group is registered in this schedule.
+    ///
+    /// Excluding anonymous group.
     pub fn contains_group(&self, name: &str) -> bool {
         self.groups.contains_key(name)
+    }
+
+    /// Returns `true` if the group is registered in this schedule.
+    ///
+    /// Excluding anonymous phase.
+    pub fn contains_stage(&self, name: &str) -> bool {
+        self.stages.contains_key(name)
     }
 
     /// Returns the executor kind of this schedule.
@@ -514,47 +531,227 @@ impl Schedule {
 }
 
 // -----------------------------------------------------------------------------
-// Modify
+// Insert Job
+
+struct StageInfo {
+    key: &'static str,
+    begin: JobId,
+    end: JobId,
+}
+
+impl StageInfo {
+    #[inline]
+    fn resolve(stage: &impl ScheduleStage) -> Self {
+        Self {
+            key: stage.group_name(),
+            begin: stage.stage_begin(),
+            end: stage.stage_end(),
+        }
+    }
+
+    #[inline]
+    fn is_anonymous(&self) -> bool {
+        self.key == JobGroup::ANONYMOUS
+    }
+}
 
 impl Schedule {
-    /// Inserts a standalone job described by `db`.
+    #[inline]
+    fn try_init_stage(&mut self, stage: &StageInfo) -> bool {
+        use super::stage::{StageBegin, StageEnd};
+
+        let key = stage.key;
+
+        if self.stages.contains_key(key) {
+            return false;
+        }
+
+        ::core::hint::cold_path();
+
+        self.is_changed = true;
+
+        let x = {
+            let id = stage.begin;
+            let job = StageBegin::new(id);
+            let node = self.jobs.insert(id, Box::new(job));
+            self.ordering.insert_node(node);
+            node
+        };
+
+        let y = {
+            let id = stage.end;
+            let job = StageEnd::new(id);
+            let node = self.jobs.insert(id, Box::new(job));
+            self.ordering.insert_node(node);
+            node
+        };
+
+        self.ordering.insert_strong_order(x, y);
+
+        let entry = StageEntry {
+            begin: x,
+            end: y,
+            jobs: BTreeSet::new(),
+            groups: BTreeSet::new(),
+        };
+
+        self.stages.insert(key, entry);
+
+        true
+    }
+
+    /// Inserts an apply-deferred sync point between `before` and `after`
+    /// when `before` is a deferred job.
     ///
-    /// The job id uses the [`JobGroup::ANONYMOUS`] group name; no group
-    /// storage is created for it.  Returns `false` if the job already exists.
+    /// Used by the multi-threaded executor; a no-op otherwise.  Both nodes
+    /// must exist and be live (the caller has already resolved them).
     #[inline(never)]
-    fn insert_db(&mut self, db: JobDB) -> bool {
+    fn insert_sync_point(&mut self, before: Node, after: Node) {
+        // Skip the sync point if the before-job is not deferred, or if its
+        // object is currently compiled into the JobSchedule.
+        let Some(job) = self.jobs.get_job(before) else {
+            ::core::hint::cold_path();
+            return;
+        };
+
+        if !job.flags().intersects(SystemFlags::DEFERRED) {
+            return;
+        }
+
+        let before_id = self
+            .jobs
+            .get_id(before)
+            .expect("sync point endpoint should exist");
+        let after_id = self
+            .jobs
+            .get_id(after)
+            .expect("sync point endpoint should exist");
+
+        let point = SyncPoint::new(before_id, after_id);
+        let job_id = point.id;
+
+        if !self.jobs.contains(job_id) {
+            let job_node = self.jobs.insert(job_id, Box::new(point));
+
+            self.ordering.insert_node(job_node); // optional
+
+            self.ordering.insert_strong_order(before, job_node);
+            self.ordering.insert_weak_order(job_node, after);
+
+            self.confict.set_exclusive(job_node);
+
+            // Register the cascade relationship: the sync point is removed
+            // together with either of its endpoints.
+            self.hierarchies
+                .entry(before)
+                .or_default()
+                .children
+                .insert(job_node);
+            self.hierarchies
+                .entry(after)
+                .or_default()
+                .children
+                .insert(job_node);
+            let parents = self.hierarchies.entry(job_node).or_default();
+            parents.parents.insert(before);
+            parents.parents.insert(after);
+        }
+    }
+
+    #[inline(never)]
+    fn insert_db(&mut self, db: JobDB, stage: &StageInfo, caller: DebugLocation) -> bool {
         let id = JobId::isolated(db.name);
 
-        if self.allocator.get_node(id).is_some() {
+        if self.jobs.get_node(id).is_some() {
             core::hint::cold_path();
+            log::warn!(
+                "The Job `{}` already exists in schedule `{:?}`, skipped. \n\t{}",
+                id,
+                self.label,
+                caller,
+            );
             return false;
         }
 
         self.is_changed = true;
 
-        let node = self.allocator.insert(id);
-        self.buffer.insert(node, (db.ctor)(JobGroup::ANONYMOUS));
+        let key = stage.key;
+        let anonymous: bool = stage.is_anonymous();
+
+        if !anonymous {
+            self.try_init_stage(stage);
+        }
+
+        let multi_thread = self.executor.kind() == ExecutorKind::MultiThreaded;
+
+        let job = (db.ctor)(JobGroup::ANONYMOUS);
+        let node = self.jobs.insert(id, job);
         self.ordering.insert_node(node);
+
+        if !anonymous {
+            self.jobs.jobs[node.index()].stage = Some(key);
+
+            let stage = self.stages.get_mut(key).expect("inserted above");
+            stage.jobs.insert(node);
+
+            let (begin, end) = (stage.begin, stage.end);
+
+            self.ordering.insert_strong_order(begin, node);
+            self.ordering.insert_weak_order(node, end);
+            // No need to add sync point, StageEnd is noop and deferred.
+        }
+
+        for run_if_ctor in db.run_if {
+            let run_if = run_if_ctor(JobGroup::ANONYMOUS);
+            let run_if_id = run_if.id();
+            let run_if_flags = run_if.flags();
+            let run_if_node = self.jobs.insert(run_if_id, run_if);
+            self.ordering.insert_node(run_if_node);
+            if !anonymous {
+                // The condition belongs to the stage: it runs strictly after
+                // the stage's begin marker.
+                let begin = self.stages.get(key).expect("inserted above").begin;
+                self.ordering.insert_strong_order(begin, run_if_node);
+            }
+            self.ordering.insert_strong_order(run_if_node, node);
+            if multi_thread && run_if_flags.intersects(SystemFlags::DEFERRED) {
+                self.insert_sync_point(run_if_node, node);
+            }
+            self.hierarchies
+                .entry(node)
+                .or_default()
+                .children
+                .insert(run_if_node);
+            self.hierarchies
+                .entry(run_if_node)
+                .or_default()
+                .parents
+                .insert(node);
+        }
 
         true
     }
 
     /// Inserts a standalone job looked up from the global [`JobDB`] registry
-    /// by name.
+    /// by name, into the given [`ScheduleStage`].
     ///
     /// Returns `false` if the job is not registered or already exists.
     ///
     /// [`JobDB`]: crate::job::JobDB
-    pub fn insert_by_name(&mut self, name: &str) -> bool {
+    /// [`ScheduleStage`]: crate::schedule::ScheduleStage
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn insert_by_name(&mut self, name: &str, stage: impl ScheduleStage) -> bool {
         let Some(db) = JobDB::get(name) else {
             core::hint::cold_path();
-            log::warn!("Missing Job named `{name}`, perhaps JobDB is not registered.");
+            log::error!("Missing Job named `{name}`, perhaps JobDB is not registered.");
             return false;
         };
-        self.insert_db(db)
+        let stage = StageInfo::resolve(&stage);
+        self.insert_db(db, &stage, DebugLocation::caller())
     }
 
-    /// Inserts a standalone job from a [`JobLabel`].
+    /// Inserts a standalone job from a [`JobLabel`] into the given
+    /// [`ScheduleStage`].
     ///
     /// The label's `name()` is tried against the global registry first;
     /// only if that fails is the job constructed from `database()`.
@@ -571,40 +768,71 @@ impl Schedule {
     /// fn collision_check() {}
     ///
     /// let mut schedule = Schedule::new(AnonymousSchedule);
-    /// assert!(schedule.insert::<CollisionCheck>());
+    ///
+    /// // Insert into the anonymous stage.
+    /// assert!(schedule.insert::<CollisionCheck>(()));
+    ///
     /// // Inserting the same job twice returns `false`.
-    /// assert!(!schedule.insert::<CollisionCheck>());
+    /// assert!(!schedule.insert::<CollisionCheck>(()));
     /// ```
     ///
     /// [`JobLabel`]: crate::job::JobLabel
-    pub fn insert<L: JobLabel>(&mut self) -> bool {
+    /// [`ScheduleStage`]: crate::schedule::ScheduleStage
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn insert<L: JobLabel>(&mut self, stage: impl ScheduleStage) -> bool {
         let name = L::name();
+        let stage = StageInfo::resolve(&stage);
         if let Some(db) = JobDB::get(name) {
-            self.insert_db(db)
+            self.insert_db(db, &stage, DebugLocation::caller())
         } else {
-            self.insert_db(L::database())
+            ::core::hint::cold_path();
+            let db = L::database();
+            JobDB::register(db);
+            self.insert_db(db, &stage, DebugLocation::caller())
         }
     }
+}
 
+// -----------------------------------------------------------------------------
+// Remove Job
+
+impl Schedule {
     /// Removes the job with the given id.
     ///
     /// Returns `false` if the job is not registered in this schedule.
     #[inline(never)]
     fn remove_job(&mut self, id: JobId) -> bool {
-        let Some(node) = self.allocator.remove(id) else {
+        let Some(node) = self.jobs.get_node(id) else {
             core::hint::cold_path();
             return false;
         };
+        let stage = self.jobs.stage(node);
+        let node = self.jobs.remove(id).expect("checked above");
 
         self.is_changed = true;
-        self.buffer.remove(node);
         self.ordering.remove_node(node);
         self.confict.remove(node);
 
-        if let Some(points) = self.sync_points.remove(&id) {
-            ::core::hint::cold_path();
-            for point in points {
-                let _ = self.remove_job(point);
+        // Scrub the job from its stage's membership set.
+        if let Some(key) = stage
+            && let Some(entry) = self.stages.get_mut(key)
+        {
+            entry.jobs.remove(&node);
+        }
+
+        let Some(h) = self.hierarchies.remove(&node) else {
+            return true;
+        };
+
+        for child in h.children {
+            if let Some(child_id) = self.jobs.get_id(child) {
+                let _ = self.remove_job(child_id);
+            }
+        }
+
+        for parent in h.parents {
+            if let Some(p) = self.hierarchies.get_mut(&parent) {
+                p.children.remove(&node);
             }
         }
 
@@ -629,6 +857,9 @@ impl Schedule {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Order
+
 impl Schedule {
     /// Inserts one ordering edge from a group's job-index pair.
     ///
@@ -641,13 +872,13 @@ impl Schedule {
         after: JobId,
         caller: DebugLocation,
     ) {
-        let Some(b) = self.allocator.get_node(before) else {
+        let Some(b) = self.jobs.get_node(before) else {
             ::core::hint::cold_path();
             let label = self.label;
             log::warn!("Missing Job `{before}` in Schedule `{label:?}`, skiped.\n\t{caller}");
             return;
         };
-        let Some(a) = self.allocator.get_node(after) else {
+        let Some(a) = self.jobs.get_node(after) else {
             ::core::hint::cold_path();
             let label = self.label;
             log::warn!("Missing Job `{after}` in Schedule `{label:?}`, skiped.\n\t{caller}");
@@ -663,7 +894,33 @@ impl Schedule {
 
     /// Insert a strong order by given sequence.
     ///
-    /// See [`JobGroup`]'s documentation for `StrongOrder` information.
+    /// # order / strong_order
+    ///
+    /// The subsequent jobs will only be executed after the previous jobs
+    /// have been completed **successfully**, and the results of deferred
+    /// commands queued by previous jobs is **definitely visible**.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::schedule::AnonymousSchedule;
+    ///
+    /// #[derive(TypePath, ScheduleStage)]
+    /// enum FixedMain {
+    ///     PreUpdate,
+    ///     Update,
+    ///     PostUpdate,
+    /// }
+    ///
+    /// let mut schedule = Schedule::new(AnonymousSchedule);
+    ///
+    /// schedule.insert_stage(FixedMain::PreUpdate);
+    /// schedule.insert_stage(FixedMain::Update);
+    /// schedule.insert_stage(FixedMain::PostUpdate);
+    /// schedule.insert_order(&[FixedMain::PreUpdate.stage_end(), FixedMain::Update.stage_begin()]);
+    /// schedule.insert_order(&[FixedMain::Update.stage_end(), FixedMain::PostUpdate.stage_begin()]);
+    /// ```
     #[inline(never)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_order(&mut self, order: &[JobId]) {
@@ -687,46 +944,46 @@ impl Schedule {
         for index in 1..order.len() {
             let before: JobId = order[index - 1];
             let after: JobId = order[index];
-
-            let Some(before_node) = self.allocator.get_node(before) else {
-                // The warning has already been triggered once during the order
-                // insertion, there is no need to output it again here.
-                continue;
+            let Some(before_node) = self.jobs.get_node(before) else {
+                return;
             };
-            let Some(after_node) = self.allocator.get_node(after) else {
-                // The warning has already been triggered once during the order
-                // insertion, there is no need to output it again here.
-                continue;
+            let Some(after_node) = self.jobs.get_node(after) else {
+                return;
             };
-
-            let object = self.buffer.get_job(before_node).unwrap();
-            if !object.job.flags().intersects(SystemFlags::DEFERRED) {
-                continue;
-            }
-
-            let point = SyncPoint::new(before, after);
-            let job_id = point.id;
-
-            if !self.allocator.contains(job_id) {
-                let job_node = self.allocator.insert(job_id);
-
-                self.buffer.insert(job_node, Box::new(point));
-                self.ordering.insert_node(job_node); // optional
-
-                self.ordering.insert_strong_order(before_node, job_node);
-                self.ordering.insert_weak_order(job_node, after_node);
-
-                self.confict.set_exclusive(job_node);
-
-                self.sync_points.entry(before).or_default().push(job_id);
-                self.sync_points.entry(after).or_default().push(job_id);
-            }
+            self.insert_sync_point(before_node, after_node);
         }
     }
 
     /// Insert a weak order by given sequence.
     ///
-    /// See [`JobGroup`]'s documentation for `WeakOrder` information.
+    /// # weak_order
+    ///
+    /// The subsequent jobs will only be executed after the previous jobs
+    /// have been completed, **whether successful or not (even skipped)**.
+    ///
+    /// The results of deferred commands queued by previous jobs is **definitely visible**.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::schedule::AnonymousSchedule;
+    ///
+    /// #[derive(TypePath, ScheduleStage)]
+    /// enum FixedMain {
+    ///     PreUpdate,
+    ///     Update,
+    ///     PostUpdate,
+    /// }
+    ///
+    /// let mut schedule = Schedule::new(AnonymousSchedule);
+    ///
+    /// schedule.insert_stage(FixedMain::PreUpdate);
+    /// schedule.insert_stage(FixedMain::Update);
+    /// schedule.insert_stage(FixedMain::PostUpdate);
+    /// schedule.insert_weak_order(&[FixedMain::PreUpdate.stage_end(), FixedMain::Update.stage_begin()]);
+    /// schedule.insert_weak_order(&[FixedMain::Update.stage_end(), FixedMain::PostUpdate.stage_begin()]);
+    /// ```
     #[inline(never)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_weak_order(&mut self, order: &[JobId]) {
@@ -751,46 +1008,46 @@ impl Schedule {
         for index in 1..order.len() {
             let before: JobId = order[index - 1];
             let after: JobId = order[index];
-
-            let Some(before_node) = self.allocator.get_node(before) else {
-                // The warning has already been triggered once during the order
-                // insertion, there is no need to output it again here.
-                continue;
+            let Some(before_node) = self.jobs.get_node(before) else {
+                return;
             };
-            let Some(after_node) = self.allocator.get_node(after) else {
-                // The warning has already been triggered once during the order
-                // insertion, there is no need to output it again here.
-                continue;
+            let Some(after_node) = self.jobs.get_node(after) else {
+                return;
             };
-
-            let object = self.buffer.get_job(before_node).unwrap();
-            if !object.job.flags().intersects(SystemFlags::DEFERRED) {
-                continue;
-            }
-
-            let point = SyncPoint::new(before, after);
-            let job_id = point.id;
-
-            if !self.allocator.contains(job_id) {
-                let job_node = self.allocator.insert(job_id);
-
-                self.buffer.insert(job_node, Box::new(point));
-                self.ordering.insert_node(job_node); // optional
-
-                self.ordering.insert_strong_order(before_node, job_node);
-                self.ordering.insert_weak_order(job_node, after_node);
-
-                self.confict.set_exclusive(job_node);
-
-                self.sync_points.entry(before).or_default().push(job_id);
-                self.sync_points.entry(after).or_default().push(job_id);
-            }
+            self.insert_sync_point(before_node, after_node);
         }
     }
 
     /// Insert a relaxed order by given sequence.
     ///
-    /// See [`JobGroup`]'s documentation for `RelaxedOrder` information.
+    /// # relaxed_order
+    ///
+    /// The subsequent jobs will only be executed after the previous jobs
+    /// have been completed, **whether successful or not (even skipped)**.
+    ///
+    /// The results of deferred commands queued by previous jobs **may not be visible**.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_core::schedule::AnonymousSchedule;
+    ///
+    /// #[derive(TypePath, ScheduleStage)]
+    /// enum FixedMain {
+    ///     PreUpdate,
+    ///     Update,
+    ///     PostUpdate,
+    /// }
+    ///
+    /// let mut schedule = Schedule::new(AnonymousSchedule);
+    ///
+    /// schedule.insert_stage(FixedMain::PreUpdate);
+    /// schedule.insert_stage(FixedMain::Update);
+    /// schedule.insert_stage(FixedMain::PostUpdate);
+    /// schedule.insert_relaxed_order(&[FixedMain::PreUpdate.stage_end(), FixedMain::Update.stage_begin()]);
+    /// schedule.insert_relaxed_order(&[FixedMain::Update.stage_end(), FixedMain::PostUpdate.stage_begin()]);
+    /// ```
     #[inline(never)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_relaxed_order(&mut self, order: &[JobId]) {
@@ -809,45 +1066,99 @@ impl Schedule {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Insert Group
+
 impl Schedule {
-    /// Inserts every job of `group` together with its ordering constraints.
+    /// Inserts every job of `group` together with its ordering constraints,
+    /// into the given [`ScheduleStage`].
     ///
     /// Returns `false` if the group already exists.  Jobs missing from the
     /// global [`JobDB`] registry are skipped with a warning.
     ///
     /// [`JobDB`]: crate::job::JobDB
+    /// [`ScheduleStage`]: crate::schedule::ScheduleStage
     #[inline(never)]
-    fn insert_group_object(&mut self, group: JobGroup, caller: DebugLocation) -> bool {
+    fn insert_group_object(
+        &mut self,
+        group: JobGroup,
+        stage: &StageInfo,
+        caller: DebugLocation,
+    ) -> bool {
         let name = group.name;
+        let multi_thread = self.executor.kind() == ExecutorKind::MultiThreaded;
 
-        if self.groups.contains_key(name) {
+        if let Some(entry) = self.groups.get(name) {
             core::hint::cold_path();
+            let stage = entry.stage.unwrap_or("#anonymous");
+            log::warn!(
+                "The JobGroup `{}` already exists in schedule `{:?}`'s stage `{:?}`, skipped. \n\t{}",
+                name,
+                self.label,
+                stage,
+                caller,
+            );
             return false;
         }
 
         self.is_changed = true;
+
+        let key = stage.key;
+        let anonymous = stage.is_anonymous();
+
+        if !anonymous {
+            self.try_init_stage(stage);
+        }
 
         // Create and insert all jobs of the group.
         for &job in group.jobs {
             let job_name = job.name();
             let Some(db) = JobDB::get(job_name) else {
                 core::hint::cold_path();
-                log::warn!(
-                    "Missing job `{job_name}` in group `{name}`, \
-                    perhaps JobDB is not registered.\n\t{caller}"
+                log::error!(
+                    "Missing job `{job_name}` in group `{name}`, perhaps \
+                    JobDB is not registered. Please call `JobDB::collect` \
+                    before any schedule operation. \n\t{caller}"
                 );
                 continue;
             };
 
-            if !self.allocator.contains(job) {
-                let node = self.allocator.insert(job);
-                self.buffer.insert(node, (db.ctor)(name));
-                self.ordering.insert_node(node);
+            if self.jobs.contains(job) {
+                continue;
+            }
+
+            let node = self.jobs.insert(job, (db.ctor)(name));
+            self.ordering.insert_node(node);
+
+            for run_if_ctor in db.run_if {
+                let run_if = run_if_ctor(name);
+                let run_if_id = run_if.id();
+                let run_if_flags = run_if.flags();
+                let run_if_node = self.jobs.insert(run_if_id, run_if);
+                self.ordering.insert_node(run_if_node);
+                // The condition belongs to the group: it runs strictly after
+                // the group's begin marker (`jobs[0]`).
+                if let Some(g_begin) = self.jobs.get_node(group.jobs[0]) {
+                    self.ordering.insert_strong_order(g_begin, run_if_node);
+                }
+                self.ordering.insert_strong_order(run_if_node, node);
+                self.hierarchies
+                    .entry(node)
+                    .or_default()
+                    .children
+                    .insert(run_if_node);
+                self.hierarchies
+                    .entry(run_if_node)
+                    .or_default()
+                    .parents
+                    .insert(node);
+                if multi_thread && run_if_flags.intersects(SystemFlags::DEFERRED) {
+                    self.insert_sync_point(run_if_node, node);
+                }
             }
         }
 
-        // Insert ordering constraints; edges referencing missing jobs are
-        // skipped.
+        // Insert ordering constraints; edges referencing missing jobs are skipped.
         for &(before, after) in group.order {
             let before = group.jobs[before as usize];
             let after = group.jobs[after as usize];
@@ -864,78 +1175,69 @@ impl Schedule {
             self.insert_edge::<false>(before, after, caller);
         }
 
-        if self.executor.kind() == ExecutorKind::SingleThreaded {
-            self.groups.insert(name, group);
-            return true;
-        }
-
         // Multi-threaded executors need apply-deferred helper jobs
         // inserted between deferred jobs and their successors.
-        for (before, after) in group.order.iter().chain(group.weak_order) {
-            // [0] is `GroupBegin`, [1] is `GroupEnd`.
-            if *before == 0 || *after == 1 {
-                continue;
-            }
-
-            let before: JobId = group.jobs[(*before) as usize];
-            let after: JobId = group.jobs[(*after) as usize];
-
-            let Some(before_node) = self.allocator.get_node(before) else {
-                // The warning has already been triggered once during the order
-                // insertion, there is no need to output it again here.
-                continue;
-            };
-            let Some(after_node) = self.allocator.get_node(after) else {
-                // The warning has already been triggered once during the order
-                // insertion, there is no need to output it again here.
-                continue;
-            };
-
-            let object = self.buffer.get_job(before_node).unwrap();
-            if !object.job.flags().intersects(SystemFlags::DEFERRED) {
-                continue;
-            }
-
-            let point = SyncPoint::new(before, after);
-            let job_id = point.id;
-
-            if !self.allocator.contains(job_id) {
-                let job_node = self.allocator.insert(job_id);
-
-                self.buffer.insert(job_node, Box::new(point));
-                self.ordering.insert_node(job_node); // optional
-
-                self.ordering.insert_strong_order(before_node, job_node);
-                self.ordering.insert_weak_order(job_node, after_node);
-
-                self.confict.set_exclusive(job_node);
-
-                self.sync_points.entry(before).or_default().push(job_id);
-                self.sync_points.entry(after).or_default().push(job_id);
+        if multi_thread {
+            for (before, after) in group.order.iter().chain(group.weak_order) {
+                // [0] is `GroupBegin`, [1] is `GroupEnd`.
+                if *before == 0 || *after == 1 {
+                    continue;
+                }
+                let before: JobId = group.jobs[(*before) as usize];
+                let after: JobId = group.jobs[(*after) as usize];
+                let Some(before_node) = self.jobs.get_node(before) else {
+                    continue;
+                };
+                let Some(after_node) = self.jobs.get_node(after) else {
+                    continue;
+                };
+                self.insert_sync_point(before_node, after_node);
             }
         }
 
-        self.groups.insert(name, group);
+        let stage = (!anonymous).then_some(key);
+        let entry = GroupEntry { stage, group };
+
+        // Record the group together with its stage membership.
+        self.groups.insert(name, entry);
+
+        if !anonymous {
+            let stage = self.stages.get_mut(key).expect("inserted above");
+            stage.groups.insert(name);
+
+            // `jobs[0]` is `GroupBegin`, `jobs[1]` is `GroupEnd`.
+            if let Some(g_begin) = self.jobs.get_node(group.jobs[0]) {
+                self.ordering.insert_strong_order(stage.begin, g_begin);
+            }
+            if let Some(g_end) = self.jobs.get_node(group.jobs[1]) {
+                self.ordering.insert_weak_order(g_end, stage.end);
+                // no need to insert sync point, because StageEnd is noop and deferred.
+            }
+        }
 
         true
     }
 
     /// Inserts a group looked up from the global [`JobGroup`] registry by
-    /// name.
+    /// name, into the given [`ScheduleStage`].
     ///
     /// Returns `false` if the group is not registered or already exists.
     ///
     /// [`JobGroup`]: crate::job::JobGroup
+    /// [`ScheduleStage`]: crate::schedule::ScheduleStage
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn insert_group_by_name(&mut self, name: &str) -> bool {
+    pub fn insert_group_by_name(&mut self, name: &str, stage: impl ScheduleStage) -> bool {
         let Some(group) = JobGroup::get(name).copied() else {
             core::hint::cold_path();
+            log::error!("Missing JobGroup named `{name}`, perhaps it is not registered.");
             return false;
         };
-        self.insert_group_object(group, DebugLocation::caller())
+        let stage = StageInfo::resolve(&stage);
+        self.insert_group_object(group, &stage, DebugLocation::caller())
     }
 
-    /// Inserts a group from a [`JobGroupLabel`].
+    /// Inserts a group from a [`JobGroupLabel`] into the given
+    /// [`ScheduleStage`].
     ///
     /// The label's `name()` is tried against the global registry first; only
     /// if that fails is the group constructed from `group()`.
@@ -968,36 +1270,53 @@ impl Schedule {
     ///
     /// let mut schedule = Schedule::new(AnonymousSchedule);
     /// // Inserts every job of the group plus its ordering constraints.
-    /// assert!(schedule.insert_group::<Gameplay>());
+    /// assert!(schedule.insert_group::<Gameplay>(()));
     /// assert!(schedule.contains_group("gameplay"));
     /// assert!(schedule.contains_job(JobId::new("input_read", "gameplay")));
     /// ```
     ///
     /// [`JobGroupLabel`]: crate::job::JobGroupLabel
+    /// [`ScheduleStage`]: crate::schedule::ScheduleStage
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn insert_group<G: JobGroupLabel>(&mut self) -> bool {
+    pub fn insert_group<G: JobGroupLabel>(&mut self, stage: impl ScheduleStage) -> bool {
         let name = G::name();
+        let stage = StageInfo::resolve(&stage);
         if let Some(group) = JobGroup::get(name) {
-            self.insert_group_object(*group, DebugLocation::caller())
+            self.insert_group_object(*group, &stage, DebugLocation::caller())
         } else {
-            self.insert_group_object(G::group(), DebugLocation::caller())
+            ::core::hint::cold_path();
+            let group = G::group();
+            JobGroup::register(group);
+            self.insert_group_object(group, &stage, DebugLocation::caller())
         }
     }
+}
 
+// -----------------------------------------------------------------------------
+// Remove Group
+
+impl Schedule {
     /// Removes the group with the given name and every job created for it.
     ///
     /// Job ids that no longer exist are skipped.  Returns `false` if the
     /// group is not registered in this schedule.
     #[inline(never)]
     pub fn remove_group_by_name(&mut self, name: &str) -> bool {
-        let Some(group) = self.groups.remove(name) else {
+        let Some(entry) = self.groups.remove(name) else {
             core::hint::cold_path();
             return false;
         };
 
         self.is_changed = true;
 
-        for &id in group.jobs {
+        // Scrub the group from its stage's membership set.
+        if let Some(key) = entry.stage
+            && let Some(stage) = self.stages.get_mut(key)
+        {
+            stage.groups.remove(name);
+        }
+
+        for &id in entry.group.jobs {
             let _ = self.remove_job(id);
         }
 
@@ -1013,6 +1332,51 @@ impl Schedule {
 }
 
 // -----------------------------------------------------------------------------
+// Insert Stage
+
+impl Schedule {
+    #[inline(never)]
+    fn remove_stage_internal(&mut self, name: &str) -> bool {
+        let Some(entry) = self.stages.remove(name) else {
+            return false;
+        };
+
+        if let Some(job_id) = self.jobs.get_id(entry.begin) {
+            self.remove_job(job_id);
+        }
+        if let Some(job_id) = self.jobs.get_id(entry.end) {
+            self.remove_job(job_id);
+        }
+        for job in entry.jobs {
+            if let Some(job_id) = self.jobs.get_id(job) {
+                self.remove_job(job_id);
+            }
+        }
+        for group in entry.groups {
+            self.remove_group_by_name(group);
+        }
+
+        true
+    }
+
+    /// Insert a schedule stage (if it does not exist).
+    ///
+    /// Note that this will not modify the execution order of the stages.
+    /// You need to have used Stage's `stage_begin` and `stage_end` functions
+    /// to insert the order yourself.
+    pub fn insert_stage(&mut self, stage: impl ScheduleStage) -> bool {
+        let info = StageInfo::resolve(&stage);
+        self.try_init_stage(&info)
+    }
+
+    /// Remove a stage and also remove all Jobs and JobGroups belonging to the current stage.
+    pub fn remove_stage(&mut self, stage: impl ScheduleStage) -> bool {
+        let name = stage.stage_name();
+        self.remove_stage_internal(&name)
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Build Pipeline Internal
 
 impl Schedule {
@@ -1024,7 +1388,7 @@ impl Schedule {
     #[inline(never)]
     fn recycle_schedule(&mut self) {
         let schedule = &mut self.schedule;
-        let buffer = &mut self.buffer;
+        let jobs = &mut self.jobs;
 
         schedule.conflict = ConflictTable::new(0);
         schedule.incoming.clear();
@@ -1032,14 +1396,14 @@ impl Schedule {
         schedule.strong_incoming.clear();
         schedule.strong_outgoing.clear();
         schedule.flags.clear();
-        schedule.pool = Bump::new(256); // placeholder
+        schedule.pool = Bump::new(200); // placeholder
 
-        let jobs = core::mem::take(&mut schedule.jobs);
+        let jobs_vec = core::mem::take(&mut schedule.jobs);
         let nodes = core::mem::take(&mut schedule.nodes);
         let access_tables = core::mem::take(&mut schedule.access_tables);
 
-        for ((&node, job), access) in nodes.iter().zip(jobs).zip(access_tables) {
-            buffer.recycle(node, job, access);
+        for ((&node, job), access) in nodes.iter().zip(jobs_vec).zip(access_tables) {
+            jobs.recycle(node, job, access);
         }
     }
 
@@ -1047,25 +1411,28 @@ impl Schedule {
     #[inline(never)]
     fn init_systems(&mut self, world: &World) {
         let multi_threaded = self.executor.kind() == ExecutorKind::MultiThreaded;
-        let buffer = &mut self.buffer;
+        let jobs = &mut self.jobs;
         let conflict = &mut self.confict;
 
-        let mut uninit = core::mem::take(&mut buffer.uninit);
-
+        // Newly inserted jobs are recorded in `uninit` (their slots lack an
+        // access table); recycled jobs keep theirs and skip re-initialization.
+        let mut uninit = core::mem::take(&mut jobs.uninit);
         uninit.sort();
         uninit.dedup();
 
         if zlim_task::cfg::multi_thread!() && uninit.len() > 2 {
             zlim_task::MainTaskPool::get().scope(|s| {
-                let buf = buffer as *mut Buffer;
+                let jobs = jobs as *mut Jobs;
                 uninit.iter().for_each(|&node| {
-                    // SAFETY: already deduplicated above
-                    if let Some(obj) = unsafe { &mut *buf }.get_job_mut(node) {
+                    // SAFETY: each node is unique and the scope joins before
+                    // `jobs` is used again.
+                    if let Some(entry) = unsafe { &mut *jobs }.get_entry_mut(node) {
                         s.spawn(async move {
-                            obj.job.initialize(world);
+                            let job = entry.object.as_mut().expect("job should be present");
+                            job.initialize(world);
                             let mut table = AccessTable::new();
-                            obj.job.register_access(&mut table);
-                            obj.access = table;
+                            job.register_access(&mut table);
+                            entry.access = Some(table);
                         });
                     }
                 });
@@ -1073,11 +1440,11 @@ impl Schedule {
         } else {
             // Initialize new jobs and collect their access tables.
             uninit.iter().for_each(|&node| {
-                if let Some(obj) = buffer.get_job_mut(node) {
-                    obj.job.initialize(world);
+                if let Some(job) = jobs.get_job_mut(node) {
+                    job.initialize(world);
                     let mut table = AccessTable::new();
-                    obj.job.register_access(&mut table);
-                    obj.access = table;
+                    job.register_access(&mut table);
+                    jobs.set_access_table(node, table);
                 }
             });
         }
@@ -1089,12 +1456,13 @@ impl Schedule {
             // Compute conflicts between the new jobs and every job in the
             // schedule.  Conflicts among pre-existing jobs are unaffected by
             // the insertions and remain valid.
-            let nodes = buffer.nodes();
+            let nodes = jobs.present_nodes();
 
             uninit.iter().for_each(|&a| {
-                let obj_a = buffer.get_job(a).unwrap();
+                let job_a = jobs.get_job(a).unwrap();
+                let access_a = jobs.access_table(a).unwrap();
 
-                if obj_a.job.flags().intersects(SystemFlags::EXCLUSIVE) {
+                if job_a.flags().intersects(SystemFlags::EXCLUSIVE) {
                     conflict.set_exclusive(a);
                     return;
                 }
@@ -1103,10 +1471,10 @@ impl Schedule {
                     if a == b {
                         return;
                     }
-                    let Some(obj_b) = buffer.get_job(b) else {
+                    let Some(access_b) = jobs.access_table(b) else {
                         return;
                     };
-                    if !obj_a.access.parallelizable(&obj_b.access) {
+                    if !access_a.parallelizable(access_b) {
                         conflict.set_conflict(a, b);
                     }
                 });
@@ -1117,7 +1485,7 @@ impl Schedule {
     /// Rebuilds the executor-ready representation from the ordering graph.
     #[inline(never)]
     fn build_schedule(&mut self) {
-        let buffer = &mut self.buffer;
+        let jobs = &mut self.jobs;
         let ordering = &mut self.ordering;
         let conflict = &mut self.confict;
         let schedule = &mut self.schedule;
@@ -1147,9 +1515,9 @@ impl Schedule {
         let nodes = schedule.nodes.as_slice();
 
         for &node in nodes {
-            let obj = buffer.take_job(node);
-            schedule.access_tables.push(obj.access);
-            schedule.jobs.push(obj.job);
+            let (job, access) = jobs.take(node);
+            schedule.access_tables.push(access);
+            schedule.jobs.push(job);
         }
         for job in &schedule.jobs {
             schedule.flags.push(job.flags());
@@ -1199,7 +1567,7 @@ impl Schedule {
             // 3. The number of custom edges should be exponential to itself.
             //    (1usize << (k >> 2)) ≈≈ len ^ 1.2
             let len = nodes.len();
-            let k = len.highest_one().unwrap_or(0);
+            let k = usize::BITS - len.leading_ones();
             64usize + len * (4usize + (1usize << (k >> 2)))
         };
 
@@ -1254,7 +1622,7 @@ impl Schedule {
     #[cold]
     #[inline(never)]
     fn handle_toposort_error(&mut self, err: ToposortError) -> ! {
-        let id_of = |node: Node| -> JobId { self.allocator.get_id(node).expect("should exist") };
+        let id_of = |node: Node| -> JobId { self.jobs.get_id(node).expect("should exist") };
 
         match err {
             ToposortError::Loop(node) => {
@@ -1289,6 +1657,8 @@ impl Schedule {
     pub fn update(&mut self, world: &World) {
         if self.is_changed {
             core::hint::cold_path();
+            #[cfg(feature = "trace")]
+            let _span = zlim_log::info_span!("update schedule", name = ?self.label).entered();
             self.recycle_schedule();
             self.init_systems(world);
             self.build_schedule();
@@ -1319,7 +1689,7 @@ impl Schedule {
     /// fn greet() {}
     ///
     /// let mut schedule = Schedule::new(AnonymousSchedule);
-    /// schedule.insert::<Greet>();
+    /// schedule.insert::<Greet>(());
     ///
     /// let mut world = World::alloc();
     /// // Rebuilds the schedule if its contents changed, then runs every job.
@@ -1331,12 +1701,34 @@ impl Schedule {
     /// [`World::advance_tick`]: crate::world::World::advance_tick
     #[inline]
     pub fn run(&mut self, world: &mut World) {
+        if self.jobs.is_empty() {
+            return;
+        }
+
+        #[cfg(feature = "trace")]
+        let _span = zlim_log::info_span!("run schedule", name = ?self.label).entered();
+
+        world.flush();
+
         self.update(world);
 
         let handler = world.error_handler();
         self.executor.exec(&mut self.schedule, world, handler);
 
         // world.flush(); // Should be flushed by Executor.
+    }
+
+    /// Clamps all systems's stored change-detection ticks against now
+    /// to keep them within a valid range after tick wrap-around.
+    pub fn clamp_ticks(&mut self, now: Tick) {
+        for entry in self.jobs.jobs.iter_mut() {
+            if let Some(job) = entry.object.as_mut() {
+                job.clamp_ticks(now);
+            }
+        }
+        for job in self.schedule.jobs.iter_mut() {
+            job.clamp_ticks(now);
+        }
     }
 }
 

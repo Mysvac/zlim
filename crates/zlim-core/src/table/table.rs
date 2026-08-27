@@ -136,7 +136,6 @@ type HookItem = (ComponentId, ComponentHook);
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 /// use zlim_core::table::Tables;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -404,21 +403,21 @@ impl Table {
         });
     }
 
+    /// Checks if this table contains a specific component type.
+    pub fn contains_type(&self, ty: TypeId) -> bool {
+        self.mapper.contains(ty)
+    }
+
     /// Checks if this table contains a specific component.
     pub fn contains_component(&self, id: ComponentId) -> bool {
         // ComponentId is easy to optimize with SIMD, and linear search
         // is faster when the data is less than 100 (release + O3).
-        if self.components.len() < 200 {
+        if self.components.len() < 100 {
             crate::utils::contains_component(id, self.components)
         } else {
-            core::hint::cold_path();
+            ::core::hint::cold_path();
             self.components.binary_search(&id).is_ok()
         }
-    }
-
-    /// Checks if this table contains a specific component type.
-    pub fn contains_type(&self, ty: TypeId) -> bool {
-        self.mapper.contains(ty)
     }
 
     /// Checks if this table contains a specific entity.
@@ -640,7 +639,7 @@ impl Table {
     /// # Safety
     /// - `table_row` and `table_col` must be valid
     /// - The component must be initialized at the given row
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_ref(
         &self,
         table_row: TableRow,
@@ -661,7 +660,7 @@ impl Table {
     /// - `table_row` and `table_col` must be valid
     /// - The component must be initialized at the given row
     /// - No other references to the component may exist
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_mut(
         &mut self,
         table_row: TableRow,
@@ -681,7 +680,7 @@ impl Table {
     /// # Safety
     /// - `table_col` must be a valid column index
     /// - All components in the column must be initialized
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_slice_ref(
         &self,
         table_col: TableCol,
@@ -701,7 +700,7 @@ impl Table {
     /// - `table_col` must be a valid column index
     /// - All components in the column must be initialized
     /// - No other references to the column may exist
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_slice_mut(
         &mut self,
         table_col: TableCol,
@@ -824,7 +823,7 @@ impl Table {
             return;
         }
 
-        if cap >= (len << 1).next_power_of_two() && cap >= 16 {
+        if cap >= (len + (len << 1)).next_power_of_two() && cap >= 16 {
             let abort_guard = AbortOnPanic;
 
             let current = unsafe { NonZeroUsize::new_unchecked(cap) };

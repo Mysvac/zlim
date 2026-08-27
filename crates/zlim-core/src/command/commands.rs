@@ -1,10 +1,10 @@
 //! The `Commands` and `EntityCommands` deferred mutation interfaces.
 
 use core::fmt::{Debug, Formatter};
-use core::marker::PhantomData;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
-use super::{CommandQueue, RawCommandQueue};
+use super::CommandQueue;
+use super::function as func;
 use crate::bundle::{Bundle, DataBundle};
 use crate::command::{Command, EntityCommand};
 use crate::entity::{EntityError, EntityId};
@@ -34,9 +34,7 @@ use crate::world::{DeferredWorld, FromWorld, World, WorldCell, WorldId};
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::derive::Component;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Tag;
@@ -49,14 +47,14 @@ use crate::world::{DeferredWorld, FromWorld, World, WorldCell, WorldId};
 /// let mut world = World::alloc();
 /// let mut commands = world.commands();
 /// setup(commands.reborrow());
-/// drop(commands);
+///
+/// ::core::mem::drop(commands);
 /// world.flush();
 /// assert_eq!(world.entity_count(), 1);
 /// ```
 pub struct Commands<'w, 's> {
-    queue: RawCommandQueue,
+    queue: &'s mut CommandQueue,
     world: &'w World,
-    _marker: PhantomData<&'s CommandQueue>,
 }
 
 unsafe impl Sync for Commands<'_, '_> {}
@@ -81,9 +79,7 @@ impl Debug for Commands<'_, '_> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::derive::Component;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Hp(u32);
@@ -97,6 +93,7 @@ impl Debug for Commands<'_, '_> {
 ///     .with_entity(player)
 ///     .insert(Hp(100))
 ///     .insert(Hp(150));
+///
 /// drop(commands);
 /// world.flush();
 ///
@@ -130,11 +127,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// Most users obtain this through the [`SystemParam`] implementation.
     #[inline]
     pub fn new(world: &'w World, queue: &'s mut CommandQueue) -> Self {
-        Commands {
-            queue: queue.raw(),
-            world,
-            _marker: PhantomData,
-        }
+        Commands { queue, world }
     }
 
     /// Returns a new `Commands` that writes to the provided
@@ -144,9 +137,8 @@ impl<'w, 's> Commands<'w, 's> {
     #[inline]
     pub fn rebound_to<'q>(&self, queue: &'q mut CommandQueue) -> Commands<'w, 'q> {
         Commands {
-            queue: queue.raw(),
+            queue,
             world: self.world,
-            _marker: PhantomData,
         }
     }
 
@@ -154,9 +146,8 @@ impl<'w, 's> Commands<'w, 's> {
     #[inline]
     pub fn reborrow(&mut self) -> Commands<'w, '_> {
         Commands {
-            queue: self.queue.clone(),
+            queue: self.queue,
             world: self.world,
-            _marker: PhantomData,
         }
     }
 
@@ -169,15 +160,13 @@ impl<'w, 's> Commands<'w, 's> {
     /// Returns whether this queue currently has no pending commands.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        unsafe { self.queue.is_empty() }
+        self.queue.is_empty()
     }
 
     /// Appends all commands from `other` into this queue, leaving `other` empty.
     #[inline]
     pub fn append(&mut self, other: &mut CommandQueue) {
-        unsafe {
-            self.queue.append(&mut other.raw());
-        }
+        self.queue.append(other);
     }
 
     /// Returns an [`EntityCommands`] handle for the given [`EntityId`].
@@ -237,9 +226,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// ```
     #[inline]
     pub fn queue(&mut self, cmd: impl Command) {
-        unsafe {
-            self.queue.push(cmd.handle_error());
-        }
+        self.queue.push(cmd.handle_error());
     }
 
     /// Pushes a generic [`Command`] to the queue.
@@ -250,17 +237,13 @@ impl<'w, 's> Commands<'w, 's> {
     /// To implicitly use the fallback error handler, see [`Commands::queue`].
     #[inline]
     pub fn queue_handled(&mut self, cmd: impl Command, handler: ErrorHandler) {
-        unsafe {
-            self.queue.push(cmd.handle_error_with(handler));
-        }
+        self.queue.push(cmd.handle_error_with(handler));
     }
 
     /// Pushes a generic [`Command`] and silently ignores command errors.
     #[inline]
     pub fn queue_silenced(&mut self, cmd: impl Command) {
-        unsafe {
-            self.queue.push(cmd.ignore_error());
-        }
+        self.queue.push(cmd.ignore_error());
     }
 
     /// Spawns an empty entity.
@@ -271,7 +254,7 @@ impl<'w, 's> Commands<'w, 's> {
     pub fn spawn_empty(&mut self, parent: Option<EntityId>) -> EntityCommands<'_> {
         let entity = self.world.alloc_entity();
 
-        self.queue(super::spawn_empty_at(entity, parent));
+        self.queue(func::spawn_empty_at(entity, parent));
 
         self.with_entity(entity)
     }
@@ -284,9 +267,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_core::derive::Component;
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Health(u32);
@@ -316,7 +297,7 @@ impl<'w, 's> Commands<'w, 's> {
     pub fn spawn<B: Bundle>(&mut self, bundle: B, parent: Option<EntityId>) -> EntityCommands<'_> {
         let entity = self.world.alloc_entity();
 
-        self.queue(super::spawn_at(bundle, entity, parent));
+        self.queue(func::spawn_at(bundle, entity, parent));
 
         self.with_entity(entity)
     }
@@ -335,7 +316,7 @@ impl<'w, 's> Commands<'w, 's> {
         I: IntoIterator + Send + Sync + 'static,
         I::Item: DataBundle,
     {
-        self.queue(super::spawn_batch(batch, parent));
+        self.queue(func::spawn_batch(batch, parent));
     }
 
     /// Despawns an entity and removes all of its components.
@@ -344,7 +325,7 @@ impl<'w, 's> Commands<'w, 's> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn despawn(&mut self, entity: EntityId) {
-        self.queue(super::despawn(entity));
+        self.queue(func::despawn(entity));
     }
 
     /// Despawns an entity and removes all of its components.
@@ -353,7 +334,7 @@ impl<'w, 's> Commands<'w, 's> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_despawn(&mut self, entity: EntityId) {
-        self.queue(super::try_despawn(entity));
+        self.queue(func::try_despawn(entity));
     }
 
     /// Despawns many entities from iterator.
@@ -365,7 +346,7 @@ impl<'w, 's> Commands<'w, 's> {
     where
         I: IntoIterator<Item = EntityId> + Send + Sync + 'static,
     {
-        self.queue(super::despawn_batch(batch));
+        self.queue(func::despawn_batch(batch));
     }
 
     /// Initializes a [`Resource`] in the [`World`] using [`FromWorld`].
@@ -373,7 +354,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// If the resource already exists, this is a no-op.
     #[inline]
     pub fn init_resource<R: Resource + Send + FromWorld>(&mut self) {
-        self.queue(super::init_resource::<R>());
+        self.queue(func::init_resource::<R>());
     }
 
     /// Inserts a [`Resource`] into the [`World`] with a specific value.
@@ -381,13 +362,13 @@ impl<'w, 's> Commands<'w, 's> {
     /// This will overwrite any previous value of the same resource type.
     #[inline]
     pub fn insert_resource<R: Resource + Send>(&mut self, resource: R) {
-        self.queue(super::insert_resource::<R>(resource));
+        self.queue(func::insert_resource::<R>(resource));
     }
 
     /// Removes a [`Resource`] from the [`World`] if it exists.
     #[inline]
     pub fn remove_resource<R: Resource + Send>(&mut self) {
-        self.queue(super::remove_resource::<R>());
+        self.queue(func::remove_resource::<R>());
     }
 
     /// Queues a command that writes a [`Message`] into the world.
@@ -401,7 +382,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// registered.
     #[inline]
     pub fn write_message<M: Message>(&mut self, message: M) {
-        self.queue(super::write_message(message));
+        self.queue(func::write_message(message));
     }
 
     /// Queues a command that runs the schedule with the given
@@ -411,7 +392,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// [`World::run_schedule`]).
     #[inline]
     pub fn run_schedule(&mut self, label: impl ScheduleLabel) {
-        self.queue(super::run_schedule(label));
+        self.queue(func::run_schedule(label));
     }
 
     /// Queues a command that inserts a system into the world's cache.
@@ -423,7 +404,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// type identity — obtain it from any instance of the same system type
     /// (e.g. via [`IntoSystem::system_handle`]) — and is valid immediately.
     /// Commands apply in queue order: queue [`Commands::insert_system`]
-    /// before [`Commands::run_system_handle`] for the same system.
+    /// before [`Commands::invoke_handle`] for the same system.
     #[inline]
     pub fn insert_system<I, O, M>(&mut self, system: impl IntoSystem<I, O, M> + Send + 'static)
     where
@@ -431,7 +412,7 @@ impl<'w, 's> Commands<'w, 's> {
         O: 'static,
         M: 'static,
     {
-        self.queue(super::insert_system(system));
+        self.queue(func::insert_system(system));
     }
 
     /// Queues a command that removes a system from the world's cache.
@@ -444,25 +425,25 @@ impl<'w, 's> Commands<'w, 's> {
         I: SystemInput + 'static,
         O: 'static,
     {
-        self.queue(super::remove_system(handle));
+        self.queue(func::remove_system(handle));
     }
 
     /// Queues a command that runs the given system, caching its instance.
     ///
     /// A cached instance with the same type identity is reused when the
-    /// command is applied (see [`World::run_system`]); only systems with `()`
+    /// command is applied (see [`World::invoke`]); only systems with `()`
     /// output can be run through `Commands`.
     #[inline]
-    pub fn run_system<I, O, M>(
+    pub fn invoke<I, O, M>(
         &mut self,
         system: impl IntoSystem<I, O, M> + Send + 'static,
         input: I::Data<'static>,
     ) where
         I: SystemInput<Data<'static>: Send> + Send + 'static,
-        O: IntoZlimResult<()> + 'static,
+        O: IntoZlimResult<()> + Send + 'static,
         M: 'static,
     {
-        self.queue(super::run_system::<I, O, M>(system, input));
+        self.queue(func::invoke::<I, O, M>(system, input));
     }
 
     /// Queues a command that runs the cached system identified by `handle`.
@@ -474,30 +455,30 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// [`SystemError::Unregistered`]: crate::system::SystemError::Unregistered
     #[inline]
-    pub fn run_system_handle<I, O>(&mut self, handle: SystemHandle<I, O>, input: I::Data<'static>)
+    pub fn invoke_handle<I, O>(&mut self, handle: SystemHandle<I, O>, input: I::Data<'static>)
     where
         I: SystemInput<Data<'static>: Send> + Send + 'static,
-        O: IntoZlimResult<()> + 'static,
+        O: IntoZlimResult<()> + Send + 'static,
     {
-        self.queue(super::run_system_handle::<I, O>(handle, input));
+        self.queue(func::invoke_handle::<I, O>(handle, input));
     }
 
     /// Queues a command that runs the given system once, without caching.
     ///
     /// A fresh instance is built, initialized, executed, and discarded at
-    /// command-apply time (see [`World::run_once`]).  Only systems
+    /// command-apply time (see [`World::invoke_once`]).  Only systems
     /// with `()` output can be run through `Commands`.
     #[inline]
-    pub fn run_once<I, O, M>(
+    pub fn invoke_once<I, O, M>(
         &mut self,
         system: impl IntoSystem<I, O, M> + Send + 'static,
         input: I::Data<'static>,
     ) where
         I: SystemInput<Data<'static>: Send> + Send + 'static,
-        O: IntoZlimResult<()> + 'static,
+        O: IntoZlimResult<()> + Send + 'static,
         M: 'static,
     {
-        self.queue(super::run_once::<I, O, M>(system, input));
+        self.queue(func::invoke_once::<I, O, M>(system, input));
     }
 }
 
@@ -611,7 +592,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert(&mut self, bundle: impl Bundle) -> &mut Self {
-        self.queue(super::insert(bundle))
+        self.queue(func::insert(bundle))
     }
 
     /// Adds a [`Bundle`] of components to the entity.
@@ -620,7 +601,31 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_insert(&mut self, bundle: impl Bundle) -> &mut Self {
-        self.queue_silenced(super::insert(bundle))
+        self.queue_silenced(func::insert(bundle))
+    }
+
+    /// Inserts a [`Bundle`] into an entity if missing.
+    ///
+    /// If the entity does not exist, this command will log a warning.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn insert_if_new<T: DataBundle, F>(&mut self, bundle: F) -> &mut Self
+    where
+        F: FnOnce() -> T + Send + 'static,
+    {
+        self.queue_silenced(func::insert_if_new(bundle))
+    }
+
+    /// Inserts a [`Bundle`] into an entity if missing.
+    ///
+    /// Errors are ignored if the entity is despawned before command execution.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_insert_if_new<T: DataBundle, F>(&mut self, bundle: F) -> &mut Self
+    where
+        F: FnOnce() -> T + Send + 'static,
+    {
+        self.queue_silenced(func::insert_if_new(bundle))
     }
 
     /// Removes all explicit component types in a [`Bundle`] from the entity.
@@ -631,7 +636,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn remove<B: DataBundle>(&mut self) -> &mut Self {
-        self.queue(super::remove::<B>())
+        self.queue(func::remove::<B>())
     }
 
     /// Removes all explicit component types in a [`Bundle`] from the entity.
@@ -642,7 +647,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_remove<B: DataBundle>(&mut self) -> &mut Self {
-        self.queue_silenced(super::remove::<B>())
+        self.queue_silenced(func::remove::<B>())
     }
 
     /// Removes all component types in a [`Bundle`] from the entity.
@@ -653,7 +658,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn remove_required<B: DataBundle>(&mut self) -> &mut Self {
-        self.queue(super::remove_required::<B>())
+        self.queue(func::remove_required::<B>())
     }
 
     /// Removes all explicit component types in a [`Bundle`] from the entity.
@@ -662,7 +667,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_remove_required<B: DataBundle>(&mut self) -> &mut Self {
-        self.queue_silenced(super::remove_required::<B>())
+        self.queue_silenced(func::remove_required::<B>())
     }
 
     /// Removes all explicit component types in a [`Bundle`] from the entity.
@@ -671,7 +676,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn remove_explicit<B: DataBundle>(&mut self) -> &mut Self {
-        self.queue(super::remove_explicit::<B>())
+        self.queue(func::remove_explicit::<B>())
     }
 
     /// Removes all component types in a [`Bundle`] from the entity.
@@ -682,7 +687,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_remove_explicit<B: DataBundle>(&mut self) -> &mut Self {
-        self.queue_silenced(super::remove_explicit::<B>())
+        self.queue_silenced(func::remove_explicit::<B>())
     }
 
     /// Removes all components from this entity.
@@ -694,7 +699,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn clear(&mut self) -> &mut Self {
-        self.queue(super::clear())
+        self.queue(func::clear())
     }
 
     /// Removes all components from this entity.
@@ -703,7 +708,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_clear(&mut self) -> &mut Self {
-        self.queue_silenced(super::clear())
+        self.queue_silenced(func::clear())
     }
 
     /// Clones this entity.
@@ -717,7 +722,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn clone(&mut self, recursive: bool) -> &mut Self {
-        self.queue(super::clone(recursive));
+        self.queue(func::clone(recursive));
         self
     }
 
@@ -732,7 +737,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_clone(&mut self, recursive: bool) -> &mut Self {
-        self.queue_silenced(super::clone(recursive));
+        self.queue_silenced(func::clone(recursive));
         self
     }
 

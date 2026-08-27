@@ -12,15 +12,6 @@ mod local_deque;
 pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
 
 // -----------------------------------------------------------------------------
-// block_on
-
-#[cfg(feature = "async_io")]
-pub use async_io::block_on;
-
-#[cfg(not(feature = "async_io"))]
-pub use futures_lite::future::block_on;
-
-// -----------------------------------------------------------------------------
 // tick_local
 
 /// Drives local tasks to completion.
@@ -28,7 +19,7 @@ pub use futures_lite::future::block_on;
 /// Ticks the thread-local `LocalExecutor` and the global `MainExecutor`
 /// until both queues are empty. In multi-threaded mode, worker threads are
 /// driven by the pool itself and `spawn_to_main` tasks by the main thread
-/// (a dedicated fake one unless [`set_main_thread`] was called up front) —
+/// (a dedicated fake one unless [`designate_main_thread`] was called up front) —
 /// this function is for threads that are neither.
 ///
 /// # Example
@@ -51,12 +42,39 @@ pub fn run_local() {
 }
 
 // -----------------------------------------------------------------------------
-// set_main_thread
+// block_on
 
-pub use fake_main::set_main_thread;
+#[cfg(feature = "async_io")]
+use async_io::block_on as raw_block_on;
+
+#[cfg(not(feature = "async_io"))]
+use futures_lite::future::block_on as raw_block_on;
+
+/// Blocks the current thread on a future.
+///
+/// Simultaneously drive async executors to avoid deadlock.
+/// 
+/// # Examples
+/// 
+/// ```
+/// use zlim_task::block_on;
+/// 
+/// let val = block_on(async { 1 + 2 });
+/// 
+/// assert_eq!(val, 3);
+/// ```
+pub fn block_on<T>(future: impl Future<Output = T>) -> T {
+    use executors::PoolExecutor;
+
+    if std::thread::current().id() == fake_main::main_thread_id() {
+        raw_block_on(MainExecutor::run(LocalExecutor::run(future)))
+    } else {
+        raw_block_on(PoolExecutor::run(LocalExecutor::run(future)))
+    }
+}
 
 // -----------------------------------------------------------------------------
-// block_on_main
+// invoke_on_main
 
 /// Send a single task to the main thread for execution and wait for the result.
 /// 
@@ -67,18 +85,28 @@ pub use fake_main::set_main_thread;
 /// In other words, this function is mainly called by the top-level intersection
 /// (App) of the program. Usually only used for internal implementation of `App::run`.
 #[inline]
-pub fn block_on_main<T, F>(future: F) -> T
+pub fn invoke_on_main<T, F>(func: F) -> T
 where
-    T: Send + 'static,
-    F: Future<Output = T> + Send + 'static,
+    T: Send,
+    F: FnOnce() -> T + Send,
 {
     use core::panic::AssertUnwindSafe;
-    use futures_lite::future::FutureExt;
+    use executors::PoolExecutor;
 
+    // Ensure that the fake main thread has been initialized.
     let main_id = fake_main::main_thread_id();
 
-    let fut = AssertUnwindSafe(future).catch_unwind();
-    let task = MainExecutor::spawn(fut).fallible();
+    if std::thread::current().id() == main_id {
+        return func();
+    }
+
+    let f = AssertUnwindSafe(func);
+    let fut = async move { std::panic::catch_unwind(f) };
+
+    #[expect(unsafe_code, reason = "blocking waiting, no need 'static lifetime")]
+    let task = unsafe {
+        MainExecutor::spawn_unchecked(fut).fallible()
+    };
 
     #[cold]
     #[inline(never)]
@@ -97,13 +125,14 @@ where
         }
     };
 
-    if std::thread::current().id() == main_id {
-        block_on(MainExecutor::run(LocalExecutor::run(stop_signal)))
-    } else {
-        block_on(LocalExecutor::run(stop_signal))
-    }
+    raw_block_on(PoolExecutor::run(LocalExecutor::run(stop_signal)))
 }
 
+
+// -----------------------------------------------------------------------------
+// designate_main_thread
+
+pub use fake_main::designate_main_thread;
 
 // -----------------------------------------------------------------------------
 // Static TaskPool

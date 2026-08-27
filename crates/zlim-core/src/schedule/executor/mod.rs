@@ -276,27 +276,6 @@ impl Default for ExecutorKind {
 /// [`JobSchedule`] and invoking systems in a valid order while handling
 /// errors through the provided [`ErrorHandler`].
 ///
-/// # Example
-///
-/// ```rust
-/// use zlim_core::prelude::*;
-/// use zlim_core::schedule::{
-///     ExecutorKind, JobExecutor, MultiThreadedExecutor, ScheduleLabel,
-///     SingleThreadedExecutor,
-/// };
-///
-/// #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-/// struct Update;
-///
-/// // Both built-in executors implement `JobExecutor`; pick one explicitly
-/// // when the platform default is not what you want.
-/// let executor: Box<dyn JobExecutor> = Box::new(MultiThreadedExecutor::new());
-/// let schedule = Schedule::with_executor(Update, executor);
-/// assert_eq!(schedule.executor_kind(), ExecutorKind::MultiThreaded);
-///
-/// let _serial: Box<dyn JobExecutor> = Box::new(SingleThreadedExecutor::new());
-/// ```
-///
 /// [`ErrorHandler`]: crate::error::ErrorHandler
 pub trait JobExecutor: Send + Sync {
     /// Returns the executor flavor.

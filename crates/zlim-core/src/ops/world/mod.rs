@@ -13,7 +13,6 @@ mod despawn;
 mod empty;
 mod entity;
 mod forget;
-mod schedule;
 mod spawn;
 mod uninit;
 

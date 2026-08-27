@@ -293,19 +293,95 @@ impl PathCell {
 /// ```
 #[inline(never)]
 pub fn concat(arr: &[&str]) -> String {
+    use core::ptr::copy_nonoverlapping;
+
     let mut len = 0usize;
     for &item in arr {
         len += item.len();
     }
+
     let mut res = String::with_capacity(len);
-    for &item in arr {
-        res.push_str(item);
+
+    #[expect(unsafe_code, reason = "skip length assertions")]
+    unsafe {
+        let buf = res.as_mut_vec();
+        let mut dst = buf.as_mut_ptr();
+
+        for &new in arr {
+            copy_nonoverlapping::<u8>(new.as_ptr(), dst, new.len());
+            dst = dst.add(new.len());
+        }
+
+        buf.set_len(len);
     }
+
     res
 }
 
 // -----------------------------------------------------------------------------
 // Tests
-// -----------------------------------------------------------------------------
 
-// see <zlim-reflect/tests/type_path.rs>
+// see <zlim-reflect/tests/type_path.rs> for macros's tests
+
+#[cfg(test)]
+mod tests {
+    use super::concat;
+
+    #[test]
+    fn empty_slice() {
+        let s = concat(&[]);
+        assert_eq!(s, "");
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn single_string() {
+        let s = concat(&["hello"]);
+        assert_eq!(s, "hello");
+        assert_eq!(s.len(), 5);
+    }
+
+    #[test]
+    fn multiple_strings() {
+        let s = concat(&["module", "::", "name", "<", "T", ">"]);
+        assert_eq!(s, "module::name<T>");
+    }
+
+    #[test]
+    fn empty_strings() {
+        let s = concat(&["", "hello", "", "world", ""]);
+        assert_eq!(s, "helloworld");
+        assert_eq!(s.len(), 10);
+    }
+
+    #[test]
+    fn unicode_characters() {
+        let s = concat(&["ASCII", " 世界 ", "🌟", " 123"]);
+        assert_eq!(s, "ASCII 世界 🌟 123");
+    }
+
+    #[test]
+    fn long_strings() {
+        let long = "a".repeat(1000);
+        let s = concat(&[&long, &long, &long]);
+        assert_eq!(s.len(), 3000);
+        assert_eq!(s, long.clone() + &long + &long);
+    }
+
+    #[test]
+    fn capacity_exact() {
+        let parts = ["hello", " ", "world"];
+        let expected_len: usize = parts.iter().map(|s| s.len()).sum();
+        let s = concat(&parts);
+        assert_eq!(s.len(), expected_len);
+        assert!(s.capacity() >= expected_len);
+    }
+
+    #[test]
+    fn many_small_strings() {
+        let parts: Vec<&str> = (0..10000).map(|_| "a").collect();
+        let s = concat(&parts);
+        assert_eq!(s.len(), 10000);
+        assert!(s.chars().all(|c| c == 'a'));
+    }
+}

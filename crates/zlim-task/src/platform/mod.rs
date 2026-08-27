@@ -10,7 +10,7 @@ use common::{LocalExecutor, MainExecutor};
 
 pub use impls::{AsyncTaskPool, IoTaskPool, MainTaskPool};
 pub use impls::{Scope, TaskPool, TaskPoolBuilder};
-pub use impls::{block_on, block_on_main, run_local, set_main_thread};
+pub use impls::{block_on, designate_main_thread, invoke_on_main, run_local};
 
 cfg_select! {
     feature = "single_thread" => {

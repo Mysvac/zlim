@@ -1,11 +1,13 @@
 //! Single-threaded schedule executor.
 
+use core::any::Any;
 use core::panic::AssertUnwindSafe;
-
-use zlim_log as log;
+use std::backtrace::Backtrace;
 
 use super::{ExecutorKind, JobExecutor, JobSchedule, JobScheduleView};
-use crate::error::{ErrorContext, ErrorHandler};
+use crate::error::PANIC_ORIGINATES_FROM_ERROR_HANDLER;
+use crate::error::{ErrorContext, ErrorHandler, Severity, ZlimError};
+use crate::job::Job;
 use crate::system::{SystemError, SystemFlags};
 use crate::world::World;
 
@@ -21,7 +23,7 @@ use crate::world::World;
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::schedule::{ExecutorKind, ScheduleLabel, SingleThreadedExecutor};
+/// use zlim_core::schedule::{ExecutorKind, SingleThreadedExecutor};
 ///
 /// #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// struct Update;
@@ -30,6 +32,7 @@ use crate::world::World;
 /// // `Schedule::with_executor` accepts.
 /// let schedule =
 ///     Schedule::with_executor(Update, Box::new(SingleThreadedExecutor::new()));
+///
 /// assert_eq!(schedule.executor_kind(), ExecutorKind::SingleThreaded);
 /// ```
 pub struct SingleThreadedExecutor {
@@ -51,6 +54,22 @@ impl SingleThreadedExecutor {
 impl Default for SingleThreadedExecutor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+struct PanicPayload {
+    payload: Box<dyn Any + Send>,
+    from_handler: bool,
+}
+
+impl PanicPayload {
+    #[cold]
+    #[inline(never)]
+    fn new(payload: Box<dyn Any + Send>) -> Self {
+        Self {
+            payload,
+            from_handler: PANIC_ORIGINATES_FROM_ERROR_HANDLER.get(),
+        }
     }
 }
 
@@ -92,6 +111,8 @@ impl JobExecutor for SingleThreadedExecutor {
         self.strong_incoming.clear();
         self.strong_incoming.extend_from_slice(strong_incoming);
 
+        // Jobs follows topological order, so there is no need to consider pre dependencies
+        // in a single thread, only the number of conditional dependencies (strong order) is required.
         for (index, (job, &flag)) in jobs.iter_mut().zip(flags).enumerate() {
             // Condition not met, skip.
             if self.strong_incoming[index] != 0 {
@@ -101,8 +122,8 @@ impl JobExecutor for SingleThreadedExecutor {
             // Noop Job, skip.
             if flag.intersects(SystemFlags::NO_OP) {
                 // SAFETY: Already checked above - `assert_eq!(job_count, strong_outgoing.len());`
-                let outgoing = unsafe { *strong_outgoing.get_unchecked(index) };
-                for &to in outgoing {
+                let strong_outgoing = unsafe { *strong_outgoing.get_unchecked(index) };
+                for &to in strong_outgoing {
                     let to = to as usize;
                     debug_assert!(self.strong_incoming.len() > to);
                     // SAFETY: Caller ensure that `JobSchedule` is correct.
@@ -113,15 +134,14 @@ impl JobExecutor for SingleThreadedExecutor {
 
             // Normal Job
             let func = AssertUnwindSafe(|| unsafe {
+                PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(false);
                 if let Err(e) = job.run_raw(world.cell()) {
                     core::hint::cold_path();
                     if !matches!(e, SystemError::None) {
                         core::hint::cold_path();
                         let tick = job.last_run();
                         let id = job.id();
-                        let name = id.name();
-                        let group = id.group();
-                        let ctx = ErrorContext::Job { name, group, tick };
+                        let ctx = ErrorContext::Job { id, tick };
                         handler(e.into(), ctx);
                     }
                     return false; // Error -> false
@@ -129,11 +149,16 @@ impl JobExecutor for SingleThreadedExecutor {
                 true // Success -> true
             });
 
-            let ok = std::panic::catch_unwind(func).unwrap_or_else(|payload| {
-                core::hint::cold_path();
-                log::error!("Encountered a panic in job `{}`!", job.id());
-                std::panic::resume_unwind(payload);
-            });
+            let result: Result<bool, PanicPayload> = if flag.intersects(SystemFlags::NON_SEND) {
+                ::core::hint::cold_path();
+                zlim_task::invoke_on_main(|| {
+                    std::panic::catch_unwind(func).map_err(PanicPayload::new)
+                })
+            } else {
+                std::panic::catch_unwind(func).map_err(PanicPayload::new)
+            };
+
+            let ok = result.unwrap_or_else(|payload| handle_unwind(&**job, payload, handler));
 
             // Apply deferred
             if flag.intersects(SystemFlags::DEFERRED) {
@@ -157,3 +182,35 @@ impl JobExecutor for SingleThreadedExecutor {
 }
 
 // -----------------------------------------------------------------------------
+
+#[cold]
+#[inline(never)]
+fn handle_unwind(job: &dyn Job, payload: PanicPayload, handler: ErrorHandler) -> bool {
+    if payload.from_handler {
+        // Panic may comes from other threads, local flag need to be updated.
+        PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(true);
+        std::panic::resume_unwind(payload.payload);
+    }
+
+    let payload: Box<dyn Any + Send> = payload.payload;
+
+    let id = job.id();
+    let tick = job.last_run();
+    let context = ErrorContext::Job { id, tick };
+
+    const BACKTRACE: Backtrace = Backtrace::disabled();
+    let error = if let Some(&info) = payload.downcast_ref::<&str>() {
+        let err = format!("job panicked: {info}");
+        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
+    } else if let Some(info) = payload.downcast_ref::<String>() {
+        let err = format!("job panicked: {info}");
+        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
+    } else {
+        const ERR: &str = "job panicked: unknown error";
+        ZlimError::with_backtrace(Severity::Panic, ERR, BACKTRACE)
+    };
+
+    handler(error, context);
+
+    false
+}
