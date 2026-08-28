@@ -8,9 +8,11 @@
 mod app;
 mod exit;
 mod label;
+mod plugin;
+
 mod main_schedule;
 mod panic_handler;
-mod plugin;
+mod schedule_runner;
 mod shutdown;
 
 // -----------------------------------------------------------------------------
@@ -33,6 +35,8 @@ pub use main_schedule::{First, FixedMainLoopStage, Last, PostUpdate, PreUpdate, 
 pub use main_schedule::{FixedFirst, FixedLast, FixedPostUpdate, FixedPreUpdate, FixedUpdate};
 pub use main_schedule::{FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder};
 pub use main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, Startup};
+
+pub use schedule_runner::{RunMode, ScheduleRunnerPlugin};
 
 /// re-exports jobs
 pub mod jobs {

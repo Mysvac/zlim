@@ -35,9 +35,9 @@ pub(super) static PATH_REGISTRY: RwLock<HashMap<&'static str, &'static Component
 /// Static metadata for a single component type.
 ///
 /// Created lazily by [`Component::register`] and stored in the global
-/// `ID_REGISTRY`. Holds type identity, lifecycle hooks, field introspection
-/// function pointers, memory layout, clone/drop strategy, and serialization
-/// routines — all type-erased so they can be stored homogeneously.
+/// `ID_REGISTRY`. Holds type identity, lifecycle hooks, memory layout,
+/// clone/drop strategy, and serialization routines — all type-erased so
+/// they can be stored homogeneously.
 pub struct ComponentDB {
     // --------------------------------
     // Ident
@@ -72,17 +72,6 @@ pub struct ComponentDB {
     // --------------------------------
     // Required Components
     pub required: Option<Required>,
-
-    // --------------------------------
-    // Editor accessor
-    /// Names of fields readable via `get_field`.
-    pub getter: &'static [&'static str],
-    /// Names of fields writable via `set_field`.
-    pub setter: &'static [&'static str],
-    /// Type-erased accessor for reflected field reads.
-    pub get_field_func: GetFieldFunc,
-    /// Type-erased accessor for reflected field writes.
-    pub set_field_func: SetFieldFunc,
 
     // --------------------------------
     // Memory Layout

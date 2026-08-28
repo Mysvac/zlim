@@ -31,7 +31,7 @@ serde_core = { version = "1.0", default-features = false, features = ["std"] }
 erased-serde = { version = "0.4", default-features = false, features = ["std"] }
 
 # optional
-glam = { version = "0.33", features = ["serde", "float-types", "integer-types"], optional = true }
+glam = { version = "0.33", default-features = false, features = ["serde", "float-types", "integer-types"], optional = true }
 uuid = { version = "1.24", default-features = false, features = ["serde"], optional = true }
 
 [lints]

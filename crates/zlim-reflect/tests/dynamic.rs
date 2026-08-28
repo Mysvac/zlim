@@ -90,7 +90,7 @@ fn dynamic_struct_insert_new() {
 
 #[test]
 fn dynamic_struct_from_ref_point() {
-    let pt = Point { x: 10, y: 3.14 };
+    let pt = Point { x: 10, y: 3.15 };
     let pt_ref: &dyn Struct = &pt;
     let dyn_s = DynamicStruct::from_ref(pt_ref).unwrap();
 
@@ -101,7 +101,7 @@ fn dynamic_struct_from_ref_point() {
     let x: &i32 = dyn_s.field("x").unwrap().downcast_ref().unwrap();
     assert_eq!(*x, 10);
     let y: &f32 = dyn_s.field("y").unwrap().downcast_ref().unwrap();
-    assert_eq!(*y, 3.14);
+    assert_eq!(*y, 3.15);
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn dynamic_tuple_new_empty() {
 fn dynamic_tuple_push_and_access() {
     let mut t = DynamicTuple::new();
     t.push(Box::new(10i32));
-    t.push(Box::new(3.14f32));
+    t.push(Box::new(3.15f32));
     t.push(Box::new("text"));
 
     assert_eq!(t.field_len(), 3);
@@ -192,7 +192,7 @@ fn dynamic_tuple_push_and_access() {
     let v0: &i32 = t.field(0).unwrap().downcast_ref().unwrap();
     assert_eq!(*v0, 10);
     let v1: &f32 = t.field(1).unwrap().downcast_ref().unwrap();
-    assert_eq!(*v1, 3.14);
+    assert_eq!(*v1, 3.15);
     let v2: &str = t.field(2).unwrap().downcast_ref::<&str>().unwrap();
     assert_eq!(v2, "text");
 }
@@ -504,7 +504,7 @@ fn dynamic_enum_tuple_variant() {
 #[test]
 fn dynamic_enum_struct_variant() {
     let mut s = DynamicStruct::new();
-    s.push("value".into(), Box::new(3.14f32));
+    s.push("value".into(), Box::new(3.15f32));
     s.push("tag".into(), Box::new("pi"));
 
     let e = DynamicEnum::new(0, "Labeled", DynamicVariant::Struct(s));

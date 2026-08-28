@@ -1,7 +1,7 @@
 //! The [`Resource`] trait.
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use zlim_reflect::{Reflect, TypePath};
+use zlim_reflect::TypePath;
 
 use super::db::ResourceDB;
 use super::register::register_base;
@@ -34,18 +34,6 @@ use crate::utils::Dropper;
 /// // Basic usage
 /// #[derive(TypePath, Resource)]
 /// struct Foo;
-///
-/// // Expose field to editor
-/// #[derive(TypePath, Resource)]
-/// struct Logger {
-///     #[editor(get, set)]
-///     level: String,
-///     #[editor(get)]
-///     filter: String,
-///     // other private fields (hidden from the editor):
-///     foo: u8,
-///     bar: String,
-/// }
 /// ```
 ///
 /// See [Resource derive macro] documentation for details.
@@ -54,7 +42,6 @@ use crate::utils::Dropper;
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct Score(u32);
@@ -79,8 +66,6 @@ use crate::utils::Dropper;
 /// [`ResMut`]: crate::borrow::ResMut
 /// [`NonSend`]: crate::borrow::NonSend
 /// [`NonSendMut`]: crate::borrow::NonSendMut
-/// [`get_field`]: Resource::get_field
-/// [`set_field`]: Resource::set_field
 /// [Resource derive macro]: crate::derive::Resource
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a `Resource`",
@@ -104,33 +89,6 @@ pub trait Resource: TypePath + Sized {
     ///
     /// Defaults to `false`.
     const SERIALIZE: bool = false;
-
-    /// Names of the fields readable through [`get_field`](Self::get_field),
-    /// in declaration order.
-    const GETTER: &'static [&'static str] = &[];
-
-    /// Names of the fields writable through [`set_field`](Self::set_field).
-    const SETTER: &'static [&'static str] = &[];
-
-    /// Returns a reflected reference to the named field.
-    ///
-    /// Returns `None` if `name` does not match any getter field of this type.
-    fn get_field<'a>(&'a self, _name: &str) -> Option<&'a dyn Reflect> {
-        None
-    }
-
-    /// Assigns a reflected value to the named field.
-    ///
-    /// Returns `Err(message)` if `name` does not match any setter field of
-    /// this type, or if applying `value` through reflection fails.
-    ///
-    /// The default implementation exposes no fields and always returns `Err`.
-    fn set_field(&mut self, _name: &str, _value: &dyn Reflect) -> Result<(), String> {
-        Err(format!(
-            "Resource `{}` exposes no fields",
-            Self::type_path()
-        ))
-    }
 
     /// Registers this resource type in the global registry, returning its
     /// `&'static` [`ResourceDB`].

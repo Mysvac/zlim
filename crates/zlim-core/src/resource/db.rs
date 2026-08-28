@@ -8,7 +8,7 @@ use std::sync::{PoisonError, RwLock};
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::HashMap;
 
-use super::alias::{DeserializeFunc, GetFieldFunc, SerializeFunc, SetFieldFunc};
+use super::alias::{DeserializeFunc, SerializeFunc};
 use super::id::ResourceId;
 use super::resource::Resource;
 use crate::utils::Dropper;
@@ -80,17 +80,6 @@ pub struct ResourceDB {
     pub type_name: &'static str,
     /// The module path where the type is defined.
     pub module_path: &'static str,
-
-    // --------------------------------
-    // Editor accessor
-    /// Field names readable via `get_field`.
-    pub getter: &'static [&'static str],
-    /// Field names writable via `set_field`.
-    pub setter: &'static [&'static str],
-    /// Type-erased function to read a field by name.
-    pub get_field_func: GetFieldFunc,
-    /// Type-erased function to write a field by name.
-    pub set_field_func: SetFieldFunc,
 
     // --------------------------------
     // Memory Layout

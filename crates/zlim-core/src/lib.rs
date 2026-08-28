@@ -73,6 +73,7 @@ pub mod __macro_exports__ {
 // -----------------------------------------------------------------------------
 // Prelude
 
+/// zlim-core prelude
 pub mod prelude {
     pub use crate::{register_component, register_job, register_job_group, register_resource};
     pub use zlim_core_derive::{job, job_fn, job_group};

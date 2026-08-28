@@ -648,8 +648,12 @@ impl SubApp {
 
     /// Add a order constraint for Plugin Apply.
     ///
+    /// This function can only be called before the [`App::build`]
+    /// or in the [`Plugin::build`].
+    ///
     /// # Panic
-    /// Panic if given Plugin is not registered(added).
+    /// - Panic if given Plugin is not registered(added).
+    /// - Panic if the plugin state is not `Adding`.
     pub fn add_plugin_order<Before: Plugin, After: Plugin>(&mut self) {
         if self.plugins_state != PluginsState::Adding {
             panic!(
@@ -676,6 +680,13 @@ impl SubApp {
                 panic!("Try add a plugin order but Plugin `{name}` is not registered.");
             }
         }
+    }
+
+    /// Return all plugin names in this sub app for debugging.
+    ///
+    /// The plugin name should not be used for identification as it is unstable.
+    pub fn plugin_names(&self) -> Vec<&'static str> {
+        self.plugin_names.iter().map(|(_, n)| *n).collect()
     }
 }
 
@@ -730,6 +741,15 @@ impl App {
         self.main.add_plugin_order::<Before, After>();
         self
     }
+
+    /// Return all plugin names in this app for debugging.
+    ///
+    /// This function only return plugin names for the main world.
+    ///
+    /// The plugin name should not be used for identification as it is unstable.
+    pub fn plugin_names(&self) -> Vec<&'static str> {
+        self.main.plugin_names.iter().map(|(_, n)| *n).collect()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -738,12 +758,23 @@ impl App {
 impl App {
     /// Sets the function that will be called when the app is run.
     ///
+    /// This function will overwrite the old runner.
+    ///
     /// If no runner is set, the app will run only a single frame by
     /// default, similar to calling [`App::update`] once.
     #[inline]
     pub fn set_runner(&mut self, f: impl FnOnce(App) -> AppExit + Send + 'static) -> &mut Self {
         self.runner = Some(Box::new(f));
         self
+    }
+
+    /// Return `true` if the runner has already been set.
+    ///
+    /// If the plugin needs to set runner, please check before
+    /// adding and output a warning when overwriting.
+    #[inline]
+    pub fn contains_runner(&self) -> bool {
+        self.runner.is_some()
     }
 }
 

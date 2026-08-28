@@ -8,8 +8,7 @@ use std::sync::PoisonError;
 use erased_serde::Deserializer as ErasedDeserializer;
 use erased_serde::Serialize as ErasedSerialize;
 use serde::{Deserialize, Serialize};
-use zlim_ptr::{OwningPtr, Ptr, PtrMut};
-use zlim_reflect::Reflect;
+use zlim_ptr::{OwningPtr, Ptr};
 use zlim_utils::mem::{Bump, Global};
 
 use super::alias::{DeserializeFunc, SerializeFunc};
@@ -133,10 +132,6 @@ fn register_impl<R: Resource>(
         type_path: R::type_path(),
         type_name: R::type_name(),
         module_path: R::MODULE.unwrap_or(""),
-        getter: R::GETTER,
-        setter: R::SETTER,
-        get_field_func: get_field::<R>,
-        set_field_func: set_field::<R>,
         layout: Layout::new::<R>(),
         dropper: R::DROPPER,
         serialize,
@@ -173,22 +168,6 @@ fn register_impl<R: Resource>(
 // -----------------------------------------------------------------------------
 // Type-erased helpers
 // -----------------------------------------------------------------------------
-
-/// Type-erased field getter for `R::get_field`.
-fn get_field<'a, R: Resource>(ptr: Ptr<'a>, name: &str) -> Option<&'a dyn Reflect> {
-    ptr.debug_assert_aligned::<R>();
-    unsafe { ptr.deref::<R>().get_field(name) }
-}
-
-/// Type-erased field setter for `R::set_field`.
-fn set_field<'a, R: Resource>(
-    ptr: PtrMut<'a>,
-    name: &str,
-    value: &dyn Reflect,
-) -> Result<(), String> {
-    ptr.debug_assert_aligned::<R>();
-    unsafe { ptr.deref::<R>().set_field(name, value) }
-}
 
 /// Type-erased serializer for `R`.
 fn serialize_fn<R: Resource + Serialize>(ptr: Ptr<'_>) -> &dyn ErasedSerialize {

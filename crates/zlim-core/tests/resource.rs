@@ -16,42 +16,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(TypePath, Resource, Debug, PartialEq, Eq)]
 struct Health {
-    #[editor(get, set)]
     value: u32,
 }
 
 #[derive(TypePath, Resource, Debug, PartialEq, Eq)]
 struct Score {
-    #[editor(get)]
     points: u64,
 }
 
 #[derive(TypePath, Resource)]
-struct Mixed {
-    #[editor(get, set)]
-    hp: u32,
-    #[editor(get)]
-    id: u64,
-    _hidden: String,
-}
-
-#[derive(TypePath, Resource)]
-struct NoEditor {
-    _x: i32,
-    _y: i32,
-}
-
-#[derive(TypePath, Resource)]
-struct TupleRes(
-    #[editor(get, set)] f32,
-    #[editor(get, set)] f32,
-    #[editor(get)] f32,
-);
-
-#[derive(TypePath, Resource)]
 struct GenericRes<T: Send + Sync + 'static> {
-    #[editor(get, set)]
-    data: T,
+    _data: T,
 }
 
 // -----------------------------------------------------------------------------
@@ -75,127 +50,6 @@ fn derive_serialize_flag() {
     const {
         assert!(!Health::SERIALIZE);
     }
-}
-
-#[test]
-fn derive_fields_const() {
-    assert_eq!(Mixed::GETTER, &["hp", "id"]);
-    assert_eq!(Mixed::SETTER, &["hp"]);
-}
-
-#[test]
-fn derive_no_editor_defaults() {
-    assert_eq!(NoEditor::GETTER.len(), 0);
-    assert_eq!(NoEditor::SETTER.len(), 0);
-}
-
-#[test]
-fn derive_get_field() {
-    let m = Mixed {
-        hp: 42,
-        id: 7,
-        _hidden: "x".into(),
-    };
-    let f = m.get_field("hp").unwrap();
-    assert_eq!(*f.downcast_ref::<u32>().unwrap(), 42);
-}
-
-#[test]
-fn derive_get_field_getter_only() {
-    let m = Mixed {
-        hp: 42,
-        id: 7,
-        _hidden: "x".into(),
-    };
-    let f = m.get_field("id").unwrap();
-    assert_eq!(*f.downcast_ref::<u64>().unwrap(), 7);
-}
-
-#[test]
-fn derive_get_field_unmarked_not_exposed() {
-    let m = Mixed {
-        hp: 0,
-        id: 0,
-        _hidden: "secret".into(),
-    };
-    assert!(m.get_field("_hidden").is_none());
-    assert!(m.get_field("nonexistent").is_none());
-}
-
-#[test]
-fn derive_set_field() {
-    let mut m = Mixed {
-        hp: 10,
-        id: 3,
-        _hidden: "a".into(),
-    };
-    m.set_field("hp", &99u32).unwrap();
-    assert_eq!(m.hp, 99);
-
-    // getter-only fields are not writable.
-    assert!(m.set_field("id", &7u64).is_err());
-    assert!(m.set_field("_hidden", &"x".to_string()).is_err());
-}
-
-#[test]
-fn derive_set_field_errors() {
-    let mut m = Mixed {
-        hp: 10,
-        id: 3,
-        _hidden: "a".into(),
-    };
-
-    // Missing field.
-    let err = m.set_field("nonexistent", &0u32).unwrap_err();
-    assert!(
-        err.contains("Type `Mixed` is missing field `nonexistent`"),
-        "{err}"
-    );
-
-    // Apply failure — the wrong reflected type is left unchanged.
-    let err = m.set_field("hp", &"not a number".to_string()).unwrap_err();
-    assert!(
-        err.contains("Type `Mixed` failed to assign field `hp`"),
-        "{err}"
-    );
-    assert_eq!(m.hp, 10);
-}
-
-#[test]
-fn derive_tuple_struct() {
-    assert_eq!(TupleRes::GETTER, &["0", "1", "2"]);
-    assert_eq!(TupleRes::SETTER, &["0", "1"]);
-
-    let mut t = TupleRes(1.0, 2.0, 3.0);
-    assert_eq!(
-        *t.get_field("0").unwrap().downcast_ref::<f32>().unwrap(),
-        1.0
-    );
-    assert_eq!(
-        *t.get_field("2").unwrap().downcast_ref::<f32>().unwrap(),
-        3.0
-    );
-    assert!(t.set_field("2", &9.0f32).is_err());
-}
-
-// -----------------------------------------------------------------------------
-// Trait default implementations
-// -----------------------------------------------------------------------------
-
-/// A resource with no derive — exercises the trait defaults directly.
-#[derive(TypePath)]
-struct NoFields;
-
-impl ResourceTrait for NoFields {}
-
-#[test]
-fn default_field_behavior() {
-    let mut r = NoFields;
-    assert!(r.get_field("anything").is_none());
-
-    let err = r.set_field("anything", &0u32).unwrap_err();
-    assert!(err.contains("NoFields"), "{err}");
-    assert!(err.contains("exposes no fields"), "{err}");
 }
 
 #[test]

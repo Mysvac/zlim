@@ -145,10 +145,10 @@ fn reflect_kind_enum() {
 
 #[test]
 fn from_reflect_same_type_named() {
-    let val = Named { x: 42, y: 3.14 };
+    let val = Named { x: 42, y: 3.15 };
     let boxed: Box<dyn Reflect> = Box::new(val);
     let result = Named::from_reflect(boxed).unwrap();
-    assert_eq!(*result, Named { x: 42, y: 3.14 });
+    assert_eq!(*result, Named { x: 42, y: 3.15 });
 }
 
 #[test]
@@ -518,10 +518,10 @@ fn cross_struct_extra_fields_in_source() {
 #[test]
 fn cross_tuple_same_shape() {
     // TupleStruct(3, 4.0) → different tuple type, same field types
-    let src = TupleStruct(42, 3.14);
+    let src = TupleStruct(42, 3.15);
     let boxed: Box<dyn Reflect> = Box::new(src);
     let result = TupleStruct::from_reflect(boxed).unwrap();
-    assert_eq!(*result, TupleStruct(42, 3.14));
+    assert_eq!(*result, TupleStruct(42, 3.15));
 }
 
 #[test]

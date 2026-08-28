@@ -1,7 +1,7 @@
 //! The [`Component`] trait.
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use zlim_reflect::{Reflect, TypePath};
+use zlim_reflect::TypePath;
 
 use super::db::ComponentDB;
 use super::hook::ComponentHook;
@@ -20,8 +20,8 @@ use crate::utils::Dropper;
 /// Any type stored in ECS component storage must implement this trait.
 ///
 /// `Component` describes runtime metadata that drives how ECS stores and
-/// manages values of this type: memory layout, clone and drop behavior,
-/// lifecycle hooks, and reflected field access.
+/// manages values of this type: memory layout, clone and drop behavior, and
+/// lifecycle hooks.
 ///
 /// # Derive Macro
 ///
@@ -39,17 +39,6 @@ use crate::utils::Dropper;
 /// struct Position {
 ///     x: f32,
 ///     y: f32,
-/// }
-///
-/// // Expose fields to the editor through reflection:
-/// #[derive(TypePath, Component, Clone)]
-/// struct Transform {
-///     #[editor(get, set)]
-///     x: f32,
-///     #[editor(get, set)]
-///     y: f32,
-///     #[editor(get, set)]
-///     z: f32,
 /// }
 ///
 /// // Declare *required* components: `Visibility` is registered, collected,
@@ -214,72 +203,6 @@ pub trait Component: TypePath + Send + Sync + Sized {
     /// Called before the component is actually dropped, after `on_discard`
     /// and `on_remove`.
     const ON_DESPAWN: Option<ComponentHook> = None;
-
-    /// Names of the fields readable through [`get_field`](Self::get_field),
-    /// in declaration order. Defaults to empty.
-    const GETTER: &'static [&'static str] = &[];
-
-    /// Names of the fields writable through [`set_field`](Self::set_field).
-    /// Defaults to empty.
-    const SETTER: &'static [&'static str] = &[];
-
-    /// Returns a reflected reference to the named field, if it exists.
-    ///
-    /// The default implementation exposes no fields and always returns
-    /// `None`. `#[derive(Component)]` exposes fields through the
-    /// `#[editor(get, set)]` attribute (see [`GETTER`](Self::GETTER)).
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
-    ///
-    /// #[derive(TypePath, Component, Clone)]
-    /// struct Transform {
-    ///     #[editor(get, set)]
-    ///     x: f32,
-    /// }
-    ///
-    /// let transform = Transform { x: 1.5 };
-    /// let field = transform.get_field("x").unwrap();
-    /// assert_eq!(field.downcast_ref::<f32>(), Some(&1.5));
-    /// ```
-    fn get_field<'a>(&'a self, _name: &str) -> Option<&'a dyn Reflect> {
-        None
-    }
-
-    /// Assigns a reflected value to the named field.
-    ///
-    /// Returns `Err(message)` if `name` does not match any setter field of
-    /// this type, or if applying `value` through reflection fails.
-    ///
-    /// The default implementation exposes no fields and always returns
-    /// `Err` (see [`SETTER`](Self::SETTER)).
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
-    ///
-    /// #[derive(TypePath, Component, Clone)]
-    /// struct Transform {
-    ///     #[editor(get, set)]
-    ///     x: f32,
-    /// }
-    ///
-    /// let mut transform = Transform { x: 0.0 };
-    /// transform.set_field("x", &1.5).unwrap();
-    /// assert_eq!(
-    ///     transform.get_field("x").unwrap().downcast_ref::<f32>(),
-    ///     Some(&1.5),
-    /// );
-    /// ```
-    fn set_field(&mut self, _name: &str, _value: &dyn Reflect) -> Result<(), String> {
-        let ty = Self::type_path();
-        Err(format!("Component `{ty}` exposes no fields"))
-    }
 
     /// Remaps entity references inside this component.
     ///

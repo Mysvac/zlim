@@ -18,14 +18,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(TypePath, Component, Clone)]
 struct Health {
-    #[editor(get, set)]
-    value: u32,
-}
-
-#[test]
-fn component_fields_const() {
-    assert_eq!(Health::GETTER, &["value"]);
-    assert_eq!(Health::SETTER, &["value"]);
+    _value: u32,
 }
 
 #[test]
@@ -163,24 +156,6 @@ fn copy_component_compiles() {
     fn _assert_component<T: ComponentTrait>() {}
     _assert_component::<CopyComp>();
     assert!(CopyComp::ON_CLONE.is_some());
-}
-
-// -----------------------------------------------------------------------------
-// Getter-only editor field
-// -----------------------------------------------------------------------------
-
-#[derive(TypePath, Component, Clone)]
-struct ReadonlyField {
-    #[editor(get)]
-    id: u64,
-}
-
-#[test]
-fn readonly_field_not_in_setter() {
-    assert_eq!(ReadonlyField::GETTER, &["id"]);
-    assert_eq!(ReadonlyField::SETTER.len(), 0);
-    assert!(ReadonlyField { id: 1 }.get_field("id").is_some());
-    assert!(ReadonlyField { id: 1 }.set_field("id", &7u64).is_err());
 }
 
 // -----------------------------------------------------------------------------

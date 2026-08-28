@@ -3,7 +3,6 @@ use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::{Data, DeriveInput, Fields, Ident, Index, Type, parse_quote};
 
-use crate::editor;
 use crate::utils::{contains_any_idents, field_type_constraint};
 
 // -----------------------------------------------------------------------------
@@ -212,7 +211,6 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     let component_hook_ = crate::path::component_hook_(&zlim_core);
     let map_entities_ = crate::path::map_entities_(&zlim_core);
     let entity_mapper_ = crate::path::entity_mapper_(&zlim_core);
-    let reflect_ = crate::path::reflect_(&zlim_core);
 
     let type_ident = &ast.ident;
     let mut generics = ast.generics;
@@ -250,24 +248,6 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     }
 
     let generic_idents: Vec<Ident> = generics.type_params().map(|p| p.ident.clone()).collect();
-
-    // --- editor fields -------------------------------------------------
-    let editor_fields = match editor::collect_editor_fields(&ast.data) {
-        Ok(f) => f,
-        Err(e) => return e.into_compile_error(),
-    };
-
-    for f in &editor_fields {
-        if contains_any_idents(f.ty, &generic_idents) {
-            field_type_constraint(&mut generics, f.ty, &reflect_);
-        }
-    }
-
-    let et = editor::gen_editor_tokens(&editor_fields, &type_ident.to_string(), &reflect_);
-    let eg = et.getter;
-    let es = et.setter;
-    let egf = et.get_field_fn;
-    let esf = et.set_field_fn;
 
     // --- entity fields -------------------------------------------------
     let entity_fields = match collect_entity_fields(&ast.data) {
@@ -417,12 +397,6 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                 #on_remove_tokens
                 #on_discard_tokens
                 #on_despawn_tokens
-
-                const GETTER: &'static [&'static str] = #eg;
-                const SETTER: &'static [&'static str] = #es;
-
-                #egf
-                #esf
 
                 #map_entities_tokens
 

@@ -8,11 +8,14 @@ repository.workspace = true
 
 [features]
 
+dylib = []
+
 debug = [
     "zlim-log/debug",
     "zlim-utils/debug",
     "zlim-reflect/debug",
     "zlim-core/debug",
+    "zlim-math/debug",
 ]
 
 trace = [
@@ -31,8 +34,6 @@ trace_chrome = ["zlim-log/trace_chrome"]
 
 default_log_level = ["zlim-log/default_log_level"]
 
-dylib = []
-
 editor = []
 
 async_io = ["zlim-task/async_io"]
@@ -41,7 +42,11 @@ single_thread = ["zlim-task/single_thread"]
 
 uuid = ["zlim-reflect/uuid"]
 
-glam = ["zlim-reflect/glam"]
+libm = ["zlim-math/libm"]
+
+rand = ["zlim-math/rand"]
+
+approx = ["zlim-math/approx"]
 
 [dependencies]
 
@@ -59,6 +64,8 @@ zlim-reflect = { path = "../zlim-reflect", default-features = false }
 zlim-core = { path = "../zlim-core", default-features = false }
 
 zlim-app = { path = "../zlim-app", default-features = false }
+
+zlim-math = { path = "../zlim-math", default-features = false }
 
 [lints]
 workspace = true

@@ -16,6 +16,8 @@ pub use zlim_core as core;
 
 pub use zlim_app as app;
 
+pub use zlim_math as math;
+
 /// Macros
 pub mod derive {
     pub use zlim_app::derive::*;

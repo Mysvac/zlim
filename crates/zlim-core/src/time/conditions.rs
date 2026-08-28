@@ -190,7 +190,7 @@ pub fn paused(time: Res<Time<Virtual>>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use core::time::Duration;
 
     use crate::world::World;
 

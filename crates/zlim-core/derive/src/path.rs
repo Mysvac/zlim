@@ -49,7 +49,6 @@ def_path_fn!(component_collector_, component::ComponentCollector);
 def_path_fn!(component_writer_, component::ComponentWriter);
 def_path_fn!(entity_owned_, ops::EntityOwned);
 def_path_fn!(owning_ptr_, __macro_exports__::__OwningPtr);
-def_path_fn!(reflect_, __macro_exports__::__Reflect);
 def_path_fn!(type_path_, __macro_exports__::__TypePath);
 def_path_fn!(resource_, resource::Resource);
 def_path_fn!(resource_db_, resource::ResourceDB);

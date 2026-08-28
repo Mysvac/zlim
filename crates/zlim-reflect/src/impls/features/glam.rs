@@ -280,7 +280,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Vec2"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Vec2 {
         x: f32,
         y: f32,
@@ -289,7 +289,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Vec3"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Vec3 {
         x: f32,
         y: f32,
@@ -299,7 +299,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Vec4"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Vec4 {
         x: f32,
         y: f32,
@@ -310,7 +310,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Vec3A"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Vec3A {
         x: f32,
         y: f32,
@@ -324,7 +324,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DVec2"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DVec2 {
         x: f64,
         y: f64,
@@ -333,7 +333,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DVec3"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DVec3 {
         x: f64,
         y: f64,
@@ -343,7 +343,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DVec4"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DVec4 {
         x: f64,
         y: f64,
@@ -413,7 +413,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Mat2"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Mat2 {
         x_axis: Vec2,
         y_axis: Vec2,
@@ -422,7 +422,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Mat3"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Mat3 {
         x_axis: Vec3,
         y_axis: Vec3,
@@ -432,7 +432,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Mat4"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Mat4 {
         x_axis: Vec4,
         y_axis: Vec4,
@@ -443,7 +443,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Mat3A"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Mat3A {
         x_axis: Vec3A,
         y_axis: Vec3A,
@@ -457,7 +457,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DMat2"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DMat2 {
         x_axis: DVec2,
         y_axis: DVec2,
@@ -466,7 +466,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DMat3"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DMat3 {
         x_axis: DVec3,
         y_axis: DVec3,
@@ -476,7 +476,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DMat4"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DMat4 {
         x_axis: DVec4,
         y_axis: DVec4,
@@ -491,7 +491,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Affine2"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Affine2 {
         matrix2: Mat2,
         translation: Vec2,
@@ -500,7 +500,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Affine3"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Affine3 {
         matrix3: Mat3,
         translation: Vec3,
@@ -509,7 +509,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Affine3A"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Affine3A {
         matrix3: Mat3A,
         translation: Vec3A,
@@ -522,7 +522,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DAffine2"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DAffine2 {
         matrix2: DMat2,
         translation: DVec2,
@@ -531,7 +531,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DAffine3"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DAffine3 {
         matrix3: DMat3,
         translation: DVec3,
@@ -544,7 +544,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::Quat"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct Quat {
         x: f32,
         y: f32,
@@ -555,7 +555,7 @@ impl_reflect!(
 
 impl_reflect!(
     #[type_path = "glam::DQuat"]
-    #[reflect(Default, Clone, Debug, Eq, Deserialize, Serialize)]
+    #[reflect(Default, Clone, Debug, /* Eq, */ Deserialize, Serialize)]
     struct DQuat {
         x: f64,
         y: f64,

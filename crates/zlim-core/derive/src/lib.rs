@@ -8,7 +8,6 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 
 mod bundle;
 mod component;
-mod editor;
 mod error;
 mod job;
 mod job_group;
@@ -212,9 +211,6 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 ///
 /// # Field attributes
 ///
-/// - `#[editor(get)]` / `#[editor(set)]` — expose the field to the
-///   editor via `get_field` / `set_field` (requires `Reflect`).  Both may be
-///   combined on the same field.
 /// - `#[entities]` — mark a field as containing entities; auto-generates
 ///   `map_entities` and sets `NO_ENTITY = false`.  The field type must
 ///   implement `MapEntities`.
@@ -267,7 +263,6 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
 /// #[component(on_add = Self::on_add)]
 /// struct Health {
-///     #[editor(get, set)]
 ///     value: u32,
 /// }
 ///
@@ -275,7 +270,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 ///     fn on_add(world: DeferredWorld, ctx: HookContext) { /* … */ }
 /// }
 /// ```
-#[proc_macro_derive(Component, attributes(component, editor, entities, require))]
+#[proc_macro_derive(Component, attributes(component, entities, require))]
 pub fn derive_component(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     component::expand(ast).into()
@@ -283,9 +278,7 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 
 /// Derives the `Resource` trait implementation.
 ///
-/// This macro automatically implements the `Resource` trait for your struct,
-/// exposing fields marked with `#[editor(get)]` and `#[editor(set)]`
-/// to the editor via the `get_field` / `set_field` methods.
+/// This macro automatically implements the `Resource` trait for your struct.
 ///
 /// # Type attributes
 ///
@@ -293,18 +286,6 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 ///   overrides the generated `register()` to use `register_serializable`,
 ///   filling the serialization function pointers in the resource's
 ///   `ResourceDB`.  The type must implement `Serialize` and `Deserialize`.
-///
-/// # Field attributes
-///
-/// - `#[editor(get)]` — the field appears in `GETTER`, readable through
-///   `get_field`.
-/// - `#[editor(set)]` — the field appears in `SETTER`, writable through
-///   `set_field`.
-///
-/// Both may be combined (`#[editor(get, set)]`) on the same field.
-///
-/// Unmarked fields are ignored by the editor layer.
-/// Every annotated field must implement `Reflect`.
 ///
 /// # TypePath
 ///
@@ -322,13 +303,11 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 /// #[derive(TypePath, Resource)]
 /// struct Player {
 ///     name: String,
-///     #[editor(get, set)]
 ///     health: u32,
-///     #[editor(get)]
 ///     id: u64,
 /// }
 /// ```
-#[proc_macro_derive(Resource, attributes(editor, resource))]
+#[proc_macro_derive(Resource, attributes(resource))]
 pub fn derive_resource(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     resource::expand(ast).into()

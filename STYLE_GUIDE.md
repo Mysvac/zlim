@@ -79,8 +79,8 @@ uppercase `TODO!`. The format is flexible; the only requirement is clarity:
 // - Item 2
 ```
 
-The uppercase `TODO!` convention makes every deferred item instantly
-discoverable with an editor-wide text search.
+The uppercase `TODO!` convention makes every deferred item instantly discoverable
+with an editor-wide text search.
 
 ## Unsafe Code
 
@@ -100,3 +100,30 @@ reasoning is non-obvious.  Keep it short — state which precondition is satisfi
 // SAFETY: the caller guarantees the index is within bounds.
 unsafe { /* ... */ }
 ```
+
+## Doc References
+
+Rust’s doc comments support automatic linking for types and functions. For example,
+[`None`] automatically links to `core::option::Option`.
+
+However, when a path is not in scope or is ambiguous, an explicit link is required:
+
+```rust
+/// Uses [`Foo`](foo::Foo) to do something important.
+pub fn do_something() { /* ... */ }
+```
+
+If the full path is long and clutters the doc comment, define the link reference at
+the bottom of the comment block:
+
+```rust
+/// Uses [`Foo`] to do something important.
+///
+/// [`Foo`]: crate::very::deep::path::to::Foo
+pub fn do_something() { /* ... */ }
+```
+
+This keeps the main doc text readable, while still providing a correct, unambiguous
+link for the generated documentation.
+
+---

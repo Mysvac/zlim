@@ -116,8 +116,11 @@ fn gen_eq(meta: &ReflectMeta<'_>) -> TokenStream {
     quote! {
         #[inline]
         fn reflect_eq(&self, other: &dyn #reflect_) -> bool {
+            const fn assert_impl_eq<T: ::core::cmp::Eq>() {}
+            assert_impl_eq::<Self>();
+
             if let ::core::option::Option::Some(o) = <dyn #reflect_>::downcast_ref::<Self>(other) {
-                *self == *o
+                ::core::cmp::PartialEq::eq(self, o)
             } else {
                 false
             }

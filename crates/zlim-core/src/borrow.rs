@@ -465,7 +465,6 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
 /// [`try_map_type`] to transform the held type while preserving ticks.
 /// The type also implements [`DetectChanges`] for direct change queries
 /// (`is_added()`, `is_changed()`, and the tick accessors).
-
 ///
 /// # Examples
 ///
@@ -518,7 +517,6 @@ pub struct Ref<'w, T: ?Sized> {
 /// Use [`reborrow`] to obtain a shorter-lived view without consuming `self`,
 /// or [`map_type`] / [`try_map_type`] to project into a sub-field while
 /// preserving ticks.
-
 ///
 /// # Examples
 ///

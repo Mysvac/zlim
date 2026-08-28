@@ -9,7 +9,6 @@ use erased_serde::Deserializer as ErasedDeserializer;
 use erased_serde::Serialize as ErasedSerialize;
 use serde::{Deserialize, Serialize};
 use zlim_ptr::{OwningPtr, Ptr, PtrMut};
-use zlim_reflect::Reflect;
 use zlim_utils::mem::{Bump, Global};
 
 use super::alias::{DeserializeFunc, SerializeFunc};
@@ -133,10 +132,6 @@ fn register_impl<C: Component>(
         on_remove: C::ON_REMOVE,
         on_discard: C::ON_DISCARD,
         on_despawn: C::ON_DESPAWN,
-        getter: C::GETTER,
-        setter: C::SETTER,
-        get_field_func: get_field::<C>,
-        set_field_func: set_field::<C>,
         layout: Layout::new::<C>(),
         dropper: C::DROPPER,
         cloner: C::CLONER,
@@ -180,22 +175,6 @@ fn register_impl<C: Component>(
 // -----------------------------------------------------------------------------
 // Type-erased helpers
 // -----------------------------------------------------------------------------
-
-/// Type-erased field getter for `C::get_field`.
-fn get_field<'a, C: Component>(ptr: Ptr<'a>, name: &str) -> Option<&'a dyn Reflect> {
-    ptr.debug_assert_aligned::<C>();
-    unsafe { ptr.deref::<C>().get_field(name) }
-}
-
-/// Type-erased field setter for `C::set_field`.
-fn set_field<'a, C: Component>(
-    ptr: PtrMut<'a>,
-    name: &str,
-    value: &dyn Reflect,
-) -> Result<(), String> {
-    ptr.debug_assert_aligned::<C>();
-    unsafe { ptr.deref::<C>().set_field(name, value) }
-}
 
 /// Type-erased entity mapper for `C::map_entities`.
 fn map_entities_fn<'a, C: Component>(ptr: PtrMut<'a>, mut mapper: &mut dyn EntityMapper) {
