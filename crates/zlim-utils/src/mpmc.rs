@@ -22,12 +22,12 @@
 //! futures_lite::future::block_on(async {
 //!     let a = rx1.recv().await;
 //!     let b = rx2.recv().await;
-//!     assert!(a.is_some() && b.is_some());
-//!     assert_eq!(rx1.recv().await, None);
+//!     assert!(a.is_ok() && b.is_ok());
+//!     assert_eq!(rx1.recv().await, Err(mpmc::RecvError));
 //! });
 //! ```
 
-use core::fmt;
+use core::fmt::{Debug, Display, Formatter};
 use core::future::Future;
 use core::pin::Pin;
 use core::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
@@ -58,13 +58,33 @@ use crate::sync::SegQueue;
 /// futures_lite::future::block_on(async {
 ///     let a = rx1.recv().await;
 ///     let b = rx2.recv().await;
-///     assert!(a.is_some() && b.is_some());
-///     assert_eq!(rx1.recv().await, None);
+///     assert!(a.is_ok() && b.is_ok());
+///     assert_eq!(rx1.recv().await, Err(mpmc::RecvError));
 /// });
 /// ```
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let inner: Arc<Inner<T>> = Arc::new(Inner {
         queue: SegQueue::new(),
+        event: Event::new(),
+        send_num: AtomicUsize::new(1),
+        recv_num: AtomicUsize::new(1),
+        is_closed: AtomicBool::new(false),
+    });
+
+    let tx = Sender {
+        inner: inner.clone(),
+    };
+    let rx = Receiver { inner };
+
+    (tx, rx)
+}
+
+/// Creates an unbounded async MPMC channel with given queue.
+///
+/// This function allows you to insert some elements in advance.
+pub fn channel_with<T>(queue: SegQueue<T>) -> (Sender<T>, Receiver<T>) {
+    let inner: Arc<Inner<T>> = Arc::new(Inner {
+        queue,
         event: Event::new(),
         send_num: AtomicUsize::new(1),
         recv_num: AtomicUsize::new(1),
@@ -162,8 +182,8 @@ impl<T> Sender<T> {
     }
 }
 
-impl<T> fmt::Debug for Sender<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<T> Debug for Sender<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_str("Sender")
     }
 }
@@ -222,8 +242,8 @@ impl<T> Receiver<T> {
 
     /// Receives the next value.
     ///
-    /// Returns `None` when all [`Sender`]s have been dropped and the
-    /// channel is empty.
+    /// Returns [`Err(RecvError)`](RecvError) when all [`Sender`]s have been
+    /// dropped and the channel is empty.
     ///
     /// Takes `&mut self` so that only one in-flight [`Recv`] future exists
     /// per [`Receiver`] at a time.
@@ -244,9 +264,26 @@ impl<T> Receiver<T> {
     }
 }
 
-impl<T> fmt::Debug for Receiver<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<T> Debug for Receiver<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Receiver").finish()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// RecvError
+
+/// An error returned from [`Receiver::recv()`].
+///
+/// Received because the channel is empty and closed.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub struct RecvError;
+
+impl core::error::Error for RecvError {}
+
+impl Display for RecvError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "receiving from an empty and closed channel")
     }
 }
 
@@ -264,23 +301,24 @@ pub struct Recv<'a, T> {
 }
 
 impl<T> Future for Recv<'_, T> {
-    type Output = Option<T>;
+    type Output = Result<T, RecvError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<T, RecvError>> {
         let this = self.get_mut();
         let inner = &this.rx.inner;
 
         loop {
             // Fast path — queue already has data
             if let Some(value) = inner.queue.pop() {
-                return Poll::Ready(Some(value));
+                return Poll::Ready(Ok(value));
             }
 
-            // All senders gone → drain and return
+            // All senders gone → drain the remaining queue, then report the
+            // closure as an error.
             if inner.is_closed.load(Acquire) {
                 core::hint::cold_path();
                 // Use pop for secondary inspection.
-                return Poll::Ready(inner.queue.pop());
+                return Poll::Ready(inner.queue.pop().ok_or(RecvError));
             }
 
             if let Some(listener) = &mut this.listener {
@@ -308,6 +346,7 @@ mod tests {
 
     use futures_lite::future::block_on;
 
+    use super::RecvError;
     use super::channel;
 
     #[test]
@@ -318,9 +357,9 @@ mod tests {
         tx.send(2).unwrap();
         drop(tx);
 
-        assert_eq!(block_on(rx.recv()), Some(1));
-        assert_eq!(block_on(rx.recv()), Some(2));
-        assert_eq!(block_on(rx.recv()), None);
+        assert_eq!(block_on(rx.recv()), Ok(1));
+        assert_eq!(block_on(rx.recv()), Ok(2));
+        assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
     #[test]
@@ -347,14 +386,14 @@ mod tests {
         tx.send(1).unwrap();
         drop(tx);
 
-        assert_eq!(block_on(rx.recv()), Some(1));
+        assert_eq!(block_on(rx.recv()), Ok(1));
 
         // `tx2` is still alive, so the channel stays open.
         tx2.send(2).unwrap();
-        assert_eq!(block_on(rx.recv()), Some(2));
+        assert_eq!(block_on(rx.recv()), Ok(2));
 
         drop(tx2);
-        assert_eq!(block_on(rx.recv()), None);
+        assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
     #[test]
@@ -371,8 +410,8 @@ mod tests {
         let b = block_on(rx2.recv()).unwrap();
         assert!(a != b && (a == 1 || a == 2) && (b == 1 || b == 2));
 
-        assert_eq!(block_on(rx1.recv()), None);
-        assert_eq!(block_on(rx2.recv()), None);
+        assert_eq!(block_on(rx1.recv()), Err(RecvError));
+        assert_eq!(block_on(rx2.recv()), Err(RecvError));
     }
 
     #[test]
@@ -386,7 +425,7 @@ mod tests {
         assert!(rx.is_closed());
 
         assert_eq!(tx.send(1), Err(1));
-        assert_eq!(block_on(rx.recv()), None);
+        assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
     #[test]
@@ -398,7 +437,7 @@ mod tests {
         assert!(tx.is_closed());
 
         assert_eq!(tx.send(1), Err(1));
-        assert_eq!(block_on(rx.recv()), None);
+        assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
     #[test]
@@ -409,7 +448,7 @@ mod tests {
             tx.send(42).unwrap();
         });
 
-        assert_eq!(block_on(rx.recv()), Some(42));
+        assert_eq!(block_on(rx.recv()), Ok(42));
     }
 
     #[test]
@@ -418,7 +457,7 @@ mod tests {
 
         spawn(move || drop(tx));
 
-        assert_eq!(block_on(rx.recv()), None);
+        assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
     #[test]
@@ -447,7 +486,7 @@ mod tests {
 
         let mut total = 0;
         let mut count = 0;
-        while let Some(v) = block_on(rx.recv()) {
+        while let Ok(v) = block_on(rx.recv()) {
             total += v;
             count += 1;
         }
@@ -478,7 +517,7 @@ mod tests {
                 let mut rx = rx.clone();
                 let seen = &seen;
                 scope.spawn(move || {
-                    while let Some(v) = block_on(rx.recv()) {
+                    while let Ok(v) = block_on(rx.recv()) {
                         seen[v].fetch_add(1, Ordering::SeqCst);
                     }
                 });

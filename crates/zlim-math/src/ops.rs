@@ -504,7 +504,7 @@ mod precise_methods {
 
     /// Returns the square root of a number.
     ///
-    /// Returns NaN if `self` is a negative number other than `-0.0`.
+    /// Returns NaN if `x` is a negative number other than `-0.0`.
     ///
     /// The result of this operation is guaranteed to be the rounded
     /// infinite-precision result. It is specified by IEEE 754 as
@@ -514,11 +514,10 @@ mod precise_methods {
         f32::sqrt(x)
     }
 
-    /// Returns a number composed of the magnitude of `self` and the sign of
-    /// `sign`.
+    /// Returns a number composed of the magnitude of `x` and the sign of `sign`.
     ///
-    /// Equal to `self` if the sign of `self` and `sign` are the same, otherwise equal to `-self`.
-    /// If `self` is a NaN, then a NaN with the same payload as `self` and the sign bit of `sign` is
+    /// Equal to `x` if the sign of `x` and `sign` are the same, otherwise equal to `-x`.
+    /// If `x` is a NaN, then a NaN with the same payload as `x` and the sign bit of `sign` is
     /// returned.
     ///
     /// If `sign` is a NaN, then this operation will still carry over its sign into the result. Note
@@ -527,11 +526,11 @@ mod precise_methods {
     /// result of `copysign` with `sign` being a NaN might produce an unexpected or non-portable
     /// result.
     #[inline(always)]
-    pub const fn copysign(x: f32, y: f32) -> f32 {
-        f32::copysign(x, y)
+    pub const fn copysign(x: f32, sign: f32) -> f32 {
+        f32::copysign(x, sign)
     }
 
-    /// Returns the nearest integer to `self`.
+    /// Returns the nearest integer to `x`.
     ///
     /// If a value is half-way between two integers, round away from `0.0`.
     ///
@@ -541,7 +540,7 @@ mod precise_methods {
         f32::round(x)
     }
 
-    /// Returns the largest integer that is less than or equal to `self`.
+    /// Returns the largest integer that is less than or equal to `x`.
     ///
     /// This function always returns the precise result.
     #[inline(always)]
@@ -549,7 +548,7 @@ mod precise_methods {
         f32::floor(x)
     }
 
-    /// Returns the smallest integer that is greater than or equal to `self`.
+    /// Returns the smallest integer that is greater than or equal to `x`.
     ///
     /// This function always returns the precise result.
     #[inline(always)]

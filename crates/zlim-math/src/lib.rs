@@ -1,4 +1,4 @@
-//! from bevy_math
+#![doc = include_str!("../README.md")]
 #![cfg_attr(docsrs, expect(internal_features, reason = "needed for fake_variadic"))]
 #![cfg_attr(docsrs, feature(doc_cfg, rustdoc_internals))]
 #![forbid(unsafe_code)]
@@ -6,11 +6,12 @@
 // ---------------------------------------------------------------------
 // glam
 
+pub use glam::camera::rh::proj::directx as proj;
+pub use glam::dcamera::rh::proj::directx as dproj;
+
 pub use glam::EulerRot;
 pub use glam::FloatExt;
 pub use glam::bool::*;
-pub use glam::camera::rh::proj::directx as proj;
-pub use glam::dcamera::rh::proj::directx as dproj;
 pub use glam::f32::*;
 pub use glam::f64::*;
 pub use glam::i8::*;
@@ -178,11 +179,7 @@ pub mod prelude {
     pub use crate::ray::{Ray2d, Ray3d};
     pub use crate::rects::{IRect, Rect, URect};
 
-    pub use crate::cubic_splines::{
-        CubicBSpline, CubicBezier, CubicCardinalSpline, CubicCurve, CubicGenerator, CubicHermite,
-        CubicNurbs, CubicNurbsError, CubicSegment, CyclicCubicGenerator, LinearSpline,
-        RationalCurve, RationalGenerator, RationalSegment,
-    };
+    pub use crate::cubic_splines::*;
     pub use crate::curve::*;
 
     pub use crate::primitives::*;

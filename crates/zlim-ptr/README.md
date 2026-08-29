@@ -1,3 +1,5 @@
+# zlim-ptr
+
 Lightweight pointer wrappers for internal code.
 
 This crate consists of two parts: type-erased references, and slices that store no length.
@@ -54,7 +56,7 @@ assert_eq!(out, "42");
 
 ## Slices Without Length
 
-- `Slice<'a, T>`: thin shared slice pointer (stores only a pointer, no length).
+- `ThinSlice<'a, T>`: thin shared slice pointer (stores only a pointer, no length).
 
 - `SliceMut<'a, T>`: thin mutable slice pointer (stores only a pointer, no length).
 
@@ -65,9 +67,9 @@ For example, the ECS implementation may have a type like this:
 ```rust, ignore
 struct DataSlice<'a, T> {
     len: usize,
-    data: Slice<'a, T>,
-    added_time: Slice<'a, Tick>,
-    changed_time: Slice<'a, Tick>,
+    data: ThinSlice<'a, T>,
+    added_time: ThinSlice<'a, Tick>,
+    changed_time: ThinSlice<'a, Tick>,
 }
 ```
 
@@ -76,10 +78,10 @@ In the example above, the three slices share a single length, so the struct save
 **Example:**
 
 ```rust
-use zlim_ptr::SliceMut;
+use zlim_ptr::ThinSliceMut;
 
 let mut data = [1, 2, 3];
-let mut thin = SliceMut::from_mut(&mut data);
+let mut thin = ThinSliceMut::from_mut(&mut data);
 
 unsafe {
     *thin.get_mut(1) = 20;

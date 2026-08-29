@@ -13,7 +13,7 @@ Zlim Engine 的核心层：一个类 ECS 架构的游戏引擎实现，改自 Be
 
 ### 2.1 Component - 组件
 
-组件是**标准的 Rust 结构体**，通过 `#[derive(Component)]` 与实体关联：
+组件是**标准的 Rust 结构体**，通过 `#[derive(Component)]` 定义：
 
 ```rust
 use zlim_core::prelude::*;
@@ -280,6 +280,13 @@ world.run_schedule(MainLoop::Update);
 world.run_schedule(MainLoop::Render);
 ```
 
+单个 Schedule 中，Job 通过 JobId 进行区分，不会存在两个相同的 Job 。
+
+JobId 包含两部分：`name` 和 `group` ，即 Job 自身的名称和所述的组别。
+使用 JobGroup 添加的工作自然地属于给定组，而直接添加的工作则都属于匿名组。
+
+注意这里没有 `stage` ，因此 `ScheduleStage` 只能用于组织执行顺序，不能用于区分 Job 。
+
 ### 2.8 Query - 查询
 
 Query 是一个极其重要的系统参数，用于高效地访问**实体与组件**的数据。
@@ -437,3 +444,5 @@ if World::step_fixed(&mut world) {
 ```
 
 更多细节和示例请参考 `time` 模块的文档。
+
+---

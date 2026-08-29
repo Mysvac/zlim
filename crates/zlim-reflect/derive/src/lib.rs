@@ -336,7 +336,7 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 ///
 /// Field types are automatically registered as dependencies in
 /// `TypeDatabase::register_dependencies`.
-#[proc_macro_derive(Reflect, attributes(reflect))]
+#[proc_macro_derive(Reflect, attributes(reflect, type_path))]
 pub fn derive_reflect(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
     reflect::expand_reflect(&ast).into()

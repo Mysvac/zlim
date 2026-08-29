@@ -29,7 +29,7 @@
 // -----------------------------------------------------------------------------
 // Configuration
 
-use zlim_ptr::{Slice, SliceMut};
+use zlim_ptr::{ThinSlice, ThinSliceMut};
 
 /// Check cycle for component age validation (prevents overflow issues)
 pub const CHECK_CYCLE: u32 = 1 << 29;
@@ -354,14 +354,17 @@ pub struct TicksSliceRef<'w> {
     /// The number of elements in the slices.
     pub length: usize,
     /// Immutable slice of insertion ticks, one per element.
-    pub added: Slice<'w, Tick>,
+    pub added: ThinSlice<'w, Tick>,
     /// Immutable slice of last-modification ticks, one per element.
-    pub changed: Slice<'w, Tick>,
+    pub changed: ThinSlice<'w, Tick>,
     /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
     /// The tick of the current system run.
     pub this_run: Tick,
 }
+
+unsafe impl Sync for TicksSliceRef<'_> {}
+unsafe impl Send for TicksSliceRef<'_> {}
 
 // -----------------------------------------------------------------------------
 // TicksSliceMut
@@ -384,9 +387,9 @@ pub struct TicksSliceMut<'w> {
     /// The number of elements in the slices.
     pub length: usize,
     /// Mutable slice of insertion ticks, one per element.
-    pub added: SliceMut<'w, Tick>,
+    pub added: ThinSliceMut<'w, Tick>,
     /// Mutable slice of last-modification ticks, one per element.
-    pub changed: SliceMut<'w, Tick>,
+    pub changed: ThinSliceMut<'w, Tick>,
     /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
     /// The tick of the current system run.
@@ -415,5 +418,8 @@ impl<'w> From<TicksSliceMut<'w>> for TicksSliceRef<'w> {
         }
     }
 }
+
+unsafe impl Sync for TicksSliceMut<'_> {}
+unsafe impl Send for TicksSliceMut<'_> {}
 
 // -----------------------------------------------------------------------------

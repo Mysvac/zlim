@@ -1,10 +1,14 @@
 //! Hierarchy query data: fetching an entity's parent or children during
 //! iteration.
 
+use core::iter::FusedIterator;
 use core::ops::Deref;
 
+use zlim_ptr::ThinSlice;
+
 use super::{QueryData, ReadOnlyQueryData};
-use crate::entity::{Entities, EntityId};
+use crate::entity::{EntityId, EntityNode};
+use crate::query::QuerySlice;
 use crate::system::{ComponentAccess, FilterParamBuilder};
 use crate::table::{Table, TableRow};
 use crate::tick::Tick;
@@ -16,7 +20,7 @@ use crate::world::{World, WorldCell};
 /// Query data that fetches the **parent** of each matched entity.
 ///
 /// Yields `Some(parent_id)` when the entity has a parent, and `None` when it
-/// is a root entity.  Dereferences to `Option<EntityId>`.
+/// is a root entity.  Dereferences to [`Option<EntityId>`](EntityId).
 ///
 /// The parent relation lives in the [`Entities`] hierarchy rather than in a
 /// component, so [`Parent`] performs no component access and can be freely
@@ -49,7 +53,10 @@ use crate::world::{World, WorldCell};
 /// let root_parent = world.query::<Parent, ()>().get(root_id).unwrap();
 /// assert_eq!(root_parent.0, None);
 /// ```
+///
+/// [`Entities`]: crate::entity::Entities
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Parent(pub Option<EntityId>);
 
 impl Deref for Parent {
@@ -63,7 +70,7 @@ impl Deref for Parent {
 unsafe impl QueryData for Parent {
     type ReadOnly = Self;
     type State = ();
-    type Cache<'world> = &'world Entities;
+    type Cache<'world> = ThinSlice<'world, EntityNode>;
     type Item<'world> = Parent;
 
     #[inline(always)]
@@ -76,7 +83,7 @@ unsafe impl QueryData for Parent {
         _: Tick,
         _: Tick,
     ) -> Self::Cache<'w> {
-        unsafe { &w.read_only().entities }
+        unsafe { ThinSlice::from_ref(&w.read_only().entities.entities) }
     }
 
     #[inline(always)]
@@ -90,18 +97,84 @@ unsafe impl QueryData for Parent {
     #[inline(always)]
     unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) {}
 
+    #[cfg_attr(not(debug_assertions), inline)]
     unsafe fn fetch<'w>(
         _state: &Self::State,
         cache: &mut Self::Cache<'w>,
         entity: EntityId,
         _table_row: TableRow,
     ) -> Option<Self::Item<'w>> {
-        const MSG: &str = "the input entity of `Query::fetch` should exists";
-        Some(Self(cache.get(entity).expect(MSG).parent))
+        let node = unsafe { cache.get(entity.index() as usize) };
+
+        debug_assert_eq!(node.generation, entity.generation());
+        debug_assert!(node.location.is_some());
+
+        Some(Parent(node.parent))
     }
 }
 
 unsafe impl ReadOnlyQueryData for Parent {}
+
+// -----------------------------------------------------------------------------
+// ParentSlice
+
+/// Efficient iterators for parents.
+///
+/// Returned by [`Query<Parent>::iter_slice`].
+///
+/// [`Query<Parent>::iter_slice`]: crate::query::Query::iter_slice
+#[derive(Debug, Clone)]
+pub struct ParentSlice<'w> {
+    entities: ::core::slice::Iter<'w, EntityId>,
+    inventory: ThinSlice<'w, EntityNode>,
+}
+
+unsafe impl QuerySlice for Parent {
+    type SliceItem<'world> = ParentSlice<'world>;
+    type ReadOnlySlice = Parent;
+
+    unsafe fn fetch_slice<'w>(
+        _state: &Self::State,
+        cache: &mut Self::Cache<'w>,
+        entities: &'w [EntityId],
+    ) -> Option<Self::SliceItem<'w>> {
+        Some(ParentSlice {
+            entities: entities.iter(),
+            inventory: *cache,
+        })
+    }
+}
+
+impl Iterator for ParentSlice<'_> {
+    type Item = Parent;
+
+    #[cfg_attr(not(debug_assertions), inline)]
+    fn next(&mut self) -> Option<Self::Item> {
+        let &entity = self.entities.next()?;
+        let node = unsafe { self.inventory.get(entity.index() as usize) };
+        debug_assert_eq!(node.generation, entity.generation());
+        Some(Parent(node.parent))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.entities.size_hint()
+    }
+
+    #[inline]
+    fn count(self) -> usize {
+        self.entities.len()
+    }
+}
+
+impl ExactSizeIterator for ParentSlice<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.entities.len()
+    }
+}
+
+impl FusedIterator for ParentSlice<'_> {}
 
 // -----------------------------------------------------------------------------
 // Children
@@ -109,7 +182,7 @@ unsafe impl ReadOnlyQueryData for Parent {}
 /// Query data that fetches the **direct children** of each matched entity.
 ///
 /// Yields the entity's direct children as `&[EntityId]`, ordered by
-/// insertion.  Dereferences to `[EntityId]`.
+/// insertion.  Dereferences to [`EntityId`].
 ///
 /// Like [`Parent`], the child list lives in the [`Entities`] hierarchy and
 /// performs no component access, so it can be freely combined with any other
@@ -134,7 +207,10 @@ unsafe impl ReadOnlyQueryData for Parent {}
 /// let children = world.query::<Children<'_>, ()>().get(root_id).unwrap();
 /// assert_eq!(children.0, &[child]);
 /// ```
+///
+/// [`Entities`]: crate::entity::Entities
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Children<'w>(pub &'w [EntityId]);
 
 impl Deref for Children<'_> {
@@ -148,7 +224,7 @@ impl Deref for Children<'_> {
 unsafe impl QueryData for Children<'_> {
     type ReadOnly = Self;
     type State = ();
-    type Cache<'world> = &'world Entities;
+    type Cache<'world> = ThinSlice<'world, EntityNode>;
     type Item<'world> = Children<'world>;
 
     #[inline(always)]
@@ -161,7 +237,7 @@ unsafe impl QueryData for Children<'_> {
         _: Tick,
         _: Tick,
     ) -> Self::Cache<'w> {
-        unsafe { &w.read_only().entities }
+        unsafe { ThinSlice::from_ref(&w.read_only().entities.entities) }
     }
 
     #[inline(always)]
@@ -175,15 +251,83 @@ unsafe impl QueryData for Children<'_> {
     #[inline(always)]
     unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) {}
 
+    #[cfg_attr(not(debug_assertions), inline)]
     unsafe fn fetch<'w>(
         _state: &Self::State,
         cache: &mut Self::Cache<'w>,
         entity: EntityId,
         _table_row: TableRow,
     ) -> Option<Self::Item<'w>> {
-        const MSG: &str = "the input entity of `Query::fetch` should exists";
-        Some(Children(&cache.get(entity).expect(MSG).children))
+        let node = unsafe { cache.get(entity.index() as usize) };
+
+        debug_assert_eq!(node.generation, entity.generation());
+        debug_assert!(node.location.is_some());
+
+        Some(Children(&node.children))
     }
 }
 
 unsafe impl ReadOnlyQueryData for Children<'_> {}
+
+// -----------------------------------------------------------------------------
+// ChildrenSlice
+
+/// Efficient iterators for Children.
+///
+/// Returned by [`Query<Children>::iter_slice`].
+///
+/// [`Query<Children>::iter_slice`]: crate::query::Query::iter_slice
+#[derive(Debug, Clone)]
+pub struct ChildrenSlice<'w> {
+    entities: ::core::slice::Iter<'w, EntityId>,
+    inventory: ThinSlice<'w, EntityNode>,
+}
+
+unsafe impl QuerySlice for Children<'_> {
+    type SliceItem<'world> = ChildrenSlice<'world>;
+    type ReadOnlySlice = Self;
+
+    unsafe fn fetch_slice<'w>(
+        _state: &Self::State,
+        cache: &mut Self::Cache<'w>,
+        entities: &'w [EntityId],
+    ) -> Option<Self::SliceItem<'w>> {
+        Some(ChildrenSlice {
+            entities: entities.iter(),
+            inventory: *cache,
+        })
+    }
+}
+
+impl<'w> Iterator for ChildrenSlice<'w> {
+    type Item = Children<'w>;
+
+    #[cfg_attr(not(debug_assertions), inline)]
+    fn next(&mut self) -> Option<Self::Item> {
+        let &entity = self.entities.next()?;
+        let node = unsafe { self.inventory.get(entity.index() as usize) };
+        debug_assert_eq!(node.generation, entity.generation());
+        Some(Children(&node.children))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.entities.size_hint()
+    }
+
+    #[inline]
+    fn count(self) -> usize {
+        self.entities.len()
+    }
+}
+
+impl ExactSizeIterator for ChildrenSlice<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.entities.len()
+    }
+}
+
+impl FusedIterator for ChildrenSlice<'_> {}
+
+// -----------------------------------------------------------------------------

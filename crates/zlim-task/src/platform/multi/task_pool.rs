@@ -404,6 +404,8 @@ impl TaskPool {
     /// Returns the number of worker threads in the pool.
     ///
     /// Does not include the thread where the task pool is located.
+    /// 
+    /// The return value must be `>= 1` .
     #[inline]
     pub fn thread_count(&self) -> usize {
         self.threads.len()

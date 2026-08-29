@@ -1,0 +1,28 @@
+[package]
+name = "zlim-transform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+
+debug = []
+
+[dependencies]
+zlim-log = { path = "../zlim-log", default-features = false }
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+zlim-reflect = { path = "../zlim-reflect", default-features = false, features = ["glam"] }
+zlim-task = { path = "../zlim-task", default-features = false }
+
+zlim-core = { path = "../zlim-core", default-features = false }
+zlim-app = { path = "../zlim-app", default-features = false }
+
+zlim-math = { path = "../zlim-math", default-features = false }
+
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+
+[lints]
+workspace = true

@@ -112,6 +112,8 @@ pub mod prelude {
     pub use crate::message::{Message, MessageId, MessageKey, MessageQueue};
     pub use crate::message::{MessageMutator, MessageReader, MessageWriter};
 
+    pub use crate::message::ReparentSignal;
+
     pub use crate::query::{Added, And, Changed, Or, Query, With, Without};
     pub use crate::query::{ArchetypeFilter, Children, Parent, QueryData, QueryFilter, QuerySlice};
     pub use crate::query::{QueryIter, QuerySingleError, QuerySliceIter, Single};

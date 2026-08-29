@@ -233,6 +233,16 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     ///
     /// Returns `false` when access conflicts are detected.
     pub fn register_access(&self, access_table: &mut AccessTable, strict: bool) -> bool {
+        if matches!(access_table, AccessTable::WorldMut) {
+            if strict {
+                access_table.log_error(
+                    "`Query/Single` system param should not be used with exclusive world \
+                    access. Structual operation may cause internal reference to become invalid.",
+                );
+            }
+            return false;
+        }
+
         let data: &ComponentAccess = &self.access_data;
         let filter: &[FilterParam] = &self.access_filter;
         // Not return in advance(if error), we hope to provide complete information.

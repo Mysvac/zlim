@@ -6,7 +6,7 @@ use core::num::NonZeroUsize;
 use core::ptr::{self, NonNull};
 use std::alloc as malloc;
 
-use zlim_ptr::{Slice, SliceMut};
+use zlim_ptr::{ThinSlice, ThinSliceMut};
 
 use crate::tick::Tick;
 
@@ -124,22 +124,22 @@ impl TickArray {
     /// Returns a shared slice of ticks.
     ///
     /// # Safety
-    /// The returned [`Slice`] is only valid until the array is reallocated
+    /// The returned [`ThinSlice`] is only valid until the array is reallocated
     /// or deallocated; the caller must enforce that.
     #[inline(always)]
-    pub unsafe fn get_slice(&self) -> Slice<'_, Tick> {
-        unsafe { Slice::from_raw(self.data) }
+    pub unsafe fn get_slice(&self) -> ThinSlice<'_, Tick> {
+        unsafe { ThinSlice::from_raw(self.data) }
     }
 
     /// Returns a mutable slice of ticks.
     ///
     /// # Safety
-    /// The returned [`SliceMut`] is only valid until the array is
+    /// The returned [`ThinSliceMut`] is only valid until the array is
     /// reallocated or deallocated, and must not alias any other reference
     /// into the array; the caller must enforce that.
     #[inline(always)]
-    pub unsafe fn get_slice_mut(&mut self) -> SliceMut<'_, Tick> {
-        unsafe { SliceMut::from_raw(self.data) }
+    pub unsafe fn get_slice_mut(&mut self) -> ThinSliceMut<'_, Tick> {
+        unsafe { ThinSliceMut::from_raw(self.data) }
     }
 
     /// Copies the tick at `last` to `to`, without returning the moved value.

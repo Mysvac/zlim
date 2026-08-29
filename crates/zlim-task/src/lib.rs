@@ -31,3 +31,4 @@ pub use slice::ParallelSlice;
 pub use async_task::Task;
 pub use futures_lite;
 pub use futures_lite::future::poll_once;
+pub use futures_lite::future::yield_now;

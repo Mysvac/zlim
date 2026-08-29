@@ -56,9 +56,8 @@ use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 
-use zlim_ptr::Slice as ThinSlice;
-use zlim_ptr::SliceMut as ThinSliceMut;
 use zlim_ptr::{Ptr, PtrMut};
+use zlim_ptr::{ThinSlice, ThinSliceMut};
 
 use crate::tick::{DetectChanges, DetectChangesMut};
 use crate::tick::{Tick, TicksMut, TicksRef};
@@ -594,6 +593,9 @@ pub struct SliceRef<'w, T> {
     pub(crate) ticks: TicksSliceRef<'w>,
 }
 
+unsafe impl<T: Sync> Sync for SliceRef<'_, T> {}
+unsafe impl<T: Send> Send for SliceRef<'_, T> {}
+
 // --------------------------------------------------------------------
 // SliceMut
 
@@ -646,6 +648,9 @@ pub struct SliceMut<'w, T> {
     pub(crate) value: ThinSliceMut<'w, T>,
     pub(crate) ticks: TicksSliceMut<'w>,
 }
+
+unsafe impl<T: Sync> Sync for SliceMut<'_, T> {}
+unsafe impl<T: Send> Send for SliceMut<'_, T> {}
 
 // --------------------------------------------------------------------
 // From Untyped
@@ -1128,12 +1133,12 @@ impl_change_detection!(Mut<'w, T>);
 
 impl<'w, T: ?Sized> DetectChangesMut for Mut<'w, T> {
     type Value<'a>
-        = &'a T
+        = &'a mut T
     where
         Self: 'a;
 
     #[inline(always)]
-    fn bypass(&mut self) -> &'_ T {
+    fn bypass(&mut self) -> &'_ mut T {
         self.value
     }
 
@@ -1170,6 +1175,41 @@ impl<'w, T> SliceRef<'w, T> {
         Self {
             value: self.value,
             ticks: self.ticks,
+        }
+    }
+
+    /// Split a slice into two parts.
+    ///
+    /// # Panic
+    ///
+    /// Panic if the `mid > self.length`.
+    #[inline]
+    pub fn split_at(mut self, mid: usize) -> (Self, Self) {
+        assert!(self.len() >= mid, "mid > len");
+        unsafe {
+            let p = self.value.into_inner().add(mid);
+            let pa = self.ticks.added.into_inner().add(mid);
+            let pc = self.ticks.changed.into_inner().add(mid);
+            let value = ThinSlice::from_raw(p);
+            let added = ThinSlice::from_raw(pa);
+            let changed = ThinSlice::from_raw(pc);
+            let length = self.ticks.length - mid;
+            let last_run = self.ticks.last_run;
+            let this_run = self.ticks.this_run;
+
+            self.ticks.length = mid;
+            let other = Self {
+                value,
+                ticks: TicksSliceRef {
+                    length,
+                    added,
+                    changed,
+                    last_run,
+                    this_run,
+                },
+            };
+
+            (self, other)
         }
     }
 }
@@ -1307,6 +1347,47 @@ impl<'w, T> SliceMut<'w, T> {
             },
         }
     }
+
+    /// Get the raw reference of internal values without triggering change detections.
+    #[inline]
+    pub fn bypass(self) -> &'w mut [T] {
+        unsafe { self.value.deref(self.ticks.length) }
+    }
+
+    /// Split a slice into two parts.
+    ///
+    /// # Panic
+    ///
+    /// Panic if the `mid > self.length`.
+    #[inline]
+    pub fn split_at(mut self, mid: usize) -> (Self, Self) {
+        assert!(self.len() >= mid, "mid > len");
+        unsafe {
+            let p = self.value.reborrow().into_inner().add(mid);
+            let pa = self.ticks.added.reborrow().into_inner().add(mid);
+            let pc = self.ticks.changed.reborrow().into_inner().add(mid);
+            let value = ThinSliceMut::from_raw(p);
+            let added = ThinSliceMut::from_raw(pa);
+            let changed = ThinSliceMut::from_raw(pc);
+            let length = self.ticks.length - mid;
+            let last_run = self.ticks.last_run;
+            let this_run = self.ticks.this_run;
+
+            self.ticks.length = mid;
+            let other = Self {
+                value,
+                ticks: TicksSliceMut {
+                    length,
+                    added,
+                    changed,
+                    last_run,
+                    this_run,
+                },
+            };
+
+            (self, other)
+        }
+    }
 }
 
 impl<'w, T> Deref for SliceMut<'w, T> {
@@ -1440,9 +1521,7 @@ impl<'w, T> IntoIterator for SliceMut<'w, T> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_core::borrow::Res;
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct Logger;

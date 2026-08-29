@@ -1,3 +1,5 @@
+# zlim-reg
+
 A distributed data collector based on static initialization.
 
 ## Declaring a Registry

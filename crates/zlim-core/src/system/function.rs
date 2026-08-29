@@ -1,5 +1,7 @@
 //! Function-based systems: converting closures and functions into [`System`]s.
 
+use zlim_utils::debug::DebugName;
+
 use super::IntoSystem;
 use super::{AccessTable, SystemFlags, SystemMeta};
 use super::{System, SystemId, SystemInput, SystemParam};
@@ -349,7 +351,18 @@ impl<M: 'static, F: SystemFunction<M> + 'static> System for FunctionSystem<M, F>
             .as_ref()
             .unwrap_or_else(|| uninitialized_system(self.meta.id))
             .param;
-        <F::Param as SystemParam>::register_access(state, table, strict);
+
+        let ok = <F::Param as SystemParam>::register_access(state, table, strict);
+
+        #[cold]
+        #[inline(never)]
+        fn log_error(name: DebugName) {
+            zlim_log::error!("Conflicting access was found in system `{name}`.");
+        }
+
+        if strict & !ok {
+            log_error(DebugName::type_name::<F>());
+        }
     }
 
     unsafe fn run_raw(

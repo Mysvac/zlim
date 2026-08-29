@@ -285,6 +285,7 @@ impl approx::UlpsEq for Isometry2d {
 // Isometry3d
 
 /// An isometry in three dimensions, representing a rotation followed by a translation.
+///
 /// This can often be useful for expressing relative positions and transformations from one position to another.
 ///
 /// In particular, this type represents a distance-preserving transformation known as a *rigid motion* or a *direct motion*,

@@ -30,7 +30,7 @@ pub struct ShutdownPlugin;
 static SHOULD_EXIT: AtomicU32 = AtomicU32::new(0);
 
 /// Handlers run when the app is asked to exit via `Ctrl+C`.
-static ON_EXIT_HANDLERS: SpinLock<Vec<Box<dyn Fn() + Send>>> = SpinLock::new(Vec::new());
+static ON_EXIT_HANDLERS: SpinLock<Vec<Box<dyn FnOnce() + Send>>> = SpinLock::new(Vec::new());
 
 // -----------------------------------------------------------------------------
 // Plugin Implementation
@@ -44,7 +44,7 @@ impl ShutdownPlugin {
     /// before the `AppExit` event is emitted.
     ///
     /// This can be used to e.g. waking a sleeping event loop so it can observe the [`AppExit`].
-    pub fn on_exit(handler: impl Fn() + Send + 'static) {
+    pub fn on_exit(handler: impl FnOnce() + Send + 'static) {
         ON_EXIT_HANDLERS.lock().push(Box::new(handler));
     }
 
@@ -95,7 +95,7 @@ impl Plugin for ShutdownPlugin {
     }
 }
 
-#[job_fn(type = HandleExitSignal)]
+#[job_fn(type = HandleExitSignal, name = "zlim_app::jobs::HandleExitSignal")]
 fn handle_exit_signal(mut app_exit_writer: MessageWriter<AppExit>) {
     if SHOULD_EXIT.load(Acquire) > 0 {
         app_exit_writer.write(AppExit::from_code(ShutdownPlugin::EXIT_CODE));

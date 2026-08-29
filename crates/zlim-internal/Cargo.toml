@@ -67,5 +67,7 @@ zlim-app = { path = "../zlim-app", default-features = false }
 
 zlim-math = { path = "../zlim-math", default-features = false }
 
+zlim-transform = { path = "../zlim-transform", default-features = false }
+
 [lints]
 workspace = true

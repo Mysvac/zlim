@@ -1,3 +1,5 @@
+# zlim-ptr
+
 为内部代码提供的轻量级指针包装。
 
 本库包含两部分内容：类型擦除的引用，以及不含长度的切片。
@@ -68,9 +70,9 @@ assert_eq!(out, "42");
 ```rust, ignore
 struct DataSlice<'a, T> {
     len: usize,
-    data: Slice<'a, T>,
-    added_time: Slice<'a, Tick>,
-    changed_time: Slice<'a, Tick>,
+    data: ThinSlice<'a, T>,
+    added_time: ThinSlice<'a, Tick>,
+    changed_time: ThinSlice<'a, Tick>,
 }
 ```
 

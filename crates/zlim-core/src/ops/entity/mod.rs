@@ -36,8 +36,8 @@ use crate::borrow::UntypedMut;
 use crate::borrow::UntypedRef;
 use crate::bundle::{Bundle, DataBundle};
 use crate::component::ComponentId;
-use crate::entity::EntityId;
 use crate::entity::Location;
+use crate::entity::{Entities, EntityId};
 use crate::entity::{EntityError, EntityNode};
 use crate::resource::Resource;
 use crate::table::Table;
@@ -1507,8 +1507,10 @@ impl<'w> EntityOwned<'w> {
 
     /// Changes the parent of this entity.
     ///
-    /// Pass `None` to detach this entity from its current parent (making
-    /// it a root entity).  Pass `Some(id)` to make `id` the new parent.
+    /// - Pass `None` to detach this entity from its current parent
+    ///   (making it a root entity).
+    ///
+    /// - Pass `Some(id)` to make `id` the new parent.
     ///
     /// Returns `Err` if this entity is despawned.
     ///
@@ -1536,7 +1538,7 @@ impl<'w> EntityOwned<'w> {
         let this = self.id();
         let world = unsafe { self.world.full_mut() };
         let guard = RelocateGuard(self);
-        world.entities.modify_parent(this, parent)?;
+        Entities::modify_parent(world, this, parent)?;
         ::core::mem::drop(guard); // drop, not forget
         Ok(self)
     }

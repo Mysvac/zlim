@@ -114,3 +114,27 @@ pub use zlim_core_derive::Message;
 pub(crate) use messages::{enable_manual_update, update_messages};
 
 // -----------------------------------------------------------------------------
+
+pub use pre_defined::ReparentSignal;
+
+/// This module defines a set of built-in messages.
+///
+/// Currently, only [`ReparentSignal`] is defined, which is used by the Transform Plugin.
+/// Since our hierarchy is built-in rather than component-based, we need this to observe
+/// hierarchy changes.
+///
+/// If needed, additional signals such as `DespawnSignal` and `SpawnSignal` may be added
+/// in the future.
+mod pre_defined {
+    use super::Message;
+    use crate::entity::EntityId;
+    use zlim_reflect::derive::TypePath;
+
+    /// A predefined message sent when an entity is reparented.
+    #[derive(Debug, TypePath, Message, Clone, Copy)]
+    pub struct ReparentSignal {
+        pub entity: EntityId,
+    }
+}
+
+// -----------------------------------------------------------------------------

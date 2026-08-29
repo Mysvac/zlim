@@ -722,8 +722,7 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn clone(&mut self, recursive: bool) -> &mut Self {
-        self.queue(func::clone(recursive));
-        self
+        self.queue(func::clone(recursive))
     }
 
     /// Clones this entity.
@@ -737,8 +736,40 @@ impl<'a> EntityCommands<'a> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_clone(&mut self, recursive: bool) -> &mut Self {
-        self.queue_silenced(func::clone(recursive));
-        self
+        self.queue_silenced(func::clone(recursive))
+    }
+
+    /// ReparentSignal an entity.
+    ///
+    /// - Pass `None` to detach this entity from its current parent
+    ///   (making it a root entity).
+    ///
+    /// - Pass `Some(id)` to make `id` the new parent.
+    ///
+    /// If the entity (or parent) does not exist, this command will log a warning.
+    ///
+    /// Note that if the parent entity does not exist, the operation will not take effect.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn reparent(&mut self, parent: Option<EntityId>) -> &mut Self {
+        self.queue(func::reparent(parent))
+    }
+
+    /// ReparentSignal an entity.
+    ///
+    /// - Pass `None` to detach this entity from its current parent
+    ///   (making it a root entity).
+    ///
+    /// - Pass `Some(id)` to make `id` the new parent.
+    ///
+    /// If parent entity does not exist, the operation will not take effect.
+    ///
+    /// Errors are ignored if the entity is despawned before command execution,
+    /// or the parent entity is already despawned.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_reparent(&mut self, parent: Option<EntityId>) -> &mut Self {
+        self.queue_silenced(func::reparent(parent))
     }
 
     /// Despawns an entity and removes all of its components.

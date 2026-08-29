@@ -1,3 +1,5 @@
+# zlim-internal
+
 zlim 引擎的核心实现 crate。
 
 作为中央 feature 管理枢纽——公共的 `zlim` facade 将其 feature 转发到此 crate，

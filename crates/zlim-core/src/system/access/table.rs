@@ -292,7 +292,7 @@ impl AccessTable {
     /// Logs `msg` together with a human-readable dump of the current access table.
     #[cold]
     #[inline(never)]
-    fn log_error(&self, msg: &str) {
+    pub fn log_error(&self, msg: &str) {
         log::error!("{msg}\nCurrent AccessTable: \n{}", self.display());
     }
 

@@ -7,6 +7,7 @@
 //! and spawn state, reporting failures as [`EntityError`].
 
 use core::fmt::{Debug, Formatter};
+use core::iter::FusedIterator;
 use core::num::NonZeroU32;
 use std::collections::BTreeSet;
 
@@ -487,152 +488,6 @@ impl Entities {
 }
 
 // -----------------------------------------------------------------------------
-// Move
-
-impl Entities {
-    /// Re-parents an entity, validating the new hierarchy first.
-    ///
-    /// Fails if the new parent (or the entity itself) is missing, mismatched,
-    /// not spawned, or would create a cycle.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use zlim_core::prelude::*;
-    ///
-    /// let mut world = World::alloc();
-    /// let root = world.spawn((), None).id();
-    /// let other = world.spawn((), None).id();
-    /// let child = world.spawn((), Some(root)).id();
-    ///
-    /// // `EntityOwned::reparent` drives `Entities::modify_parent`.
-    /// world.entity_owned(child).reparent(Some(other)).unwrap();
-    /// assert_eq!(world.entity(child).parent(), Some(other));
-    ///
-    /// // Making an entity its own parent would create a cycle.
-    /// assert!(world.entity_owned(child).reparent(Some(child)).is_err());
-    /// ```
-    pub fn modify_parent(
-        &mut self,
-        id: EntityId,
-        parent: Option<EntityId>,
-    ) -> Result<(), EntityError> {
-        //--------------------------------------------------------------------
-        // validate new parent
-
-        if let Some(p) = parent {
-            let Some(info) = self.entities.get(p.index as usize) else {
-                core::hint::cold_path();
-                return Err(EntityError::NotFound(p.index));
-            };
-            if info.generation != p.generation {
-                core::hint::cold_path();
-                let generation = info.generation;
-                let expect = p;
-                let actual = EntityId {
-                    index: p.index,
-                    generation,
-                };
-                return Err(EntityError::Mismatch { expect, actual });
-            }
-            if info.location.is_none() {
-                core::hint::cold_path();
-                return Err(EntityError::NotSpawned(p));
-            }
-        }
-
-        //--------------------------------------------------------------------
-        // validate self
-
-        let Some(info) = self.entities.get_mut(id.index as usize) else {
-            core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
-        };
-
-        if info.generation != id.generation {
-            core::hint::cold_path();
-            let generation = info.generation;
-            let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
-            return Err(EntityError::Mismatch { expect, actual });
-        }
-
-        if info.location.is_none() {
-            core::hint::cold_path();
-            return Err(EntityError::NotSpawned(id));
-        }
-
-        if info.parent == parent {
-            core::hint::cold_path();
-            return Ok(());
-        }
-
-        //--------------------------------------------------------------------
-        // validate hierarchy
-
-        let mut iter = parent;
-        while let Some(p) = iter {
-            if p == id {
-                core::hint::cold_path();
-                return Err(EntityError::CycleHierarchy {
-                    id,
-                    to: parent.unwrap(),
-                });
-            }
-            debug_assert!((p.index as usize) < self.entities.len());
-            iter = unsafe { self.entities.get_unchecked(p.index as usize).parent };
-        }
-
-        //--------------------------------------------------------------------
-        // modify parent
-
-        let slot = unsafe { self.entities.get_unchecked_mut(id.index as usize) };
-        let old = slot.parent;
-        slot.parent = parent;
-
-        //--------------------------------------------------------------------
-        // modify old parent
-
-        if let Some(o) = old {
-            debug_assert!((o.index as usize) < self.entities.len());
-            let slot = unsafe { self.entities.get_unchecked_mut(o.index as usize) };
-            debug_assert!(slot.location.is_some());
-
-            match position_entity(id, &slot.children) {
-                Some(index) => {
-                    slot.children.remove(index);
-                }
-                None => {
-                    ::core::hint::cold_path();
-                    #[cfg(debug_assertions)]
-                    unreachable!("missing child `{id}` in `{o}`");
-                }
-            }
-        } else {
-            debug_assert!(self.root.contains(&id));
-            self.root.remove(&id);
-        }
-
-        //--------------------------------------------------------------------
-        // modify new parent
-
-        if let Some(p) = parent {
-            let slot = unsafe { self.entities.get_unchecked_mut(p.index as usize) };
-            debug_assert!(!slot.children.contains(&id));
-            slot.children.push(id);
-        } else {
-            debug_assert!(!self.root.contains(&id));
-            self.root.insert(id);
-        }
-
-        Ok(())
-    }
-}
-
-// -----------------------------------------------------------------------------
 // Remove
 
 impl Entities {
@@ -960,6 +815,200 @@ pub enum EntityError {
     /// Moving `id` under `to` would make it its own ancestor (a cycle).
     #[error("Cannot move `{id}` as a child of `{to}`: `{id}` is an ancestor of `{to}`.")]
     CycleHierarchy { id: EntityId, to: EntityId },
+}
+
+// -----------------------------------------------------------------------------
+// RootEntities
+
+#[derive(Debug, Clone)]
+pub struct RootEntities<'w>(std::collections::btree_set::Iter<'w, EntityId>);
+
+impl Iterator for RootEntities<'_> {
+    type Item = EntityId;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().copied()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl ExactSizeIterator for RootEntities<'_> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl FusedIterator for RootEntities<'_> {}
+
+impl Entities {
+    /// Return a iterator of the root entities.
+    pub fn root_entities(&self) -> RootEntities<'_> {
+        RootEntities(self.root.iter())
+    }
+}
+
+impl RootEntities<'_> {
+    /// Create a copy of self.
+    pub fn iter(&self) -> RootEntities<'_> {
+        self.clone()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Move
+
+use crate::message::ReparentSignal;
+use crate::world::World;
+
+impl Entities {
+    /// Re-parents an entity, validating the new hierarchy first.
+    ///
+    /// Fails if the new parent (or the entity itself) is missing, mismatched,
+    /// not spawned, or would create a cycle.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// let mut world = World::alloc();
+    /// let root = world.spawn((), None).id();
+    /// let other = world.spawn((), None).id();
+    /// let child = world.spawn((), Some(root)).id();
+    ///
+    /// // `EntityOwned::reparent` drives `Entities::modify_parent`.
+    /// world.entity_owned(child).reparent(Some(other)).unwrap();
+    /// assert_eq!(world.entity(child).parent(), Some(other));
+    ///
+    /// // Making an entity its own parent would create a cycle.
+    /// assert!(world.entity_owned(child).reparent(Some(child)).is_err());
+    /// ```
+    pub(crate) fn modify_parent(
+        world: &mut World,
+        id: EntityId,
+        parent: Option<EntityId>,
+    ) -> Result<(), EntityError> {
+        let this = &mut world.entities;
+        //--------------------------------------------------------------------
+        // validate new parent
+
+        if let Some(p) = parent {
+            let Some(info) = this.entities.get(p.index as usize) else {
+                core::hint::cold_path();
+                return Err(EntityError::NotFound(p.index));
+            };
+            if info.generation != p.generation {
+                core::hint::cold_path();
+                let generation = info.generation;
+                let expect = p;
+                let actual = EntityId {
+                    index: p.index,
+                    generation,
+                };
+                return Err(EntityError::Mismatch { expect, actual });
+            }
+            if info.location.is_none() {
+                core::hint::cold_path();
+                return Err(EntityError::NotSpawned(p));
+            }
+        }
+
+        //--------------------------------------------------------------------
+        // validate self
+
+        let Some(info) = this.entities.get_mut(id.index as usize) else {
+            core::hint::cold_path();
+            return Err(EntityError::NotFound(id.index));
+        };
+
+        if info.generation != id.generation {
+            core::hint::cold_path();
+            let generation = info.generation;
+            let expect = id;
+            let actual = EntityId {
+                index: id.index,
+                generation,
+            };
+            return Err(EntityError::Mismatch { expect, actual });
+        }
+
+        if info.location.is_none() {
+            core::hint::cold_path();
+            return Err(EntityError::NotSpawned(id));
+        }
+
+        if info.parent == parent {
+            core::hint::cold_path();
+            return Ok(());
+        }
+
+        //--------------------------------------------------------------------
+        // validate hierarchy
+
+        let mut iter = parent;
+        while let Some(p) = iter {
+            if p == id {
+                core::hint::cold_path();
+                return Err(EntityError::CycleHierarchy {
+                    id,
+                    to: parent.unwrap(),
+                });
+            }
+            debug_assert!((p.index as usize) < this.entities.len());
+            iter = unsafe { this.entities.get_unchecked(p.index as usize).parent };
+        }
+
+        //--------------------------------------------------------------------
+        // modify parent
+
+        let slot = unsafe { this.entities.get_unchecked_mut(id.index as usize) };
+        let old = slot.parent;
+        slot.parent = parent;
+
+        //--------------------------------------------------------------------
+        // modify old parent
+
+        if let Some(o) = old {
+            debug_assert!((o.index as usize) < this.entities.len());
+            let slot = unsafe { this.entities.get_unchecked_mut(o.index as usize) };
+            debug_assert!(slot.location.is_some());
+
+            match position_entity(id, &slot.children) {
+                Some(index) => {
+                    slot.children.remove(index);
+                }
+                None => {
+                    ::core::hint::cold_path();
+                    #[cfg(debug_assertions)]
+                    unreachable!("missing child `{id}` in `{o}`");
+                }
+            }
+        } else {
+            debug_assert!(this.root.contains(&id));
+            this.root.remove(&id);
+        }
+
+        //--------------------------------------------------------------------
+        // modify new parent
+
+        if let Some(p) = parent {
+            let slot = unsafe { this.entities.get_unchecked_mut(p.index as usize) };
+            debug_assert!(!slot.children.contains(&id));
+            slot.children.push(id);
+        } else {
+            debug_assert!(!this.root.contains(&id));
+            this.root.insert(id);
+        }
+
+        world.write_message(ReparentSignal { entity: id });
+
+        Ok(())
+    }
 }
 
 // -----------------------------------------------------------------------------

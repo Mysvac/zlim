@@ -5,7 +5,7 @@ use core::ptr::{self, NonNull};
 use core::slice;
 
 // -----------------------------------------------------------------------------
-// Slice and SliceMut
+// ThinSlice and ThinSliceMut
 
 /// A thin reference to a slice that stores only the pointer (no length).
 ///
@@ -15,9 +15,9 @@ use core::slice;
 /// # Examples
 ///
 /// ```
-/// # use zlim_ptr::Slice;
+/// # use zlim_ptr::ThinSlice;
 /// let data = [1, 2, 3, 4, 5];
-/// let thin = Slice::from_ref(&data);
+/// let thin = ThinSlice::from_ref(&data);
 ///
 /// // The length must be provided when accessing
 /// unsafe {
@@ -26,7 +26,7 @@ use core::slice;
 /// }
 /// ```
 #[repr(transparent)]
-pub struct Slice<'a, T> {
+pub struct ThinSlice<'a, T> {
     ptr: NonNull<T>,
     _marker: PhantomData<&'a [T]>,
 }
@@ -39,9 +39,9 @@ pub struct Slice<'a, T> {
 /// # Examples
 ///
 /// ```
-/// # use zlim_ptr::SliceMut;
+/// # use zlim_ptr::ThinSliceMut;
 /// let mut data = [1, 2, 3, 4, 5];
-/// let thin = SliceMut::from_mut(&mut data);
+/// let thin = ThinSliceMut::from_mut(&mut data);
 ///
 /// unsafe {
 ///     // Read and write elements
@@ -54,7 +54,7 @@ pub struct Slice<'a, T> {
 /// }
 /// ```
 #[repr(transparent)]
-pub struct SliceMut<'a, T> {
+pub struct ThinSliceMut<'a, T> {
     ptr: NonNull<T>,
     _marker: PhantomData<&'a mut [T]>,
 }
@@ -62,68 +62,68 @@ pub struct SliceMut<'a, T> {
 // -----------------------------------------------------------------------------
 // Basic
 
-impl<T> Copy for Slice<'_, T> {}
+impl<T> Copy for ThinSlice<'_, T> {}
 
-impl<T> Clone for Slice<'_, T> {
+impl<T> Clone for ThinSlice<'_, T> {
     #[inline(always)]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T> Debug for Slice<'_, T> {
+impl<T> Debug for ThinSlice<'_, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_tuple("Slice").field(&self.ptr).finish()
     }
 }
 
-impl<T> Debug for SliceMut<'_, T> {
+impl<T> Debug for ThinSliceMut<'_, T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_tuple("SliceMut").field(&self.ptr).finish()
+        f.debug_tuple("ThinSliceMut").field(&self.ptr).finish()
     }
 }
 
 // -----------------------------------------------------------------------------
 // From
 
-impl<'a, T> From<&'a [T]> for Slice<'a, T> {
+impl<'a, T> From<&'a [T]> for ThinSlice<'a, T> {
     #[inline]
     fn from(slice: &'a [T]) -> Self {
         Self::from_ref(slice)
     }
 }
 
-impl<'a, T> From<&'a mut [T]> for Slice<'a, T> {
+impl<'a, T> From<&'a mut [T]> for ThinSlice<'a, T> {
     #[inline]
     fn from(slice: &'a mut [T]) -> Self {
         Self::from_mut(slice)
     }
 }
 
-impl<'a, T> From<&'a mut [T]> for SliceMut<'a, T> {
+impl<'a, T> From<&'a mut [T]> for ThinSliceMut<'a, T> {
     #[inline]
     fn from(slice: &'a mut [T]) -> Self {
         Self::from_mut(slice)
     }
 }
 
-impl<'a, T> From<&'a [UnsafeCell<T>]> for SliceMut<'a, T> {
+impl<'a, T> From<&'a [UnsafeCell<T>]> for ThinSliceMut<'a, T> {
     #[inline]
     fn from(slice: &'a [UnsafeCell<T>]) -> Self {
         unsafe { Self::from_raw(NonNull::new_unchecked(slice.as_ptr() as *mut T)) }
     }
 }
 
-impl<'a, T> From<&'a UnsafeCell<[T]>> for SliceMut<'a, T> {
+impl<'a, T> From<&'a UnsafeCell<[T]>> for ThinSliceMut<'a, T> {
     #[inline]
     fn from(slice: &'a UnsafeCell<[T]>) -> Self {
         unsafe { Self::from_raw(NonNull::new_unchecked(slice.get() as *mut T)) }
     }
 }
 
-impl<'a, T> From<SliceMut<'a, T>> for Slice<'a, T> {
+impl<'a, T> From<ThinSliceMut<'a, T>> for ThinSlice<'a, T> {
     #[inline(always)]
-    fn from(value: SliceMut<'a, T>) -> Self {
+    fn from(value: ThinSliceMut<'a, T>) -> Self {
         Self {
             ptr: value.ptr,
             _marker: PhantomData,
@@ -131,9 +131,9 @@ impl<'a, T> From<SliceMut<'a, T>> for Slice<'a, T> {
     }
 }
 
-impl<'a, T> From<Slice<'a, UnsafeCell<T>>> for SliceMut<'a, T> {
+impl<'a, T> From<ThinSlice<'a, UnsafeCell<T>>> for ThinSliceMut<'a, T> {
     #[inline(always)]
-    fn from(value: Slice<'a, UnsafeCell<T>>) -> Self {
+    fn from(value: ThinSlice<'a, UnsafeCell<T>>) -> Self {
         Self {
             ptr: value.ptr.cast(),
             _marker: PhantomData,
@@ -144,7 +144,7 @@ impl<'a, T> From<Slice<'a, UnsafeCell<T>>> for SliceMut<'a, T> {
 // -----------------------------------------------------------------------------
 // Methods
 
-impl<'a, T> Slice<'a, T> {
+impl<'a, T> ThinSlice<'a, T> {
     /// Creates a `Slice` from a raw pointer.
     ///
     /// # Safety
@@ -163,9 +163,9 @@ impl<'a, T> Slice<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::Slice;
+    /// # use zlim_ptr::ThinSlice;
     /// let data = [1, 2, 3];
-    /// let thin = Slice::from_ref(&data);
+    /// let thin = ThinSlice::from_ref(&data);
     /// let ptr = thin.into_inner();
     /// unsafe {
     ///     assert_eq!(*ptr.as_ref(), 1);
@@ -181,9 +181,9 @@ impl<'a, T> Slice<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::Slice;
+    /// # use zlim_ptr::ThinSlice;
     /// let data = [1, 2, 3];
-    /// let thin = Slice::from_ref(&data);
+    /// let thin = ThinSlice::from_ref(&data);
     /// unsafe {
     ///     assert_eq!(thin.deref(3), &[1, 2, 3]);
     /// }
@@ -201,9 +201,9 @@ impl<'a, T> Slice<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::Slice;
+    /// # use zlim_ptr::ThinSlice;
     /// let mut data = [1, 2, 3];
-    /// let thin = Slice::from_mut(&mut data);
+    /// let thin = ThinSlice::from_mut(&mut data);
     /// unsafe {
     ///     assert_eq!(thin.deref(3), &[1, 2, 3]);
     /// }
@@ -225,9 +225,9 @@ impl<'a, T> Slice<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::Slice;
+    /// # use zlim_ptr::ThinSlice;
     /// let data = [100, 200, 300];
-    /// let thin = Slice::from_ref(&data);
+    /// let thin = ThinSlice::from_ref(&data);
     /// unsafe {
     ///     assert_eq!(thin.get(0), &100);
     ///     assert_eq!(thin.get(2), &300);
@@ -247,9 +247,9 @@ impl<'a, T> Slice<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::Slice;
+    /// # use zlim_ptr::ThinSlice;
     /// let data = [42, 43, 44];
-    /// let thin = Slice::from_ref(&data);
+    /// let thin = ThinSlice::from_ref(&data);
     /// let slice = unsafe { thin.deref(3) };
     /// assert_eq!(slice, &[42, 43, 44]);
     /// ```
@@ -267,9 +267,9 @@ impl<'a, T> Slice<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::Slice;
+    /// # use zlim_ptr::ThinSlice;
     /// let data = [5, 6, 7];
-    /// let thin = Slice::from_ref(&data);
+    /// let thin = ThinSlice::from_ref(&data);
     /// unsafe {
     ///     assert_eq!(thin.read(1), 6);
     ///     assert_eq!(thin.read(2), 7);
@@ -284,8 +284,8 @@ impl<'a, T> Slice<'a, T> {
     }
 }
 
-impl<'a, T> SliceMut<'a, T> {
-    /// Creates a `SliceMut` from a raw pointer.
+impl<'a, T> ThinSliceMut<'a, T> {
+    /// Creates a `ThinSliceMut` from a raw pointer.
     ///
     /// # Safety
     /// - The pointer must be valid for reads and writes for the lifetime `'a`
@@ -304,9 +304,9 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [1, 2];
-    /// let thin = SliceMut::from_mut(&mut data);
+    /// let thin = ThinSliceMut::from_mut(&mut data);
     /// let ptr = thin.into_inner();
     /// unsafe {
     ///     assert_eq!(*ptr.as_ref(), 1);
@@ -317,14 +317,14 @@ impl<'a, T> SliceMut<'a, T> {
         self.ptr
     }
 
-    /// Creates a `SliceMut` from a mutable slice reference.
+    /// Creates a `ThinSliceMut` from a mutable slice reference.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [1, 2, 3];
-    /// let thin = SliceMut::from_mut(&mut data);
+    /// let thin = ThinSliceMut::from_mut(&mut data);
     /// unsafe {
     ///     assert_eq!(thin.deref(3), &[1, 2, 3]);
     /// }
@@ -345,11 +345,11 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::{SliceMut, Slice};
-    /// fn foo(ptr: Slice<'_, i32>) { /* ... */ }
+    /// # use zlim_ptr::{ThinSliceMut, ThinSlice};
+    /// fn foo(ptr: ThinSlice<'_, i32>) { /* ... */ }
     ///
     /// let mut data = [10, 20, 30];
-    /// let thin = SliceMut::from_mut(&mut data);
+    /// let thin = ThinSliceMut::from_mut(&mut data);
     /// foo(thin.borrow());
     ///
     /// // `thin` is still usable here
@@ -358,8 +358,8 @@ impl<'a, T> SliceMut<'a, T> {
     /// }
     /// ```
     #[inline(always)]
-    pub const fn borrow(&self) -> Slice<'_, T> {
-        Slice {
+    pub const fn borrow(&self) -> ThinSlice<'_, T> {
+        ThinSlice {
             _marker: PhantomData,
             ptr: self.ptr,
         }
@@ -368,16 +368,16 @@ impl<'a, T> SliceMut<'a, T> {
     /// Reborrow this pointer with a shorter lifetime.
     ///
     /// This is useful when a helper function needs temporary
-    /// mutable access without consuming the original `SliceMut`.
+    /// mutable access without consuming the original `ThinSliceMut`.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
-    /// fn foo(ptr: SliceMut<'_, i32>) { /* ... */ }
+    /// # use zlim_ptr::ThinSliceMut;
+    /// fn foo(ptr: ThinSliceMut<'_, i32>) { /* ... */ }
     ///
     /// let mut data = [10, 20, 30];
-    /// let mut thin = SliceMut::from_mut(&mut data);
+    /// let mut thin = ThinSliceMut::from_mut(&mut data);
     /// foo(thin.reborrow());
     ///
     /// // `thin` is still usable here
@@ -386,8 +386,8 @@ impl<'a, T> SliceMut<'a, T> {
     /// }
     /// ```
     #[inline(always)]
-    pub const fn reborrow(&mut self) -> SliceMut<'_, T> {
-        SliceMut {
+    pub const fn reborrow(&mut self) -> ThinSliceMut<'_, T> {
+        ThinSliceMut {
             _marker: PhantomData,
             ptr: self.ptr,
         }
@@ -402,9 +402,9 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [100, 200];
-    /// let thin = SliceMut::from_mut(&mut data);
+    /// let thin = ThinSliceMut::from_mut(&mut data);
     /// unsafe {
     ///     assert_eq!(thin.get(0), &100);
     ///     assert_eq!(thin.get(1), &200);
@@ -424,9 +424,9 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [10, 20, 30];
-    /// let mut thin = SliceMut::from_mut(&mut data);
+    /// let mut thin = ThinSliceMut::from_mut(&mut data);
     /// unsafe {
     ///     let elem = thin.get_mut(1);
     ///     *elem = 99;
@@ -448,9 +448,9 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [1, 2, 3, 4];
-    /// let thin = SliceMut::from_mut(&mut data);
+    /// let thin = ThinSliceMut::from_mut(&mut data);
     /// unsafe {
     ///     let slice = thin.as_ref(3);
     ///     assert_eq!(slice, &[1, 2, 3]);
@@ -470,9 +470,9 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [1, 2, 3, 4];
-    /// let mut thin = SliceMut::from_mut(&mut data);
+    /// let mut thin = ThinSliceMut::from_mut(&mut data);
     /// unsafe {
     ///     let slice = thin.as_mut(2);
     ///     slice[0] = 99;
@@ -504,9 +504,9 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [42, 43, 44];
-    /// let thin = SliceMut::from_mut(&mut data);
+    /// let thin = ThinSliceMut::from_mut(&mut data);
     /// unsafe {
     ///     assert_eq!(thin.read(0), 42);
     ///     assert_eq!(thin.read(2), 44);
@@ -529,9 +529,9 @@ impl<'a, T> SliceMut<'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_ptr::SliceMut;
+    /// # use zlim_ptr::ThinSliceMut;
     /// let mut data = [1, 2, 3];
-    /// let thin = SliceMut::from_mut(&mut data);
+    /// let thin = ThinSliceMut::from_mut(&mut data);
     /// unsafe {
     ///     thin.write(1, 99);
     ///     assert_eq!(thin.read(1), 99);

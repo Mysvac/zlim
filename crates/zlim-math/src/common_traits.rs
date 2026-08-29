@@ -160,8 +160,9 @@ impl<T: ScalarField> VectorSpace for T {
 // -----------------------------------------------------------------------------
 // Sum
 
-/// A type consisting of formal sums of elements from `V` and `W`. That is,
-/// each value `Sum(v, w)` is thought of as `v + w`, with no available
+/// A type consisting of formal sums of elements from `V` and `W`.
+///
+/// That is, each value `Sum(v, w)` is thought of as `v + w`, with no available
 /// simplification. In particular, if `V` and `W` are [vector spaces], then
 /// `Sum<V, W>` is a vector space whose dimension is the sum of those of `V`
 /// and `W`, and the field accessors `.0` and `.1` are vector space projections.

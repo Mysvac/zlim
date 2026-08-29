@@ -1,3 +1,5 @@
+# zlim-utils
+
 Foundation utilities for the zlim engine.
 
 ## num
@@ -30,6 +32,10 @@ Foundation utilities for the zlim engine.
 - Unbounded async multi-producer, single-consumer channel.
 - Lock-free, built on `SegQueue` and `Event`; faster than `async-channel`.
 - Single `Receiver` (not `Clone`), avoiding contention on the consumer side.
+
+## event
+
+- Re-exports the `event_listener` crate.
 
 ## hash
 

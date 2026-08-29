@@ -122,15 +122,11 @@ pub trait ScheduleStage {
     }
 
     fn stage_begin(&self) -> JobId {
-        let group = format!("{}#stage", self.stage_name());
-        let group = zlim_utils::str::intern_str(&group);
-        JobId::new(StageBegin::name(), group)
+        JobId::new(StageBegin::name(), self.group_name())
     }
 
     fn stage_end(&self) -> JobId {
-        let group = format!("{}#stage", self.stage_name());
-        let group = zlim_utils::str::intern_str(&group);
-        JobId::new(StageEnd::name(), group)
+        JobId::new(StageEnd::name(), self.group_name())
     }
 }
 

@@ -80,9 +80,9 @@ use crate::tick::CHECK_CYCLE;
 use crate::tick::Tick;
 use crate::time::TimeUpdateStrategy;
 
-use crate::entity::Entities;
 use crate::entity::EntityAllocator;
 use crate::entity::RemoteAllocator;
+use crate::entity::{Entities, RootEntities};
 
 use crate::bundle::Bundles;
 use crate::component::Components;
@@ -293,7 +293,15 @@ impl World {
             this_run: CachePadded::new(AtomicU32::new(1)),
         });
 
-        world.time_cache.apply(&mut world.resources);
+        {
+            // Initialize Time
+            world.time_cache.apply(&mut world.resources);
+        }
+
+        {
+            // Initialize Messages
+            world.register_message::<crate::message::ReparentSignal>();
+        }
 
         crate::cfg::debug! {
             zlim_log::debug!("World({}) initialized: {:?}", world.id, start.elapsed());
@@ -606,6 +614,14 @@ impl World {
 // -----------------------------------------------------------------------------
 
 impl World {
+    /// Return a iterator of the root entities.
+    ///
+    /// The root entities is unordered.
+    #[inline]
+    pub fn root_entities(&self) -> RootEntities<'_> {
+        self.entities.root_entities()
+    }
+
     /// Returns the number of currently spawned (alive) entities.
     #[inline]
     pub fn entity_count(&self) -> usize {

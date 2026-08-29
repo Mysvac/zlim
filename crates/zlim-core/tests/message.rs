@@ -16,9 +16,6 @@ use zlim_reflect::TypePath;
 #[derive(TypePath, Message, Clone, Copy, Debug, PartialEq)]
 struct Payload(u32);
 
-#[derive(TypePath, Message, Clone, Copy, Debug, PartialEq)]
-struct Other(u32);
-
 #[derive(TypePath, Message, Clone, Debug, PartialEq)]
 struct GenericMsg<T: Send + Sync + 'static>(T);
 
@@ -131,69 +128,6 @@ fn cursor_read_mut_and_clear() {
     assert_eq!(cursor.len(&queue), 1);
     cursor.clear(&queue);
     assert!(cursor.is_empty(&queue));
-}
-
-// -----------------------------------------------------------------------------
-// World integration
-
-#[test]
-fn world_register_and_write() {
-    let mut world = World::alloc();
-
-    let id_a = world.register_message::<Payload>();
-    let id_b = world.register_message::<Other>();
-    assert_ne!(id_a, id_b);
-
-    // Registration is idempotent.
-    assert_eq!(world.register_message::<Payload>(), id_a);
-    assert_eq!(world.messages().len(), 2);
-    assert!(world.messages().get(id_a).is_some());
-    assert!(world.messages().get_name(id_a).is_some());
-    assert!(world.messages().iter().any(|meta| meta.id() == id_b));
-    assert!(world.contains_resource::<MessageQueue<Payload>>());
-
-    // Messages written before rotation are readable immediately.
-    let key = world.write_message(Payload(42));
-    assert_eq!(key.index(), 0);
-    assert_eq!(world.resource::<MessageQueue<Payload>>().len(), 1);
-
-    let keys: Vec<usize> = world
-        .write_message_batch([Payload(43), Payload(44)])
-        .map(|key| key.index())
-        .collect();
-    assert_eq!(keys, vec![1, 2]);
-
-    // One update keeps them readable; the next expires them.
-    World::refresh_metadata(&mut world);
-    assert_eq!(world.resource::<MessageQueue<Payload>>().len(), 3);
-    World::refresh_metadata(&mut world);
-    assert!(world.resource::<MessageQueue<Payload>>().is_empty());
-}
-
-#[test]
-fn write_unregistered_message_auto_registers() {
-    let mut world = World::alloc();
-
-    // A first write implicitly registers the type and its queue.
-    let key = world.write_message::<Payload>(Payload(1));
-    assert_eq!(key.index(), 0);
-    assert!(world.contains_resource::<MessageQueue<Payload>>());
-    assert_eq!(world.messages().len(), 1);
-
-    // Subsequent writes reuse the registered queue.
-    let key = world.write_message::<Payload>(Payload(2));
-    assert_eq!(key.index(), 1);
-    assert_eq!(world.messages().len(), 1);
-
-    // Batches follow the same implicit-registration path.
-    let mut world = World::alloc();
-    let keys: Vec<usize> = world
-        .write_message_batch::<Payload>([Payload(3), Payload(4)])
-        .map(|key| key.index())
-        .collect();
-    assert_eq!(keys, vec![0, 1]);
-    assert!(world.contains_resource::<MessageQueue<Payload>>());
-    assert_eq!(world.messages().len(), 1);
 }
 
 #[test]

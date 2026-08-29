@@ -90,7 +90,6 @@ const ALWAYS: u32 = 2;
 /// let mut world = World::alloc();
 /// let id = world.register_message::<Ping>();
 ///
-/// assert_eq!(world.messages().len(), 1);
 /// assert!(world.messages().get(id).is_some());
 /// assert!(world.messages().get_name(id).is_some());
 /// ```

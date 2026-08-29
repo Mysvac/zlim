@@ -1,3 +1,5 @@
+# zlim-internal
+
 Core implementation crate of the zlim engine.
 
 Acts as the central feature-management hub — the public `zlim` facade forwards its features down to this crate,

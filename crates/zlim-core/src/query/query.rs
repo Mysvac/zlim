@@ -575,6 +575,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
 
     /// Returns `true` if `entity` currently satisfies this query.
     ///
+    /// # Complexity
+    ///
+    /// Time: O(1)
+    ///
     /// # Examples
     ///
     /// ```rust
@@ -613,6 +617,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// despawned, and [`QueryEntityError::QueryMismatch`] if it does not
     /// satisfy this query.
     ///
+    /// # Complexity
+    ///
+    /// Time: O(1)
+    ///
     /// # Examples
     ///
     /// ```rust
@@ -644,6 +652,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// despawned, and [`QueryEntityError::QueryMismatch`] if it does not
     /// satisfy this query.
     ///
+    /// # Complexity
+    ///
+    /// Time: O(1)
+    ///
     /// # Examples
     ///
     /// ```rust
@@ -673,6 +685,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///
     /// Returns [`QueryEntityError::DuplicateEntity`] if any input entity is
     /// repeated.
+    ///
+    /// # Complexity
+    ///
+    /// Time: O(N), N is the number of input entities.
     ///
     /// # Examples
     ///
@@ -709,6 +725,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     }
 
     /// Fetches multiple entities from this query with read-only query access.
+    ///
+    /// # Complexity
+    ///
+    /// Time: O(N), N is the number of input entities.
     pub fn get_many<const N: usize>(
         &self,
         entities: [EntityId; N],
@@ -909,6 +929,41 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
             self.update_data_cache(d_cache, location);
             D::fetch(&self.state.d_state, d_cache, entity, location.table_row)
                 .ok_or(QueryEntityError::QueryMismatch(entity))
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+impl<'w, 's, D: QueryData, F: ArchetypeFilter> Query<'w, 's, D, F> {
+    /// Checks whether an entity exists based on its archetype.
+    ///
+    /// Since `Query` requires an archetype filter, the result of the archetype check
+    /// is typically equivalent to a full check, but this is faster.
+    pub fn contains_arch(&self, entity: EntityId) -> bool {
+        let entities = unsafe { &self.world.read_only().entities };
+        match entities.locate(entity) {
+            Ok(x) => self.contains_storage(x.table_id),
+            Err(_) => false,
+        }
+    }
+
+    /// Similar to [`Query::contains_arch`], checks whether an entity exists based on its archetype.
+    ///
+    /// This skips the entity generation check and only queries by the entity's index,
+    /// making it even faster.
+    ///
+    /// Since `Query` requires an archetype filter, the result of the archetype check
+    /// is typically equivalent to a full check, which is faster.
+    pub fn contains_weak(&self, entity: EntityId) -> bool {
+        let entities = unsafe { &self.world.read_only().entities };
+
+        match entities.get_by_index(entity.index()) {
+            Ok(node) => match node.location {
+                Some(x) => self.contains_storage(x.table_id),
+                None => false,
+            },
+            Err(_) => false,
         }
     }
 }

@@ -427,4 +427,22 @@ pub(super) fn clone(recursive: bool) -> impl EntityCommand {
     }
 }
 
+/// An [`EntityCommand`] that reparent an entity.
+///
+/// - Pass `None` to detach this entity from its current parent
+///   (making it a root entity).
+///
+/// - Pass `Some(id)` to make `id` the new parent.
+#[inline]
+#[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+pub(super) fn reparent(parent: Option<EntityId>) -> impl EntityCommand {
+    let caller = DebugLocation::caller();
+    move |mut entity: EntityOwned| -> Result<(), ZlimError> {
+        match entity.reparent(parent) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(bind(e, caller)),
+        }
+    }
+}
+
 // -----------------------------------------------------------------------------

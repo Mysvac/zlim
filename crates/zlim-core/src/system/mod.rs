@@ -99,6 +99,10 @@
 //!
 //! - meanless placeholder: [`PhantomData`].
 //!
+//! - hierarchy information: [`RootEntities`] and [`HierarchyQuery`].
+//!   Efficient hierarchy queries without affecting system parallelism. Not compatible
+//!   with exclusive parameters — holds an immutable reference to hierarchy internals.
+//!
 //! Tuples of parameters (up to 12 elements) also implement [`SystemParam`],
 //! and custom parameters can be composed from existing ones with `#[derive(SystemParam)]`,
 //! see [derive documents](crate::derive::SystemParam) for details.
@@ -125,6 +129,7 @@
 //! [`Single`]: crate::query::Single
 //! [`Commands`]: crate::command::Commands
 //! [`PhantomData`]: core::marker::PhantomData
+//! [`RootEntities`]: crate::entity::RootEntities
 
 mod access;
 mod error;

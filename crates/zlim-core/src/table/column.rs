@@ -9,7 +9,7 @@ use super::tick_array::TickArray;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 
-use zlim_ptr::{OwningPtr, Ptr, PtrMut, Slice};
+use zlim_ptr::{OwningPtr, Ptr, PtrMut, ThinSlice};
 
 use crate::borrow::{UntypedMut, UntypedRef};
 use crate::borrow::{UntypedSliceMut, UntypedSliceRef};
@@ -180,7 +180,7 @@ impl Column {
     /// # Safety
     /// The caller must ensure proper bounds when accessing the slice.
     #[inline(always)]
-    pub unsafe fn get_added_slice(&self) -> Slice<'_, Tick> {
+    pub unsafe fn get_added_slice(&self) -> ThinSlice<'_, Tick> {
         unsafe { self.added.get_slice() }
     }
 
@@ -189,7 +189,7 @@ impl Column {
     /// # Safety
     /// The caller must ensure proper bounds when accessing the slice.
     #[inline(always)]
-    pub unsafe fn get_changed_slice(&self) -> Slice<'_, Tick> {
+    pub unsafe fn get_changed_slice(&self) -> ThinSlice<'_, Tick> {
         unsafe { self.changed.get_slice() }
     }
 

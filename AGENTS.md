@@ -93,7 +93,7 @@ Auxiliary:
 | `zlim` | Public facade; forwards features to `zlim-internal` | No | `zlim-internal` |
 | `zlim-internal` | Engine hub; re-exports all subsystems; feature management | No | All sub-crates |
 | `zlim-cfg` | Compile-time control macros (`enabled!`, `disabled!`, `switch!`, `define_alias!`) | Yes | None |
-| `zlim-ptr` | Type-erased pointers (`Ptr`, `PtrMut`, `OwningPtr`, `Slice`, `SliceMut`) | Yes | None |
+| `zlim-ptr` | Type-erased pointers (`Ptr`, `PtrMut`, `OwningPtr`, `ThinSlice`, `ThinSliceMut`) | Yes | None |
 | `zlim-reg` | CTOR-driven registry/inventory pattern (like Bevy's plugin registration) | Yes | None |
 | `zlim-os` | Platform bridge: standard directory paths + time API + sys crate re-exports | No | `zlim-cfg`, windows-sys, web-time, android-activity |
 | `zlim-utils` | Foundation: hash containers, sync primitives, memory pools, NonMax, extended collections | No | serde_core, hashbrown, foldhash, smol_str, fastvec, event-listener |

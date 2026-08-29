@@ -83,6 +83,13 @@ impl ResourceDB {
                 DelayedCommandQueues::register();
             }
 
+            {
+                // Internal Messages
+                use crate::message::MessageQueue;
+                use crate::message::ReparentSignal;
+                <MessageQueue<ReparentSignal>>::register();
+            }
+
             zlim_reg::iter::<Reg>().for_each(|r| {
                 (r.0)();
             });

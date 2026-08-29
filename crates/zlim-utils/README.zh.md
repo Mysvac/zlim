@@ -1,3 +1,5 @@
+# zlim-utils
+
 zlim 引擎的基础工具库。
 
 ## num
@@ -30,6 +32,10 @@ zlim 引擎的基础工具库。
 - 无界异步多生产者、单消费者通道。
 - 无锁，基于 `SegQueue` 和 `Event` 构建；比 `async-channel` 更快。
 - 单个 `Receiver`（不可 `Clone`），避免消费者端的竞争。
+
+## event
+
+- 异步事件监听；重新导出 `event_listener` crate。
 
 ## hash
 

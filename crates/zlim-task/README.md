@@ -1,3 +1,5 @@
+# zlim-task
+
 A lightweight yet efficient async task pool designed for the zlim engine.
 
 Provides a unified task pool interface so the implementation can be extended later.

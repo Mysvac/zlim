@@ -1,12 +1,6 @@
-A runtime reflection system designed for the Zlim engine, which can be divided into four parts:
+# zlim-reflect
 
-1. Runtime type information
-
-2. Type-erased data operations
-
-3. Type information registry
-
-4. Code generation
+A runtime reflection system designed for the Zlim Engine, which can be divided into four parts:
 
 ## Modules
 

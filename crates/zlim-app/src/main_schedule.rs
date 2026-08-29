@@ -235,7 +235,7 @@ impl FixedMainScheduleOrder {
 ///
 /// The `Startup` schedule is only run when this job is triggered
 /// for the first time.
-#[job_fn(type = RunMainJob)]
+#[job_fn(type = RunMainJob, name = "zlim_app::jobs::RunMainJob")]
 fn run_main(world: &mut World, mut non_startup: Local<bool>) {
     #[cold]
     #[inline(never)]
@@ -267,7 +267,7 @@ fn run_main(world: &mut World, mut non_startup: Local<bool>) {
 
 /// A job in the [`FixedMain`] schedule that executes inner schedules
 /// according to [`FixedMainScheduleOrder`].
-#[job_fn(type = RunFixedMainJob)]
+#[job_fn(type = RunFixedMainJob, name = "zlim_app::jobs::RunFixedMainJob")]
 fn run_fixed_main(world: &mut World) {
     world.resource_scope(|world, order: ResMut<FixedMainScheduleOrder>| {
         for &label in &order.labels {
@@ -280,9 +280,9 @@ fn run_fixed_main(world: &mut World) {
 /// multiple times (or not at all) based on time information.
 ///
 /// A maximum iteration limit is set to prevent starving the main loop.
-#[job_fn(type = RunFixedMainLoopJob)]
+#[job_fn(type = RunFixedMainLoopJob, name = "zlim_app::jobs::RunFixedMainLoopJob")]
 fn run_fixed_main_loop(world: &mut World) {
-    const MAX_LOOP: usize = 32;
+    const MAX_LOOP: usize = 50;
 
     let mut count: usize = 0;
 
@@ -323,7 +323,7 @@ fn run_fixed_main_loop(world: &mut World) {
 ///
 /// - **`RunFixedMainLoop`** — runs [`RunFixedMainLoopJob`], which consumes
 ///   the accumulated fixed time with [`World::step_fixed`] and runs [`FixedMain`]
-///   once per step (capped at 32 steps per frame so the main loop is never starved).
+///   once per step (capped at 50 steps per frame so the main loop is never starved).
 ///
 /// - **`FixedMain`** — runs [`RunFixedMainJob`], executing the fixed
 ///   schedules (`FixedFirst` → `FixedPreUpdate` → `FixedUpdate` →

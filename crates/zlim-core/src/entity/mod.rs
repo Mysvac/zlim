@@ -66,6 +66,7 @@ mod mapper;
 
 pub use allocator::AllocEntitiesIter;
 pub use allocator::{EntityAllocator, RemoteAllocator};
+pub use entities::RootEntities;
 pub use entities::{Entities, EntityError, EntityNode};
 pub use id::{EntityId, Location};
 pub use mapper::{EntityMap, EntityMapper, MapEntities};
