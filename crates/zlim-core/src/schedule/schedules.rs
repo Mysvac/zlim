@@ -3,19 +3,37 @@
 //! [`Schedules`] stores every schedule owned by a [`World`], keyed by their
 //! interned [`ScheduleLabel`].  Users build and mutate schedules in place
 //! through [`Schedules::get_mut`] / [`Schedules::entry`] and execute them
-//! with [`World::run_schedule`].
+//! with [`World::run_schedule`] / [`World::try_run_schedule`].
 //!
 //! [`Schedule`]: crate::schedule::Schedule
 //! [`ScheduleLabel`]: crate::schedule::ScheduleLabel
 //! [`World`]: crate::world::World
 //! [`World::run_schedule`]: crate::world::World::run_schedule
+//! [`World::try_run_schedule`]: crate::world::World::try_run_schedule
 
 use core::fmt::Debug;
 use core::ops::{Deref, DerefMut};
 
+use zlim_core_derive::Error;
 use zlim_utils::hash::HashMap;
 
 use super::{InternedScheduleLabel, Schedule, ScheduleLabel};
+
+// -----------------------------------------------------------------------------
+// MissingSchedule
+
+/// Error returned when a requested schedule cannot be found in the registry.
+///
+/// This error occurs when attempting to access or run a schedule through
+/// [`World::try_run_schedule`] , but no matching schedule exists in the current world.
+///
+/// [`World::try_run_schedule`]: crate::world::World
+#[derive(Debug, Error)]
+#[error("missing schedule `{label:?}`")]
+#[zlim_error(warning)]
+pub struct MissingSchedule {
+    pub label: InternedScheduleLabel,
+}
 
 // -----------------------------------------------------------------------------
 // Schedules

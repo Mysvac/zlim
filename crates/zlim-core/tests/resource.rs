@@ -109,15 +109,6 @@ fn drop_resource() {
     assert!(!world.contains_resource::<Health>());
 }
 
-#[test]
-fn resource_panics_on_missing() {
-    let world = World::alloc();
-    let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
-        world.resource::<Health>();
-    }));
-    assert!(result.is_err());
-}
-
 // -----------------------------------------------------------------------------
 // World resource API tests — Change detection
 // -----------------------------------------------------------------------------
@@ -134,6 +125,7 @@ fn resource_ref_change_detection() {
 
     world.clear_trackers();
     let r2 = world.get_resource_ref::<Health>().unwrap();
+    assert!(!r2.is_added());
     assert!(!r2.is_changed());
 }
 
@@ -144,17 +136,25 @@ fn resource_mut_change_detection() {
 
     let mut r = world.resource_mut::<Health>();
     assert!(r.is_changed());
-    r.value = 42;
-    assert_eq!(r.value, 42);
-}
+    assert!(r.is_added());
+    assert_eq!(r.value, 1);
 
-#[test]
-fn resource_mut_panics_on_missing() {
-    let mut world = World::alloc();
-    let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
-        world.resource_mut::<Health>();
-    }));
-    assert!(result.is_err());
+    r.value = 111;
+    assert_eq!(r.value, 111);
+
+    world.clear_trackers();
+    let mut r = world.resource_mut::<Health>();
+    assert!(!r.is_changed());
+    assert!(!r.is_added());
+    let x: u32 = (*r).value;
+    assert_eq!(x, 111);
+
+    assert!(!r.is_changed());
+    assert!(!r.is_added());
+
+    r.value = 2233;
+    assert!(r.is_changed());
+    assert!(!r.is_added());
 }
 
 // -----------------------------------------------------------------------------

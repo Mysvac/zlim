@@ -6,13 +6,12 @@ use core::mem::MaybeUninit;
 use core::panic::AssertUnwindSafe;
 use core::ptr;
 use core::ptr::NonNull;
-use std::backtrace::Backtrace;
 use std::panic::catch_unwind;
 
 use zlim_utils::debug::{DebugLocation, DebugName};
 
 use super::Command;
-use crate::error::{ErrorContext, PANIC_ORIGINATES_FROM_ERROR_HANDLER, Severity, ZlimError};
+use crate::error::PanicPayload;
 use crate::world::{World, WorldCell};
 
 // -----------------------------------------------------------------------------
@@ -199,32 +198,16 @@ impl CommandQueue {
 
 #[cold]
 #[inline(never)]
-fn handle_panic_payload(
-    world: Option<NonNull<World>>,
-    payload: Box<dyn Any + Send>,
-    name: DebugName,
-) {
-    if PANIC_ORIGINATES_FROM_ERROR_HANDLER.get() {
-        std::panic::resume_unwind(payload);
+fn propagate_panic(payload: Box<dyn Any + Send>, name: DebugName) -> ! {
+    match payload.downcast::<PanicPayload>() {
+        Ok(panic_payload) => std::panic::resume_unwind(panic_payload),
+        #[expect(clippy::print_stderr, reason = "panic outout")]
+        Err(payload) => {
+            ::core::hint::cold_path();
+            std::eprintln!("Encounter a unexpected panic in command `{}`.", name);
+            std::panic::resume_unwind(Box::new(PanicPayload { payload }))
+        }
     }
-
-    let Some(world) = world else {
-        std::panic::resume_unwind(payload)
-    };
-
-    const BACKTRACE: Backtrace = Backtrace::disabled();
-    let error = if let Some(&info) = payload.downcast_ref::<&str>() {
-        let err = format!("command panicked: {info}");
-        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
-    } else if let Some(info) = payload.downcast_ref::<String>() {
-        let err = format!("command panicked: {info}");
-        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
-    } else {
-        const ERR: &str = "command panicked: unknown error";
-        ZlimError::with_backtrace(Severity::Panic, ERR, BACKTRACE)
-    };
-
-    unsafe { (world.as_ref().error_handler())(error, ErrorContext::Command { name }) };
 }
 
 impl CommandQueue {
@@ -259,20 +242,8 @@ impl CommandQueue {
                 }
             };
 
-            // Should we move this `set(false)` to the begining of `CommandRunner::run` ?
-            //
-            // Strictly speaking, we should reset it before each `catch_unwind`, but:
-            // - If it's false, we don't need to modify it.
-            // - If it is true, then a panic has occurred and the entire run
-            //   should end directly.
-            //
-            // A assignment for a thread local variable should be very cheap,
-            // so we temporarily maintain this implementaion.
-            PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(false);
-            if let Err(e) = catch_unwind(AssertUnwindSafe(func)) {
-                ::core::hint::cold_path();
-                let name = DebugName::type_name::<C>();
-                handle_panic_payload(world, e, name);
+            if let Err(payload) = catch_unwind(AssertUnwindSafe(func)) {
+                propagate_panic(payload, DebugName::type_name::<C>());
             }
         };
 
@@ -322,7 +293,7 @@ impl Drop for CommandRunner<'_> {
 }
 
 impl CommandRunner<'_> {
-    pub fn new(queue: &mut CommandQueue, start: usize) -> CommandRunner<'_> {
+    fn new(queue: &mut CommandQueue, start: usize) -> CommandRunner<'_> {
         let stop = queue.bytes.len();
         CommandRunner {
             queue,
@@ -334,7 +305,7 @@ impl CommandRunner<'_> {
 
     #[cold]
     #[inline(never)]
-    pub fn clean(&mut self) {
+    fn clean(&mut self) {
         let bytes_ptr: NonNull<u8> =
             unsafe { NonNull::new_unchecked(self.queue.bytes.as_mut_ptr() as *mut u8) };
 
@@ -353,7 +324,7 @@ impl CommandRunner<'_> {
         }
     }
 
-    pub fn run(&mut self, world: &mut World) {
+    fn run(&mut self, world: &mut World) {
         let bytes_ptr: NonNull<u8> =
             unsafe { NonNull::new_unchecked(self.queue.bytes.as_mut_ptr() as *mut u8) };
 

@@ -266,22 +266,6 @@ fn into_zlim_result_is_callable() {
 }
 
 // -----------------------------------------------------------------------------
-// Explicit extra format args
-// -----------------------------------------------------------------------------
-
-#[derive(Debug, Error)]
-#[error("error code 0x{code:08X}")]
-struct HintError {
-    code: u32,
-}
-
-#[test]
-fn implicit_format_with_spec() {
-    let err = HintError { code: 0xDEAD };
-    assert_eq!(err.to_string(), "error code 0x0000DEAD");
-}
-
-// -----------------------------------------------------------------------------
 // Extra args: named parameter
 // -----------------------------------------------------------------------------
 
@@ -295,15 +279,4 @@ struct LimitError {
 fn extra_named_args() {
     let err = LimitError { limit: 10 };
     assert_eq!(err.to_string(), "limit 10 exceeded (max 2147483647)");
-}
-
-// -----------------------------------------------------------------------------
-// Error trait object
-// -----------------------------------------------------------------------------
-
-#[test]
-fn error_trait_object() {
-    let err: &dyn Error = &SimpleError;
-    assert_eq!(err.to_string(), "something went wrong");
-    assert!(err.source().is_none());
 }

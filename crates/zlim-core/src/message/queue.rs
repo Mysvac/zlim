@@ -170,14 +170,21 @@ impl<M: Message> MessageQueue<M> {
 
     /// Returns the global index of the oldest still-readable message.
     ///
-    /// This value is used by [`crate::message::MessageCursor`] to determine the
-    /// lower bound of readable ids.
+    /// This value is used by [`MessageCursor`] to determine the lower
+    /// bound of readable ids.
+    ///
+    /// [`MessageCursor`]: crate::message::MessageCursor
     #[inline]
     pub fn oldest_message_index(&self) -> usize {
         self.messages_a.start_id
     }
 
     /// Returns the global index of the *next* message.
+    ///
+    /// Used with [`MessageCursor::with_index`], the created cursor points to
+    /// the tail: prior messages are hidden, and future messages are visible.
+    ///
+    /// [`MessageCursor::with_index`]: crate::message::MessageCursor::with_index
     #[inline]
     pub fn counter(&self) -> usize {
         self.counter

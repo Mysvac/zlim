@@ -514,14 +514,20 @@ pub fn derive_query_data(input: TokenStream) -> TokenStream {
 /// | `name = "..."` | Optional unique string identifier of the job; defaults to the marker's `TypePath` (`<Self as TypePath>::type_path()`). Must be a valid path when given. |
 /// | `run_if = expr` or `run_if = [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` that gates the job. |
 /// | `strict = true\|false` | Whether the job registers its access strictly (logs conflicts). Defaults to `true`. |
+/// | `auto_register = true\|false` | Whether to emit the auto-registration code. Defaults to `true`; `false` skips it. |
 ///
 /// # Generic functions
 ///
 /// Generic functions are supported: every type parameter must implement
 /// `TypePath`, and the marker type is derived `TypePath` (with
 /// `#[type_path = "..."]` when a `name` is given), so `name()` returns
-/// `Self::type_path()`.  Generic markers cannot be auto-registered — use
-/// `JobDB::register` manually.  Lifetime parameters are not supported.
+/// `Self::type_path()`.
+///
+/// Generic markers cannot be auto-registered — use `JobDB::register`
+/// manually, and omit `auto_register` (or set it to `false`); setting
+/// `auto_register = true` on a generic marker is a compile error.
+///
+/// Lifetime parameters are not supported.
 ///
 /// # Example
 ///
@@ -572,13 +578,15 @@ pub fn job_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// | `run_if: expr` or `run_if: [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` that gates the job. |
 /// | `system: EXPR` | The system expression wrapped by the job's `ctor`. |
 /// | `strict: true\|false` | Whether the job registers its access strictly (logs conflicts). Defaults to `true`. |
+/// | `auto_register: true\|false` | Whether to emit the auto-registration code. Defaults to `true`; `false` skips it. |
 ///
 /// # Generic markers
 ///
 /// When generics are declared, every type parameter must implement
 /// `TypePath`, the marker type is derived `TypePath` (with
 /// `#[type_path = "..."]` when a `name` is given), and no automatic
-/// registration is emitted.
+/// registration is emitted — omit `auto_register` or set it to `false`;
+/// setting `auto_register: true` on a generic marker is a compile error.
 ///
 /// # Example
 ///
@@ -605,7 +613,10 @@ pub fn job_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn job(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as job::DefineJobInput);
-    job::expand_define(input).into()
+    match job::expand_define(input) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.into_compile_error().into(),
+    }
 }
 
 /// Macro that turns a job list into a job group marker type.

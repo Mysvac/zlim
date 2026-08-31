@@ -4,31 +4,25 @@ use zlim_utils::debug::DebugLocation;
 
 use crate::bundle::{Bundle, DataBundle};
 use crate::command::{Command, EntityCommand};
-use crate::entity::{Entities, EntityError, EntityId};
+use crate::entity::{Entities, EntityId};
 use crate::error::{IntoZlimResult, ZlimError};
-use crate::message::{Message, MessageQueue};
+use crate::message::Message;
 use crate::ops::EntityOwned;
 use crate::resource::Resource;
 use crate::schedule::ScheduleLabel;
 use crate::system::{IntoSystem, SystemHandle, SystemInput};
 use crate::world::{FromWorld, World};
 
-#[cold]
 #[inline(never)]
-fn bind(e: EntityError, c: DebugLocation) -> ZlimError {
-    ZlimError::warning(format!("{e}\n\t{c}"))
+fn check_spawnable(tree: &Entities, id: EntityId) -> Result<(), ZlimError> {
+    tree.check_spawnable(id).map_err(ZlimError::from)
 }
 
 #[inline(never)]
-fn check_spawnable(tree: &Entities, id: EntityId, caller: DebugLocation) -> Result<(), ZlimError> {
-    tree.check_spawnable(id).map_err(|e| bind(e, caller))
-}
-
-#[inline(never)]
-fn check_contains(tree: &Entities, id: EntityId, caller: DebugLocation) -> Result<(), ZlimError> {
+fn check_contains(tree: &Entities, id: EntityId) -> Result<(), ZlimError> {
     match tree.get(id) {
         Ok(_) => Ok(()),
-        Err(e) => Err(bind(e, caller)),
+        Err(e) => Err(ZlimError::from(e)),
     }
 }
 
@@ -41,10 +35,10 @@ fn check_contains(tree: &Entities, id: EntityId, caller: DebugLocation) -> Resul
 pub(super) fn spawn_empty_at(entity: EntityId, parent: Option<EntityId>) -> impl Command {
     let caller = DebugLocation::caller();
     move |world: &mut World| -> Result<(), ZlimError> {
-        check_spawnable(&world.entities, entity, caller)?;
+        check_spawnable(&world.entities, entity)?;
 
         if let Some(c) = parent {
-            check_contains(&world.entities, c, caller)?;
+            check_contains(&world.entities, c)?;
         }
 
         world.spawn_empty_at_with_caller(entity, parent, caller);
@@ -64,10 +58,10 @@ pub(super) fn spawn_at<B: Bundle>(
 ) -> impl Command {
     let caller = DebugLocation::caller();
     move |world: &mut World| -> Result<(), ZlimError> {
-        check_spawnable(&world.entities, entity, caller)?;
+        check_spawnable(&world.entities, entity)?;
 
         if let Some(c) = parent {
-            check_contains(&world.entities, c, caller)?;
+            check_contains(&world.entities, c)?;
         }
         world.spawn_at_with_caller(bundle, entity, parent, caller);
         Ok(())
@@ -87,7 +81,7 @@ where
     let caller = DebugLocation::caller();
     move |world: &mut World| -> Result<(), ZlimError> {
         if let Some(c) = parent {
-            check_contains(&world.entities, c, caller)?;
+            check_contains(&world.entities, c)?;
         }
         world.spawn_batch_with_caller(bundles_iter, parent, caller);
         Ok(())
@@ -104,7 +98,7 @@ pub(super) fn despawn(entity: EntityId) -> impl Command {
     move |world: &mut World| -> Result<(), ZlimError> {
         world
             .despawn_with_caller(entity, caller)
-            .map_err(|e| bind(e, caller))
+            .map_err(ZlimError::from)
     }
 }
 
@@ -163,29 +157,39 @@ pub(super) fn remove_resource<R: Resource + Send>() -> impl Command {
 
 /// A [`Command`] that writes an arbitrary [`Message`].
 ///
-/// Panics when applied if the message type is not registered.
+/// If the message type has not been registered, it is implicitly registered.
 #[inline]
 pub(super) fn write_message<M: Message>(message: M) -> impl Command {
-    move |world: &mut World| -> Result<(), ZlimError> {
-        match world.get_resource_mut::<MessageQueue<M>>() {
-            Some(mut queue) => {
-                queue.write(message);
-                Ok(())
-            }
-            None => {
-                ::core::hint::cold_path();
-                let error = format!("Missing MessageQueue<{}>", M::type_path());
-                Err(ZlimError::panic(error))
-            }
-        }
+    move |world: &mut World| {
+        world.write_message(message);
     }
 }
 
 /// A [`Command`] that runs the schedule corresponding to the given [`ScheduleLabel`].
+///
+/// Log a warning if the schdule does not exist, just like
+/// [`World::try_run_schedule`]
 #[inline]
 pub(super) fn run_schedule(label: impl ScheduleLabel) -> impl Command {
     let label = label.intern();
-    move |world: &mut World| world.run_schedule(label)
+    move |world: &mut World| -> Result<(), ZlimError> {
+        world.try_run_schedule(label).into_zlim_result()
+    }
+}
+
+/// A [`Command`] that runs the schedule corresponding to the given [`ScheduleLabel`].
+///
+/// Do nothing if the schedule does not exist, just like:
+///
+/// ```ignore
+/// let _ = world.try_un_schedule(label);
+/// ```
+#[inline]
+pub(super) fn try_run_schedule(label: impl ScheduleLabel) -> impl Command {
+    let label = label.intern();
+    move |world: &mut World| {
+        let _ = world.try_run_schedule(label);
+    }
 }
 
 /// A [`Command`] that inserts a system into the world's cache, so it can
@@ -237,6 +241,7 @@ where
     M: 'static,
 {
     move |world: &mut World| -> Result<(), ZlimError> {
+        // `Command::handle_error` will remap DebugLocation, no need to do it here
         match world.invoke::<I, O, M>(system, input) {
             Ok(ret) => ret.into_zlim_result(),
             Err(e) => Err(ZlimError::from(e)),
@@ -324,7 +329,8 @@ pub(super) fn insert(bundle: impl Bundle) -> impl EntityCommand {
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.insert_with_caller(bundle, caller) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }
@@ -339,7 +345,8 @@ pub(super) fn insert_if_new<T: DataBundle>(
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.insert_if_new_with_caller(bundle, caller) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }
@@ -355,7 +362,8 @@ pub(super) fn remove<T: DataBundle>() -> impl EntityCommand {
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.remove_explicit_with_caller::<T>(caller) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }
@@ -371,7 +379,8 @@ pub(super) fn remove_explicit<T: DataBundle>() -> impl EntityCommand {
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.remove_explicit_with_caller::<T>(caller) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }
@@ -390,7 +399,8 @@ pub(super) fn remove_required<T: DataBundle>() -> impl EntityCommand {
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.remove_required_with_caller::<T>(caller) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }
@@ -406,7 +416,8 @@ pub(super) fn clear() -> impl EntityCommand {
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.clear_with_caller(caller) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }
@@ -422,7 +433,8 @@ pub(super) fn clone(recursive: bool) -> impl EntityCommand {
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.clone_with_caller(recursive, caller) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }
@@ -434,13 +446,12 @@ pub(super) fn clone(recursive: bool) -> impl EntityCommand {
 ///
 /// - Pass `Some(id)` to make `id` the new parent.
 #[inline]
-#[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
 pub(super) fn reparent(parent: Option<EntityId>) -> impl EntityCommand {
-    let caller = DebugLocation::caller();
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.reparent(parent) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            // `Command::handle_error` will remap DebugLocation, no need to do it here
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }

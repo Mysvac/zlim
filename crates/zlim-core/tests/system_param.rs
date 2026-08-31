@@ -261,10 +261,16 @@ fn tick_system(param: TickParam) -> (u32, u32) {
 fn tick_param_tracks_runs() {
     let mut world = World::alloc();
 
-    // The cached instance keeps its `last_run` baseline, so the second run
-    // observes the window advanced by the first.
+    // The cached instance's `last_run` is synchronized with the world's
+    // change-detection baseline, which `invoke` does not advance on its own
+    // (only `clear_trackers` or a schedule run does).  So the second call
+    // still sees `last_run == 0` while `this_run` keeps advancing.
     assert_eq!(world.invoke(tick_system, ()).unwrap(), (0, 1));
-    assert_eq!(world.invoke(tick_system, ()).unwrap(), (1, 2));
+    assert_eq!(world.invoke(tick_system, ()).unwrap(), (0, 2));
+
+    // Advancing the world baseline shifts the observed window.
+    world.clear_trackers();
+    assert_eq!(world.invoke(tick_system, ()).unwrap(), (3, 4));
 }
 
 // -----------------------------------------------------------------------------

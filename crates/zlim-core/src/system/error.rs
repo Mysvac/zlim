@@ -21,6 +21,9 @@ pub struct SystemParamError {
     /// Human-readable description of the failure.
     pub info: Box<str>, // not `String`, reduce struct size
     /// Severity classification of the failure.
+    ///
+    /// If it is [`Severity::Ignore`], then it error will be
+    /// converted to [`SystemError::None`] during system call.
     pub severity: Severity,
 }
 
@@ -137,7 +140,13 @@ impl From<SystemError> for ZlimError {
             SystemError::Uninitialized(_) => Severity::Panic,
         };
 
-        ZlimError::new(severity, value)
+        let backtrace = match &mut value {
+            SystemError::Runtime(e) => e.take_backtrace(),
+            _ => std::backtrace::Backtrace::disabled(),
+        };
+
+        // We don't want capture backtrace again.
+        ZlimError::new_with_backtrace(severity, value, backtrace)
     }
 }
 

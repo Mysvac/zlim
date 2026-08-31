@@ -27,6 +27,8 @@ struct JobEntry {
     stage: Option<&'static str>,
     object: Option<Box<dyn Job>>,
     access: Option<AccessTable>,
+    #[cfg(feature = "trace")]
+    span: Option<zlim_log::Span>,
 }
 
 // -------------------------------------------------------------
@@ -90,17 +92,14 @@ struct ConflictGraph {
 // Jobs Methods
 
 impl Jobs {
-    /// Returns the job id registered at `node`, if the tag is still valid.
     fn get_id(&self, node: Node) -> Option<JobId> {
         self.idents.get(&node).copied()
     }
 
-    /// Returns the node of the job, if it is registered.
     fn get_node(&self, id: JobId) -> Option<Node> {
         self.nodes.get(&id).copied()
     }
 
-    /// Returns whether the job is registered.
     fn contains(&self, id: JobId) -> bool {
         self.nodes.contains_key(&id)
     }
@@ -114,10 +113,9 @@ impl Jobs {
 
     fn insert(&mut self, id: JobId, job: Box<dyn Job>) -> Node {
         if let Some(&node) = self.nodes.get(&id) {
-            ::core::hint::cold_path(); // unreachable ?
-            let entry = &mut self.jobs[node.index()];
-            debug_assert_eq!(entry.node, node);
-            return entry.node;
+            ::core::hint::cold_path();
+            debug_assert_eq!(self.jobs[node.index()].node, node);
+            return node;
         }
 
         if let Some(Reverse(idx)) = self.reusable.pop() {
@@ -126,6 +124,12 @@ impl Jobs {
             entry.object = Some(job);
             entry.access = None;
             entry.stage = None;
+            #[cfg(feature = "trace")]
+            {
+                entry.span = Some(
+                    zlim_log::info_span!(parent: None, "job", name=id.name(), group=id.group()),
+                );
+            }
             let node = entry.node;
             self.uninit.push(node);
             self.nodes.insert(id, node);
@@ -145,6 +149,8 @@ impl Jobs {
             stage: None,
             object: Some(job),
             access: None,
+            #[cfg(feature = "trace")]
+            span: Some(zlim_log::info_span!(parent: None, "job", name=id.name(), group=id.group())),
         });
 
         self.uninit.push(node);
@@ -162,6 +168,11 @@ impl Jobs {
         entry.stage = None;
         entry.object = None;
         entry.access = None;
+
+        #[cfg(feature = "trace")]
+        {
+            entry.span = None;
+        }
 
         // The slot no longer needs initialization; drop any pending entry.
         if let Some(index) = self.uninit.iter().position(|&n| n == node) {
@@ -203,6 +214,7 @@ impl Jobs {
         entry.access = Some(access);
     }
 
+    #[cfg(not(feature = "trace"))]
     fn take(&mut self, node: Node) -> (Box<dyn Job>, AccessTable) {
         let entry = &mut self.jobs[node.index()];
         debug_assert_eq!(entry.node.tag, node.tag);
@@ -212,6 +224,18 @@ impl Jobs {
         )
     }
 
+    #[cfg(feature = "trace")]
+    fn take(&mut self, node: Node) -> (Box<dyn Job>, AccessTable, zlim_log::Span) {
+        let entry = &mut self.jobs[node.index()];
+        debug_assert_eq!(entry.node.tag, node.tag);
+        (
+            entry.object.take().expect("job should be present"),
+            entry.access.take().expect("job should be initialized"),
+            entry.span.take().expect("job span should be present"),
+        )
+    }
+
+    #[cfg(not(feature = "trace"))]
     fn recycle(&mut self, node: Node, job: Box<dyn Job>, access: AccessTable) {
         let entry = &mut self.jobs[node.index()];
         if entry.node.tag != node.tag {
@@ -221,17 +245,32 @@ impl Jobs {
         entry.access = Some(access);
     }
 
+    #[cfg(feature = "trace")]
+    fn recycle(
+        &mut self,
+        node: Node,
+        job: Box<dyn Job>,
+        access: AccessTable,
+        span: zlim_log::Span,
+    ) {
+        let entry = &mut self.jobs[node.index()];
+        if entry.node.tag != node.tag {
+            return; // already be removed
+        }
+        entry.object = Some(job);
+        entry.access = Some(access);
+        entry.span = Some(span);
+    }
+
     fn present_nodes(&self) -> Vec<Node> {
-        use core::hint::assert_unchecked;
         let mut buf = Vec::with_capacity(self.jobs.len());
+
         for entry in &self.jobs {
             if entry.object.is_some() {
-                unsafe {
-                    assert_unchecked(buf.len() < buf.capacity());
-                    buf.push(entry.node);
-                }
+                buf.push(entry.node);
             }
         }
+
         buf
     }
 }
@@ -282,6 +321,7 @@ impl ConflictGraph {
 
     fn remove(&mut self, node: Node) {
         self.exclusive.remove(&node);
+
         if let Some(a_set) = self.conflicts.remove(&node) {
             for b in a_set.iter() {
                 if let Some(b_set) = self.conflicts.get_mut(b) {
@@ -415,6 +455,10 @@ pub struct Schedule {
     executor: Box<dyn JobExecutor>,
     executor_initialized: bool,
     is_changed: bool,
+    #[cfg(feature = "trace")]
+    span: zlim_log::Span,
+    #[cfg(feature = "trace")]
+    update_span: zlim_log::Span,
 }
 
 // -----------------------------------------------------------------------------
@@ -449,7 +493,7 @@ impl Schedule {
             ExecutorKind::SingleThreaded => Box::new(SingleThreadedExecutor::new()),
             ExecutorKind::MultiThreaded => Box::new(MultiThreadedExecutor::new()),
         };
-        Self::with_executor(label, executor)
+        Self::with_executor(label.intern(), executor)
     }
 
     /// Creates a new schedule with the given label and executor.
@@ -469,20 +513,30 @@ impl Schedule {
     /// let parallel = Schedule::with_executor(AnonymousSchedule, Box::new(MultiThreadedExecutor::new()));
     /// assert_eq!(parallel.executor_kind(), ExecutorKind::MultiThreaded);
     /// ```
+    #[inline]
     pub fn with_executor(label: impl ScheduleLabel, executor: Box<dyn JobExecutor>) -> Self {
-        Self {
-            label: label.intern(),
-            jobs: Default::default(),
-            groups: Default::default(),
-            stages: Default::default(),
-            hierarchies: Default::default(),
-            ordering: Default::default(),
-            confict: Default::default(),
-            schedule: Default::default(),
-            executor,
-            executor_initialized: false,
-            is_changed: false,
+        #[inline(never)]
+        fn inner(label: InternedScheduleLabel, executor: Box<dyn JobExecutor>) -> Schedule {
+            Schedule {
+                label,
+                jobs: Default::default(),
+                groups: Default::default(),
+                stages: Default::default(),
+                hierarchies: Default::default(),
+                ordering: Default::default(),
+                confict: Default::default(),
+                schedule: JobSchedule::new(label),
+                executor,
+                executor_initialized: false,
+                is_changed: false,
+                #[cfg(feature = "trace")]
+                span: zlim_log::info_span!(parent: None, "schedule", name = ?label),
+                #[cfg(feature = "trace")]
+                update_span: zlim_log::info_span!(parent: None, "schedule update", name = ?label),
+            }
         }
+
+        inner(label.intern(), executor)
     }
 
     /// Returns this schedule's interned label.
@@ -572,16 +626,18 @@ impl Schedule {
 
         let x = {
             let id = stage.begin;
-            let job = StageBegin::new(id);
-            let node = self.jobs.insert(id, Box::new(job));
+            let label = StageBegin::new(id);
+            let job = Box::new(label);
+            let node = self.jobs.insert(id, job);
             self.ordering.insert_node(node);
             node
         };
 
         let y = {
             let id = stage.end;
-            let job = StageEnd::new(id);
-            let node = self.jobs.insert(id, Box::new(job));
+            let label = StageEnd::new(id);
+            let job = Box::new(label);
+            let node = self.jobs.insert(id, job);
             self.ordering.insert_node(node);
             node
         };
@@ -664,7 +720,7 @@ impl Schedule {
 
         if self.jobs.get_node(id).is_some() {
             core::hint::cold_path();
-            log::warn!(
+            log::debug!(
                 "The Job `{}` already exists in schedule `{:?}`, skipped. \n\t{}",
                 id,
                 self.label,
@@ -686,6 +742,7 @@ impl Schedule {
 
         let job = (db.ctor)(JobGroup::ANONYMOUS);
         let node = self.jobs.insert(id, job);
+
         self.ordering.insert_node(node);
 
         if !anonymous {
@@ -705,7 +762,9 @@ impl Schedule {
             let run_if = run_if_ctor(JobGroup::ANONYMOUS);
             let run_if_id = run_if.id();
             let run_if_flags = run_if.flags();
+
             let run_if_node = self.jobs.insert(run_if_id, run_if);
+
             self.ordering.insert_node(run_if_node);
             if !anonymous {
                 // The condition belongs to the stage: it runs strictly after
@@ -1090,8 +1149,8 @@ impl Schedule {
 
         if let Some(entry) = self.groups.get(name) {
             core::hint::cold_path();
-            let stage = entry.stage.unwrap_or("#anonymous");
-            log::warn!(
+            let stage = entry.stage.unwrap_or(JobGroup::ANONYMOUS);
+            log::debug!(
                 "The JobGroup `{}` already exists in schedule `{:?}`'s stage `{:?}`, skipped. \n\t{}",
                 name,
                 self.label,
@@ -1398,12 +1457,26 @@ impl Schedule {
         schedule.flags.clear();
         schedule.pool = Bump::new(200); // placeholder
 
-        let jobs_vec = core::mem::take(&mut schedule.jobs);
-        let nodes = core::mem::take(&mut schedule.nodes);
-        let access_tables = core::mem::take(&mut schedule.access_tables);
+        debug_assert_eq!(schedule.nodes.len(), schedule.jobs.len());
+        debug_assert_eq!(schedule.nodes.len(), schedule.access_tables.len());
+        #[cfg(feature = "trace")]
+        debug_assert_eq!(schedule.nodes.len(), schedule.spans.len());
 
-        for ((&node, job), access) in nodes.iter().zip(jobs_vec).zip(access_tables) {
+        let jobs_vec = schedule.jobs.drain(..);
+        let nodes = schedule.nodes.drain(..);
+        let access_tables = schedule.access_tables.drain(..);
+
+        #[cfg(feature = "trace")]
+        let spans = schedule.spans.drain(..);
+
+        #[cfg(not(feature = "trace"))]
+        for ((node, job), access) in nodes.zip(jobs_vec).zip(access_tables) {
             jobs.recycle(node, job, access);
+        }
+
+        #[cfg(feature = "trace")]
+        for ((node, job), (access, span)) in nodes.zip(jobs_vec).zip(access_tables.zip(spans)) {
+            jobs.recycle(node, job, access, span);
         }
     }
 
@@ -1515,10 +1588,18 @@ impl Schedule {
         let nodes = schedule.nodes.as_slice();
 
         for &node in nodes {
+            #[cfg(feature = "trace")]
+            let (job, access, span) = jobs.take(node);
+            #[cfg(not(feature = "trace"))]
             let (job, access) = jobs.take(node);
+
             schedule.access_tables.push(access);
             schedule.jobs.push(job);
+
+            #[cfg(feature = "trace")]
+            schedule.spans.push(span);
         }
+
         for job in &schedule.jobs {
             schedule.flags.push(job.flags());
         }
@@ -1658,7 +1739,8 @@ impl Schedule {
         if self.is_changed {
             core::hint::cold_path();
             #[cfg(feature = "trace")]
-            let _span = zlim_log::info_span!("update schedule", name = ?self.label).entered();
+            let _span = self.update_span.clone().entered();
+
             self.recycle_schedule();
             self.init_systems(world);
             self.build_schedule();
@@ -1706,7 +1788,7 @@ impl Schedule {
         }
 
         #[cfg(feature = "trace")]
-        let _span = zlim_log::info_span!("run schedule", name = ?self.label).entered();
+        let _span = self.span.clone().entered();
 
         world.flush();
 
@@ -1733,3 +1815,59 @@ impl Schedule {
 }
 
 // -----------------------------------------------------------------------------
+
+impl Schedule {
+    /// Inserts a standalone job from a [`JobLabel`] into the given [`ScheduleStage`].
+    ///
+    /// See [`Schedule::insert`] for details.
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_job<T: JobLabel>(&mut self, stage: impl ScheduleStage) -> &mut Self {
+        self.insert::<T>(stage);
+        self
+    }
+
+    /// Inserts a group from a [`JobGroupLabel`] into the given [`ScheduleStage`].
+    ///
+    /// See [`Schedule::insert_group`] for details.
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_group<T: JobGroupLabel>(&mut self, stage: impl ScheduleStage) -> &mut Self {
+        self.insert_group::<T>(stage);
+        self
+    }
+
+    /// Insert a schedule stage (if it does not exist).
+    ///
+    /// See [`Schedule::insert_stage`] for details.
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_stage(&mut self, stage: impl ScheduleStage) -> &mut Self {
+        self.insert_stage(stage);
+        self
+    }
+
+    /// Insert a strong order by given sequence.
+    ///
+    /// See [`Schedule::insert_order`] for details.
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_order(&mut self, jobs: &[JobId]) -> &mut Self {
+        self.insert_order(jobs);
+        self
+    }
+
+    /// Insert a weak order by given sequence.
+    ///
+    /// See [`Schedule::insert_weak_order`] for details.
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_weak_order(&mut self, jobs: &[JobId]) -> &mut Self {
+        self.insert_weak_order(jobs);
+        self
+    }
+
+    /// Insert a relaxed order by given sequence.
+    ///
+    /// See [`Schedule::insert_relaxed_order`] for details.
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_relaxed_order(&mut self, jobs: &[JobId]) -> &mut Self {
+        self.insert_relaxed_order(jobs);
+        self
+    }
+}

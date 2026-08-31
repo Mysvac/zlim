@@ -63,6 +63,7 @@ impl Block {
         let unaligned: usize = need + PADDING;
         // Round up to the nearest multiple of ALIGN.
         let size: usize = unaligned & const { !(ALIGN - 1) };
+        let size: usize = size.next_power_of_two();
 
         // Cannot use `from_size_align_unchecked` because `size` may exceed isize::MAX.
         let layout = Layout::from_size_align(size, ALIGN).unwrap();
@@ -305,7 +306,6 @@ impl PagePool {
     fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
         let need = layout.size() + layout.align().max(ALIGN);
         let unaligned = self.size.get().max(need);
-        let unaligned = unaligned.max(unaligned.next_power_of_two().saturating_sub(24));
 
         // Ensure that page_size if aligned.
         const MASK: usize = ALIGN - 1;

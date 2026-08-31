@@ -5,7 +5,7 @@ a built-in [`log`](https://crates.io/crates/log) bridge.
 
 ## Initializing the Global Logger
 
-Use [`LogPlugin`](zlim_log::LogPlugin) to initialize the logger:
+Use `LogPlugin` to initialize the logger:
 
 ```rust
 use zlim_log::{LogPlugin, info};

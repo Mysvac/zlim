@@ -93,7 +93,8 @@ impl EntityId {
     ///
     /// Valid IDs must be created by allocators, so this function can
     /// only be used for debugging or creating placeholders.
-    pub fn new(index: u32, generation: NonZeroU32) -> Self {
+    #[inline(always)]
+    pub const fn new(index: u32, generation: NonZeroU32) -> Self {
         Self { index, generation }
     }
 

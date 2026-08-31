@@ -2,7 +2,7 @@
 
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use zlim_utils::debug::DebugName;
+use zlim_utils::debug::{DebugLocation, DebugName};
 
 use crate::entity::{EntityError, EntityId};
 use crate::error::{ErrorContext, ErrorHandler};
@@ -110,11 +110,17 @@ pub trait Command: Send + Sized + 'static {
     /// [`Command`]: crate::error::ErrorContext::Command
     /// [`ErrorHandler`]: crate::error::ErrorHandler
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     fn handle_error_with(self, handler: ErrorHandler) -> impl Command<Output = ()> {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        let caller = DebugLocation::caller();
         move |world: &mut World| {
             if let Err(e) = self.apply(world).into_zlim_result() {
                 let name = DebugName::type_name::<Self>();
+                #[cfg(not(any(debug_assertions, feature = "debug")))]
                 handler(e, ErrorContext::Command { name });
+                #[cfg(any(debug_assertions, feature = "debug"))]
+                handler(e.with_location(caller), ErrorContext::Command { name });
             }
         }
     }
@@ -127,11 +133,17 @@ pub trait Command: Send + Sized + 'static {
     ///
     /// [`apply`]: Self::apply
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     fn handle_error(self) -> impl Command<Output = ()> {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        let caller = DebugLocation::caller();
         move |world: &mut World| {
             if let Err(e) = self.apply(world).into_zlim_result() {
                 let name = DebugName::type_name::<Self>();
+                #[cfg(not(any(debug_assertions, feature = "debug")))]
                 (world.error_handler())(e, ErrorContext::Command { name });
+                #[cfg(any(debug_assertions, feature = "debug"))]
+                (world.error_handler())(e.with_location(caller), ErrorContext::Command { name });
             }
         }
     }

@@ -24,10 +24,14 @@
 //! condition constructors — each taking the job's group name — are stored in
 //! the `JobDB::run_if` slice.
 //!
-//! For non-generic markers, the database registers itself through
-//! `zlim_reg::submit!` at program startup.  Generic markers cannot be
-//! auto-registered and must be registered manually with
-//! `JobDB::register`.
+//! For non-generic markers the database registers itself through
+//! `zlim_reg::submit!` at program startup.  Registration is controlled by
+//! the `auto_register` argument: it defaults to `true` for non-generic
+//! markers, and `false` skips the registration entirely.  Generic markers
+//! cannot be auto-registered (a CTOR static may not reference generic
+//! parameters) and must be registered manually per instantiation with
+//! `JobDB::register`; specifying `auto_register = true` on a generic marker
+//! is a compile error.
 
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
@@ -69,6 +73,10 @@ pub(crate) struct JobAttr {
     /// Whether the generated job registers its access strictly.  Defaults
     /// to `true`.
     pub strict: bool,
+    /// Whether to emit the auto-registration (`zlim_reg::submit!`).  `None`
+    /// means the argument was omitted: non-generic markers default to
+    /// `true`, generic markers cannot be auto-registered at all.
+    pub auto_register: Option<bool>,
 }
 
 /// Parses the `type` argument (`Name` or `Name<GENERICS>`) of both macros.
@@ -110,6 +118,7 @@ impl Parse for JobAttr {
         let mut name = None;
         let mut run_if = Vec::new();
         let mut strict = true;
+        let mut auto_register = None;
 
         while !input.is_empty() {
             let key = input.call(Ident::parse_any)?;
@@ -120,10 +129,11 @@ impl Parse for JobAttr {
                 "name" => name = Some(input.parse()?),
                 "run_if" => run_if = parse_run_if(input)?,
                 "strict" => strict = input.parse::<syn::LitBool>()?.value(),
+                "auto_register" => auto_register = Some(input.parse::<syn::LitBool>()?.value()),
                 _ => {
                     return Err(syn::Error::new_spanned(
                         key,
-                        "expected `type`, `name`, `run_if`, or `strict`",
+                        "expected `type`, `name`, `run_if`, `strict`, or `auto_register`",
                     ));
                 }
             }
@@ -142,6 +152,7 @@ impl Parse for JobAttr {
             name,
             run_if,
             strict,
+            auto_register,
         })
     }
 }
@@ -160,6 +171,10 @@ pub(crate) struct DefineJobInput {
     /// Whether the generated job registers its access strictly.  Defaults
     /// to `true`.
     pub strict: bool,
+    /// Whether to emit the auto-registration (`zlim_reg::submit!`).  `None`
+    /// means the argument was omitted: non-generic markers default to
+    /// `true`, generic markers cannot be auto-registered at all.
+    pub auto_register: Option<bool>,
 }
 
 impl Parse for DefineJobInput {
@@ -169,6 +184,7 @@ impl Parse for DefineJobInput {
         let mut run_if = Vec::new();
         let mut system = None;
         let mut strict = true;
+        let mut auto_register = None;
 
         while !input.is_empty() {
             let key = input.call(Ident::parse_any)?;
@@ -180,10 +196,11 @@ impl Parse for DefineJobInput {
                 "run_if" => run_if = parse_run_if(input)?,
                 "system" => system = Some(input.parse()?),
                 "strict" => strict = input.parse::<syn::LitBool>()?.value(),
+                "auto_register" => auto_register = Some(input.parse::<syn::LitBool>()?.value()),
                 _ => {
                     return Err(syn::Error::new_spanned(
                         key,
-                        "expected `type`, `name`, `run_if`, `system`, or `strict`",
+                        "expected `type`, `name`, `run_if`, `system`, `strict`, or `auto_register`",
                     ));
                 }
             }
@@ -205,6 +222,7 @@ impl Parse for DefineJobInput {
             run_if,
             system,
             strict,
+            auto_register,
         })
     }
 }
@@ -222,6 +240,9 @@ struct JobInput {
     run_if: Vec<syn::Expr>,
     /// Whether the generated job registers its access strictly.
     strict: bool,
+    /// Whether to emit the auto-registration (`zlim_reg::submit!`); `None`
+    /// defaults to `true` for non-generic markers.
+    auto_register: Option<bool>,
     /// The expression passed to `IntoJob::into_job` as the system.
     ctor: TokenStream,
     /// `#[doc]` attributes forwarded from the annotated function to the
@@ -230,7 +251,7 @@ struct JobInput {
 }
 
 /// Generates the marker struct and its `JobLabel` implementation.
-fn expand_common(input: JobInput) -> TokenStream {
+fn expand_common(input: JobInput) -> syn::Result<TokenStream> {
     let zlim_core = crate::path::zlim_core_path();
     let into_job_ = crate::path::into_job_(&zlim_core);
     let job_trait_ = crate::path::job_trait_(&zlim_core);
@@ -250,9 +271,21 @@ fn expand_common(input: JobInput) -> TokenStream {
         name,
         run_if,
         strict,
+        auto_register,
         ctor,
         doc_attrs,
     } = input;
+
+    // Generic markers cannot be auto-registered — a CTOR static may not
+    // reference generic parameters — so explicitly requesting it is an
+    // error.  Omitting the argument on a generic marker is fine (no
+    // registration is emitted).
+    if !generics.params.is_empty() && auto_register == Some(true) {
+        return Err(syn::Error::new_spanned(
+            &type_ident,
+            "generic job markers cannot be auto-registered: omit `auto_register` or set it to `false`, and register each instantiation manually with `JobDB::register`",
+        ));
+    }
 
     // The `STRICT` const generic of `IntoJob::into_job` selects between
     // `StrictJobSystem` and the non-strict `JobSystem` wrapper.
@@ -369,13 +402,16 @@ fn expand_common(input: JobInput) -> TokenStream {
         }
     };
 
-    let registration: Option<TokenStream> = (!generic).then(|| {
+    // Auto-registration is emitted only for non-generic markers and only
+    // when not disabled by `auto_register = false` (defaults to `true`).
+    let auto_register = auto_register.unwrap_or(true);
+    let registration: Option<TokenStream> = (!generic && auto_register).then(|| {
         quote! {
             #submit_!(#job_reg_::of::<#type_ident>() => #job_reg_);
         }
     });
 
-    quote! {
+    Ok(quote! {
         #struct_item
 
         const _: () = {
@@ -389,7 +425,7 @@ fn expand_common(input: JobInput) -> TokenStream {
                 #database_fn
             }
         };
-    }
+    })
 }
 
 // -----------------------------------------------------------------------------
@@ -403,6 +439,7 @@ pub(crate) fn expand_attr(attr: JobAttr, mut item: ItemFn) -> syn::Result<TokenS
         name,
         run_if,
         strict,
+        auto_register,
     } = attr;
 
     // Use the generics declared in `type = Name<GENERICS>` when present;
@@ -464,9 +501,10 @@ pub(crate) fn expand_attr(attr: JobAttr, mut item: ItemFn) -> syn::Result<TokenS
         name,
         run_if,
         strict,
+        auto_register,
         ctor,
         doc_attrs,
-    });
+    })?;
 
     Ok(quote! {
         #expanded
@@ -479,7 +517,7 @@ pub(crate) fn expand_attr(attr: JobAttr, mut item: ItemFn) -> syn::Result<TokenS
 // job! macro
 
 /// Expands `job! { type: ..., name: ..., system: ..., strict: ... }`.
-pub(crate) fn expand_define(input: DefineJobInput) -> TokenStream {
+pub(crate) fn expand_define(input: DefineJobInput) -> syn::Result<TokenStream> {
     let DefineJobInput {
         type_ident,
         generics,
@@ -487,6 +525,7 @@ pub(crate) fn expand_define(input: DefineJobInput) -> TokenStream {
         run_if,
         system,
         strict,
+        auto_register,
     } = input;
 
     expand_common(JobInput {
@@ -495,6 +534,7 @@ pub(crate) fn expand_define(input: DefineJobInput) -> TokenStream {
         name,
         run_if,
         strict,
+        auto_register,
         ctor: quote! { #system },
         doc_attrs: Vec::new(),
     })

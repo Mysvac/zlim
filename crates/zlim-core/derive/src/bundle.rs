@@ -217,6 +217,19 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
         TokenStream::new()
     };
 
+    let static_no_effect_assert = if data_bundle_impl.is_empty() {
+        TokenStream::new()
+    } else {
+        quote! {
+            const {
+                ::core::assert!(
+                    !<Self as #bundle_>::NEED_APPLY_EFFECT,
+                    "try implement DataBundle for a Bundle that `NEED_APPLY_EFFECT = true`",
+                );
+            }
+        }
+    };
+
     quote! {
         const _: () = {
             #[automatically_derived]
@@ -241,6 +254,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                 }
 
                 unsafe fn apply_effect(#apply_mut __ptr__: #owning_ptr_<'_>, __entity__: &mut #entity_owned_<'_>) {
+                    #static_no_effect_assert
                     if <Self as #bundle_>::NEED_APPLY_EFFECT { #(#apply_effect_calls)* }
                 }
             }

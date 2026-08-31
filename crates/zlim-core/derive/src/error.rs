@@ -359,6 +359,7 @@ fn gen_enum_from_impl(
         #[automatically_derived]
         impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error_path #where_clause {
             #[cold]
+            #[track_caller]
             #[inline(never)]
             fn from(err: #name #ty_generics) -> Self {
                 #from_body
@@ -385,6 +386,9 @@ fn gen_struct_from_impl(
     quote! {
         #[automatically_derived]
         impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error_path #where_clause {
+            #[cold]
+            #[track_caller]
+            #[inline(never)]
             fn from(err: #name #ty_generics) -> Self {
                 #from_body
             }

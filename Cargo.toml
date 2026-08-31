@@ -50,7 +50,7 @@ zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional 
 
 [features]
 
-default = ["debug", "trace", "default_log_level"]
+default = ["debug", "trace", "backtrace", "default_log_level"]
 
 debug = ["zlim-internal/debug"]
 

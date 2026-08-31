@@ -1,4 +1,4 @@
-use crate::schedule::{Schedule, ScheduleLabel};
+use crate::schedule::{MissingSchedule, Schedule, ScheduleLabel};
 use crate::world::{World, WorldCell};
 
 impl World {
@@ -50,13 +50,13 @@ impl Drop for ReinsertGuard<'_> {
 impl World {
     /// Executes a closure with exclusive access to a schedule and the world.
     ///
-    /// **Initializes a new empty schedule if it doesn't exist.**
-    ///
-    /// If you do not want to create a new schedule, use [`World::try_schedule_scope`] instead.
-    ///
     /// This method temporarily removes the schedule from the world to satisfy
     /// Rust's borrowing rules, allowing the closure to mutably borrow both the
     /// schedule and the world simultaneously.
+    ///
+    /// # Panics
+    ///
+    /// If the requested schedule does not exist.
     pub fn schedule_scope<R>(
         &mut self,
         label: impl ScheduleLabel,
@@ -66,7 +66,7 @@ impl World {
         let schedule = self.schedules.remove(label);
         let schedule = schedule.or_else(|| {
             ::core::hint::cold_path();
-            Some(Schedule::new(label))
+            panic!("The schedule with the label {label:?} was not found.")
         });
 
         let world = self.cell();
@@ -80,7 +80,7 @@ impl World {
 
     /// Executes a closure with exclusive access to a schedule and the world.
     ///
-    /// If the schedule does not exist, returns `None` directly.
+    /// If the schedule does not exist, returns `Err` directly.
     ///
     /// This method temporarily removes the schedule from the world to satisfy
     /// Rust's borrowing rules, allowing the closure to mutably borrow both the
@@ -89,9 +89,10 @@ impl World {
         &mut self,
         label: impl ScheduleLabel,
         func: impl FnOnce(&mut World, &mut Schedule) -> R,
-    ) -> Option<R> {
+    ) -> Result<R, MissingSchedule> {
         let label = label.intern();
-        let schedule = Some(self.schedules.remove(label)?);
+        let missing = MissingSchedule { label };
+        let schedule = Some(self.schedules.remove(label).ok_or(missing)?);
 
         let world = self.cell();
         let mut guard = ReinsertGuard { world, schedule };
@@ -99,28 +100,22 @@ impl World {
         let world = unsafe { world.full_mut() };
         let schedule = unsafe { guard.schedule.as_mut().unwrap_unchecked() };
 
-        Some(func(world, schedule))
+        Ok(func(world, schedule))
     }
 
     /// Runs the schedule with the given label.
     ///
-    /// **Initializes a new empty schedule if it doesn't exist.**
+    /// # Panics
     ///
-    /// If you do not want to create a new schedule, use [`World::try_run_schedule`] instead.
-    ///
-    /// This is a convenience method that combines `schedule_scope`
-    /// with running the schedule.
+    /// If the requested schedule does not exist.
     pub fn run_schedule(&mut self, label: impl ScheduleLabel) {
         self.schedule_scope(label.intern(), |world, sched| sched.run(world));
     }
 
-    /// Runs the schedule with the given label, if it exists.
+    /// Runs the schedule with the given label.
     ///
-    /// If the schedule does not exist, returns directly.
-    ///
-    /// This is a convenience method that combines `try_schedule_scope`
-    /// with running the schedule.
-    pub fn try_run_schedule(&mut self, label: impl ScheduleLabel) {
-        self.try_schedule_scope(label.intern(), |world, sched| sched.run(world));
+    /// Return Error if the schedule does not exist.
+    pub fn try_run_schedule(&mut self, label: impl ScheduleLabel) -> Result<(), MissingSchedule> {
+        self.try_schedule_scope(label.intern(), |world, sched| sched.run(world))
     }
 }

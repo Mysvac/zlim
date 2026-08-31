@@ -5,6 +5,7 @@ use zlim_core::job_fn;
 use zlim_core::message::MessageWriter;
 use zlim_utils::sync::SpinLock;
 
+use crate::MainSchedulePlugin;
 use crate::{App, AppExit, Plugin, Update};
 
 /// Graceful shutdown plugin for terminal signal handling (Ctrl+C).
@@ -36,6 +37,7 @@ static ON_EXIT_HANDLERS: SpinLock<Vec<Box<dyn FnOnce() + Send>>> = SpinLock::new
 // Plugin Implementation
 
 impl ShutdownPlugin {
+    /// ShutdownPlugin AppExit code
     pub const EXIT_CODE: u8 = 130;
 
     /// Registers a `handler` that is invoked when `gracefully_exit` is called.
@@ -73,7 +75,21 @@ impl ShutdownPlugin {
 }
 
 impl Plugin for ShutdownPlugin {
+    fn build(&self, app: &mut App) {
+        if app.contains_plugin::<MainSchedulePlugin>() {
+            app.add_plugin_order::<MainSchedulePlugin, Self>();
+        }
+    }
+
     fn apply(&self, app: &mut App) {
+        if !app.contains_plugin::<MainSchedulePlugin>() {
+            ::core::hint::cold_path();
+            zlim_log::warn!(
+                "`ShutdownPlugin` requires `MainSchedulePlugin` to define the common \
+                 schedules. Without it, jobs inserted by `ShutdownPlugin` may not run."
+            );
+        }
+
         #[cfg(any(all(unix, not(target_os = "horizon")), windows))]
         match ctrlc::try_set_handler(ShutdownPlugin::gracefully_exit) {
             Ok(()) => {
@@ -82,16 +98,15 @@ impl Plugin for ShutdownPlugin {
             Err(ctrlc::Error::MultipleHandlers) => {
                 zlim_log::info!(
                     "Skipping installing default terminal signal handler as one was already \
-                    installed. Please call `ShutdownPlugin::gracefully_exit` in your own \
+                    installed.\n  Please call `ShutdownPlugin::gracefully_exit` in your own \
                     handler if you still want graceful exit."
                 );
             }
             Err(err) => zlim_log::warn!("Failed to set `Ctrl+C` handler: {err}"),
         }
 
-        app.main_world_mut()
-            .schedule_entry(Update)
-            .insert::<HandleExitSignal>(());
+        let world = app.main_world_mut();
+        world.schedule_entry(Update).insert::<HandleExitSignal>(());
     }
 }
 

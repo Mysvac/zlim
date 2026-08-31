@@ -260,7 +260,7 @@ fn run_main(world: &mut World, mut non_startup: Local<bool>) {
 
     world.resource_scope(|world, order: ResMut<MainScheduleOrder>| {
         for &label in &order.labels {
-            world.try_run_schedule(label);
+            let _ = world.try_run_schedule(label);
         }
     });
 }
@@ -271,7 +271,7 @@ fn run_main(world: &mut World, mut non_startup: Local<bool>) {
 fn run_fixed_main(world: &mut World) {
     world.resource_scope(|world, order: ResMut<FixedMainScheduleOrder>| {
         for &label in &order.labels {
-            world.try_run_schedule(label);
+            let _ = world.try_run_schedule(label);
         }
     });
 }
@@ -289,7 +289,7 @@ fn run_fixed_main_loop(world: &mut World) {
     while count < MAX_LOOP && World::step_fixed(world) {
         count += 1; // ↓ temporarily switch to fixed time
         world.apply_time(&world.fixed_time().unwrap().as_generic());
-        world.try_schedule_scope(FixedMain, |world, schedule| schedule.run(world));
+        let _ = world.try_run_schedule(FixedMain);
     }
 
     if count > 0 {

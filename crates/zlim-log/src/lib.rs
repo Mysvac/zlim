@@ -1,11 +1,7 @@
 #![doc = include_str!("../README.md")]
 
-// `zlim_log` is used as the crate alias inside the README's intra-doc links,
-// so we re-export `crate` under that name (see the `extern crate self` in
-// zlim-core for the same pattern).
-extern crate self as zlim_log;
-
 use core::fmt::{Debug, Formatter};
+
 use tracing_subscriber::layer::Layered;
 use tracing_subscriber::{EnvFilter, Layer, Registry};
 
@@ -131,11 +127,13 @@ impl LogPlugin {
         let mut filters = EnvFilter::builder().parse_lossy(default_string.as_str());
 
         for x in env_filters.split(',').filter(|s| !s.is_empty()) {
-            #[expect(clippy::print_stderr, reason = "logger is not ready yet")]
+            #[expect(clippy::allow_attributes, reason = "unexpected in wasm")]
+            #[allow(clippy::print_stderr, reason = "logger is not ready yet")]
             match x.parse::<Directive>() {
                 Ok(d) => filters = filters.add_directive(d),
                 Err(e) => {
                     ::core::hint::cold_path();
+                    // wasm cannot see this warning
                     std::eprintln!("LogPlugin failed to parse filter from env: {e}");
                 }
             }
@@ -148,16 +146,6 @@ impl LogPlugin {
         use tracing::subscriber::set_global_default;
         use tracing_log::LogTracer;
         use tracing_subscriber::layer::SubscriberExt;
-
-        #[cfg(feature = "trace")]
-        let old_handler = std::panic::take_hook();
-
-        #[cfg(feature = "trace")]
-        #[expect(clippy::print_stderr, reason = "Allowed during logger setup")]
-        std::panic::set_hook(Box::new(move |infos| {
-            std::eprintln!("{}", tracing_error::SpanTrace::capture());
-            old_handler(infos);
-        }));
 
         let subscriber: Registry = Registry::default();
 

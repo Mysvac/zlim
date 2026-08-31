@@ -225,6 +225,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// assert_eq!(world.entity_count(), 1);
     /// ```
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn queue(&mut self, cmd: impl Command) {
         self.queue.push(cmd.handle_error());
     }
@@ -236,12 +237,14 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// To implicitly use the fallback error handler, see [`Commands::queue`].
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn queue_handled(&mut self, cmd: impl Command, handler: ErrorHandler) {
         self.queue.push(cmd.handle_error_with(handler));
     }
 
     /// Pushes a generic [`Command`] and silently ignores command errors.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn queue_silenced(&mut self, cmd: impl Command) {
         self.queue.push(cmd.ignore_error());
     }
@@ -253,9 +256,7 @@ impl<'w, 's> Commands<'w, 's> {
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_empty(&mut self, parent: Option<EntityId>) -> EntityCommands<'_> {
         let entity = self.world.alloc_entity();
-
         self.queue(func::spawn_empty_at(entity, parent));
-
         self.with_entity(entity)
     }
 
@@ -296,9 +297,7 @@ impl<'w, 's> Commands<'w, 's> {
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn<B: Bundle>(&mut self, bundle: B, parent: Option<EntityId>) -> EntityCommands<'_> {
         let entity = self.world.alloc_entity();
-
         self.queue(func::spawn_at(bundle, entity, parent));
-
         self.with_entity(entity)
     }
 
@@ -353,6 +352,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// If the resource already exists, this is a no-op.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn init_resource<R: Resource + Send + FromWorld>(&mut self) {
         self.queue(func::init_resource::<R>());
     }
@@ -361,26 +361,23 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// This will overwrite any previous value of the same resource type.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_resource<R: Resource + Send>(&mut self, resource: R) {
         self.queue(func::insert_resource::<R>(resource));
     }
 
     /// Removes a [`Resource`] from the [`World`] if it exists.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn remove_resource<R: Resource + Send>(&mut self) {
         self.queue(func::remove_resource::<R>());
     }
 
     /// Queues a command that writes a [`Message`] into the world.
     ///
-    /// The message type must have been registered with
-    /// [`World::register_message`] first.
-    ///
-    /// # Panics
-    ///
-    /// Panics when the command is applied if the message type is not
-    /// registered.
+    /// If the message type has not been registered, it is implicitly registered.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn write_message<M: Message>(&mut self, message: M) {
         self.queue(func::write_message(message));
     }
@@ -388,11 +385,26 @@ impl<'w, 's> Commands<'w, 's> {
     /// Queues a command that runs the schedule with the given
     /// [`ScheduleLabel`].
     ///
-    /// The schedule is created empty if it does not exist yet (see
-    /// [`World::run_schedule`]).
+    /// Log a warning if the schdule does not exist, just like
+    /// [`World::try_run_schedule`].
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn run_schedule(&mut self, label: impl ScheduleLabel) {
         self.queue(func::run_schedule(label));
+    }
+
+    /// Queues a command that runs the schedule with the given
+    /// [`ScheduleLabel`].
+    ///
+    /// Do nothing if the schedule does not exist, just like:
+    ///
+    /// ```ignore
+    /// let _ = world.try_un_schedule(label);
+    /// ```
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_run_schedule(&mut self, label: impl ScheduleLabel) {
+        self.queue(func::try_run_schedule(label));
     }
 
     /// Queues a command that inserts a system into the world's cache.
@@ -406,6 +418,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// Commands apply in queue order: queue [`Commands::insert_system`]
     /// before [`Commands::invoke_handle`] for the same system.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_system<I, O, M>(&mut self, system: impl IntoSystem<I, O, M> + Send + 'static)
     where
         I: SystemInput + 'static,
@@ -420,6 +433,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// Does nothing if the handle was never inserted (or was already
     /// removed).
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn remove_system<I, O>(&mut self, handle: SystemHandle<I, O>)
     where
         I: SystemInput + 'static,
@@ -434,6 +448,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// command is applied (see [`World::invoke`]); only systems with `()`
     /// output can be run through `Commands`.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn invoke<I, O, M>(
         &mut self,
         system: impl IntoSystem<I, O, M> + Send + 'static,
@@ -455,6 +470,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// [`SystemError::Unregistered`]: crate::system::SystemError::Unregistered
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn invoke_handle<I, O>(&mut self, handle: SystemHandle<I, O>, input: I::Data<'static>)
     where
         I: SystemInput<Data<'static>: Send> + Send + 'static,
@@ -469,6 +485,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// command-apply time (see [`World::invoke_once`]).  Only systems
     /// with `()` output can be run through `Commands`.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn invoke_once<I, O, M>(
         &mut self,
         system: impl IntoSystem<I, O, M> + Send + 'static,
@@ -528,6 +545,7 @@ impl<'a> EntityCommands<'a> {
     ///
     /// [error handler]: crate::world::World::error_handler
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn queue(&mut self, command: impl EntityCommand) -> &mut Self {
         self.commands.queue(command.with_entity(self.entity));
         self
@@ -540,6 +558,7 @@ impl<'a> EntityCommands<'a> {
     ///
     /// To implicitly use the fallback error handler, see [`EntityCommands::queue`].
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn queue_handled(
         &mut self,
         command: impl EntityCommand,
@@ -554,6 +573,7 @@ impl<'a> EntityCommands<'a> {
     ///
     /// Unlike [`EntityCommands::queue_handled`], this will completely ignore any errors that occur.
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn queue_silenced(&mut self, command: impl EntityCommand) -> &mut Self {
         self.commands
             .queue_silenced(command.with_entity(self.entity));

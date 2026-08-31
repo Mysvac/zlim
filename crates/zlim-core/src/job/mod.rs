@@ -41,7 +41,8 @@
 //!
 //! The attribute generates a marker type implementing [`JobLabel`], whose
 //! [`JobDB`] builds a boxed [`Job`] from the annotated function. For
-//! non-generic markers the job auto-registers itself at startup.
+//! non-generic markers the job auto-registers itself at startup; pass
+//! `auto_register = false` to skip the registration code.
 //!
 //! ```rust
 //! use zlim_core::prelude::*;
@@ -158,7 +159,30 @@
 //!
 //! Generic markers cannot be auto-registered (a CTOR static may not
 //! reference generic parameters); they must be registered manually per
-//! instantiation with [`JobDB::register`] / [`JobGroup::register`].
+//! instantiation with [`JobDB::register`] / [`JobGroup::register`].  Omit
+//! `auto_register` (or set it to `false`) on a generic marker — setting
+//! `auto_register = true` is a compile error:
+//!
+//! ```compile_fail
+//! use zlim_core::prelude::*;
+//!
+//! // Generic markers cannot be auto-registered.
+//! #[job_fn(type = BadGeneric<T: Default>, auto_register = true)]
+//! fn bad_generic<T: Default>() {}
+//! ```
+//!
+//! ```compile_fail
+//! use zlim_core::prelude::*;
+//!
+//! fn compute() {}
+//!
+//! // Same rule applies to the `job!` macro.
+//! job! {
+//!     type: BadGenericPipe<T: Default>,
+//!     system: compute,
+//!     auto_register: true,
+//! }
+//! ```
 //!
 //! [`World`]: crate::world::World
 //! [`System`]: crate::system::System

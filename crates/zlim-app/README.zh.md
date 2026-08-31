@@ -53,7 +53,7 @@ app.insert_sub_app(Render, render_sub_app);
 
 未设置 runner 时，默认 runner 按上述流程**运行一帧然后结束**：
 
-```rust
+```rust, ignore
 fn run_once(mut app: App) -> AppExit {
     app.update();                       // 跑一帧（主世界 + 子世界）
     app.should_exit().unwrap_or(AppExit::Success)   // 检查退出事件
@@ -84,13 +84,22 @@ fn run_once(mut app: App) -> AppExit {
 ## 日志插件
 
 日志配置是**独立的**：虽然名为 `LogPlugin`（来自 `zlim-log`），但它没有实现
-`Plugin` trait。需要通过 `App::with_log_plugin(..)` 直接添加。
+`Plugin` trait，也不属于插件生命周期（`build`/`apply`/`cleanup`）。直接在
+`App` 上初始化日志：
 
-`LogPlugin` 保证在**所有插件之前**运行（在 `App::build` 的最开始生效）。
+- `App::init_logger()` — 使用默认配置初始化全局日志。
+- `App::with_logger(config)` — 使用给定的 `LogPlugin` 配置初始化（等效于
+  `LogPlugin::apply`）。
 
-若不添加，则不会启用日志——程序中的各种警告、错误信息都不会正常显示。
+与插件不同，这两个调用是**立即生效**的：在调用点即安装全局 subscriber，此后所有
+`App` 操作都可见于日志。建议在 `App::new()` 之后立即调用其中一个，以避免各种
+日志不可见导致的奇怪问题；尤其是启用 `trace` feature 时，若在日志启用前就创建
+Job、Schedule 等内容，内部的 span 将始终处于 disable 状态。
 
-日志是进程级共享的；多个 App 配置时只有第一个生效。
+若不初始化，则不会启用日志——程序中的各种警告、错误信息都不会正常显示。
+
+日志是进程级共享的：只能初始化**一次**，只有第一个配置生效。后续调用会失败并在
+日志输出 `error`，但不会 panic。
 
 ## 任务池配置
 
@@ -98,8 +107,8 @@ fn run_once(mut app: App) -> AppExit {
 
 与 `LogPlugin` 不同，任务池配置若未显式提供，则使用**默认配置**（自动设定合适的线程数）：
 
-```rust
-app.config_task_pool(TaskPoolConfigs::default());
+```rust, ignore
+app.with_task_pool_configs(TaskPoolConfigs::default());
 ```
 
 任务池是进程级共享的；多个 App 配置时只有第一个生效。

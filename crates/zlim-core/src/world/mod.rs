@@ -267,10 +267,6 @@ impl World {
     /// ```
     #[inline(never)]
     pub fn alloc() -> Box<World> {
-        crate::cfg::debug! {
-            let start = ::zlim_os::time::Instant::now();
-        }
-
         let mut world = Box::new(World {
             id: WorldId::alloc(),
             last_run: Tick::new(0),
@@ -301,10 +297,6 @@ impl World {
         {
             // Initialize Messages
             world.register_message::<crate::message::ReparentSignal>();
-        }
-
-        crate::cfg::debug! {
-            zlim_log::debug!("World({}) initialized: {:?}", world.id, start.elapsed());
         }
 
         world

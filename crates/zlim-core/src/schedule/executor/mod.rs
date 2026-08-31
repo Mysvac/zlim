@@ -16,12 +16,14 @@ use zlim_utils::mem::Bump;
 use super::Node;
 use crate::error::ErrorHandler;
 use crate::job::Job;
+use crate::schedule::InternedScheduleLabel;
 use crate::system::{AccessTable, SystemFlags};
 use crate::world::World;
 
 // -----------------------------------------------------------------------------
 // ConflictTable
 
+/// A square conflict matrix for tracking pairwise conflicts between jobs.
 pub struct ConflictTable {
     // We use complete matrices instead of triangles.
     // This has better cache affinity during traversal.
@@ -123,8 +125,8 @@ impl Default for ConflictTable {
 /// lookup table.
 ///
 /// [`Schedule::update`]: crate::schedule::Schedule::update
-#[derive(Default)]
 pub struct JobSchedule {
+    pub(super) label: InternedScheduleLabel,
     pub(super) jobs: Vec<Box<dyn Job>>,
     pub(super) flags: Vec<SystemFlags>,
     pub(super) conflict: ConflictTable,
@@ -133,8 +135,31 @@ pub struct JobSchedule {
     pub(super) outgoing: Vec<&'static [u16]>,
     pub(super) strong_incoming: Vec<u16>,
     pub(super) strong_outgoing: Vec<&'static [u16]>,
-    pub(super) access_tables: Vec<AccessTable>,
     pub(super) pool: Bump,
+    pub(super) access_tables: Vec<AccessTable>,
+    #[cfg(feature = "trace")]
+    pub(super) spans: Vec<zlim_log::Span>,
+}
+
+impl JobSchedule {
+    /// Create a empty JobSchedule
+    pub(crate) fn new(label: InternedScheduleLabel) -> Self {
+        Self {
+            label,
+            jobs: Vec::new(),
+            flags: Vec::new(),
+            conflict: ConflictTable::new(0),
+            nodes: Vec::new(),
+            incoming: Vec::new(),
+            outgoing: Vec::new(),
+            strong_incoming: Vec::new(),
+            strong_outgoing: Vec::new(),
+            pool: Bump::new(256),
+            access_tables: Vec::new(),
+            #[cfg(feature = "trace")]
+            spans: Vec::new(),
+        }
+    }
 }
 
 unsafe impl Sync for JobSchedule {}
@@ -142,9 +167,11 @@ unsafe impl Send for JobSchedule {}
 
 /// A structured, read-mostly view over a compiled [`JobSchedule`].
 ///
-/// Executors destructure this view to read dependency metadata while mutating
-/// job objects in place.
+/// Executors destructure this view to read dependency metadata while
+/// mutating job objects in place.
 pub struct JobScheduleView<'s> {
+    /// Schedule Label
+    pub label: InternedScheduleLabel,
     /// Mutable access to compiled system objects.
     pub jobs: &'s mut [Box<dyn Job>],
     /// Readonly access to all bitflags representing system requirements.
@@ -166,12 +193,16 @@ pub struct JobScheduleView<'s> {
     pub strong_outgoing: &'s [&'s [u16]],
     /// Readonly access to AccessTable.
     pub access_tables: &'s [AccessTable],
+    /// job spans for tracing
+    #[cfg(feature = "trace")]
+    pub spans: &'s mut [zlim_log::Span],
 }
 
 impl JobSchedule {
     /// Returns a structured view over compiled schedule data.
     pub fn view(&mut self) -> JobScheduleView<'_> {
         let JobSchedule {
+            label,
             jobs,
             flags,
             nodes,
@@ -181,10 +212,13 @@ impl JobSchedule {
             strong_incoming,
             strong_outgoing,
             access_tables,
+            #[cfg(feature = "trace")]
+            spans,
             ..
         } = self;
 
         JobScheduleView {
+            label: *label,
             jobs,
             flags,
             conflict,
@@ -194,6 +228,8 @@ impl JobSchedule {
             strong_incoming,
             strong_outgoing,
             access_tables,
+            #[cfg(feature = "trace")]
+            spans,
         }
     }
 

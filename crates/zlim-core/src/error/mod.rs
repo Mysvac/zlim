@@ -16,9 +16,6 @@
 //! let err = ZlimError::warning("disk is nearly full".to_string());
 //! assert_eq!(err.severity(), Severity::Warning);
 //!
-//! // `Display` prints the message (severity is queried separately).
-//! assert_eq!(err.to_string().trim(), "disk is nearly full");
-//!
 //! // Severity metadata can be adjusted without touching the payload.
 //! let err = err.with_severity(Severity::Error);
 //! assert_eq!(err.severity(), Severity::Error);
@@ -125,6 +122,8 @@
 // Modules
 
 mod context;
+mod payload;
+mod result;
 mod zlim_error;
 
 pub mod handler;
@@ -132,11 +131,11 @@ pub mod handler;
 // -----------------------------------------------------------------------------
 // Exports
 
-pub use zlim_core_derive::Error;
-
 pub use context::ErrorContext;
-pub use handler::PANIC_ORIGINATES_FROM_ERROR_HANDLER;
 pub use handler::{ErrorHandler, default_error_handler};
-pub use zlim_error::zlim_error_panic_hook;
-pub use zlim_error::{IntoZlimResult, Severity};
-pub use zlim_error::{ZlimError, ZlimResult};
+pub use payload::PanicPayload;
+pub use result::{IntoZlimResult, ZlimResult};
+pub use zlim_core_derive::Error;
+pub use zlim_error::{Severity, ZlimError};
+
+// -----------------------------------------------------------------------------

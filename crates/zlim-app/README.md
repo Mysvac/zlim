@@ -62,7 +62,7 @@ The single-frame flow (`App::update`):
 
 When no runner is set, the default runner runs **one frame and then exits**:
 
-```rust
+```rust, ignore
 fn run_once(mut app: App) -> AppExit {
     app.update();                       // run one frame (main + sub worlds)
     app.should_exit().unwrap_or(AppExit::Success)   // check the exit event
@@ -97,17 +97,29 @@ implementations.
 ## Log plugin
 
 Logging configuration is **independent**: although it is named `LogPlugin`
-(from `zlim-log`), it does **not** implement the `Plugin` trait. Add it
-directly via `App::with_log_plugin(..)`.
+(from `zlim-log`), it does **not** implement the `Plugin` trait and is not
+part of the plugin lifecycle (`build`/`apply`/`cleanup`). Initialize the
+logger directly on the `App`:
 
-`LogPlugin` is guaranteed to run **before all plugins** (it takes effect at
-the very start of `App::build`).
+- `App::init_logger()` — initializes the global logger with the default
+  configuration.
+- `App::with_logger(config)` — initializes it with a custom `LogPlugin`
+  configuration (equivalent to `LogPlugin::apply`).
 
-If it is not added, logging is disabled — warnings and errors from the
+Unlike plugins, these calls take effect **immediately**: the global
+subscriber is installed at the call site, so every later `App` operation is
+visible in the logs. Call one of them right after `App::new` to avoid the odd
+problems caused by invisible logs — in particular, when the `trace` feature
+is enabled, jobs/schedules created before the logger is up would build their
+spans while the dispatcher is disabled, leaving those spans permanently
+inactive.
+
+If it is not initialized, logging is disabled — warnings and errors from the
 program will not be displayed.
 
-Logging is process-global; when multiple apps configure it, only the first
-one takes effect.
+Logging is process-global: it can only be initialized **once**, and only the
+first configuration takes effect. Later calls fail and report an `error` to
+the log output, but do **not** panic.
 
 ## Task pool configuration
 
@@ -118,12 +130,15 @@ Unlike `LogPlugin`, when the task pool configuration is not explicitly
 provided, the **default configuration** is used (auto-picking a suitable
 thread count):
 
-```rust
-app.config_task_pool(TaskPoolConfigs::default());
+```rust, ignore
+app.with_task_pool_configs(TaskPoolConfigs::default());
 ```
 
 The task pool is process-global; when multiple apps configure it, only the
 first one takes effect.
+
+`TaskPoolConfigs` is guaranteed to run **before all plugins** (it takes effect at
+the very start of `App::build`).
 
 ## MainSchedulePlugin
 

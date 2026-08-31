@@ -87,7 +87,7 @@ pub use transform_change_root::TransformChangeRoot;
 ///
 /// In other words: for a static scene with no changes, the best case needs a
 /// single O(N) sequential pass.  In the worst case the whole scene must be
-/// updated, which becomes O(3·N) random access plus O(N) sequential access —
+/// updated, which becomes O(2·N) random access plus O(N) sequential access —
 /// but when the whole scene needs updating, many of stage 1's operations are
 /// unnecessary.
 ///
@@ -95,15 +95,20 @@ pub use transform_change_root::TransformChangeRoot;
 ///
 /// - [`Default`] — the default operations described above.
 ///
+/// - [`PropagateUp`] — replaces the downward marking by skipping steps 2-4:
+///   for each changed node, walk the ancestor chain upward; if any ancestor
+///   is also changed, the node belongs to that ancestor's subtree and is not
+///   a root; a node whose ancestor chain contains no changed node (or ends)
+///   is a root of a changed subtree.  Each changed node pays one O(depth)
+///   parent-chain query instead of marking its whole subtree, which suits
+///   sparse, shallow changes; deep hierarchies can degrade toward
+///   O(N×depth) in the worst case.
+///
 /// - [`PropagateAll`] — simplifies stage 1: it directly collects every entity
 ///   that is a root (no parent, or whose parent lacks a `Transform` component),
 ///   reducing stage 1 to O(N) random access (still needs a parent-existence
 ///   check).  Stage 2 then always costs O(N) because the whole tree is propagated;
 ///   the total is O(2·N) random access.
-///
-/// - [`PropagateAllOnce`] — behaves like [`PropagateAll`] for a single frame,
-///   then automatically reverts to [`Default`].  Useful when switching game
-///   scenes: it shaves off roughly half of the processing time for that frame.
 ///
 /// For highly dynamic scenes, consider using [`PropagateAll`] directly.
 ///
@@ -111,8 +116,8 @@ pub use transform_change_root::TransformChangeRoot;
 /// (and will output warnings).
 ///
 /// [`Default`]: Self::Default
+/// [`PropagateUp`]: Self::PropagateUp
 /// [`PropagateAll`]: Self::PropagateAll
-/// [`PropagateAllOnce`]: Self::PropagateAllOnce
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(zlim_core::derive::Resource)]
 #[derive(zlim_reflect::derive::TypePath)]
@@ -120,8 +125,8 @@ pub use transform_change_root::TransformChangeRoot;
 pub enum TransformPropagateStrategy {
     #[default]
     Default,
+    PropagateUp,
     PropagateAll,
-    PropagateAllOnce,
 }
 
 // -----------------------------------------------------------------------------
@@ -146,7 +151,7 @@ zlim_task::cfg::single_thread! {
     #[expect(unsafe_code, reason = "for better performance")]
     mod change_detection_impls {
         use core::ptr::NonNull;
-        use zlim_core::borrow::{Mut, ResMut};
+        use zlim_core::borrow::{Mut, ResMut, Res};
         use zlim_core::entity::EntityId;
         use zlim_core::job_fn;
         use zlim_core::message::{MessageReader, ReparentSignal};
@@ -168,31 +173,32 @@ zlim_task::cfg::single_thread! {
         /// If [`TransformPropagateStrategy`] is set to `PropagateAll`,
         /// subtree marking is skipped, and all root nodes with a [`Transform`] component
         /// are collected directly.
+        ///
+        /// If it is set to `PropagateUp`, steps 2-4 of the default strategy
+        /// are skipped and replaced by an upward query: each changed node
+        /// walks its ancestor chain and becomes a root only when no ancestor
+        /// is changed.
         #[job_fn(type = TransformChangeDetection, name = "zlim_transform::TransformChangeDetection")]
         fn transform_change_detection(
             hierarchy: HierarchyQuery,
             global: Query<&GlobalTransform>,
             mut query: Query<(Mut<Transform>, EntityId)>,
             mut reparent: MessageReader<ReparentSignal>,
-            mut strategy: ResMut<TransformPropagateStrategy>,
+            strategy: Res<TransformPropagateStrategy>,
             mut tcroot: ResMut<TransformChangeRoot>,
             mut tcroot_buf: Local<TransformChangeRoot>,
             mut buffer: Local<Vec<EntityId>>,
         ) {
             let tcroot: &mut Vec<(EntityId, Option<EntityId>)> = &mut tcroot.0;
-            let tcroot_buf: &mut Vec<(EntityId, Option<EntityId>)> = &mut tcroot_buf.0;
             // SAFETY: EntityId no needs drop
-            unsafe { tcroot_buf.set_len(0) };
             unsafe { tcroot.set_len(0) };
-            unsafe { buffer.set_len(0) };
 
             // If propagating all, collect all "root" entities directly
-            if !matches!(*strategy, TransformPropagateStrategy::Default) {
-                ::core::hint::cold_path();
-
+            if matches!(*strategy, TransformPropagateStrategy::PropagateAll) {
                 let ptr: NonNull<Query<(Mut<Transform>, EntityId)>> = NonNull::from_mut(&mut query);
                 let q2 = unsafe { &*ptr.as_ptr() };
 
+                // Note: `Query::iter_slice_mut + iter` is faster than `Query::iter`
                 for (_, entities) in query.iter_slice_mut() {
                     for &id in entities {
                         // SAFETY: `id` comes from the query, so the entity is alive.
@@ -212,15 +218,12 @@ zlim_task::cfg::single_thread! {
                     }
                 }
 
-                if matches!(*strategy, TransformPropagateStrategy::PropagateAllOnce) {
-                    *strategy = TransformPropagateStrategy::Default;
-                }
-
-                return;
+                return; // <---
             }
+
             // Non-full propagation: collect all root nodes of changed subtrees.
 
-            // Step-1: Mark all root nodes that have undergone structural changes (reparent)
+            // Mark all root nodes that have undergone structural changes (reparent)
             for r in reparent.read() {
                 let id = r.entity;
                 if let Ok((mut transform, _)) = query.get_mut(id)
@@ -231,9 +234,8 @@ zlim_task::cfg::single_thread! {
                         && let Ok(pgt) = global.get(p)
                     {
                         if pgt.mul_transform(*transform) != *gt {
-                            // NOTE: the float comparison may cause an
-                            // unnecessary `set_changed` due to precision
-                            // issues, but the impact is small.
+                            // NOTE: the float comparison may cause an unnecessary
+                            // `set_changed` due to precision issues, but the impact is small.
                             transform.set_changed();
                         }
                     } else {
@@ -244,9 +246,49 @@ zlim_task::cfg::single_thread! {
                 }
             }
 
-            // Step-2: Collect all changed "root" nodes, and collect all child nodes
-            // that need change propagation detection.
-            // Note: `Query::iter_slice_mut + iter` is faster than `Query::iter`
+            // PropagateUp: Checks each node against the change root by querying upward.
+            if matches!(*strategy, TransformPropagateStrategy::PropagateUp) {
+                let ptr: NonNull<Query<(Mut<Transform>, EntityId)>> = NonNull::from_mut(&mut query);
+                let q2 = unsafe { &mut *ptr.as_ptr() };
+
+                for (transforms, entities) in query.iter_slice_mut() {
+                    debug_assert_eq!(transforms.len(), entities.len());
+
+                    'out: for (transform, entity) in transforms.into_iter().zip(entities) {
+                        if !transform.is_changed() {
+                            continue;
+                        }
+                        ::core::hint::cold_path();
+
+                        let id = *entity;
+                        let parent = unsafe { hierarchy.get_parent_unchecked(id) };
+
+                        let mut iter_item = parent;
+                        'inn: while let Some(node) = iter_item {
+                            let Ok((transform, _)) = q2.get_mut(node) else {
+                                break 'inn; // without parent, it's root node
+                            };
+                            if transform.is_changed() {
+                                continue 'out; // ancestor is changed, it's not root
+                            }
+                            iter_item = unsafe { hierarchy.get_parent_unchecked(node) };
+                        }
+
+                        tcroot.push((id, parent))
+                    }
+                }
+
+                return;
+            }
+
+            // TransformPropagateStrategy::Default: propagate down
+
+            let tcroot_buf: &mut Vec<(EntityId, Option<EntityId>)> = &mut tcroot_buf.0;
+            unsafe { tcroot_buf.set_len(0) };
+            unsafe { buffer.set_len(0) };
+
+            // Step-1: Collect all changed "root" nodes, and collect all
+            // child nodes that need change propagation detection.
             for (transforms, entities) in query.iter_slice_mut() {
                 debug_assert_eq!(transforms.len(), entities.len());
                 for (transform, entity) in transforms.into_iter().zip(entities) {
@@ -267,7 +309,7 @@ zlim_task::cfg::single_thread! {
                 }
             }
 
-            // Step-3: Propagate change detection
+            // Step-2: Propagate down change detection
             while let Some(node) = buffer.pop() {
                 let Ok((mut transform, _)) = query.get_mut(node) else {
                     continue;
@@ -286,8 +328,8 @@ zlim_task::cfg::single_thread! {
                 buffer.extend_from_slice(children);
             }
 
-            // Step-4: Filter out invalid changed "root" nodes
-            tcroot.reserve(tcroot_buf.len() >> 1);
+            // Step-3: Filter out invalid changed "root" nodes
+            tcroot.reserve(tcroot_buf.len() >> 2);
             for &(id, px) in tcroot_buf.iter() {
                 let Some(p) = px else {
                     tcroot.push((id, None));
@@ -412,7 +454,7 @@ zlim_task::cfg::multi_thread! {
         use core::cell::RefCell;
         use core::mem::transmute;
         use core::ptr::NonNull;
-        use zlim_core::borrow::{Mut, ResMut};
+        use zlim_core::borrow::{Mut, ResMut, Res};
         use zlim_core::entity::EntityId;
         use zlim_core::job_fn;
         use zlim_core::message::{MessageReader, ReparentSignal};
@@ -436,13 +478,18 @@ zlim_task::cfg::multi_thread! {
         /// If [`TransformPropagateStrategy`] is set to `PropagateAll`,
         /// subtree marking is skipped, and all root nodes with a [`Transform`] component
         /// are collected directly.
+        ///
+        /// If it is set to `PropagateUp`, steps 2-4 of the default strategy
+        /// are skipped and replaced by an upward query: each changed node
+        /// walks its ancestor chain and becomes a root only when no ancestor
+        /// is changed.
         #[job_fn(type = TransformChangeDetection, name = "zlim_transform::TransformChangeDetection")]
         fn transform_change_detection(
             hierarchy: HierarchyQuery,
             global: Query<&GlobalTransform>,
             mut query: Query<(Mut<Transform>, EntityId)>,
             mut reparent: MessageReader<ReparentSignal>,
-            mut strategy: ResMut<TransformPropagateStrategy>,
+            strategy: Res<TransformPropagateStrategy>,
             mut tcroot: ResMut<TransformChangeRoot>,
             mut tcroot_buf: Local<TransformChangeRoot>,
         ) {
@@ -451,9 +498,7 @@ zlim_task::cfg::multi_thread! {
             unsafe { tcroot.iter_mut().for_each(|x| x.get_mut().set_len(0)) };
 
             // If propagating all, collect all "root" entities directly
-            if !matches!(*strategy, TransformPropagateStrategy::Default) {
-                ::core::hint::cold_path();
-
+            if matches!(*strategy, TransformPropagateStrategy::PropagateAll) {
                 const CHUNK_SIZE: usize = 2048; // need benchmark
                 const ONE_HALF_CHUNK: usize = CHUNK_SIZE + (CHUNK_SIZE >> 1);
 
@@ -509,21 +554,12 @@ zlim_task::cfg::multi_thread! {
                     }
                 });
 
-                if matches!(*strategy, TransformPropagateStrategy::PropagateAllOnce) {
-                    *strategy = TransformPropagateStrategy::Default;
-                }
-
                 return;
             }
 
             // Non-full propagation: collect all root nodes of changed subtrees.
 
-            let tcroot_buf: &mut ThreadLocal<RefCell<Vec<(EntityId, Option<EntityId>)>>> =
-                &mut tcroot_buf.0;
-            // SAFETY: EntityId no needs drop
-            unsafe { tcroot_buf.iter_mut().for_each(|x| x.get_mut().set_len(0)) };
-
-            // Step-1: Mark all root nodes that have undergone structural changes (reparent)
+            // Mark all root nodes that have undergone structural changes (reparent)
             for r in reparent.read() {
                 let id = r.entity;
                 if let Ok((mut transform, _)) = query.get_mut(id)
@@ -547,7 +583,99 @@ zlim_task::cfg::multi_thread! {
                 }
             }
 
-            // Step-2: Collect all changed "root" nodes, and collect all child nodes
+            // PropagateUp: Checks each node against the change root by querying upward.
+            if matches!(*strategy, TransformPropagateStrategy::PropagateUp) {
+                const CHUNK_SIZE: usize = 512; // need benchmark
+                const ONE_HALF_CHUNK: usize = CHUNK_SIZE + (CHUNK_SIZE >> 1);
+
+                zlim_task::MainTaskPool::get().scope(|s| {
+                    let ptr: NonNull<Query<(Mut<Transform>, EntityId)>> = NonNull::from_mut(&mut query);
+                    let tcroot_ref: &ThreadLocal<RefCell<Vec<(EntityId, Option<EntityId>)>>> = tcroot;
+
+                    for (mut transforms, mut entities) in query.iter_slice_mut() {
+                        // split large blocks
+                        while entities.len() > ONE_HALF_CHUNK {
+                            let (t1, t2) = transforms.split_at(CHUNK_SIZE);
+                            let (e1, e2) = unsafe { entities.split_at_unchecked(CHUNK_SIZE) };
+                            transforms = t2;
+                            entities = e2;
+
+                            let q2: &mut Query<(Mut<Transform>, EntityId)> = unsafe { &mut *ptr.as_ptr() };
+
+                            s.spawn(async move {
+                                let mut local = tcroot_ref.get_or_default().borrow_mut();
+                                let local_tcroot: &mut Vec<(EntityId, Option<EntityId>)> = &mut local;
+                                'out: for (transform, entity) in t1.into_iter().zip(e1) {
+                                    if !transform.is_changed() {
+                                        continue;
+                                    }
+                                    ::core::hint::cold_path();
+
+                                    let id = *entity;
+                                    let parent = unsafe { hierarchy.get_parent_unchecked(id) };
+
+                                    let mut iter_item = parent;
+                                    'inn: while let Some(node) = iter_item {
+                                        let Ok((transform, _)) = q2.get_mut(node) else {
+                                            break 'inn; // without parent, it's root node
+                                        };
+                                        if transform.is_changed() {
+                                            continue 'out; // ancestor is changed, it's not root
+                                        }
+                                        iter_item = unsafe { hierarchy.get_parent_unchecked(node) };
+                                    }
+
+                                    local_tcroot.push((id, parent))
+                                }
+                            });
+
+                        }
+
+                        if !entities.is_empty() {
+                            debug_assert_eq!(transforms.len(), entities.len());
+                            let q2: &mut Query<(Mut<Transform>, EntityId)> = unsafe { &mut *ptr.as_ptr() };
+
+                            s.spawn(async move {
+                                let mut local = tcroot_ref.get_or_default().borrow_mut();
+                                let local_tcroot: &mut Vec<(EntityId, Option<EntityId>)> = &mut local;
+                                'out: for (transform, entity) in transforms.into_iter().zip(entities) {
+                                    if !transform.is_changed() {
+                                        continue;
+                                    }
+                                    ::core::hint::cold_path();
+
+                                    let id = *entity;
+                                    let parent = unsafe { hierarchy.get_parent_unchecked(id) };
+
+                                    let mut iter_item = parent;
+                                    'inn: while let Some(node) = iter_item {
+                                        let Ok((transform, _)) = q2.get_mut(node) else {
+                                            break 'inn; // without parent, it's root node
+                                        };
+                                        if transform.is_changed() {
+                                            continue 'out; // ancestor is changed, it's not root
+                                        }
+                                        iter_item = unsafe { hierarchy.get_parent_unchecked(node) };
+                                    }
+
+                                    local_tcroot.push((id, parent))
+                                }
+                            });
+                        }
+                    }
+                });
+
+                return;
+            }
+
+            // TransformPropagateStrategy::Default: propagate down
+
+            let tcroot_buf: &mut ThreadLocal<RefCell<Vec<(EntityId, Option<EntityId>)>>> =
+                &mut tcroot_buf.0;
+            // SAFETY: EntityId no needs drop
+            unsafe { tcroot_buf.iter_mut().for_each(|x| x.get_mut().set_len(0)) };
+
+            // Step-1: Collect all changed "root" nodes, and collect all child nodes
             // that need change propagation detection.
             zlim_task::MainTaskPool::get().scope(|s| {
                 const CHUNK_SIZE: usize = 2048; // need benchmark
@@ -602,7 +730,7 @@ zlim_task::cfg::multi_thread! {
                 }
             });
 
-            // Step-3: Propagate change detection
+            // Step-2: Propagate change detection
             zlim_task::MainTaskPool::get().scope(|s: &Scope<'_, '_, ()>| {
                 // SAFETY: the lifetime is ensured by `iterate` function
                 let s2: &'static Scope<'static, 'static, ()> =
@@ -681,7 +809,7 @@ zlim_task::cfg::multi_thread! {
                 }
             });
 
-            // Step-4: Filter out invalid changed "root" nodes
+            // Step-3: Filter out invalid changed "root" nodes
             zlim_task::MainTaskPool::get().scope(|s: &Scope<'_, '_, ()>| {
                 const CHUNK_SIZE: usize = 1024; // need benchmark
                 const ONE_HALF_CHUNK: usize = CHUNK_SIZE + (CHUNK_SIZE >> 1);

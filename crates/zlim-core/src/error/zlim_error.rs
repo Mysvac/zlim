@@ -3,10 +3,10 @@
 use core::error::Error;
 use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
-use core::ops::ControlFlow;
 use core::ptr::NonNull;
 use std::backtrace::Backtrace;
-use std::panic::PanicHookInfo;
+
+use zlim_utils::debug::DebugLocation;
 
 // -----------------------------------------------------------------------------
 // ZlimError
@@ -32,12 +32,6 @@ use std::panic::PanicHookInfo;
 /// ```
 #[repr(transparent)]
 pub struct ZlimError(NonNull<()>, PhantomData<Box<InnerError>>);
-
-/// A specialized [`Result`] type alias for [`ZlimError`].
-///
-/// This is the recommended return type for fallible functions throughout the
-/// engine. Prefer this over `Result<T, ZlimError>` for brevity and consistency.
-pub type ZlimResult<T> = Result<T, ZlimError>;
 
 // -----------------------------------------------------------------------------
 // Severity
@@ -102,6 +96,7 @@ type BoxedError = Box<dyn Error + Send + Sync + 'static>;
 #[repr(align(8))]
 struct InnerError {
     content: BoxedError,
+    location: DebugLocation,
     #[cfg(feature = "backtrace")]
     backtrace: Backtrace,
 }
@@ -130,6 +125,12 @@ impl ZlimError {
     fn get_ptr(&self) -> *mut InnerError {
         (self.0.as_ptr() as usize & UPPER) as *mut InnerError
     }
+
+    /// return a readonly reference of [`InnerError`].
+    #[inline(always)]
+    fn get_inner(&self) -> &InnerError {
+        unsafe { &*self.get_ptr() }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -140,7 +141,7 @@ impl ZlimError {
     ///
     /// Encodes `severity` into the low bits of the heap pointer via pointer-tagging.
     #[inline(never)]
-    fn new_boxed(severity: Severity, content: BoxedError) -> Self {
+    fn new_boxed(severity: Severity, content: BoxedError, location: DebugLocation) -> Self {
         #[cfg(feature = "backtrace")]
         let backtrace = match severity {
             Severity::Ignore | Severity::Debug | Severity::Info => Backtrace::disabled(),
@@ -148,10 +149,14 @@ impl ZlimError {
         };
 
         #[cfg(not(feature = "backtrace"))]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content }));
+        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content, location }));
 
         #[cfg(feature = "backtrace")]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content, backtrace }));
+        let ptr: *mut InnerError = Box::leak(Box::new(InnerError {
+            content,
+            location,
+            backtrace,
+        }));
 
         debug_assert!(
             (ptr as usize & MASKS) == 0,
@@ -176,50 +181,57 @@ impl ZlimError {
     /// [`ZlimError::panic`].
     #[cold]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn new(severity: Severity, error: impl Into<BoxedError>) -> Self {
-        Self::new_boxed(severity, error.into())
+        Self::new_boxed(severity, error.into(), DebugLocation::caller())
     }
 
     /// Creates a new `ZlimError` with [`Severity::Ignore`].
     #[cold]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn ignore(error: impl Into<BoxedError>) -> Self {
-        Self::new_boxed(Severity::Ignore, error.into())
+        Self::new_boxed(Severity::Ignore, error.into(), DebugLocation::caller())
     }
 
     /// Creates a new `ZlimError` with [`Severity::Debug`].
     #[cold]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn debug(error: impl Into<BoxedError>) -> Self {
-        Self::new_boxed(Severity::Debug, error.into())
+        Self::new_boxed(Severity::Debug, error.into(), DebugLocation::caller())
     }
 
     /// Creates a new `ZlimError` with [`Severity::Info`].
     #[cold]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn info(error: impl Into<BoxedError>) -> Self {
-        Self::new_boxed(Severity::Info, error.into())
+        Self::new_boxed(Severity::Info, error.into(), DebugLocation::caller())
     }
 
     /// Creates a new `ZlimError` with [`Severity::Warning`].
     #[cold]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn warning(error: impl Into<BoxedError>) -> Self {
-        Self::new_boxed(Severity::Warning, error.into())
+        Self::new_boxed(Severity::Warning, error.into(), DebugLocation::caller())
     }
 
     /// Creates a new `ZlimError` with [`Severity::Error`].
     #[cold]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn error(error: impl Into<BoxedError>) -> Self {
-        Self::new_boxed(Severity::Error, error.into())
+        Self::new_boxed(Severity::Error, error.into(), DebugLocation::caller())
     }
 
     /// Creates a new `ZlimError` with [`Severity::Panic`].
     #[cold]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn panic(error: impl Into<BoxedError>) -> Self {
-        Self::new_boxed(Severity::Panic, error.into())
+        Self::new_boxed(Severity::Panic, error.into(), DebugLocation::caller())
     }
 
     /// Returns the [`Severity`] stored in the pointer's low bits.
@@ -312,12 +324,6 @@ impl ZlimError {
         self.with_severity(f(old_severity))
     }
 
-    /// Returns a reference to the underlying boxed error.
-    #[inline]
-    pub fn get(&self) -> &(dyn Error + Send + Sync + 'static) {
-        unsafe { (*self.get_ptr()).content.as_ref() }
-    }
-
     /// Consumes the `ZlimError` and returns the inner boxed error.
     ///
     /// The severity metadata is discarded. This is useful when you need to
@@ -327,6 +333,26 @@ impl ZlimError {
         let ptr: *mut InnerError = self.get_ptr();
         ::core::mem::forget(self);
         unsafe { Box::from_raw(ptr).content }
+    }
+
+    /// Returns a reference to the underlying boxed error.
+    #[inline]
+    pub fn get(&self) -> &(dyn Error + Send + Sync + 'static) {
+        self.get_inner().content.as_ref()
+    }
+
+    /// Returns the source code location where this [`ZlimError`] was triggered.
+    #[inline]
+    pub fn location(&self) -> DebugLocation {
+        self.get_inner().location
+    }
+
+    /// Overrides the [`DebugLocation`] of this error.
+    #[inline]
+    pub fn with_location(self, location: DebugLocation) -> Self {
+        let ptr: *mut InnerError = self.get_ptr();
+        unsafe { (*ptr).location = location };
+        self
     }
 }
 
@@ -342,17 +368,133 @@ impl Drop for ZlimError {
 // -----------------------------------------------------------------------------
 // Backtrace
 
+#[cfg(feature = "backtrace")]
+const FILTER_MESSAGE: &str = "NOTE: Some \"noisy\" backtrace lines have been filtered out. Run with `ZLIM_BACKTRACE=full` for a verbose backtrace.";
+
+#[cfg(feature = "backtrace")]
+const NOISE_CONTENTS: &[&str] = &[
+    "std::backtrace_rs::backtrace::",
+    "std::backtrace::Backtrace::",
+    "std::panicking::catch_unwind",
+    "std::panic::catch_unwind",
+    "std::thread::local::LocalKey",
+    "core::panic::unwind_safe",
+    "core::ops::function::",
+    "zlim_core::job::into_job::",
+    "zlim_core::system::function::",
+    "zlim_core::schedule::executor::",
+    "zlim_core::error::zlim_error::ZlimError::new_boxed",
+    "zlim_task::platform::",
+    "futures_lite::future::",
+    "async_task::raw::",
+    "async_task::runnable::Runnable",
+];
+
+#[cfg(feature = "backtrace")]
+const STOP_SIGNALS: &[&str] = &["std::sys::backtrace::__rust_begin_short_backtrace"];
+
+#[cfg(feature = "backtrace")]
 impl ZlimError {
+    fn format_backtrace(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use std::backtrace::BacktraceStatus;
+
+        let backtrace = unsafe { &(*self.get_ptr()).backtrace };
+
+        if !matches!(backtrace.status(), BacktraceStatus::Captured) {
+            return Ok(());
+        }
+
+        f.write_str("\n\nstack backtrace:\n")?;
+
+        #[cfg(not(target_family = "wasm"))]
+        static FULL_BACKTRACE: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+            std::env::var("ZLIM_BACKTRACE").is_ok_and(|val| val == "full")
+        });
+
+        #[cfg(not(target_family = "wasm"))]
+        if *FULL_BACKTRACE {
+            return Display::fmt(backtrace, f);
+        }
+
+        let backtrace_str = backtrace.to_string();
+        let mut skip_next_location_line = false;
+
+        for line in backtrace_str.split('\n') {
+            if skip_next_location_line {
+                if line.starts_with("             at") {
+                    continue;
+                }
+                skip_next_location_line = false;
+            }
+
+            // "  5: zlim_core::error::zlim_error::ZlimError::panic"
+            //     ↑
+            if let Some(index) = line.find(": ") {
+                let pattern = line[(index + 2)..].trim_start();
+
+                if NOISE_CONTENTS.iter().any(|&x| pattern.starts_with(x)) {
+                    skip_next_location_line = true;
+                    continue;
+                }
+
+                if STOP_SIGNALS.iter().any(|&x| pattern.starts_with(x)) {
+                    break;
+                }
+            }
+
+            f.write_str(line)?;
+            f.write_str("\n")?;
+        }
+
+        f.write_str(FILTER_MESSAGE)?;
+        f.write_str("\n\n")
+    }
+}
+
+impl ZlimError {
+    /// Returns `true` if a backtrace has been captured for this error.
+    #[inline(always)]
+    #[cfg(not(feature = "backtrace"))]
+    pub fn backtrace_captured(&self) -> bool {
+        false
+    }
+
+    /// Returns `true` if a backtrace has been captured for this error.
+    #[cfg(feature = "backtrace")]
+    pub fn backtrace_captured(&self) -> bool {
+        let inner = unsafe { &*self.get_ptr() };
+        matches!(
+            inner.backtrace.status(),
+            std::backtrace::BacktraceStatus::Captured
+        )
+    }
+}
+
+impl ZlimError {
+    #[cfg(feature = "backtrace")]
+    pub(crate) fn take_backtrace(&mut self) -> Backtrace {
+        let inner = unsafe { &mut *self.get_ptr() };
+        core::mem::replace(&mut inner.backtrace, Backtrace::disabled())
+    }
+
+    #[cfg(not(feature = "backtrace"))]
+    pub(crate) const fn take_backtrace(&mut self) -> Backtrace {
+        Backtrace::disabled()
+    }
+
     #[inline(never)]
-    fn with_backtrace_boxed(severity: Severity, content: BoxedError, backtrace: Backtrace) -> Self {
-        #[cfg(not(feature = "backtrace"))]
-        let _ = backtrace;
-
-        #[cfg(not(feature = "backtrace"))]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content }));
-
-        #[cfg(feature = "backtrace")]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content, backtrace }));
+    #[cfg(feature = "backtrace")]
+    fn new_with_backtrace_boxed(
+        severity: Severity,
+        content: BoxedError,
+        backtrace: Backtrace,
+        location: DebugLocation,
+    ) -> Self {
+        let ptr: *mut InnerError = Box::leak(Box::new(InnerError {
+            content,
+            location,
+            backtrace,
+        }));
 
         debug_assert!(
             (ptr as usize & MASKS) == 0,
@@ -369,104 +511,26 @@ impl ZlimError {
     ///
     /// Like [`ZlimError::new`], but if the `backtrace` cargo feature is enabled
     /// it will use the supplied backtrace instead of capturing a new one.
-    #[inline]
-    pub fn with_backtrace(
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn new_with_backtrace(
         severity: Severity,
-        error: impl Into<BoxedError>,
+        content: impl Into<BoxedError>,
         backtrace: Backtrace,
     ) -> Self {
-        Self::with_backtrace_boxed(severity, error.into(), backtrace)
+        #[cfg(feature = "backtrace")]
+        return Self::new_with_backtrace_boxed(
+            severity,
+            content.into(),
+            backtrace,
+            DebugLocation::caller(),
+        );
+
+        #[cfg(not(feature = "backtrace"))]
+        let _ = backtrace;
+
+        #[cfg(not(feature = "backtrace"))]
+        return Self::new_boxed(severity, content.into(), DebugLocation::caller());
     }
-}
-
-#[cfg(feature = "backtrace")]
-const FILTER_MESSAGE: &str = "NOTE: Some \"noisy\" backtrace lines have been filtered out. Run with `ZLIM_BACKTRACE=full` for a verbose backtrace.";
-
-#[cfg(feature = "backtrace")]
-thread_local! {
-    static SKIP_NORMAL_BACKTRACE: ::core::cell::Cell<bool> = const { ::core::cell::Cell::new(false) };
-}
-
-#[cfg(feature = "backtrace")]
-const NOISE_CONTENTS: &[&str] = &[
-    "std::backtrace_rs::backtrace::",
-    "Backtrace::",
-    "zlim_core::error::zlim_error::ZlimError::new_boxed",
-];
-
-#[cfg(feature = "backtrace")]
-const STOP_SIGNALS: &[&str] = &["__rust_begin_short_backtrace"];
-
-#[cfg(feature = "backtrace")]
-impl ZlimError {
-    fn format_backtrace(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        use std::backtrace::BacktraceStatus;
-
-        let backtrace = unsafe { &(*self.get_ptr()).backtrace };
-
-        if !matches!(backtrace.status(), BacktraceStatus::Captured) {
-            return Ok(());
-        }
-
-        if std::env::var("ZLIM_BACKTRACE").is_ok_and(|val| val == "full") {
-            return Display::fmt(backtrace, f);
-        }
-
-        let backtrace_str = backtrace.to_string();
-        let mut skip_next_location_line = false;
-
-        for line in backtrace_str.split('\n') {
-            if skip_next_location_line {
-                if line.starts_with("             at") {
-                    continue;
-                }
-                skip_next_location_line = false;
-            }
-
-            if NOISE_CONTENTS.iter().any(|&x| line.contains(x)) {
-                skip_next_location_line = true;
-                continue;
-            }
-
-            if STOP_SIGNALS.iter().any(|&x| line.contains(x)) {
-                break;
-            }
-
-            f.write_str(line)?;
-            f.write_str("\n")?;
-        }
-
-        if std::thread::panicking() {
-            SKIP_NORMAL_BACKTRACE.set(true);
-        }
-
-        f.write_str(FILTER_MESSAGE)?;
-        f.write_str("\n")
-    }
-}
-
-// -----------------------------------------------------------------------------
-// zlim_error_panic_hook
-
-/// When called, this will skip the currently configured panic hook
-/// when a [`ZlimError`] backtrace has already been printed.
-#[cfg_attr(not(feature = "backtrace"), inline(always))]
-pub fn zlim_error_panic_hook(hook: impl Fn(&PanicHookInfo)) -> impl Fn(&PanicHookInfo) {
-    #[cfg(not(feature = "backtrace"))]
-    return hook;
-
-    #[cfg(feature = "backtrace")]
-    #[expect(clippy::print_stderr, reason = "..")]
-    return move |info: &PanicHookInfo| {
-        if SKIP_NORMAL_BACKTRACE.replace(false) {
-            if let Some(payload) = info.payload_as_str() {
-                std::eprintln!("{payload}");
-            }
-            return;
-        }
-
-        hook(info);
-    };
 }
 
 // -----------------------------------------------------------------------------
@@ -477,7 +541,11 @@ impl Display for ZlimError {
     ///
     /// If you want the output of severity, use [`Debug::fmt`] instead.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        writeln!(f, "{}", self.get())?;
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        write!(f, "{}\n\tat {}", self.get(), self.location())?;
+
+        #[cfg(not(any(debug_assertions, feature = "debug")))]
+        write!(f, "{}", self.get())?;
 
         #[cfg(feature = "backtrace")]
         self.format_backtrace(f)?;
@@ -493,86 +561,5 @@ impl Debug for ZlimError {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         Display::fmt(self, f)
-    }
-}
-
-// -----------------------------------------------------------------------------
-// IntoZlimResult
-
-/// Conversion into a [`ZlimResult`].
-///
-/// This trait bridges the gap between various function return conventions and
-/// the engine's unified error type.  It is also used as a bound to constrain
-/// what types can serve as job function return values — implementing
-/// `IntoZlimResult` signals that a type is an acceptable return type for a
-/// job function.
-///
-/// # Implementations
-///
-/// Two blanket implementations cover the common patterns:
-///
-/// | Type                        | Behavior                                      |
-/// |-----------------------------|-----------------------------------------------|
-/// | `T`                         | Returns `Ok(T)` unchanged.                    |
-/// | `Result<T, E>`              | Converts the error via `E: Into<ZlimError>`.  |
-pub trait IntoZlimResult<T>: Sized {
-    /// Converts `self` into a [`ZlimResult`].
-    fn into_zlim_result(self) -> Result<T, ZlimError>;
-
-    /// Overrides the severity of the produced error, if any.
-    ///
-    /// If `self.into_zlim_result()` is `Ok(T)`, this method also returns `Ok(T)`.
-    fn with_severity(self, severity: Severity) -> Result<T, ZlimError> {
-        self.into_zlim_result()
-            .map_err(|e| ZlimError::with_severity(e, severity))
-    }
-
-    /// Raises severity to `max(current, severity)` for the produced error, if any.
-    fn merge_severity(self, severity: Severity) -> Result<T, ZlimError> {
-        self.into_zlim_result()
-            .map_err(|e| ZlimError::merge_severity(e, severity))
-    }
-
-    /// Maps the severity of the produced error through a function, if any.
-    fn map_severity(self, f: impl FnOnce(Severity) -> Severity) -> Result<T, ZlimError> {
-        self.into_zlim_result()
-            .map_err(|e| ZlimError::map_severity(e, f))
-    }
-}
-
-impl<T> IntoZlimResult<T> for T {
-    #[inline(always)]
-    fn into_zlim_result(self) -> Result<T, ZlimError> {
-        Ok(self)
-    }
-
-    #[inline(always)]
-    fn with_severity(self, _: Severity) -> Result<T, ZlimError> {
-        Ok(self)
-    }
-
-    #[inline(always)]
-    fn merge_severity(self, _: Severity) -> Result<T, ZlimError> {
-        Ok(self)
-    }
-
-    #[inline(always)]
-    fn map_severity(self, _: impl FnOnce(Severity) -> Severity) -> Result<T, ZlimError> {
-        Ok(self)
-    }
-}
-
-impl<T, E: Into<ZlimError>> IntoZlimResult<T> for Result<T, E> {
-    fn into_zlim_result(self) -> Result<T, ZlimError> {
-        self.map_err(Into::into)
-    }
-}
-
-impl<C: IntoZlimResult<()>, B: Into<ZlimError>> IntoZlimResult<()> for ControlFlow<B, C> {
-    fn into_zlim_result(self) -> Result<(), ZlimError> {
-        match self {
-            ControlFlow::Continue(c) => c.into_zlim_result(),
-            ControlFlow::Break(b) => Err(b.into()),
-        }
     }
 }

@@ -8,7 +8,9 @@ repository.workspace = true
 
 [features]
 
-trace = []
+trace = ["zlim-core/trace", "zlim-log/trace", "dep:tracing-error"]
+
+backtrace = ["zlim-core/backtrace"]
 
 [dependencies]
 
@@ -25,13 +27,17 @@ zlim-reflect = { path = "../zlim-reflect", default-features = false }
 
 zlim-core = { path = "../zlim-core", default-features = false }
 
+# plugin: PanicHandler
+tracing-error = { version = "0.2.1", optional = true }
+
+# plugin: Shutdown
 [target.'cfg(any(all(unix, not(target_os = "horizon")), windows))'.dependencies]
 ctrlc = { version = "3.5.2" }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-console_error_panic_hook = { version = "0.1.7" }
-js-sys = { version = "0.3", default-features = false, features = ["std"] }
 wasm-bindgen = { version = "0.2", default-features = false, features = ["std"] }
+
+js-sys = { version = "0.3", default-features = false, features = ["std"] }
 web-sys = { version = "0.3", default-features = false, features = ["std", "Window"] }
 
 [lints]

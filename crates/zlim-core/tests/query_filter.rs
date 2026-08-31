@@ -81,13 +81,8 @@ fn changed_filter_matches_only_modified() {
         first.into_inner().0 += 1;
     }
 
-    let changed = world
-        .invoke_once(
-            |query: Query<EntityId, Changed<Health>>| query.iter().count(),
-            (),
-        )
-        .unwrap();
-    assert_eq!(changed, 1);
+    let system = |query: Query<EntityId, Changed<Health>>| query.iter().count();
+    assert_eq!(world.invoke_once(system, ()).unwrap(), 1);
 }
 
 #[test]
@@ -100,13 +95,8 @@ fn added_filter_matches_only_new_spawns() {
     world.clear_trackers();
     world.spawn((A, Health(20)), None);
 
-    let added = world
-        .invoke_once(
-            |query: Query<EntityId, Added<Health>>| query.iter().count(),
-            (),
-        )
-        .unwrap();
-    assert_eq!(added, 1);
+    let system = |query: Query<EntityId, Added<Health>>| query.iter().count();
+    assert_eq!(world.invoke_once(system, ()).unwrap(), 1);
 }
 
 // -----------------------------------------------------------------------------
@@ -127,17 +117,13 @@ fn and_with_tick_filter_filters_per_entity() {
         first.into_inner().0 += 1;
     }
 
+    fn system(query: Query<&Health, And<(With<A>, Changed<Health>)>>) -> u32 {
+        query.iter().map(|h| h.0).sum()
+    }
+
     // `And<(With<A>, Changed<Health>)>` requires entity-level filtering:
     // only the modified entity matches, despite both having `A`.
-    let total: u32 = world
-        .invoke_once(
-            |query: Query<&Health, And<(With<A>, Changed<Health>)>>| {
-                query.iter().map(|h| h.0).sum()
-            },
-            (),
-        )
-        .unwrap();
-    assert_eq!(total, 11);
+    assert_eq!(world.invoke_once(system, ()).unwrap(), 11);
 }
 
 // -----------------------------------------------------------------------------
@@ -150,20 +136,17 @@ fn iter_slice_accepts_and_archetype_filter() {
     world.spawn((Health(20), A), None);
     world.spawn((Health(30), B), None);
 
+    fn system(query: Query<&Health, And<(With<A>, With<B>)>>) -> u32 {
+        query
+            .iter_slice()
+            .flat_map(|healths| healths.iter())
+            .map(|h| h.0)
+            .sum()
+    }
+
     // `And<(With<A>, With<B>)>` is a pure archetype filter, so the whole
     // component column can be fetched as one slice per table.
-    let total: u32 = world
-        .invoke_once(
-            |query: Query<&Health, And<(With<A>, With<B>)>>| {
-                query
-                    .iter_slice()
-                    .flat_map(|healths| healths.iter())
-                    .map(|h| h.0)
-                    .sum()
-            },
-            (),
-        )
-        .unwrap();
+    let total: u32 = world.invoke_once(system, ()).unwrap();
     assert_eq!(total, 10);
 }
 
@@ -174,18 +157,15 @@ fn iter_slice_mut_accepts_or_archetype_filter() {
     world.spawn((Health(20), B), None);
     world.spawn(Health(30), None);
 
-    world
-        .invoke_once(
-            |mut query: Query<&mut Health, Or<(With<A>, With<B>)>>| {
-                for mut healths in query.iter_slice_mut() {
-                    for health in healths.iter_mut() {
-                        health.0 += 100;
-                    }
-                }
-            },
-            (),
-        )
-        .unwrap();
+    fn system(mut query: Query<&mut Health, Or<(With<A>, With<B>)>>) {
+        for mut healths in query.iter_slice_mut() {
+            for health in healths.iter_mut() {
+                health.0 += 100;
+            }
+        }
+    }
+
+    world.invoke_once(system, ()).unwrap();
 
     let total: u32 = world.query::<&Health, ()>().iter().map(|h| h.0).sum();
     assert_eq!(total, 10 + 100 + 20 + 100 + 30);

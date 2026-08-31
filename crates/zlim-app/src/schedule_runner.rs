@@ -70,7 +70,11 @@ impl Plugin for ScheduleRunnerPlugin {
     fn apply(&self, app: &mut App) {
         if app.contains_runner() {
             ::core::hint::cold_path();
-            zlim_log::warn!("App's runner is overwritten by `ScheduleRunnerPlugin`.");
+            zlim_log::warn!(
+                "The app's runner already exists and has been overwritten by \
+                `ScheduleRunnerPlugin`. Please check if there are manually \
+                inserted runner or duplicate plugins of the same category."
+            );
         }
 
         let RunMode::Loop { wait } = self.run_mode else {
@@ -163,7 +167,7 @@ fn wasm_loop(wait: Option<Duration>) -> impl FnOnce(App) -> AppExit + Send + Syn
         let data: Box<dyn FnMut()> = if let Some(wait) = wait {
             Box::new(move || {
                 let mut app_borrow = app.borrow_mut();
-                match tick_with(&mut *app_borrow, wait) {
+                match tick_with(&mut app_borrow, wait) {
                     Ok(delay) => {
                         let callback = closure.borrow();
                         let callback = callback.as_ref().unwrap();
@@ -177,7 +181,7 @@ fn wasm_loop(wait: Option<Duration>) -> impl FnOnce(App) -> AppExit + Send + Syn
             })
         } else {
             Box::new(move || {
-                match tick(&mut *app.borrow_mut()) {
+                match tick(&mut app.borrow_mut()) {
                     None => {
                         let callback = closure.borrow();
                         let callback = callback.as_ref().unwrap();

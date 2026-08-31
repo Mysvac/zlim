@@ -119,8 +119,6 @@ pub struct SystemMeta {
     pub(crate) id: SystemId,
     pub(crate) flags: SystemFlags,
     pub(crate) last_run: Tick,
-    #[cfg(feature = "trace")]
-    pub(crate) span: zlim_log::Span,
 }
 
 impl Debug for SystemMeta {
@@ -140,14 +138,10 @@ impl SystemMeta {
     /// flags cleared and `last_run` at tick zero.
     #[inline]
     pub fn new<T: 'static>() -> Self {
-        #[cfg(feature = "trace")]
-        let name = DebugName::type_name::<T>();
         Self {
             id: SystemId::of::<T>(),
             flags: SystemFlags::empty(),
             last_run: Tick::new(0),
-            #[cfg(feature = "trace")]
-            span: zlim_log::info_span!(parent: None, "system", name = ?name),
         }
     }
 

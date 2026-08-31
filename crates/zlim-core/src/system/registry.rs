@@ -1,4 +1,4 @@
-//! The world's system cache: [`SystemHandle`]s and the [`Systems`] registry
+//! The world's system cache: [`SystemHandle`]s and the [`SystemCache`] registry
 //! that stores cached system instances keyed by their [`SystemId`].
 
 use core::any::Any;
@@ -137,10 +137,17 @@ where
 }
 
 // -----------------------------------------------------------------------------
-// Systems
+// SystemCache
 
-type SystemMap<I, O> = HashMap<SystemId, Option<Box<dyn System<Input = I, Output = O>>>, NoopState>;
 type SystemBox<I, O> = Box<dyn System<Input = I, Output = O>>;
+
+struct SystemSlot<I, O> {
+    system: SystemBox<I, O>,
+    #[cfg(feature = "trace")]
+    span: zlim_log::Span,
+}
+
+type SystemMap<I, O> = HashMap<SystemId, Option<SystemSlot<I, O>>, NoopState>;
 
 /// Type-erased cache of system instances, keyed by their [`SystemId`].
 ///
@@ -200,7 +207,7 @@ impl SystemCache {
     /// Returns the cache slot for `handle`, creating the per-signature map
     /// if needed.
     #[inline(never)]
-    pub fn entry<I, O>(&mut self, handle: SystemHandle<I, O>) -> &mut Option<SystemBox<I, O>>
+    fn entry<I, O>(&mut self, handle: SystemHandle<I, O>) -> &mut Option<SystemSlot<I, O>>
     where
         I: SystemInput + 'static,
         O: 'static,
@@ -211,18 +218,17 @@ impl SystemCache {
     /// Caches `system`, returning the previously cached instance with the
     /// same id, if any.
     #[inline(never)]
-    pub fn insert<I, O>(&mut self, system: SystemBox<I, O>) -> Option<SystemBox<I, O>>
+    fn insert<I, O>(&mut self, id: SystemId, system: SystemSlot<I, O>) -> Option<SystemSlot<I, O>>
     where
         I: SystemInput + 'static,
         O: 'static,
     {
-        let id = system.id();
         self.with::<I, O>().insert(id, Some(system))?
     }
 
     /// Removes and returns the cached instance for `handle`, if present.
     #[inline(never)]
-    pub fn remove<I, O>(&mut self, handle: SystemHandle<I, O>) -> Option<SystemBox<I, O>>
+    fn remove<I, O>(&mut self, handle: SystemHandle<I, O>) -> Option<SystemSlot<I, O>>
     where
         I: SystemInput + 'static,
         O: 'static,
@@ -232,3 +238,425 @@ impl SystemCache {
 }
 
 // -----------------------------------------------------------------------------
+
+use crate::system::IntoSystem;
+use crate::system::SystemError;
+use crate::system::SystemFlags;
+use crate::world::NonSendWorld;
+use crate::world::World;
+
+use zlim_log as log;
+
+// -----------------------------------------------------------------------------
+// BoxedSystem
+
+type BoxedSystem<I, O> = Box<dyn System<Input = I, Output = O>>;
+
+// -----------------------------------------------------------------------------
+// World
+
+impl World {
+    /// Inserts a system into the world's cache and returns a handle to it.
+    ///
+    /// The system is keyed by its [`SystemId`]: inserting the same system
+    /// type twice is a no-op and returns an equivalent handle.  The cached
+    /// instance keeps its internal state (e.g. `Local` parameters) across
+    /// [`World::invoke_handle`] calls.
+    ///
+    /// Initialization is deferred: the cached instance is initialized the
+    /// first time it is run.
+    ///
+    /// [`SystemId`]: crate::system::SystemId
+    #[inline]
+    pub fn insert_system<I, O, M>(
+        &mut self,
+        system: impl IntoSystem<I, O, M> + 'static,
+    ) -> SystemHandle<I, O>
+    where
+        I: SystemInput + 'static,
+        O: 'static,
+    {
+        let handle: SystemHandle<I, O> = system.system_handle();
+        let entry = self.system_cache.entry(handle);
+
+        if entry.is_none() {
+            *entry = Some(SystemSlot::<I, O> {
+                system: Box::new(IntoSystem::into_system(system)),
+                #[cfg(feature = "trace")]
+                span: zlim_log::info_span!(parent: None, "system", name=?handle.id),
+            });
+            // Deferred — the system instance is initialized on its first run.
+        }
+
+        handle
+    }
+
+    /// Removes a cached system and returns its instance, if present.
+    ///
+    /// Returns `None` if the handle was never inserted (or was already
+    /// removed).
+    #[inline]
+    pub fn remove_system<I, O>(&mut self, handle: SystemHandle<I, O>) -> Option<BoxedSystem<I, O>>
+    where
+        I: SystemInput + 'static,
+        O: 'static,
+    {
+        self.system_cache.remove(handle).map(|x| x.system)
+    }
+
+    /// Runs a system with the given input without caching it.
+    ///
+    /// A fresh system instance is built, initialized, executed once, and
+    /// discarded — internal state (e.g. `Local` parameters) does not
+    /// persist between calls.
+    ///
+    /// Use [`World::invoke`] when state should survive across runs.
+    ///
+    /// Because the system may be required executing on the main thread,
+    /// both input and output need to support Send.
+    ///
+    /// # Change detection
+    ///
+    /// Systems invoked through `invoke` directly follow the `World`'s own
+    /// change detection: before each run the instance's baseline is reset
+    /// to [`World::last_run`], so it observes **every** change since the
+    /// world baseline — not just changes since its previous run. Advance the
+    /// world baseline with [`World::clear_trackers`] to control what direct
+    /// invocations report as changed.
+    #[inline]
+    pub fn invoke_once<'a, I, O, M>(
+        &mut self,
+        system: impl IntoSystem<I, O, M> + 'static,
+        input: I::Data<'a>,
+    ) -> Result<O, SystemError>
+    where
+        I: SystemInput<Data<'a>: Send> + Send + 'static,
+        O: Send + 'static,
+    {
+        self.flush();
+
+        let mut system = IntoSystem::into_system(system);
+        let nonsend = system.flags().intersects(SystemFlags::NON_SEND);
+
+        let func = || {
+            #[cfg(feature = "trace")]
+            let _span = zlim_log::info_span!(parent: None, "system", name=?system.id()).entered();
+
+            system.initialize(self);
+            system.set_last_run(self.last_run);
+            let world = self.cell();
+            let result = unsafe { system.run_raw(input, world) };
+            system.apply_deferred(self);
+            result
+        };
+
+        if nonsend {
+            zlim_task::invoke_on_main(func)
+        } else {
+            func()
+        }
+    }
+
+    /// Runs the given system, caching its instance for later runs.
+    ///
+    /// If a system with the same [`SystemId`] is already cached, that cached
+    /// instance is used, so its internal state (e.g. `Local` parameters)
+    /// persists across runs; otherwise a fresh instance is built and
+    /// cached.  The instance is (re)initialized and executed against the
+    /// world, then put back into the cache.
+    ///
+    /// Use [`World::invoke_once`] for an uncached single-shot run.
+    ///
+    /// Because the system may be required executing on the main thread,
+    /// both input and output need to support Send.
+    ///
+    /// # Change detection
+    ///
+    /// Systems invoked through `invoke` directly follow the `World`'s own
+    /// change detection: before each run the cached instance's baseline is
+    /// reset to [`World::last_run`], so it observes **every** change since
+    /// the world baseline — not just changes since its previous run. Advance
+    /// the world baseline with [`World::clear_trackers`] to control what
+    /// direct invocations report as changed.
+    ///
+    /// [`SystemId`]: crate::system::SystemId
+    #[inline]
+    pub fn invoke<'a, I, O, M>(
+        &mut self,
+        system: impl IntoSystem<I, O, M> + 'static,
+        input: I::Data<'a>,
+    ) -> Result<O, SystemError>
+    where
+        I: SystemInput<Data<'a>: Send> + Send + 'static,
+        O: Send + 'static,
+    {
+        self.flush();
+
+        let handle = system.system_handle();
+
+        let mut slot = self
+            .system_cache
+            .remove(handle)
+            .unwrap_or_else(|| SystemSlot::<I, O> {
+                system: Box::new(IntoSystem::into_system(system)),
+                #[cfg(feature = "trace")]
+                span: zlim_log::info_span!(parent: None, "system", name=?handle.id),
+            });
+
+        let nonsend = slot.system.flags().intersects(SystemFlags::NON_SEND);
+
+        let func = || {
+            #[cfg(feature = "trace")]
+            let _span = slot.span.enter();
+            slot.system.initialize(self);
+            slot.system.set_last_run(self.last_run);
+            let world = self.cell();
+            let result = unsafe { slot.system.run_raw(input, world) };
+            slot.system.apply_deferred(self);
+            result
+        };
+
+        let result = if nonsend {
+            zlim_task::invoke_on_main(func)
+        } else {
+            func()
+        };
+
+        if self.system_cache.insert(handle.id, slot).is_some() {
+            ::core::hint::cold_path();
+            log::warn!("The same System `{handle:?}` was inserted during the execution.");
+        }
+
+        result
+    }
+
+    /// Runs the cached system identified by `handle` with the given input.
+    ///
+    /// The system must have been cached first via [`World::insert_system`];
+    /// returns [`SystemError::Unregistered`] otherwise.  The cached instance
+    /// is (re)initialized and executed against the world, then put back into
+    /// the cache, so its internal state persists between runs.
+    ///
+    /// Because the system may be required executing on the main thread,
+    /// both input and output need to support Send.
+    ///
+    /// # Change detection
+    ///
+    /// Systems invoked through `invoke` directly follow the `World`'s own
+    /// change detection: before each run the cached instance's baseline is
+    /// reset to [`World::last_run`], so it observes **every** change since
+    /// the world baseline — not just changes since its previous run. Advance
+    /// the world baseline with [`World::clear_trackers`] to control what
+    /// direct invocations report as changed.
+    ///
+    /// [`SystemError::Unregistered`]: crate::system::SystemError::Unregistered
+    #[inline]
+    pub fn invoke_handle<'a, I, O>(
+        &mut self,
+        handle: SystemHandle<I, O>,
+        input: I::Data<'a>,
+    ) -> Result<O, SystemError>
+    where
+        I: SystemInput<Data<'a>: Send> + Send + 'static,
+        O: Send + 'static,
+    {
+        self.flush();
+
+        let Some(mut slot) = self.system_cache.remove(handle) else {
+            return Err(SystemError::Unregistered(handle.id()));
+        };
+
+        let nonsend = slot.system.flags().intersects(SystemFlags::NON_SEND);
+
+        let func = || {
+            #[cfg(feature = "trace")]
+            let _span = slot.span.enter();
+            slot.system.initialize(self);
+            slot.system.set_last_run(self.last_run);
+            let world = self.cell();
+            let result = unsafe { slot.system.run_raw(input, world) };
+            slot.system.apply_deferred(self);
+            result
+        };
+
+        let result = if nonsend {
+            zlim_task::invoke_on_main(func)
+        } else {
+            func()
+        };
+
+        if self.system_cache.insert(handle.id, slot).is_some() {
+            ::core::hint::cold_path();
+            log::warn!("The same System `{handle:?}` was inserted during the execution.");
+        }
+
+        result
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+impl NonSendWorld {
+    /// Runs a system with the given input without caching it.
+    ///
+    /// A fresh system instance is built, initialized, executed once, and
+    /// discarded — internal state (e.g. `Local` parameters) does not
+    /// persist between calls.
+    ///
+    /// Use [`NonSendWorld::invoke`] when state should survive across runs.
+    ///
+    /// Because we have `NonSendWorld`, the system input and output type does not need `Send`.
+    ///
+    /// # Change detection
+    ///
+    /// Systems invoked through `invoke` directly follow the `World`'s own
+    /// change detection: before each run the instance's baseline is reset
+    /// to [`World::last_run`], so it observes **every** change since the
+    /// world baseline — not just changes since its previous run. Advance the
+    /// world baseline with [`World::clear_trackers`] to control what direct
+    /// invocations report as changed.
+    #[inline]
+    pub fn invoke_once<'a, I, O, M>(
+        &mut self,
+        system: impl IntoSystem<I, O, M> + 'static,
+        input: I::Data<'a>,
+    ) -> Result<O, SystemError>
+    where
+        I: SystemInput + 'static,
+        O: 'static,
+    {
+        self.flush();
+
+        let mut system = IntoSystem::into_system(system);
+
+        #[cfg(feature = "trace")]
+        let _span = zlim_log::info_span!(parent: None, "system", name=?system.id()).entered();
+
+        system.initialize(self);
+        system.set_last_run(self.last_run);
+        let result = unsafe { system.run_raw(input, self.cell()) };
+        system.apply_deferred(self);
+
+        result
+    }
+
+    /// Runs the given system, caching its instance for later runs.
+    ///
+    /// If a system with the same [`SystemId`] is already cached, that cached
+    /// instance is used, so its internal state (e.g. `Local` parameters)
+    /// persists across runs; otherwise a fresh instance is built and
+    /// cached.  The instance is (re)initialized and executed against the
+    /// world, then put back into the cache.
+    ///
+    /// Use [`NonSendWorld::invoke_once`] for an uncached single-shot run.
+    ///
+    /// Because we have `NonSendWorld`, the system input and output type does not need `Send`.
+    ///
+    /// # Change detection
+    ///
+    /// Systems invoked through `invoke` directly follow the `World`'s own
+    /// change detection: before each run the cached instance's baseline is
+    /// reset to [`World::last_run`], so it observes **every** change since
+    /// the world baseline — not just changes since its previous run. Advance
+    /// the world baseline with [`World::clear_trackers`] to control what
+    /// direct invocations report as changed.
+    ///
+    /// [`SystemId`]: crate::system::SystemId
+    #[inline]
+    pub fn invoke<'a, I, O, M>(
+        &mut self,
+        system: impl IntoSystem<I, O, M> + 'static,
+        input: I::Data<'a>,
+    ) -> Result<O, SystemError>
+    where
+        I: SystemInput + 'static,
+        O: 'static,
+    {
+        self.flush();
+
+        let handle = system.system_handle();
+
+        let mut slot = self
+            .system_cache
+            .remove(handle)
+            .unwrap_or_else(|| SystemSlot::<I, O> {
+                system: Box::new(IntoSystem::into_system(system)),
+                #[cfg(feature = "trace")]
+                span: zlim_log::info_span!(parent: None, "system", name=?handle.id),
+            });
+
+        #[cfg(feature = "trace")]
+        let _span = slot.span.enter();
+
+        slot.system.initialize(self);
+        slot.system.set_last_run(self.last_run);
+        let world = self.cell();
+        let result = unsafe { slot.system.run_raw(input, world) };
+        slot.system.apply_deferred(self);
+
+        #[cfg(feature = "trace")]
+        ::core::mem::drop(_span);
+
+        if self.system_cache.insert(handle.id, slot).is_some() {
+            ::core::hint::cold_path();
+            log::warn!("The same System `{handle:?}` was inserted during the execution.");
+        }
+
+        result
+    }
+
+    /// Runs the cached system identified by `handle` with the given input.
+    ///
+    /// The system must have been cached first via [`World::insert_system`];
+    /// returns [`SystemError::Unregistered`] otherwise.  The cached instance
+    /// is (re)initialized and executed against the world, then put back into
+    /// the cache, so its internal state persists between runs.
+    ///
+    /// Because we have `NonSendWorld`, the system input and output type does not need `Send`.
+    ///
+    /// # Change detection
+    ///
+    /// Systems invoked through `invoke` directly follow the `World`'s own
+    /// change detection: before each run the cached instance's baseline is
+    /// reset to [`World::last_run`], so it observes **every** change since
+    /// the world baseline — not just changes since its previous run. Advance
+    /// the world baseline with [`World::clear_trackers`] to control what
+    /// direct invocations report as changed.
+    ///
+    /// [`SystemError::Unregistered`]: crate::system::SystemError::Unregistered
+    #[inline]
+    pub fn invoke_handle<'a, I, O>(
+        &mut self,
+        handle: SystemHandle<I, O>,
+        input: I::Data<'a>,
+    ) -> Result<O, SystemError>
+    where
+        I: SystemInput + 'static,
+        O: 'static,
+    {
+        self.flush();
+
+        let Some(mut slot) = self.system_cache.remove(handle) else {
+            return Err(SystemError::Unregistered(handle.id()));
+        };
+
+        #[cfg(feature = "trace")]
+        let _span = slot.span.enter();
+
+        slot.system.initialize(self);
+        slot.system.set_last_run(self.last_run);
+        let world = self.cell();
+        let result = unsafe { slot.system.run_raw(input, world) };
+        slot.system.apply_deferred(self);
+
+        #[cfg(feature = "trace")]
+        ::core::mem::drop(_span);
+
+        if self.system_cache.insert(handle.id, slot).is_some() {
+            ::core::hint::cold_path();
+            log::warn!("The same System `{handle:?}` was inserted during the execution.");
+        }
+
+        result
+    }
+}

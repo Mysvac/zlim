@@ -28,7 +28,7 @@ pub type ErrorHandler = fn(e: ZlimError, ctx: ErrorContext);
 /// - [`Severity::Error`] => [`error()`]
 /// - [`Severity::Panic`] => [`panic()`]
 #[cold]
-#[track_caller]
+#[track_caller] // useless, function pointer cannot track_caller
 #[inline(never)]
 pub fn default_error_handler(e: ZlimError, ctx: ErrorContext) {
     match e.severity() {
@@ -41,32 +41,50 @@ pub fn default_error_handler(e: ZlimError, ctx: ErrorContext) {
     }
 }
 
-std::thread_local! {
-    /// When deliberately throwing a panic in your [`ErrorHandler`],
-    /// set this to true to indicate to the executor that the panic
-    /// should not be turned back into a [`ZlimError`].
+thread_local! {
+    /// A thread-local flag indicating that the current panic was raised by an
+    /// `ErrorHandler` **and** the stack has already been captured into the
+    /// [`ZlimError`] payload.
     ///
-    /// For example, we will do this for `system` and `command` execution:
+    /// When the panic hook observes this flag it can write the cleaner
+    /// [`ZlimError`] content straight to the error stream and skip the default
+    /// hook output entirely — the error has already been fully reported with
+    /// its backtrace, so re-printing a generic panic message would only add
+    /// noise.
     ///
-    /// ```rust, ignore
-    /// fn catch_and_resume(func: F, /* .. */) {
-    ///     // Reset this flag before function execution
-    ///     PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(false);
-    ///     // Run the given function and catch any panic
-    ///     if let Err(e) = catch_unwind(AssertUnwindSafe(func)) {
-    ///         if PANIC_ORIGINATES_FROM_ERROR_HANDLER.get() {
-    ///             // If the panic was thrown by ErrorHandler,
-    ///             // resume it directly.
-    ///             resume_unwind(e);
+    /// # When to set this flag
+    ///
+    /// Set this flag to `true` **immediately before** panicking from an
+    /// `ErrorHandler`, and only when the error's backtrace was captured into
+    /// the [`ZlimError`] itself (see [`panic()`]).
+    ///
+    /// # Reset behavior
+    ///
+    /// The flag is **not** reset automatically after a panic — the panic hook
+    /// is responsible for clearing it (e.g., with `replace(false)`) so the
+    /// state does not leak into subsequent panics.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // In a custom panic hook:
+    /// std::panic::set_hook(Box::new(|info| {
+    ///     let captured = PANIC_BACKTRACE_CAPTURED.replace(false);
+    ///
+    ///     if captured {
+    ///         // The ErrorHandler already reported the full error (message +
+    ///         // captured stack). Print only the clean message and skip the
+    ///         // default hook output.
+    ///         if let Some(msg) = info.payload_as_str() {
+    ///             eprintln!("{msg}");
     ///         }
-    ///         // Otherwise, convert it to ZlimError
-    ///         let e = ZlimError::panic( .. );
-    ///         let ctx = ErrorContext { .. };
-    ///         error_handler(e, ctx);
+    ///     } else {
+    ///         // Unexpected panic: keep the default hook's full output.
+    ///         default_hook(info);
     ///     }
-    /// }
+    /// }));
     /// ```
-    pub static PANIC_ORIGINATES_FROM_ERROR_HANDLER: Cell<bool>  = const { Cell::new(false) };
+    pub static PANIC_BACKTRACE_CAPTURED: Cell<bool> = const { Cell::new(false) };
 }
 
 // -----------------------------------------------------------------------------
@@ -75,10 +93,10 @@ std::thread_local! {
 macro_rules! inner {
     ($call:path, $e:ident, $c:ident) => {
         $call!(
-            "Encountered an error in {} `{}`: {}",
+            "Encountered an error in {} `{}`:\n\t{}",
             $c.kind(),
             $c.name(),
-            $e
+            $e,
         );
     };
 }
@@ -87,7 +105,9 @@ macro_rules! inner {
 #[inline]
 #[track_caller]
 pub fn panic(error: ZlimError, ctx: ErrorContext) {
-    PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(true);
+    if error.backtrace_captured() {
+        PANIC_BACKTRACE_CAPTURED.set(true);
+    }
     inner!(panic, error, ctx);
 }
 

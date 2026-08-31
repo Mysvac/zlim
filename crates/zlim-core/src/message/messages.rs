@@ -165,13 +165,19 @@ impl Messages {
 /// Advances the double-buffered queue of message type `M` to the current
 /// buffer.
 ///
+/// The rotation goes through `bypass()`, so it does **not** trigger change
+/// detection on the `MessageQueue<M>` resource: swapping the buffers is
+/// internal bookkeeping rather than a user-data change, and must not surface
+/// as a spurious `is_changed()` on `Res<MessageQueue<M>>`.
+///
 /// # Safety
 ///
 /// `untyped` must be a valid, aligned `UntypedMut` pointing to a
 /// [`MessageQueue<M>`] instance.
 unsafe fn update_queue<M: Message>(untyped: UntypedMut) {
+    use crate::tick::DetectChangesMut;
     unsafe {
-        untyped.into_resource::<MessageQueue<M>>().update();
+        untyped.into_resource::<MessageQueue<M>>().bypass().update();
     }
 }
 

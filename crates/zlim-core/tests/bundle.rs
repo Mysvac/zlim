@@ -59,12 +59,12 @@ fn named_bundle_spawns_all_fields() {
     assert!(entity.contains::<Position>());
     assert!(entity.contains::<Velocity>());
     assert!(!entity.contains::<Health>());
+    assert_eq!(entity.get::<Health>(), None);
     assert_eq!(entity.get::<Position>(), Some(&Position { x: 1.0, y: 2.0 }));
     assert_eq!(
         entity.get::<Velocity>(),
         Some(&Velocity { dx: 3.0, dy: 4.0 })
     );
-    assert_eq!(entity.get::<Health>(), None);
 }
 
 #[test]
@@ -72,14 +72,11 @@ fn named_bundle_spawns_at_given_entity() {
     let mut world = World::alloc();
     let id = EntityId::from_bits(0x0000_0001_0000_0001).unwrap();
 
-    let entity = world.spawn_at(
-        MovableBundle {
-            position: Position { x: 5.0, y: 6.0 },
-            velocity: Velocity { dx: 7.0, dy: 8.0 },
-        },
-        id,
-        None,
-    );
+    let bundle = MovableBundle {
+        position: Position { x: 5.0, y: 6.0 },
+        velocity: Velocity { dx: 7.0, dy: 8.0 },
+    };
+    let entity = world.spawn_at(bundle, id, None);
 
     assert_eq!(entity.id(), id);
     assert!(entity.contains::<Position>());

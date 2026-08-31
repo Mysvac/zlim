@@ -5,6 +5,7 @@ use zlim_utils::debug::DebugName;
 use super::IntoSystem;
 use super::{AccessTable, SystemFlags, SystemMeta};
 use super::{System, SystemId, SystemInput, SystemParam};
+use crate::error::Severity;
 use crate::system::SystemError;
 use crate::tick::Tick;
 use crate::world::WorldCell;
@@ -370,9 +371,6 @@ impl<M: 'static, F: SystemFunction<M> + 'static> System for FunctionSystem<M, F>
         input: <Self::Input as SystemInput>::Data<'_>,
         world: WorldCell<'_>,
     ) -> Result<Self::Output, SystemError> {
-        #[cfg(feature = "trace")]
-        let _span_guard = self.meta.span.enter();
-
         let Some(state) = &mut self.state else {
             core::hint::cold_path();
             return Err(SystemError::Uninitialized(self.meta.id));
@@ -397,16 +395,18 @@ impl<M: 'static, F: SystemFunction<M> + 'static> System for FunctionSystem<M, F>
                 Ok(p) => p,
                 Err(e) => {
                     core::hint::cold_path();
-                    let debug_name = self.meta.id.debug_name();
-                    return Err(SystemError::Param(e.with_system(debug_name)));
+                    if e.severity == Severity::Ignore {
+                        return Err(SystemError::None);
+                    } else {
+                        ::core::hint::cold_path();
+                        let debug_name = self.meta.id.debug_name();
+                        return Err(SystemError::Param(e.with_system(debug_name)));
+                    }
                 }
             }
         };
 
         let output = <F as SystemFunction<M>>::run(&mut self.func, input, param);
-
-        #[cfg(feature = "trace")]
-        ::core::mem::drop(_span_guard);
 
         self.meta.set_last_run(this_run);
 

@@ -11,7 +11,7 @@ entity hierarchy, with parallel propagation support.
 |---|---|
 | `Transform` | Local transform (translation / rotation / scale). `require(GlobalTransform)`. |
 | `GlobalTransform` | World transform. **Derived output** — only written by the propagation system. |
-| `TransformPropagateStrategy` | Detection strategy: `Default` / `PropagateAll` / `PropagateAllOnce`. |
+| `TransformPropagateStrategy` | Detection strategy: `Default` / `PropagateUp` / `PropagateAll`. |
 | `TransformPlugin` | Plugin: registers the two systems into `PostStartup` / `PostUpdate`. |
 | `EntityTransformExt` / `EntityCommandsTransformExt` | `reparent_in_place` extensions. |
 
@@ -22,7 +22,7 @@ use zlim_app::{App, MainSchedulePlugin};
 use zlim_transform::{GlobalTransform, Transform, TransformPlugin};
 
 let mut app = App::new();
-app.add_plugins((MainSchedulePlugin, TransformPlugin));
+app.add_plugins(TransformPlugin::default());
 app.build(); // executes the plugins (build → apply → cleanup)
 
 // Build the hierarchy: root -> child
@@ -55,7 +55,7 @@ Goal: find every "root of a changed subtree" (an entity that needs updating
 while its parent does not) and write it into the `TransformChangeRoot`
 resource.
 
-**Default strategy (`Default`):**
+#### `Default` strategy:
 
 1. **Handle ReparentSignal messages**: read this frame's `ReparentSignal` messages (sent
    by `zlim-core`'s reparent operation). For each entity, compute
@@ -80,15 +80,31 @@ resource.
    entity is a true root of a changed subtree only when its parent has no
    `Transform` component or is unchanged.
 
-**`PropagateAll` strategy**: skips steps 1-3 and directly collects every
-"root" (no parent, or whose parent has no `Transform` component). Stage 2 is
-then always O(N) random access (full-tree propagation). Suitable for highly
-dynamic scenes.
+#### `PropagateAll` strategy:
 
-**`PropagateAllOnce`**: same as `PropagateAll`, but only for a single frame;
-it automatically reverts to `Default` at the end of the frame. Useful for
-scene switches (that frame updates the whole tree anyway, so a full
-propagation skips the detection overhead).
+Completely skips steps 1-4 of the default strategy and directly collects every
+"root" (no parent, or whose parent has no `Transform` component).
+
+Stage 2 is then always O(N) random access (full-tree propagation). Suitable for
+highly dynamic scenes.
+
+#### `PropagateUp` strategy:
+
+Replaces the downward marking by skipping steps 2-4 of the default strategy.
+
+For each changed node, walk the ancestor chain upward: if any ancestor is also
+changed, the node belongs to that ancestor's subtree and is not a root; a node
+whose ancestor chain contains no changed node (or ends) is a root of a changed
+subtree.
+
+Each changed node pays one O(depth) parent-chain query instead of marking its
+whole subtree, suiting sparse, shallow changes. Upward parent traversal halts
+as soon as a changed node is found. Thus, even with full-scene changes, the
+complexity stays within O(N).
+
+However, for deep hierarchies this mode can degrade in extreme cases: e.g. many
+deep nodes walking their parent chains for independent changes that cannot be cut
+short during the query may approach O(N×depth) complexity.
 
 ### Stage 2: Propagation (`TransformPropagation`)
 

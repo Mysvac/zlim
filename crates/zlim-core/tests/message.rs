@@ -60,6 +60,7 @@ fn queue_write_batch_yields_key_range() {
         .write_batch([Payload(10), Payload(20), Payload(30)])
         .map(|key| key.index())
         .collect();
+
     assert_eq!(keys, vec![0, 1, 2]);
     assert_eq!(queue.len(), 3);
     assert_eq!(queue.write_batch([]).count(), 0);

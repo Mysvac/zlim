@@ -36,15 +36,17 @@ fn propagates_to_descendants() {
     init_config(&mut world);
 
     let mut root = world.spawn(Transform::from_xyz(1.0, 0.0, 0.0), None);
-    let root_id = root.id();
     root.with_child(Transform::from_xyz(0.0, 2.0, 0.0)).unwrap();
+    let root_id = root.id();
     let child_id = root.children().unwrap()[0];
     let _ = root;
-    world
-        .entity_owned(child_id)
+
+    let mut child = world.entity_owned(child_id);
+    child
         .with_child(Transform::from_xyz(0.0, 0.0, 3.0))
         .unwrap();
-    let grandchild_id = world.entity(child_id).children()[0];
+    let grandchild_id = child.children().unwrap()[0];
+    let _ = child;
 
     make_schedule().run(&mut world);
 
@@ -52,10 +54,12 @@ fn propagates_to_descendants() {
         world.entity(root_id).get::<GlobalTransform>().unwrap(),
         &GlobalTransform::from(Transform::from_xyz(1.0, 0.0, 0.0)),
     );
+
     assert_eq!(
         world.entity(child_id).get::<GlobalTransform>().unwrap(),
         &GlobalTransform::from(Transform::from_xyz(1.0, 2.0, 0.0)),
     );
+
     assert_eq!(
         world
             .entity(grandchild_id)
@@ -71,13 +75,15 @@ fn local_transform_change_propagates() {
     init_config(&mut world);
 
     let mut root = world.spawn(Transform::from_xyz(1.0, 0.0, 0.0), None);
-    let root_id = root.id();
     root.with_child(Transform::from_xyz(0.0, 2.0, 0.0)).unwrap();
+
+    let root_id = root.id();
     let child_id = root.children().unwrap()[0];
     let _ = root;
 
     let mut schedule = make_schedule();
     schedule.run(&mut world);
+
     assert_eq!(
         world.entity(child_id).get::<GlobalTransform>().unwrap(),
         &GlobalTransform::from(Transform::from_xyz(1.0, 2.0, 0.0)),
@@ -89,6 +95,7 @@ fn local_transform_change_propagates() {
         .get_mut::<Transform>()
         .unwrap()
         .translation = zlim_math::Vec3::new(5.0, 0.0, 0.0);
+
     schedule.run(&mut world);
 
     assert_eq!(
@@ -103,15 +110,15 @@ fn parented_root_recomputes_own_global() {
     init_config(&mut world);
 
     let mut a = world.spawn(Transform::from_xyz(1.0, 0.0, 0.0), None);
-    let a_id = a.id();
     a.with_child(Transform::from_xyz(0.0, 2.0, 0.0)).unwrap();
+    let a_id = a.id();
     let b_id = a.children().unwrap()[0];
     let _ = a;
-    world
-        .entity_owned(b_id)
-        .with_child(Transform::from_xyz(0.0, 0.0, 3.0))
-        .unwrap();
-    let c_id = world.entity(b_id).children()[0];
+
+    let mut b = world.entity_owned(b_id);
+    b.with_child(Transform::from_xyz(0.0, 0.0, 3.0)).unwrap();
+    let c_id = b.children().unwrap()[0];
+    let _ = b;
 
     let mut schedule = make_schedule();
 
@@ -204,7 +211,7 @@ fn multiple_roots_under_same_unchanged_parent() {
 /// last frame must not be seen as changes this frame, otherwise it would
 /// re-write (and re-stamp) the whole tree every frame and the recorded ticks
 /// would keep advancing.
-#[job_fn(type = AssertStableGlobalTicks)]
+#[job_fn(type = AssertStableGlobalTicks, auto_register = false)]
 fn assert_stable_global_ticks(
     query: Query<(EntityId, Ref<GlobalTransform>)>,
     mut prev: Local<Option<Vec<(EntityId, Tick)>>>,
@@ -213,6 +220,7 @@ fn assert_stable_global_ticks(
         .iter()
         .map(|(id, global)| (id, global.changed_tick()))
         .collect();
+
     if let Some(prev) = prev.as_ref() {
         assert_eq!(
             prev, &cur,
@@ -221,6 +229,7 @@ fn assert_stable_global_ticks(
             as changes by the current frame",
         );
     }
+
     *prev = Some(cur);
 }
 
@@ -230,15 +239,15 @@ fn previous_frame_propagation_writes_are_not_detected() {
     init_config(&mut world);
 
     let mut root = world.spawn(Transform::from_xyz(1.0, 0.0, 0.0), None);
-    let _root_id = root.id();
     root.with_child(Transform::from_xyz(0.0, 2.0, 0.0)).unwrap();
     let child_id = root.children().unwrap()[0];
     let _ = root;
-    world
-        .entity_owned(child_id)
+
+    let mut child = world.entity_owned(child_id);
+    child
         .with_child(Transform::from_xyz(0.0, 0.0, 3.0))
         .unwrap();
-    let _ = world.entity(child_id).children()[0];
+    let _ = child;
 
     let mut schedule = make_schedule();
     schedule.insert::<AssertStableGlobalTicks>(());
@@ -261,12 +270,14 @@ fn reparent_syncs_and_propagates() {
     init_config(&mut world);
 
     let mut root = world.spawn(Transform::from_xyz(1.0, 0.0, 0.0), None);
-    let root_id = root.id();
     root.with_child(Transform::from_xyz(0.0, 2.0, 0.0)).unwrap();
+
+    let root_id = root.id();
     let child_id = root.children().unwrap()[0];
     let _ = root;
 
     let mut schedule = make_schedule();
+
     schedule.run(&mut world);
     assert_eq!(
         world.entity(child_id).get::<GlobalTransform>().unwrap(),
@@ -277,6 +288,7 @@ fn reparent_syncs_and_propagates() {
     let new_parent = world.spawn(Transform::from_xyz(10.0, 0.0, 0.0), None);
     let new_parent_id = new_parent.id();
     let _ = new_parent;
+
     world
         .entity_owned(child_id)
         .reparent(Some(new_parent_id))
@@ -298,17 +310,16 @@ fn reparent_syncs_and_propagates() {
 
 #[test]
 fn app_plugin_propagates() {
-    use zlim_app::{App, MainSchedulePlugin};
+    use zlim_app::App;
     use zlim_transform::TransformPlugin;
 
     let mut app = App::new();
-    app.add_plugins((MainSchedulePlugin, TransformPlugin));
+    app.add_plugins(TransformPlugin::default());
     app.build(); // executes the plugins (build → apply → cleanup)
 
     // Build the hierarchy: root -> child.
     let world = app.main_world_mut();
     let mut root = world.spawn(Transform::from_xyz(1.0, 0.0, 0.0), None);
-    let root_id = root.id();
     root.with_child(Transform::from_xyz(0.0, 2.0, 0.0)).unwrap();
     let child_id = root.children().unwrap()[0];
     let _ = root;
@@ -322,5 +333,4 @@ fn app_plugin_propagates() {
         world.entity(child_id).get::<GlobalTransform>().unwrap(),
         &GlobalTransform::from(Transform::from_xyz(1.0, 2.0, 0.0)),
     );
-    let _ = root_id;
 }

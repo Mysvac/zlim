@@ -9,9 +9,9 @@ repository.workspace = true
 
 [features]
 
-debug = ["zlim-utils/debug", "backtrace"]
+debug = ["zlim-utils/debug"]
 
-trace = []
+trace = ["zlim-log/trace"]
 
 backtrace = []
 

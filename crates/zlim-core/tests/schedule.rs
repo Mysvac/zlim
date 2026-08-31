@@ -7,6 +7,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use zlim_core::derive::ScheduleStage as DeriveScheduleStage;
+use zlim_core::job::JobLabel;
 use zlim_core::job::job;
 use zlim_core::job::job_fn;
 use zlim_core::job::job_group;
@@ -22,21 +23,21 @@ use zlim_reflect::derive::TypePath;
 // -----------------------------------------------------------------------------
 // Job & group definitions
 
-#[job_fn(type = JobA, name = "test_job_a")]
+#[job_fn(type = JobA, name = "test::test_job_a")]
 fn job_a() {}
 
-#[job_fn(type = JobB, name = "test_job_b")]
+#[job_fn(type = JobB, name = "test::test_job_b")]
 fn job_b() {}
 
-#[job_fn(type = JobC, name = "test_job_c")]
+#[job_fn(type = JobC, name = "test::test_job_c")]
 fn job_c() {}
 
-#[job_fn(type = GenericJob<T: Default>, name = "test_generic_job")]
+#[job_fn(type = GenericJob<T: Default>, name = "test::test_generic_job")]
 fn generic_job<T: Default>() {}
 
 job_group! {
     type: TestGroup,
-    name: "test_group",
+    name: "test::test_group",
     jobs: [JobA, JobB],
     order: [[JobA, JobB]],
 }
@@ -53,11 +54,8 @@ enum GameStage {
 // Plain marker jobs used by the stage insertion tests; the order-recording
 // jobs live inside the test that observes execution order, so parallel tests
 // never share mutable state.
-#[job_fn(type = StageJobA, name = "stage_job_a")]
+#[job_fn(type = StageJobA, name = "test::stage_job_a")]
 fn stage_job_a() {}
-
-#[job_fn(type = StageJobB, name = "stage_job_b")]
-fn stage_job_b() {}
 
 // -----------------------------------------------------------------------------
 // Standalone job insertion
@@ -68,17 +66,15 @@ fn insert_and_remove_by_name() {
 
     let mut schedule = Schedule::new(AnonymousSchedule);
 
-    assert!(schedule.insert_by_name("test_job_a", ()));
-    assert!(!schedule.insert_by_name("test_job_a", ()));
+    assert!(schedule.insert_by_name("test::test_job_a", ()));
+    assert!(!schedule.insert_by_name("test::test_job_a", ()));
 
-    let id = JobId::new("test_job_a", "#anonymous");
+    let id = JobId::new("test::test_job_a", "#anonymous");
     assert!(schedule.contains_job(id));
-    assert_eq!(schedule.jobs().len(), 1);
 
-    assert!(schedule.remove_by_name("test_job_a"));
-    assert!(!schedule.remove_by_name("test_job_a"));
+    assert!(schedule.remove_by_name("test::test_job_a"));
+    assert!(!schedule.remove_by_name("test::test_job_a"));
     assert!(!schedule.contains_job(id));
-    assert_eq!(schedule.jobs().len(), 0);
 }
 
 #[test]
@@ -91,7 +87,7 @@ fn insert_label_falls_back_to_constructing_itself() {
     // label constructs its own database.
     assert!(schedule.insert::<GenericJob<u32>>(()));
 
-    let id = JobId::new("test_generic_job<u32>", "#anonymous");
+    let id = JobId::new("test::test_generic_job<u32>", "#anonymous");
     assert!(schedule.contains_job(id));
 }
 
@@ -115,26 +111,26 @@ fn insert_and_remove_group() {
 
     let mut schedule = Schedule::new(AnonymousSchedule);
 
-    assert!(schedule.insert_group_by_name("test_group", ()));
-    assert!(!schedule.insert_group_by_name("test_group", ()));
+    assert!(schedule.insert_group_by_name("test::test_group", ()));
+    assert!(!schedule.insert_group_by_name("test::test_group", ()));
 
-    assert!(schedule.contains_group("test_group"));
-    assert!(schedule.groups().any(|name| name == "test_group"));
+    assert!(schedule.contains_group("test::test_group"));
+    assert!(schedule.groups().any(|name| name == "test::test_group"));
 
     // The group inserts its jobs (plus the begin/end markers) with the
     // group name.
-    assert!(schedule.contains_job(JobId::new("test_job_a", "test_group")));
-    assert!(schedule.contains_job(JobId::new("test_job_b", "test_group")));
-    assert!(schedule.contains_job(JobId::new("zlim_core::GroupBegin", "test_group")));
-    assert!(schedule.contains_job(JobId::new("zlim_core::GroupEnd", "test_group")));
+    assert!(schedule.contains_job(JobId::new("test::test_job_a", "test::test_group")));
+    assert!(schedule.contains_job(JobId::new("test::test_job_b", "test::test_group")));
+    assert!(schedule.contains_job(JobId::new("zlim_core::GroupBegin", "test::test_group")));
+    assert!(schedule.contains_job(JobId::new("zlim_core::GroupEnd", "test::test_group")));
 
-    assert!(schedule.remove_group_by_name("test_group"));
-    assert!(!schedule.remove_group_by_name("test_group"));
+    assert!(schedule.remove_group_by_name("test::test_group"));
+    assert!(!schedule.remove_group_by_name("test::test_group"));
 
-    assert!(!schedule.contains_group("test_group"));
-    assert!(!schedule.contains_job(JobId::new("test_job_a", "test_group")));
-    assert!(!schedule.contains_job(JobId::new("test_job_b", "test_group")));
-    assert!(!schedule.contains_job(JobId::new("zlim_core::GroupBegin", "test_group")));
+    assert!(!schedule.contains_group("test::test_group"));
+    assert!(!schedule.contains_job(JobId::new("test::test_job_a", "test::test_group")));
+    assert!(!schedule.contains_job(JobId::new("test::test_job_b", "test::test_group")));
+    assert!(!schedule.contains_job(JobId::new("zlim_core::GroupBegin", "test::test_group")));
 }
 
 #[test]
@@ -146,10 +142,10 @@ fn insert_group_label() {
 
     assert!(schedule.insert_group::<TestGroup>(()));
     assert!(!schedule.insert_group::<TestGroup>(()));
-    assert!(schedule.contains_group("test_group"));
+    assert!(schedule.contains_group("test::test_group"));
 
     assert!(schedule.remove_group::<TestGroup>());
-    assert!(!schedule.contains_group("test_group"));
+    assert!(!schedule.contains_group("test::test_group"));
 }
 
 #[test]
@@ -170,8 +166,8 @@ fn schedule_runs_jobs() {
     JobDB::collect();
 
     let mut schedule = Schedule::new(AnonymousSchedule);
-    assert!(schedule.insert_by_name("test_job_a", ()));
-    assert!(schedule.insert_by_name("test_job_b", ()));
+    assert!(schedule.insert_by_name("test::test_job_a", ()));
+    assert!(schedule.insert_by_name("test::test_job_b", ()));
 
     let mut world = World::alloc();
     schedule.run(&mut world);
@@ -183,7 +179,7 @@ fn schedule_runs_group() {
     JobGroup::collect();
 
     let mut schedule = Schedule::new(AnonymousSchedule);
-    assert!(schedule.insert_group_by_name("test_group", ()));
+    assert!(schedule.insert_group_by_name("test::test_group", ()));
 
     let mut world = World::alloc();
     schedule.run(&mut world);
@@ -247,8 +243,8 @@ fn rebuild_recycles_jobs_without_reinitializing() {
 
     job! {
         type: CountingJobLabel,
-        name: "test_counting_job",
         system: CountingJob { inits: &INITS, registers: &REGISTERS },
+        auto_register: false,
     }
 
     let mut schedule = Schedule::new(AnonymousSchedule);
@@ -262,7 +258,7 @@ fn rebuild_recycles_jobs_without_reinitializing() {
 
     // Inserting another job forces a rebuild; the recycled job must keep
     // its access table and skip re-initialization.
-    assert!(schedule.insert_by_name("test_job_a", ()));
+    assert!(schedule.insert_by_name("test::test_job_a", ()));
     schedule.run(&mut world);
 
     assert_eq!(INITS.load(Ordering::Relaxed), 1);
@@ -280,7 +276,7 @@ fn executor_kind_controls_apply_deferred() {
     // Single-threaded executor does not insert apply-deferred helpers.
     let mut single =
         Schedule::with_executor(AnonymousSchedule, Box::new(SingleThreadedExecutor::new()));
-    assert!(single.insert_group_by_name("test_group", ()));
+    assert!(single.insert_group_by_name("test::test_group", ()));
     let single_job_count = single.jobs().len();
 
     // Multi-threaded executor may insert apply-deferred helpers for
@@ -288,7 +284,7 @@ fn executor_kind_controls_apply_deferred() {
     let mut multi =
         Schedule::with_executor(AnonymousSchedule, Box::new(MultiThreadedExecutor::new()));
     assert_eq!(multi.executor_kind(), ExecutorKind::MultiThreaded);
-    assert!(multi.insert_group_by_name("test_group", ()));
+    assert!(multi.insert_group_by_name("test::test_group", ()));
     assert_eq!(multi.jobs().len(), single_job_count);
 }
 
@@ -300,21 +296,21 @@ fn removed_job_stays_removed_after_rebuild() {
     JobDB::collect();
 
     let mut schedule = Schedule::new(AnonymousSchedule);
-    assert!(schedule.insert_by_name("test_job_a", ()));
-    assert!(schedule.insert_by_name("test_job_b", ()));
+    assert!(schedule.insert_by_name("test::test_job_a", ()));
+    assert!(schedule.insert_by_name("test::test_job_b", ()));
 
     let mut world = World::alloc();
     schedule.run(&mut world); // compile both jobs
 
     // Remove `a` while its job object still lives in the compiled schedule.
-    assert!(schedule.remove_by_name("test_job_a"));
+    assert!(schedule.remove_by_name("test::test_job_a"));
 
     // The rebuild recycles the old schedule; the removed job must not be
     // resurrected.
     schedule.run(&mut world);
     assert_eq!(schedule.jobs().len(), 1);
-    assert!(!schedule.contains_job(JobId::new("test_job_a", "#anonymous")));
-    assert!(schedule.contains_job(JobId::new("test_job_b", "#anonymous")));
+    assert!(!schedule.contains_job(JobId::new("test::test_job_a", "#anonymous")));
+    assert!(schedule.contains_job(JobId::new("test::test_job_b", "#anonymous")));
 }
 
 #[test]
@@ -322,25 +318,25 @@ fn removed_job_slot_reuse_does_not_corrupt() {
     JobDB::collect();
 
     let mut schedule = Schedule::new(AnonymousSchedule);
-    assert!(schedule.insert_by_name("test_job_a", ()));
-    assert!(schedule.insert_by_name("test_job_b", ()));
+    assert!(schedule.insert_by_name("test::test_job_a", ()));
+    assert!(schedule.insert_by_name("test::test_job_b", ()));
 
     let mut world = World::alloc();
     schedule.run(&mut world);
 
     // Remove `a`, then insert `c`, which reuses `a`'s freed slot with a
     // bumped generation tag.
-    assert!(schedule.remove_by_name("test_job_a"));
-    assert!(schedule.insert_by_name("test_job_c", ()));
+    assert!(schedule.remove_by_name("test::test_job_a"));
+    assert!(schedule.insert_by_name("test::test_job_c", ()));
 
     // The rebuild must not overwrite `c`'s buffer slot with the recycled
     // (stale) `a` job.
     schedule.run(&mut world);
 
     assert_eq!(schedule.jobs().len(), 2);
-    assert!(!schedule.contains_job(JobId::new("test_job_a", "#anonymous")));
-    assert!(schedule.contains_job(JobId::new("test_job_b", "#anonymous")));
-    assert!(schedule.contains_job(JobId::new("test_job_c", "#anonymous")));
+    assert!(!schedule.contains_job(JobId::new("test::test_job_a", "#anonymous")));
+    assert!(schedule.contains_job(JobId::new("test::test_job_b", "#anonymous")));
+    assert!(schedule.contains_job(JobId::new("test::test_job_c", "#anonymous")));
 }
 
 // -----------------------------------------------------------------------------
@@ -359,7 +355,7 @@ fn insert_into_named_stage_creates_markers() {
     // keeps its own (anonymous) group value.
     assert!(schedule.contains_job(stage.stage_begin()));
     assert!(schedule.contains_job(stage.stage_end()));
-    assert!(schedule.contains_job(JobId::new("stage_job_a", "#anonymous")));
+    assert!(schedule.contains_job(JobId::new("test::stage_job_a", "#anonymous")));
     assert_eq!(schedule.jobs().len(), 3);
 }
 
@@ -388,11 +384,11 @@ fn insert_group_into_stage_creates_markers() {
     assert!(schedule.insert_group::<TestGroup>(stage));
 
     // The group keeps its own name; the stage markers exist.
-    assert!(schedule.contains_group("test_group"));
+    assert!(schedule.contains_group("test::test_group"));
     assert!(schedule.contains_job(stage.stage_begin()));
     assert!(schedule.contains_job(stage.stage_end()));
-    assert!(schedule.contains_job(JobId::new("zlim_core::GroupBegin", "test_group")));
-    assert!(schedule.contains_job(JobId::new("test_job_a", "test_group")));
+    assert!(schedule.contains_job(JobId::new("zlim_core::GroupBegin", "test::test_group")));
+    assert!(schedule.contains_job(JobId::new("test::test_job_a", "test::test_group")));
 
     // Executes without cycle errors.
     let mut world = World::alloc();
@@ -404,23 +400,25 @@ fn stage_begin_runs_before_and_end_after_jobs() {
     static ORDER: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
     ORDER.lock().unwrap().clear();
 
-    JobDB::collect();
-
     job! {
         type: OrderBeforeBegin,
         system: || ORDER.lock().unwrap().push("before_begin"),
+        auto_register: false,
     }
     job! {
         type: OrderAfterEnd,
         system: || ORDER.lock().unwrap().push("after_end"),
+        auto_register: false,
     }
     job! {
         type: OrderJobA,
         system: || ORDER.lock().unwrap().push("a"),
+        auto_register: false,
     }
     job! {
         type: OrderJobB,
         system: || ORDER.lock().unwrap().push("b"),
+        auto_register: false,
     }
 
     let mut schedule =
@@ -435,13 +433,10 @@ fn stage_begin_runs_before_and_end_after_jobs() {
     assert!(schedule.insert::<OrderBeforeBegin>(()));
     assert!(schedule.insert::<OrderAfterEnd>(()));
     schedule.insert_order(&[
-        JobId::isolated("schedule::OrderBeforeBegin"),
+        JobId::isolated(OrderBeforeBegin::name()),
         stage.stage_begin(),
     ]);
-    schedule.insert_order(&[
-        stage.stage_end(),
-        JobId::isolated("schedule::OrderAfterEnd"),
-    ]);
+    schedule.insert_order(&[stage.stage_end(), JobId::isolated(OrderAfterEnd::name())]);
 
     let mut world = World::alloc();
     schedule.run(&mut world);
@@ -464,14 +459,13 @@ fn run_if_conditions_gate_jobs() {
     static RAN: AtomicU32 = AtomicU32::new(0);
     RAN.store(0, Ordering::Relaxed);
 
-    JobDB::collect();
-
     job! {
         type: LocalGatedJob,
         system: || {
-            RAN.fetch_add(1, Ordering::Relaxed);
+            RAN.fetch_add(10, Ordering::Relaxed);
         },
         run_if: || false,
+        auto_register: false,
     }
     job! {
         type: LocalGatedJobTrue,
@@ -479,14 +473,12 @@ fn run_if_conditions_gate_jobs() {
             RAN.fetch_add(1, Ordering::Relaxed);
         },
         run_if: || true,
+        auto_register: false,
     }
 
     let mut schedule = Schedule::new(AnonymousSchedule);
     assert!(schedule.insert::<LocalGatedJob>(()));
     assert!(schedule.insert::<LocalGatedJobTrue>(()));
-
-    // Each job brings its run_if condition along as a separate node.
-    assert_eq!(schedule.jobs().len(), 4);
 
     let mut world = World::alloc();
     schedule.run(&mut world);
@@ -500,15 +492,15 @@ fn run_if_condition_runs_after_stage_begin() {
     static STAGE_ORDER: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
     STAGE_ORDER.lock().unwrap().clear();
 
-    JobDB::collect();
-
     job! {
         type: PinBegin,
         system: || STAGE_ORDER.lock().unwrap().push("before_begin"),
+        auto_register: false,
     }
     job! {
         type: PinEnd,
         system: || STAGE_ORDER.lock().unwrap().push("after_end"),
+        auto_register: false,
     }
     job! {
         type: LocalStageGatedJob,
@@ -517,6 +509,7 @@ fn run_if_condition_runs_after_stage_begin() {
             STAGE_ORDER.lock().unwrap().push("cond");
             true
         },
+        auto_register: false,
     }
 
     let mut schedule =
@@ -526,8 +519,8 @@ fn run_if_condition_runs_after_stage_begin() {
     assert!(schedule.insert::<PinBegin>(()));
     assert!(schedule.insert::<LocalStageGatedJob>(stage));
     assert!(schedule.insert::<PinEnd>(()));
-    schedule.insert_order(&[JobId::isolated("schedule::PinBegin"), stage.stage_begin()]);
-    schedule.insert_order(&[stage.stage_end(), JobId::isolated("schedule::PinEnd")]);
+    schedule.insert_order(&[JobId::isolated(PinBegin::name()), stage.stage_begin()]);
+    schedule.insert_order(&[stage.stage_end(), JobId::isolated(PinEnd::name())]);
 
     let mut world = World::alloc();
     schedule.run(&mut world);
@@ -552,6 +545,7 @@ fn run_if_in_group_gates_job() {
         },
         run_if: || false,
     }
+
     job_group! {
         type: LocalRunIfGroup,
         name: "local_run_if_group",

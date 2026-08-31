@@ -2,12 +2,12 @@
 
 use core::any::Any;
 use core::panic::AssertUnwindSafe;
-use std::backtrace::Backtrace;
 
 use super::{ExecutorKind, JobExecutor, JobSchedule, JobScheduleView};
-use crate::error::PANIC_ORIGINATES_FROM_ERROR_HANDLER;
-use crate::error::{ErrorContext, ErrorHandler, Severity, ZlimError};
+use crate::error::PanicPayload;
+use crate::error::{ErrorContext, ErrorHandler};
 use crate::job::Job;
+use crate::schedule::InternedScheduleLabel;
 use crate::system::{SystemError, SystemFlags};
 use crate::world::World;
 
@@ -57,22 +57,6 @@ impl Default for SingleThreadedExecutor {
     }
 }
 
-struct PanicPayload {
-    payload: Box<dyn Any + Send>,
-    from_handler: bool,
-}
-
-impl PanicPayload {
-    #[cold]
-    #[inline(never)]
-    fn new(payload: Box<dyn Any + Send>) -> Self {
-        Self {
-            payload,
-            from_handler: PANIC_ORIGINATES_FROM_ERROR_HANDLER.get(),
-        }
-    }
-}
-
 // -----------------------------------------------------------------------------
 // JobExecutor
 
@@ -85,20 +69,19 @@ impl JobExecutor for SingleThreadedExecutor {
     }
 
     /// Validates the compiled schedule is internally consistent.
-    fn init(&mut self, schedule: &JobSchedule) {
-        let nodes = schedule.nodes();
-        let jobs = schedule.jobs();
-        assert_eq!(nodes.len(), jobs.len());
-    }
+    fn init(&mut self, _schedule: &JobSchedule) {}
 
     /// Runs all systems sequentially on the current thread.
     fn exec(&mut self, schedule: &mut JobSchedule, world: &mut World, handler: ErrorHandler) {
         let JobScheduleView {
+            label,
             jobs,
             flags,
             nodes,
             strong_incoming,
             strong_outgoing,
+            #[cfg(feature = "trace")]
+            spans,
             ..
         } = schedule.view();
 
@@ -134,7 +117,9 @@ impl JobExecutor for SingleThreadedExecutor {
 
             // Normal Job
             let func = AssertUnwindSafe(|| unsafe {
-                PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(false);
+                #[cfg(feature = "trace")]
+                let _span = spans[index].enter();
+
                 if let Err(e) = job.run_raw(world.cell()) {
                     core::hint::cold_path();
                     if !matches!(e, SystemError::None) {
@@ -149,16 +134,18 @@ impl JobExecutor for SingleThreadedExecutor {
                 true // Success -> true
             });
 
-            let result: Result<bool, PanicPayload> = if flag.intersects(SystemFlags::NON_SEND) {
-                ::core::hint::cold_path();
-                zlim_task::invoke_on_main(|| {
-                    std::panic::catch_unwind(func).map_err(PanicPayload::new)
-                })
-            } else {
-                std::panic::catch_unwind(func).map_err(PanicPayload::new)
-            };
+            let result: Result<bool, Box<dyn Any + Send>> =
+                if flag.intersects(SystemFlags::NON_SEND) {
+                    ::core::hint::cold_path();
+                    zlim_task::invoke_on_main(|| std::panic::catch_unwind(func))
+                } else {
+                    std::panic::catch_unwind(func)
+                };
 
-            let ok = result.unwrap_or_else(|payload| handle_unwind(&**job, payload, handler));
+            let ok: bool = match result {
+                Ok(result) => result,
+                Err(payload) => propagate_panic(payload, &**job, label),
+            };
 
             // Apply deferred
             if flag.intersects(SystemFlags::DEFERRED) {
@@ -185,32 +172,17 @@ impl JobExecutor for SingleThreadedExecutor {
 
 #[cold]
 #[inline(never)]
-fn handle_unwind(job: &dyn Job, payload: PanicPayload, handler: ErrorHandler) -> bool {
-    if payload.from_handler {
-        // Panic may comes from other threads, local flag need to be updated.
-        PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(true);
-        std::panic::resume_unwind(payload.payload);
+fn propagate_panic(payload: Box<dyn Any + Send>, job: &dyn Job, label: InternedScheduleLabel) -> ! {
+    match payload.downcast::<PanicPayload>() {
+        Ok(panic_payload) => std::panic::resume_unwind(panic_payload),
+        #[expect(clippy::print_stderr, reason = "panic outout")]
+        Err(payload) => {
+            ::core::hint::cold_path();
+            std::eprintln!(
+                "Encounter a panic in schedule `{label:?}`'s job `{}`.",
+                job.id()
+            );
+            std::panic::resume_unwind(Box::new(PanicPayload { payload }))
+        }
     }
-
-    let payload: Box<dyn Any + Send> = payload.payload;
-
-    let id = job.id();
-    let tick = job.last_run();
-    let context = ErrorContext::Job { id, tick };
-
-    const BACKTRACE: Backtrace = Backtrace::disabled();
-    let error = if let Some(&info) = payload.downcast_ref::<&str>() {
-        let err = format!("job panicked: {info}");
-        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
-    } else if let Some(info) = payload.downcast_ref::<String>() {
-        let err = format!("job panicked: {info}");
-        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
-    } else {
-        const ERR: &str = "job panicked: unknown error";
-        ZlimError::with_backtrace(Severity::Panic, ERR, BACKTRACE)
-    };
-
-    handler(error, context);
-
-    false
 }

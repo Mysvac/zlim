@@ -5,7 +5,6 @@ use zlim_core::entity::{EntityError, EntityId};
 use zlim_core::error::ZlimError;
 use zlim_core::ops::EntityOwned;
 use zlim_core::tick::DetectChangesMut;
-use zlim_utils::debug::DebugLocation;
 
 // -----------------------------------------------------------------------------
 // EntityTransformExt
@@ -74,20 +73,12 @@ impl EntityTransformExt for EntityOwned<'_> {
 // -----------------------------------------------------------------------------
 // EntityCommandsTransformExt
 
-#[cold]
-#[inline(never)]
-fn bind(e: EntityError, c: DebugLocation) -> ZlimError {
-    ZlimError::warning(format!("{e}\n\t{c}"))
-}
-
 #[inline]
-#[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
 fn reparent_command(parent: Option<EntityId>) -> impl EntityCommand {
-    let caller = DebugLocation::caller();
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match reparent_in_place(&mut entity, parent) {
             Ok(_) => Ok(()),
-            Err(e) => Err(bind(e, caller)),
+            Err(e) => Err(ZlimError::from(e)),
         }
     }
 }

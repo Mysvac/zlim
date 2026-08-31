@@ -16,6 +16,7 @@ debug = [
     "zlim-reflect/debug",
     "zlim-core/debug",
     "zlim-math/debug",
+    "zlim-transform/debug",
 ]
 
 trace = [
@@ -24,7 +25,10 @@ trace = [
     "zlim-app/trace",
 ]
 
-backtrace = ["zlim-core/backtrace"]
+backtrace = [
+    "zlim-core/backtrace",
+    "zlim-app/backtrace",
+]
 
 trace_tracy = ["zlim-log/trace_tracy"]
 

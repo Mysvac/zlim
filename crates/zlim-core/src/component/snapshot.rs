@@ -37,33 +37,11 @@ impl Debug for Components {
 }
 
 impl Components {
-    pub(crate) fn new() -> Self {
-        crate::cfg::debug! {
-            let start = ::zlim_os::time::Instant::now();
-        }
-
-        let dbs: Vec<&'static ComponentDB> = ID_REGISTRY
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-
-        let hint = dbs.len() + (dbs.len() >> 1);
-        let mut type_map = TypeMap::with_capacity(hint);
-        let mut path_map = HashMap::with_capacity(hint);
-
-        for &item in &dbs {
-            type_map.insert(item.type_id, item);
-            path_map.insert(item.type_path, item);
-        }
-
-        crate::cfg::debug! {
-            zlim_log::debug!("`zlim_core::Components` initialized: {:?}` .", start.elapsed());
-        }
-
+    pub(crate) const fn new() -> Self {
         Self {
-            dbs,
-            type_map,
-            path_map,
+            dbs: Vec::new(),
+            type_map: TypeMap::new(),
+            path_map: HashMap::new(),
         }
     }
 }

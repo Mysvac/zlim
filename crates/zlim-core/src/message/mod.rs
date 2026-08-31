@@ -70,6 +70,11 @@
 //! one. This guarantees that messages written during one update are visible
 //! to readers in the following update, while keeping memory usage bounded.
 //!
+//! Rotation does **not** trigger change detection on the `MessageQueue<T>`
+//! resource: it goes through the `bypass()` path, so `Res<MessageQueue<T>>`
+//! never reports the swap itself as a change — the buffer swap is internal
+//! bookkeeping, not user data.
+//!
 //! [`MessageCursor`]: MessageCursor
 //! [`MessageCursor<M>`]: MessageCursor
 //! [`MessageKey<M>`]: MessageKey

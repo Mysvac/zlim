@@ -20,7 +20,7 @@ struct Render;
 #[derive(TypePath, Resource, Debug, PartialEq)]
 struct Counter(u32);
 
-#[job_fn(type = IncCounter, name = "sched_inc_counter")]
+#[job_fn(type = IncCounter, name = "test::sched_inc_counter")]
 fn inc_counter(mut counter: ResMut<Counter>) {
     counter.0 += 1;
 }
@@ -60,7 +60,7 @@ fn get_mut_allows_in_place_building() {
     schedules.insert(Schedule::new(Update));
 
     let schedule = schedules.get_mut(Update).unwrap();
-    assert!(schedule.insert_by_name("sched_inc_counter", ()));
+    assert!(schedule.insert_by_name("test::sched_inc_counter", ()));
 
     let schedule = schedules.get_mut(Update).unwrap();
     assert_eq!(schedule.jobs().len(), 1);
@@ -118,7 +118,7 @@ fn world_run_schedule_executes_jobs() {
     JobDB::collect();
 
     let mut schedule = Schedule::new(Update);
-    assert!(schedule.insert_by_name("sched_inc_counter", ()));
+    assert!(schedule.insert_by_name("test::sched_inc_counter", ()));
 
     let mut world = World::alloc();
     world.insert_resource(Counter(0));
@@ -144,7 +144,7 @@ fn world_owns_schedules() {
 
     {
         let mut schedule = Schedule::new(Update);
-        assert!(schedule.insert_by_name("sched_inc_counter", ()));
+        assert!(schedule.insert_by_name("test::sched_inc_counter", ()));
         world.schedules_mut().insert(schedule);
     }
 
@@ -159,17 +159,6 @@ fn world_owns_schedules() {
 
     assert!(world.schedules_mut().remove(Update).is_some());
     assert!(world.schedules().is_empty());
-}
-
-#[test]
-fn world_run_schedule_creates_missing_schedule() {
-    let mut world = World::alloc();
-
-    // `run_schedule` on an unknown label creates an empty schedule instead
-    // of panicking.
-    assert!(!world.schedules().contains(Update));
-    world.run_schedule(Update);
-    assert!(world.schedules().contains(Update));
 }
 
 // -----------------------------------------------------------------------------

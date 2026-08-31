@@ -5,6 +5,8 @@ use std::collections::BTreeSet;
 
 use zlim_core::error::ErrorHandler;
 use zlim_core::schedule::InternedScheduleLabel;
+use zlim_core::schedule::Schedule;
+use zlim_core::schedule::ScheduleLabel;
 use zlim_core::world::World;
 use zlim_log::LogPlugin;
 use zlim_task::TaskPoolConfigs;
@@ -100,7 +102,6 @@ pub struct App {
     pub(crate) runner: Option<RunnerFn>,
     pub(crate) sub_apps: HashMap<InternedAppLabel, SubApp>,
     pub(crate) error_handler: Option<ErrorHandler>,
-    pub(crate) log_plugin: Option<Box<LogPlugin>>,
     pub(crate) task_pool_configs: Option<Box<TaskPoolConfigs>>,
 }
 
@@ -170,26 +171,54 @@ impl App {
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
-            log_plugin: None,
             task_pool_configs: None,
         }
     }
+    /// Initializes the global logger with the default [`LogPlugin`].
+    ///
+    /// Equivalent to calling [`with_logger`](Self::with_logger) with
+    /// [`LogPlugin::default()`].
+    ///
+    /// # Behavior
+    ///
+    /// - Logging is disabled by default; call this to enable it.
+    /// - The logger can only be initialized **once** per process; later calls
+    ///   fail and report an `error` to the log output, but do **not** panic.
+    /// - Initialization is **immediate**: the global subscriber is installed
+    ///   right away, so every later [`App`] operation is visible in the logs.
+    ///
+    /// Because of that, call it right after [`App::new`] to avoid the odd
+    /// problems caused by invisible logs — in particular, when the `trace`
+    /// feature is enabled, jobs/schedules created before the global logger is
+    /// up would build their spans while the dispatcher is disabled, leaving
+    /// those spans permanently inactive.
+    pub fn init_logger(&mut self) -> &mut Self {
+        LogPlugin::default().apply();
+        self
+    }
 
-    /// Enables the log plugin with the given configuration.
+    /// Initializes the global logger with the given [`LogPlugin`] configuration.
     ///
-    /// By default, logging is disabled. If multiple apps enable logging, only the
-    /// first one's configuration will take effect, as logging is process-global.
+    /// Equivalent to [`LogPlugin::apply`] with the provided plugin.
     ///
-    /// # Panics
-    /// Panics if called after the app has entered the `Building` stage.
+    /// # Behavior
+    ///
+    /// - Logging is disabled by default; call this to enable it.
+    /// - The logger can only be initialized **once** per process; only the
+    ///   first configuration takes effect, as logging is process-global. Later
+    ///   calls fail and report an `error` to the log output, but do **not**
+    ///   panic.
+    /// - Initialization is **immediate**: the global subscriber is installed
+    ///   right away, so every later [`App`] operation is visible in the logs.
+    ///
+    /// Because of that, call it right after [`App::new`] to avoid the odd
+    /// problems caused by invisible logs — in particular, when the `trace`
+    /// feature is enabled, jobs/schedules created before the global logger is
+    /// up would build their spans while the dispatcher is disabled, leaving
+    /// those spans permanently inactive.
     #[inline]
-    pub fn with_log_plugin(&mut self, plugin: LogPlugin) -> &mut Self {
-        assert_eq!(
-            self.main.plugins_state,
-            PluginsState::Adding,
-            "LogPlugin can only be added in `Adding` stage (before `App::build` and `App::run`)."
-        );
-        self.log_plugin = Some(Box::new(plugin));
+    pub fn with_logger(&mut self, plugin: LogPlugin) -> &mut Self {
+        plugin.apply();
         self
     }
 
@@ -197,14 +226,18 @@ impl App {
     ///
     /// If not set, default parameters will be used.
     ///
-    /// The global task pool is shared across the entire process. If multiple apps
-    /// attempt to configure it, only the first configuration will take effect;
-    /// subsequent calls will emit a warning and be ignored.
+    /// The global task pool is shared across the entire process.
+    ///
+    /// If multiple apps attempt to configure it, only the first configuration
+    /// will take effect; subsequent calls will emit a warning and be ignored.
+    ///
+    /// The applys operation is deferred until the [`App::build`] or [`App::run`].
     ///
     /// # Panics
+    ///
     /// Panics if called after the app has entered the `Building` stage.
     #[inline]
-    pub fn config_task_pool(&mut self, configs: TaskPoolConfigs) -> &mut Self {
+    pub fn with_task_pool_configs(&mut self, configs: TaskPoolConfigs) -> &mut Self {
         assert_eq!(
             self.main.plugins_state,
             PluginsState::Adding,
@@ -234,7 +267,6 @@ impl App {
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
-            log_plugin: None,
             task_pool_configs: None,
         };
 
@@ -361,7 +393,6 @@ impl SubApp {
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
-            log_plugin: None,
             task_pool_configs: None,
         };
 
@@ -552,14 +583,21 @@ impl App {
     ///
     /// Called automatically at the start of [`App::run`].
     pub fn build(&mut self) -> &mut Self {
-        #[cfg(feature = "trace")]
-        let _app_build_span = zlim_log::info_span!("app build").entered();
-
         match self.main.plugins_state {
             PluginsState::Adding => (),
             PluginsState::Built => panic!("find a nested App::build in `Build` stage"),
             PluginsState::Ready => panic!("find a nested App::build in `Apply` stage"),
             PluginsState::Cleaned => return self,
+        }
+
+        #[cfg(feature = "trace")]
+        let _app_build_span = zlim_log::info_span!(parent: None, "app build").entered();
+
+        // Initialize TaskPool
+        if let Some(mut task_pool_configs) = self.task_pool_configs.take() {
+            task_pool_configs.apply();
+        } else {
+            TaskPoolConfigs::default().apply();
         }
 
         // Collect all types of information:
@@ -569,18 +607,6 @@ impl App {
         // - ECS Job Registry
         // - ECS Job Group Registry
         zlim_core::init::core_init();
-
-        // Initialize Log
-        if let Some(log_plugin) = self.log_plugin.take() {
-            log_plugin.apply();
-        }
-
-        // Initialize TaskPool
-        if let Some(mut task_pool_configs) = self.task_pool_configs.take() {
-            task_pool_configs.apply();
-        } else {
-            TaskPoolConfigs::default().apply();
-        }
 
         self.build_plugins();
         self.apply_plugins();
@@ -830,6 +856,10 @@ impl SubApp {
     }
 
     /// Runs the default schedule and updates internal component trackers.
+    ///
+    /// # Panics
+    ///
+    /// Panic if the `update_schedule` if `Some` but schedule does not exist.
     pub fn update(&mut self) {
         assert_eq!(self.plugins_state, PluginsState::Cleaned);
 
@@ -841,7 +871,7 @@ impl SubApp {
         World::refresh_metadata(world);
 
         if let Some(label) = self.update_schedule {
-            world.run_schedule(label);
+            world.run_schedule(label); // panic if schedule does not exist.
         }
 
         world.clear_trackers();
@@ -852,6 +882,10 @@ impl App {
     /// Drives one frame: refresh metadata and run the main schedule, then
     /// for each sub-app refresh metadata, extract from the main world and
     /// run its schedule.
+    ///
+    /// # Panics
+    ///
+    /// Panic if the `update_schedule` if `Some` but schedule does not exist.
     pub fn update(&mut self) {
         assert_eq!(self.main.plugins_state, PluginsState::Cleaned);
 
@@ -1174,9 +1208,29 @@ impl Debug for App {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("App")
             .field("plugins", &self.main.plugin_names)
-            .field("log_plugin", &self.log_plugin.is_some())
             .field("update_schedule", &self.main.update_schedule)
             .field("sub_apps", &self.sub_apps)
             .finish()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Schedule
+
+impl SubApp {
+    /// Returns a mutable reference to the schedule with the given label.
+    ///
+    /// Initializes a new empty schedule if it doesn't exist.
+    pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
+        self.world_mut().schedule_entry(label.intern())
+    }
+}
+
+impl App {
+    /// Returns a mutable reference to the schedule with the given label.
+    ///
+    /// Initializes a new empty schedule if it doesn't exist.
+    pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
+        self.main_world_mut().schedule_entry(label.intern())
     }
 }

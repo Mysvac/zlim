@@ -1,5 +1,7 @@
 //! Integration tests for `#[derive(Component)]`.
 
+use core::num::NonZeroU32;
+
 use zlim_core::component::Component as ComponentTrait;
 use zlim_core::component::ComponentDB;
 use zlim_core::component::HookContext;
@@ -60,7 +62,7 @@ fn component_hook_const_is_set() {
 struct WithEntities {
     #[entities]
     targets: Vec<EntityId>,
-    value: u32,
+    _value: u32,
 }
 
 #[test]
@@ -70,22 +72,25 @@ fn component_with_entities_requires_remap() {
 
 #[test]
 fn component_with_entities_map_entities() {
+    const OLD: EntityId = EntityId::new(1, NonZeroU32::new(1).unwrap());
+    const REPLACED: EntityId = EntityId::new(2, NonZeroU32::new(2).unwrap());
+
     struct TestMapper;
+
     impl EntityMapper for TestMapper {
-        fn get_mapped(&mut self, source: EntityId) -> EntityId {
-            source
+        fn get_mapped(&mut self, _source: EntityId) -> EntityId {
+            REPLACED
         }
+
         fn set_mapped(&mut self, _source: EntityId, _target: EntityId) {}
     }
 
     let mut comp = WithEntities {
-        targets: vec![EntityId::from_bits(0x0000_0001_0000_0001).unwrap()],
-        value: 42,
+        targets: vec![OLD],
+        _value: 123456,
     };
-
-    let _ = comp.value; // suppress clippy
-
     comp.map_entities(&mut TestMapper);
+    assert_eq!(comp.targets.as_slice(), &[REPLACED]);
 }
 
 // -----------------------------------------------------------------------------
@@ -113,28 +118,32 @@ fn component_with_custom_map_entities_requires_remap() {
 #[test]
 fn component_with_custom_map_entities_is_called() {
     struct ShiftMapper;
+
     impl EntityMapper for ShiftMapper {
         fn get_mapped(&mut self, source: EntityId) -> EntityId {
             EntityId::from_bits(source.to_bits().wrapping_add(1)).unwrap()
         }
+
         fn set_mapped(&mut self, _source: EntityId, _target: EntityId) {}
     }
 
     let source = EntityId::from_bits(0x0000_0001_0000_0001).unwrap();
+
     let mut comp = CustomMapped {
         target: source,
-        value: 42,
+        value: 2026,
         calls: 0,
     };
 
     comp.map_entities(&mut ShiftMapper);
 
     assert_eq!(comp.calls, 1);
+    assert_eq!(comp.value, 2026);
+
     assert_eq!(
         comp.target,
         EntityId::from_bits(0x0000_0001_0000_0002).unwrap()
     );
-    assert_eq!(comp.value, 42);
 }
 
 // -----------------------------------------------------------------------------

@@ -140,7 +140,7 @@ pub use executor::{ExecutorKind, MultiThreadedExecutor, SingleThreadedExecutor};
 pub use graph::{Dag, DiGraph, Node, SccIterator, SccNodes, ToposortError};
 pub use label::{AnonymousSchedule, InternedScheduleLabel, ScheduleLabel};
 pub use schedule::Schedule;
-pub use schedules::Schedules;
+pub use schedules::{MissingSchedule, Schedules};
 pub use stage::ScheduleStage;
 
 pub use zlim_core_derive::{ScheduleLabel, ScheduleStage};

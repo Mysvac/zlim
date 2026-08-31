@@ -2,6 +2,7 @@
 
 use zlim_app::{App, MainSchedulePlugin, Plugin, PostStartup, PostUpdate};
 use zlim_core::job::{JobId, JobLabel};
+use zlim_core::schedule::ScheduleLabel;
 use zlim_core::world::World;
 
 use crate::propagate::TransformChangeDetection;
@@ -16,10 +17,15 @@ use crate::propagate::TransformPropagation;
 /// [`GlobalTransform`] is kept in sync with the entity hierarchy and
 /// local [`Transform`]s.
 ///
+/// See [`TransformPropagateStrategy`] for optional configurations and
+/// algorithm implementation.
+///
 /// [`GlobalTransform`]: crate::GlobalTransform
 /// [`Transform`]: crate::Transform
-#[derive(Debug, Default, Clone, Copy)]
-pub struct TransformPlugin;
+#[derive(Debug, Default)]
+pub struct TransformPlugin {
+    pub strategy: TransformPropagateStrategy,
+}
 
 impl Plugin for TransformPlugin {
     fn build(&self, app: &mut App) {
@@ -30,15 +36,24 @@ impl Plugin for TransformPlugin {
 
     fn apply(&self, app: &mut App) {
         if !app.contains_plugin::<MainSchedulePlugin>() {
+            ::core::hint::cold_path();
             zlim_log::warn!(
-                "`TransformPlugin` requires `MainSchedulePlugin` to define the \
-                 `PostStartup` and `PostUpdate` schedules. Without it, systems \
-                 inserted by TransformPlugin may not run."
+                "`TransformPlugin` requires `MainSchedulePlugin` to define the common \
+                 schedules. Without it, jobs inserted by `TransformPlugin` may not run."
             );
         }
 
         let world: &mut World = app.main_world_mut();
-        world.init_resource::<TransformPropagateStrategy>();
+
+        if world.contains_resource::<TransformPropagateStrategy>() {
+            zlim_log::warn!(
+                "The old `TransformPropagateStrategy` has been overwritten by `TransformPlugin`.\n\
+                If you need to configure the transform strategy during app initialization, please \
+                modifying the strategy via `TransformPlugin` instead of manually inserting it."
+            );
+        }
+
+        world.insert_resource::<TransformPropagateStrategy>(self.strategy);
         world.init_resource::<TransformChangeRoot>();
 
         install(world, PostStartup);
@@ -46,7 +61,8 @@ impl Plugin for TransformPlugin {
     }
 }
 
-fn install(world: &mut World, schedule: impl zlim_core::schedule::ScheduleLabel) {
+#[inline]
+fn install(world: &mut World, schedule: impl ScheduleLabel) {
     let schedule = world.schedule_entry(schedule);
 
     schedule.insert::<TransformChangeDetection>(());

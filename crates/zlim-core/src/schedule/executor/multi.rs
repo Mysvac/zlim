@@ -2,7 +2,6 @@
 
 use core::any::Any;
 use core::panic::AssertUnwindSafe;
-use std::backtrace::Backtrace;
 use std::collections::{BTreeSet, VecDeque};
 
 use zlim_task::{MainTaskPool, Scope};
@@ -12,9 +11,9 @@ use zlim_utils::vec::FastVec;
 
 use super::{ConflictTable, ExecutorKind, JobExecutor, JobSchedule, JobScheduleView};
 
-use crate::error::PANIC_ORIGINATES_FROM_ERROR_HANDLER;
-use crate::error::{ErrorContext, ErrorHandler, Severity, ZlimError};
+use crate::error::{ErrorContext, ErrorHandler, PanicPayload};
 use crate::job::Job;
+use crate::schedule::InternedScheduleLabel;
 use crate::system::{SystemError, SystemFlags};
 use crate::utils::DebugCheckedUnwrap;
 use crate::world::{World, WorldCell};
@@ -52,15 +51,8 @@ struct ExecutorState {
     deferred_systems: Vec<u16>,
 }
 
-/// Catched panic payload.
-///
-/// - If `from_handler` is true, we will propogate it directly.
-/// - Otherwise, we will convert it to a ZlimError.
-struct PanicPayload {
-    payload: Box<dyn Any + Send>,
-    context: ErrorContext,
-    from_handler: bool,
-}
+/// Buffer for deferring panic propagation until after execution completes.
+struct PanicBuffer(SpinLock<Option<Box<PanicPayload>>>);
 
 /// Runs the schedule on multiple worker threads.
 ///
@@ -74,9 +66,7 @@ struct PanicPayload {
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::schedule::{
-///     ExecutorKind, MultiThreadedExecutor, ScheduleLabel,
-/// };
+/// use zlim_core::schedule::{ExecutorKind, MultiThreadedExecutor};
 ///
 /// #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// struct Update;
@@ -89,10 +79,12 @@ struct PanicPayload {
 /// assert_eq!(schedule.executor_kind(), ExecutorKind::MultiThreaded);
 /// ```
 pub struct MultiThreadedExecutor {
+    #[cfg(feature = "trace")]
+    sync_span: SyncUnsafeCell<Option<zlim_log::Span>>,
+    panic_buffer: PanicBuffer,
     // Each thread only uses try-lock, so spin-lock is better than Mutex.
     state: SpinLock<ExecutorState>,
     completed: SegQueue<Completed>,
-    panic_payload: SegQueue<PanicPayload>,
 }
 
 // -----------------------------------------------------------------------------
@@ -102,6 +94,7 @@ pub struct MultiThreadedExecutor {
 #[derive(Copy, Clone)]
 struct Context<'scope, 'env, 'sys> {
     world: WorldCell<'env>,
+    label: InternedScheduleLabel,
     executor: &'env MultiThreadedExecutor,
     scope: &'scope Scope<'scope, 'env, ()>,
     jobs: &'sys [SyncUnsafeCell<Box<dyn Job>>],
@@ -110,6 +103,8 @@ struct Context<'scope, 'env, 'sys> {
     strong_outgoing: &'sys [&'sys [u16]],
     conflict_table: &'sys ConflictTable,
     error_handler: ErrorHandler,
+    #[cfg(feature = "trace")]
+    spans: &'sys [SyncUnsafeCell<zlim_log::Span>],
 }
 
 // -----------------------------------------------------------------------------
@@ -125,10 +120,52 @@ impl MultiThreadedExecutor {
     /// Creates a new multi-threaded executor.
     pub const fn new() -> Self {
         Self {
+            #[cfg(feature = "trace")]
+            sync_span: SyncUnsafeCell::new(None),
             state: SpinLock::new(ExecutorState::new()),
             completed: SegQueue::new(),
-            panic_payload: SegQueue::new(),
+            panic_buffer: PanicBuffer(SpinLock::new(None)),
         }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// PanicBuffer
+
+impl PanicBuffer {
+    #[cold]
+    #[inline(never)]
+    fn preserve_payload(
+        &self,
+        payload: Box<dyn Any + Send>,
+        job: &dyn Job,
+        label: InternedScheduleLabel,
+    ) {
+        let payload = match payload.downcast::<PanicPayload>() {
+            Ok(panic_payload) => panic_payload,
+            #[expect(clippy::print_stderr, reason = "panic outout")]
+            Err(payload) => {
+                ::core::hint::cold_path();
+                std::eprintln!(
+                    "Encounter a panic in schedule `{label:?}`'s job `{}`.",
+                    job.id()
+                );
+                Box::new(PanicPayload { payload })
+            }
+        };
+
+        let mut slot = self.0.lock();
+
+        if slot.is_none() {
+            *slot = Some(payload);
+        }
+
+        ::core::mem::drop(slot);
+    }
+
+    #[inline(always)]
+    fn take(&mut self) -> Option<Box<PanicPayload>> {
+        self.0.get_mut().take()
     }
 }
 
@@ -166,6 +203,8 @@ impl ExecutorState {
         assert_eq!(job_count, schedule.outgoing.len());
         assert_eq!(job_count, schedule.strong_incoming.len());
         assert_eq!(job_count, schedule.strong_outgoing.len());
+        #[cfg(feature = "trace")]
+        assert_eq!(job_count, schedule.spans.len());
 
         self.incoming.clear();
         self.strong_incoming.clear();
@@ -188,57 +227,6 @@ impl ExecutorState {
 }
 
 // -----------------------------------------------------------------------------
-// send_panic_payload
-
-#[cold]
-#[inline(never)]
-fn send_panic_payload(job: &dyn Job, payload: Box<dyn Any + Send>, queue: &SegQueue<PanicPayload>) {
-    let from_handler = PANIC_ORIGINATES_FROM_ERROR_HANDLER.get();
-
-    let id = job.id();
-    let tick = job.last_run();
-    let context = ErrorContext::Job { id, tick };
-
-    let payload = PanicPayload {
-        payload,
-        context,
-        from_handler,
-    };
-    queue.push(payload);
-}
-
-#[cold]
-#[inline(never)]
-fn handle_panic_payload(payload: PanicPayload, handler: ErrorHandler) {
-    let PanicPayload {
-        payload,
-        context,
-        from_handler,
-    } = payload;
-
-    if from_handler {
-        // Panic comes from other threads, local flag need to be updated.
-        PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(true);
-        ::std::panic::resume_unwind(payload);
-    }
-
-    const BACKTRACE: Backtrace = Backtrace::disabled();
-
-    let error = if let Some(&info) = payload.downcast_ref::<&str>() {
-        let err = format!("job panicked: {info}");
-        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
-    } else if let Some(info) = payload.downcast_ref::<String>() {
-        let err = format!("job panicked: {info}");
-        ZlimError::with_backtrace(Severity::Panic, err, BACKTRACE)
-    } else {
-        const ERR: &str = "job panicked: unknown error";
-        ZlimError::with_backtrace(Severity::Panic, ERR, BACKTRACE)
-    };
-
-    handler(error, context);
-}
-
-// -----------------------------------------------------------------------------
 // Context Implementation
 
 impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
@@ -251,16 +239,20 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
         error_handler: ErrorHandler,
     ) -> Self {
         let JobScheduleView {
+            label,
             jobs,
             flags,
             outgoing,
             strong_outgoing,
             conflict,
+            #[cfg(feature = "trace")]
+            spans,
             ..
         } = schedule.view();
 
         Self {
             world: world.cell(),
+            label,
             executor,
             scope,
             jobs: SyncUnsafeCell::from_mut(jobs).transpose(),
@@ -269,6 +261,8 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
             strong_outgoing,
             conflict_table: conflict,
             error_handler,
+            #[cfg(feature = "trace")]
+            spans: SyncUnsafeCell::from_mut(spans).transpose(),
         }
     }
 }
@@ -430,26 +424,30 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
     fn handle_deferred_jobs(&self, state: &mut ExecutorState) -> Box<dyn FnOnce() + Send + 'scope> {
         let world = self.world;
         let jobs = self.jobs;
-        let panic_payload = &self.executor.panic_payload;
+        let panic_buffer = &self.executor.panic_buffer;
+        let label = self.label;
+        #[cfg(feature = "trace")]
+        let span = &self.executor.sync_span;
 
         // Drain without reallocating by reusing the existing buffer capacity.
         let mut deferred: Vec<u16> = Vec::new();
         deferred.append(&mut state.deferred_systems);
 
         Box::new(move || {
+            #[cfg(feature = "trace")]
+            let _span = unsafe { (&mut *span.get()).as_mut().unwrap().enter() };
+
             let world = unsafe { world.full_mut() };
             world.flush();
 
             for index in deferred {
                 let index = index as usize;
-                // Reset the signal to ensure its correctness.
-                PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(false);
                 debug_assert!(index < jobs.len());
                 let job = unsafe { &mut *jobs.get_unchecked(index).get() };
                 let func = AssertUnwindSafe(|| job.apply_deferred(world));
 
                 if let Err(payload) = ::std::panic::catch_unwind(func) {
-                    send_panic_payload(&**job, payload, panic_payload);
+                    panic_buffer.preserve_payload(payload, &**job, label);
                 }
             }
 
@@ -502,6 +500,13 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
             *self.flags.get_unchecked(index_t)
         };
 
+        // SAFETY: `ExecutorState::reset` ensure that `span.len == job_count`.
+        #[cfg(feature = "trace")]
+        let span = unsafe {
+            debug_assert!(index_t < self.spans.len());
+            &mut *self.spans.get_unchecked(index_t).get()
+        };
+
         // Reading raw flags avoids repeated virtual method calls.
         let no_op = flags.intersects(SystemFlags::NO_OP);
         let deferred = flags.intersects(SystemFlags::DEFERRED);
@@ -526,8 +531,9 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
                 apply_deferred();
             }
 
-            PANIC_ORIGINATES_FROM_ERROR_HANDLER.set(false);
             let func = AssertUnwindSafe(|| unsafe {
+                #[cfg(feature = "trace")]
+                let _span = span.enter();
                 if let Err(e) = job.run_raw(context.world) {
                     ::core::hint::cold_path();
                     if !matches!(e, SystemError::None) {
@@ -545,7 +551,10 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
             let result = ::std::panic::catch_unwind(func);
 
             let successed = result.unwrap_or_else(|payload| {
-                send_panic_payload(job, payload, &context.executor.panic_payload);
+                context
+                    .executor
+                    .panic_buffer
+                    .preserve_payload(payload, job, context.label);
                 false
             });
 
@@ -593,6 +602,11 @@ impl JobExecutor for MultiThreadedExecutor {
     /// This pre-allocates storage for dependency counters and ready queues.
     fn init(&mut self, schedule: &JobSchedule) {
         self.state.get_mut().init(schedule);
+        #[cfg(feature = "trace")]
+        {
+            *self.sync_span.get_mut() =
+                Some(zlim_log::info_span!(parent: None, "sync point", schedule = ?schedule.label));
+        }
     }
 
     /// Executes the schedule using task-based parallel dispatch.
@@ -612,6 +626,7 @@ impl JobExecutor for MultiThreadedExecutor {
         if schedule.nodes().is_empty() {
             return;
         }
+        let label = schedule.label;
 
         self.state.get_mut().reset(schedule);
 
@@ -620,6 +635,14 @@ impl JobExecutor for MultiThreadedExecutor {
         });
 
         let jobs = schedule.jobs_mut();
+
+        #[cfg(feature = "trace")]
+        let _span = self
+            .sync_span
+            .get_mut()
+            .as_mut()
+            .expect("should initialized")
+            .enter();
 
         for &index in &self.state.get_mut().deferred_systems {
             let index = index as usize;
@@ -631,23 +654,20 @@ impl JobExecutor for MultiThreadedExecutor {
             if let Err(payload) = ::std::panic::catch_unwind(func) {
                 ::core::hint::cold_path();
                 let job = &*jobs[index];
-                send_panic_payload(job, payload, &self.panic_payload);
+                self.panic_buffer.preserve_payload(payload, job, label);
             }
         }
 
-        let mut payloads: VecDeque<PanicPayload> = VecDeque::new();
+        #[cfg(feature = "trace")]
+        ::core::mem::drop(_span);
 
-        // Re-throw captured panic after scheduler cleanup.
-        while let Some(paylod) = self.panic_payload.pop_mut() {
+        if let Some(payload) = self.panic_buffer.take() {
             ::core::hint::cold_path();
-            payloads.push_back(paylod);
+            std::panic::resume_unwind(payload);
         }
 
+        // In theory, the deferred queue should be empty at this point.
         world.flush();
-
-        while let Some(payload) = payloads.pop_front() {
-            handle_panic_payload(payload, handler);
-        }
     }
 }
 
