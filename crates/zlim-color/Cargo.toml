@@ -1,0 +1,21 @@
+[package]
+name = "zlim-color"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["README.zh.md"]
+
+[dependencies]
+
+zlim-math = { path = "../zlim-math", default-features = false }
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
+
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+bytemuck = { version = "1", features = ["derive"] }
+wgpu-types = { version = "30", default-features = false, features = ["std"] }
+encase = { version = "0.12", default-features = false }
+
+[lints]
+workspace = true

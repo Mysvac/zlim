@@ -198,6 +198,12 @@ job! {
 `type` names a type, which generates an empty marker type used to identify
 the job. In other words, **jobs are strongly typed**.
 
+By default a non-generic job also **auto-registers** itself at startup (so it
+shows up in `JobDB::collect`); pass `auto_register = false` to skip the
+registration. Generic jobs cannot be auto-registered — omit the attribute or
+set it to `false`, and register each instantiation manually with
+`JobDB::register`.
+
 You can also customize `name` and add run conditions:
 
 ```rust
@@ -320,6 +326,18 @@ world.schedules_mut()
 world.run_schedule(MainLoop::Update);
 world.run_schedule(MainLoop::Render);
 ```
+
+Within a single Schedule, jobs are distinguished by their
+[`JobId`](crate::job::JobId), so no two identical jobs can exist.
+
+A [`JobId`](crate::job::JobId) has two parts: `name` and `group` — the job's
+own name and the group it belongs to. Jobs added through a
+[`JobGroup`](crate::job::JobGroup) naturally belong to that group, while jobs
+added directly all belong to the anonymous group.
+
+Note that a [`JobId`](crate::job::JobId) has no `stage`:
+[`ScheduleStage`](crate::schedule::ScheduleStage) is only used to organize
+execution order, never to distinguish jobs.
 
 ### 2.8 Query
 

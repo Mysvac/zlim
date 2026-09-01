@@ -54,7 +54,10 @@ where
     }
 }
 
-impl<T, I> SampleCurve<T, I> {
+impl<T, I> SampleCurve<T, I>
+where
+    I: Fn(&T, &T, f32) -> T,
+{
     /// Create a new [`SampleCurve`] using the specified `interpolation` to interpolate between
     /// the given `samples`. An error is returned if there are not at least 2 samples or if the
     /// given `domain` is unbounded.
@@ -66,10 +69,7 @@ impl<T, I> SampleCurve<T, I> {
         domain: Interval,
         samples: impl IntoIterator<Item = T>,
         interpolation: I,
-    ) -> Result<Self, EvenCoreError>
-    where
-        I: Fn(&T, &T, f32) -> T,
-    {
+    ) -> Result<Self, EvenCoreError> {
         Ok(Self {
             core: EvenCore::new(domain, samples)?,
             interpolation,
@@ -164,7 +164,10 @@ where
     }
 }
 
-impl<T, I> UnevenSampleCurve<T, I> {
+impl<T, I> UnevenSampleCurve<T, I>
+where
+    I: Fn(&T, &T, f32) -> T,
+{
     /// Create a new [`UnevenSampleCurve`] using the provided `interpolation` to interpolate
     /// between adjacent `timed_samples`. The given samples are filtered to finite times and
     /// sorted internally; if there are not at least 2 valid timed samples, an error will be
@@ -176,16 +179,15 @@ impl<T, I> UnevenSampleCurve<T, I> {
     pub fn new(
         timed_samples: impl IntoIterator<Item = (f32, T)>,
         interpolation: I,
-    ) -> Result<Self, UnevenCoreError>
-    where
-        I: Fn(&T, &T, f32) -> T,
-    {
+    ) -> Result<Self, UnevenCoreError> {
         Ok(Self {
             core: UnevenCore::new(timed_samples)?,
             interpolation,
         })
     }
+}
 
+impl<T, I> UnevenSampleCurve<T, I> {
     /// This [`UnevenSampleAutoCurve`], but with the sample times moved by the map `f`.
     /// In principle, when `f` is monotone, this is equivalent to [`CurveExt::reparametrize`],
     /// but the function inputs to each are inverses of one another.

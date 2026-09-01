@@ -64,13 +64,12 @@
 //! [`sample`]: `Curve::sample`
 //! [`sample_clamped`]: `Curve::sample_clamped`
 //! [`sample_unchecked`]: `Curve::sample_unchecked`
-//!
 
 use crate::curve::{Curve, CurveExt, FunctionCurve, Interval};
 use crate::{Dir2, Dir3, Dir3A, Isometry2d, Isometry3d};
 use crate::{Quat, Rot2, VectorSpace};
 
-// TODO: Think about merging `Ease` with `StableInterpolate`
+// TODO! Think about merging `Ease` with `StableInterpolate`
 
 /// A type whose values can be eased between.
 ///
@@ -405,11 +404,12 @@ impl JumpAt {
 /// [`sample`]: EaseFunction::sample
 /// [`sample_clamped`]: EaseFunction::sample_clamped
 /// [unit interval]: `Interval::UNIT`
-#[non_exhaustive]
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(zlim_reflect::Reflect)]
-#[reflect(Clone)]
+#[reflect(Debug, Clone)]
+#[non_exhaustive]
 // Note: Graphs are auto-generated via `tools/build-easefunction-graphs`.
 pub enum EaseFunction {
     /// `f(t) = t`
@@ -1172,12 +1172,14 @@ mod easing_functions {
     // truncated value is somehow carefully chosen.
     #[expect(
         clippy::excessive_precision,
-        reason = "This is deliberately more precise than an f32 will allow, as truncating the value might imply that the value is carefully chosen."
+        reason = "This is deliberately more precise than an f32 will allow, \
+        as truncating the value might imply that the value is carefully chosen."
     )]
     const LOG2_1023: f32 = 9.998590429745328646459226;
     #[expect(
         clippy::excessive_precision,
-        reason = "This is deliberately more precise than an f32 will allow, as truncating the value might imply that the value is carefully chosen."
+        reason = "This is deliberately more precise than an f32 will allow, \
+        as truncating the value might imply that the value is carefully chosen."
     )]
     const FRAC_1_1023: f32 = 0.00097751710654936461388074291;
     #[inline]

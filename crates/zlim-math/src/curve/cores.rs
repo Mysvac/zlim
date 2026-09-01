@@ -11,9 +11,8 @@ use core::fmt::{Debug, Display, Formatter};
 use serde::{Deserialize, Serialize};
 use zlim_reflect::Reflect;
 
-use crate::ops;
-
 use super::interval::Interval;
+use crate::ops;
 
 // -----------------------------------------------------------------------------
 // InterpolationDatum
@@ -233,9 +232,7 @@ pub fn even_interp(domain: Interval, samples: usize, t: f32) -> InterpolationDat
 /// [`domain`]: UnevenCore::domain
 /// [`sample_with`]: UnevenCore::sample_with
 /// [the provided constructor]: UnevenCore::new
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(Reflect)]
+#[derive(Debug, Clone, Reflect, Serialize, Deserialize)]
 pub struct UnevenCore<T> {
     /// The times for the samples of this curve.
     ///
@@ -378,13 +375,14 @@ impl<T> UnevenCore<T> {
 // ChunkedUnevenCore
 
 /// The data core of a curve using uneven samples (i.e. keyframes), where each sample time
-/// yields some fixed number of values — the [sampling width]. This may serve as storage for
-/// curves that yield vectors or iterators, and in some cases, it may be useful for cache locality
-/// if the sample type can effectively be encoded as a fixed-length slice of values.
+/// yields some fixed number of values — the [sampling width].
+///
+/// This may serve as storage for curves that yield vectors or iterators, and in some cases,
+/// it may be useful for cache locality if the sample type can effectively be encoded as a
+/// fixed-length slice of values.
 ///
 /// [sampling width]: ChunkedUnevenCore::width
-#[derive(Debug, Clone)]
-#[derive(Reflect, Serialize, Deserialize)]
+#[derive(Debug, Clone, Reflect, Serialize, Deserialize)]
 pub struct ChunkedUnevenCore<T> {
     /// The times, one for each sample.
     ///

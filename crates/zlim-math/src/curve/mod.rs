@@ -23,6 +23,9 @@
 //! [mapping output]: CurveExt::map
 //! [rasterization]: CurveResampleExt::resample
 
+// -----------------------------------------------------------------------------
+// Modules
+
 pub mod adaptors;
 pub mod cores;
 pub mod derivatives;
@@ -40,12 +43,14 @@ pub use easing::*;
 pub use interval::{Interval, interval};
 pub use sample_curves::*;
 
+// -----------------------------------------------------------------------------
+// Curve
+
 use core::fmt::{Display, Formatter};
 use core::{marker::PhantomData, ops::Deref};
 
 use crate::StableInterpolate;
 use crate::VectorSpace;
-
 use interval::InvalidIntervalError;
 
 /// A trait for a type that can represent values of type `T` parametrized over a fixed interval.
@@ -61,6 +66,7 @@ pub trait Curve<T> {
     fn domain(&self) -> Interval;
 
     /// Sample a point on this curve at the parameter value `t`, extracting the associated value.
+    ///
     /// This is the unchecked version of sampling, which should only be used if the sample time `t`
     /// is already known to lie within the curve's domain.
     ///
@@ -99,6 +105,9 @@ where
         <C as Curve<T>>::sample_unchecked(self, t)
     }
 }
+
+// -----------------------------------------------------------------------------
+// CurveExt
 
 /// Extension trait implemented by [curves], allowing access to a number of adaptors and
 /// convenience methods.
@@ -165,10 +174,12 @@ pub trait CurveExt<T>: Curve<T> + Sized {
         }
     }
 
-    /// Create a new [`Curve`] whose parameter space is related to the parameter space of this curve
-    /// by `f`. For each time `t`, the sample from the new curve at time `t` is the sample from
-    /// this curve at time `f(t)`. The given `domain` will be the domain of the new curve. The
-    /// function `f` is expected to take `domain` into `self.domain()`.
+    /// Create a new [`Curve`] whose parameter space is related to the parameter space of this
+    /// curve by `f`.
+    ///
+    /// For each time `t`, the sample from the new curve at time `t` is the sample from
+    /// this curve at time `f(t)`. The given `domain` will be the domain of the new curve.
+    /// The function `f` is expected to take `domain` into `self.domain()`.
     ///
     /// Note that this is the opposite of what one might expect intuitively; for example, if this
     /// curve has a parameter domain of `[0, 1]`, then stretching the parameter domain to
@@ -327,13 +338,11 @@ pub trait CurveExt<T>: Curve<T> + Sized {
         self.domain()
             .is_bounded()
             .then(|| {
+                let domain = self.domain();
+                let end = domain.end() + domain.length() * count as f32;
                 // This unwrap always succeeds because `curve` has a valid Interval as its domain and the
                 // length of `curve` cannot be NAN. It's still fine if it's infinity.
-                let domain = Interval::new(
-                    self.domain().start(),
-                    self.domain().end() + self.domain().length() * count as f32,
-                )
-                .unwrap();
+                let domain = Interval::new(domain.start(), end).unwrap();
                 RepeatCurve {
                     domain,
                     curve: self,
@@ -462,6 +471,9 @@ pub trait CurveExt<T>: Curve<T> + Sized {
 }
 
 impl<C, T> CurveExt<T> for C where C: Curve<T> {}
+
+// -----------------------------------------------------------------------------
+// CurveResampleExt
 
 /// Extension trait implemented by [curves], allowing access to generic resampling methods as
 /// well as those based on [stable interpolation].
@@ -618,6 +630,9 @@ pub trait CurveResampleExt<T>: Curve<T> {
 
 impl<C, T> CurveResampleExt<T> for C where C: Curve<T> + ?Sized {}
 
+// -----------------------------------------------------------------------------
+// LinearReparamError
+
 /// An error indicating that a linear reparameterization couldn't be performed because of
 /// malformed inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -642,6 +657,9 @@ impl Display for LinearReparamError {
 
 impl core::error::Error for LinearReparamError {}
 
+// -----------------------------------------------------------------------------
+// ReverseError
+
 /// An error indicating that a reversion of a curve couldn't be performed because of
 /// malformed inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -657,6 +675,9 @@ impl Display for ReverseError {
 }
 
 impl core::error::Error for ReverseError {}
+
+// -----------------------------------------------------------------------------
+// RepeatError
 
 /// An error indicating that a repetition of a curve couldn't be performed because of malformed
 /// inputs.
@@ -674,6 +695,9 @@ impl Display for RepeatError {
 
 impl core::error::Error for RepeatError {}
 
+// -----------------------------------------------------------------------------
+// PingPongError
+
 /// An error indicating that a ping ponging of a curve couldn't be performed because of
 /// malformed inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -689,6 +713,9 @@ impl Display for PingPongError {
 }
 
 impl core::error::Error for PingPongError {}
+
+// -----------------------------------------------------------------------------
+// ChainError
 
 /// An error indicating that an end-to-end composition couldn't be performed because of
 /// malformed inputs.
@@ -713,6 +740,9 @@ impl Display for ChainError {
 }
 
 impl core::error::Error for ChainError {}
+
+// -----------------------------------------------------------------------------
+// ResamplingError
 
 /// An error indicating that a resampling operation could not be performed because of
 /// malformed inputs.
@@ -739,6 +769,9 @@ impl Display for ResamplingError {
 }
 
 impl core::error::Error for ResamplingError {}
+
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {

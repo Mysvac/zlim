@@ -17,9 +17,10 @@ pub trait BoundingVolume: Sized {
     /// The rotation type used for the volume. This should be `Rot2` for 2D and `Quat` for 3D.
     type Rotation: Clone + Copy + PartialEq;
 
-    /// The type used for the size of the bounding volume. Usually a half size. For example an
-    /// `f32` radius for a circle, or a `Vec3` with half sizes for x, y and z for a 3D axis-aligned
-    /// bounding box
+    /// The type used for the size of the bounding volume. Usually a half size.
+    ///
+    /// For example an `f32` radius for a circle, or a `Vec3` with half sizes for
+    /// x, y and z for a 3D axis-aligned bounding box
     type HalfSize;
 
     /// Returns the center of the bounding volume.

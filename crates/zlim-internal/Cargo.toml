@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+exclude = ["README.zh.md"]
 
 [features]
 
@@ -70,6 +71,8 @@ zlim-core = { path = "../zlim-core", default-features = false }
 zlim-app = { path = "../zlim-app", default-features = false }
 
 zlim-math = { path = "../zlim-math", default-features = false }
+
+zlim-color = { path = "../zlim-color", default-features = false }
 
 zlim-transform = { path = "../zlim-transform", default-features = false }
 

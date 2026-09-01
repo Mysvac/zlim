@@ -2,12 +2,13 @@
 
 use core::cmp::{max_by, min_by};
 use core::fmt::{Display, Formatter};
-use core::ops::RangeInclusive;
 
 use itertools::Either;
-
 use serde::{Deserialize, Serialize};
 use zlim_reflect::Reflect;
+
+// -----------------------------------------------------------------------------
+// Interval
 
 /// A nonempty closed interval, possibly unbounded in either direction.
 ///
@@ -21,6 +22,9 @@ pub struct Interval {
     end: f32,
 }
 
+// -----------------------------------------------------------------------------
+// InvalidIntervalError
+
 /// An error that indicates that an operation would have returned an invalid [`Interval`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InvalidIntervalError;
@@ -33,6 +37,9 @@ impl Display for InvalidIntervalError {
 
 impl core::error::Error for InvalidIntervalError {}
 
+// -----------------------------------------------------------------------------
+// SpacedPointsError
+
 /// An error indicating that spaced points could not be extracted from an unbounded interval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpacedPointsError;
@@ -44,6 +51,9 @@ impl Display for SpacedPointsError {
 }
 
 impl core::error::Error for SpacedPointsError {}
+
+// -----------------------------------------------------------------------------
+// Implementation
 
 /// An error indicating that a linear map between intervals could not be constructed because of
 /// unboundedness.
@@ -198,10 +208,19 @@ impl Interval {
     }
 }
 
-impl TryFrom<RangeInclusive<f32>> for Interval {
+impl TryFrom<core::ops::RangeInclusive<f32>> for Interval {
     type Error = InvalidIntervalError;
-    fn try_from(range: RangeInclusive<f32>) -> Result<Self, Self::Error> {
+
+    fn try_from(range: core::ops::RangeInclusive<f32>) -> Result<Self, Self::Error> {
         Interval::new(*range.start(), *range.end())
+    }
+}
+
+impl TryFrom<core::range::RangeInclusive<f32>> for Interval {
+    type Error = InvalidIntervalError;
+
+    fn try_from(range: core::range::RangeInclusive<f32>) -> Result<Self, Self::Error> {
+        Interval::new(range.start, range.last)
     }
 }
 
@@ -210,6 +229,9 @@ impl TryFrom<RangeInclusive<f32>> for Interval {
 pub const fn interval(start: f32, end: f32) -> Result<Interval, InvalidIntervalError> {
     Interval::new(start, end)
 }
+
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {

@@ -44,12 +44,9 @@ zlim 引擎的数学库，移植自 `bevy_math`，基于 `glam` 。
 
 ## primitives
 
-- 2D 图元：`Circle`、`Arc2d`、`CircularSector`、`CircularSegment`、`Ellipse`、
-  `Annulus`、`Rhombus`、`Plane2d`、`Line2d`、`Segment2d`、`Polyline2d`、
-  `Triangle2d`、`Rectangle`、`Polygon`、`ConvexPolygon`、`RegularPolygon`、
-  `Capsule2d`、`Ring` 等。
-- 3D 图元：球、盒、圆柱、圆锥、棱锥、棱柱、环面、胶囊体、无限平面、线段等。
-- `HalfSpace`、`Inset`（内缩）、`ViewFrustum`（视锥体，含 `corners`/`from_camera_origin` 等）。
+- 2D 图元：圆、弧、环、菱形、线段、平面、多边形等。
+- 3D 图元：球、盒、圆柱、圆锥、环面、胶囊体、平面、线段等。
+- 半空间、视锥体等。
 
 ## matrix
 
