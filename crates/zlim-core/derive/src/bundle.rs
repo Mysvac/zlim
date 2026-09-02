@@ -39,7 +39,8 @@ fn data_bundle_impl(
 ) -> TokenStream {
     quote! {
         #[automatically_derived]
-        #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
+        // #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
+        // No needed and cannot use `expect`, `forbid(unsafe_code)` disallows it.
         unsafe impl #impl_generics #data_bundle_ for #type_ident #ty_generics #where_clause {}
     }
 }
@@ -116,7 +117,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                 return quote! {
                     const _: () = {
                         #[automatically_derived]
-                        #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
+                        // #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
+                        // No needed and cannot use `expect`, `forbid(unsafe_code)` disallows it.
                         unsafe impl #impl_generics #bundle_ for #type_ident #ty_generics #where_clause {
                             const NEED_APPLY_EFFECT: bool = false;
                             #[inline(always)]
@@ -233,7 +235,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     quote! {
         const _: () = {
             #[automatically_derived]
-            #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
+            // #[expect(unsafe_code, reason = "bundle implementation is unsafe.")]
+            // No needed and cannot use `expect`, `forbid(unsafe_code)` disallows it.
             unsafe impl #impl_generics #bundle_ for #type_ident #ty_generics #where_clause {
                 const NEED_APPLY_EFFECT: bool = false #(#need_apply_effect)*;
 

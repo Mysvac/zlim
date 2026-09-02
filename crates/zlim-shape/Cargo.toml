@@ -1,0 +1,33 @@
+[package]
+name = "zlim-shape"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["README.zh.md"]
+
+[features]
+
+rand = ["dep:rand", "dep:rand_distr", "zlim-math/rand"]
+
+[dependencies]
+
+zlim-math = { path = "../zlim-math", default-features = false }
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
+
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+
+rand = { version = "0.10", default-features = false, features = ["std"], optional = true }
+rand_distr = { version = "0.6", default-features = false, features = ["alloc", "std"], optional = true }
+
+[dev-dependencies]
+zlim-math = { path = "../zlim-math", default-features = false, features = ["approx"] }
+
+approx = "0.5"
+glam = { version = "0.33", default-features = false, features = ["approx"] }
+rand = { version = "0.10", default-features = false, features = ["std", "std_rng", "thread_rng"] }
+chacha20 = { version = "0.10.0", default-features = false, features = ["rng"] }
+
+[lints]
+workspace = true

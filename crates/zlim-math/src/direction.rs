@@ -4,7 +4,6 @@ use core::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 use zlim_reflect::Reflect;
 
-use crate::{Primitive2d, Primitive3d};
 use crate::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4};
 
 // ---------------------------------------------------------------------
@@ -97,8 +96,6 @@ fn assert_is_normalized(message: &str, length_squared: f32) {
 #[repr(transparent)]
 #[doc(alias = "Direction2d")]
 pub struct Dir2(Vec2);
-
-impl Primitive2d for Dir2 {}
 
 impl Dir2 {
     /// A unit vector pointing along the positive X axis.
@@ -413,8 +410,6 @@ impl approx::UlpsEq for Dir2 {
 #[repr(transparent)]
 #[doc(alias = "Direction3d")]
 pub struct Dir3(Vec3);
-
-impl Primitive3d for Dir3 {}
 
 impl Dir3 {
     /// A unit vector pointing along the positive X axis.
@@ -822,8 +817,6 @@ impl approx::UlpsEq for Dir3 {
 #[repr(transparent)]
 #[doc(alias = "Direction3dA")]
 pub struct Dir3A(Vec3A);
-
-impl Primitive3d for Dir3A {}
 
 impl Dir3A {
     /// A unit vector pointing along the positive X axis.

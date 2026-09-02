@@ -35,13 +35,7 @@ impl Plugin for TransformPlugin {
     }
 
     fn apply(&self, app: &mut App) {
-        if !app.contains_plugin::<MainSchedulePlugin>() {
-            ::core::hint::cold_path();
-            zlim_log::warn!(
-                "`TransformPlugin` requires `MainSchedulePlugin` to define the common \
-                 schedules. Without it, jobs inserted by `TransformPlugin` may not run."
-            );
-        }
+        MainSchedulePlugin::warn_if_unset(app, "TransformPlugin");
 
         let world: &mut World = app.main_world_mut();
 

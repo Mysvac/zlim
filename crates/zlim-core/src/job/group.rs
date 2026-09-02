@@ -165,6 +165,19 @@ register_job!(GroupEnd);
 /// exclusive world accessing. Therefore, `relaxed_order` is a better choice
 /// when there is no need to deferred commands visibility.
 ///
+/// # Note on Job `run_if`
+///
+/// A job's `run_if` condition is considered part of the job itself. Although
+/// execution is separated, the ordering constraints affect both the `run_if`
+/// evaluation and the job body, and guarantee that deferred commands are
+/// visible when the job runs.
+///
+/// When specifying ordering dependencies, you should always use the job's own
+/// label or name, not the name of its `run_if` sub-item. Doing otherwise may
+/// cause circular dependencies. As noted above, sub-item dependencies are handled
+/// automatically — users should treat the `run_if` condition and the job body
+/// as a single logical unit.
+///
 /// # Job Register
 ///
 /// If `JobGroupLabel` is defined using [`job_group!`], the internal [`JobDB`]

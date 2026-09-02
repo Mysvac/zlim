@@ -49,9 +49,11 @@ uuid = ["zlim-reflect/uuid"]
 
 libm = ["zlim-math/libm"]
 
-rand = ["zlim-math/rand"]
+rand = ["zlim-math/rand", "zlim-shape/rand"]
 
 approx = ["zlim-math/approx"]
+
+sysinfo_plugin = ["zlim-diagnostic/sysinfo_plugin"]
 
 [dependencies]
 
@@ -72,9 +74,15 @@ zlim-app = { path = "../zlim-app", default-features = false }
 
 zlim-math = { path = "../zlim-math", default-features = false }
 
+zlim-shape = { path = "../zlim-shape", default-features = false }
+
+zlim-curve = { path = "../zlim-curve", default-features = false }
+
 zlim-color = { path = "../zlim-color", default-features = false }
 
 zlim-transform = { path = "../zlim-transform", default-features = false }
+
+zlim-diagnostic = { path = "../zlim-diagnostic", default-features = false }
 
 [lints]
 workspace = true

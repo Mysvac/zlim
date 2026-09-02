@@ -289,7 +289,6 @@ fn generate_query_slice(
     // The slice companion's QueryData impl (delegates to the field types).
     let slice_query_data_impl = quote! {
         #[automatically_derived]
-        #[expect(unsafe_code, reason = "QueryData implementation is unsafe")]
         unsafe impl #impl_g #query_data_ for #slice_ident #ty_g #where_g {
             type ReadOnly = #slice_readonly;
             type State = ( #( <#static_field_types as #query_data_>::State, )* );
@@ -341,7 +340,6 @@ fn generate_query_slice(
     // The slice companion's QuerySlice impl.
     let slice_query_slice_impl = quote! {
         #[automatically_derived]
-        #[expect(unsafe_code, reason = "QuerySlice implementation is unsafe")]
         unsafe impl #impl_g #query_slice_ for #slice_ident #ty_g #where_g {
             type SliceItem<'world> = #slice_ident<'world #(, #type_param_idents)*>;
             type ReadOnlySlice = #slice_readonly_slice;
@@ -359,7 +357,7 @@ fn generate_query_slice(
     // The slice companion's ReadOnlyQueryData impl (readonly case only).
     let slice_readonly_impl = if readonly {
         quote! {
-            #[expect(unsafe_code, reason = "ReadOnlyQueryData implementation is unsafe")]
+            #[automatically_derived]
             unsafe impl #impl_g #readonly_query_data_ for #slice_ident #ty_g #where_g {}
         }
     } else {
@@ -377,11 +375,12 @@ fn generate_query_slice(
         quote! {}
     } else {
         quote! {
-            #[expect(unsafe_code, reason = "ReadOnlyQueryData implementation is unsafe")]
+            // #[expect(unsafe_code, reason = "ReadOnlyQueryData implementation is unsafe")]
+            // No needed and cannot use `expect`, `forbid(unsafe_code)` disallows it.
+            #[automatically_derived]
             unsafe impl #impl_g #readonly_query_data_ for #readonly_slice_ident #ty_g #where_g {}
 
             #[automatically_derived]
-            #[expect(unsafe_code, reason = "QueryData implementation is unsafe")]
             unsafe impl #impl_g #query_data_ for #readonly_slice_ident #ty_g #where_g {
                 type ReadOnly = Self;
                 type State = ( #( <#static_field_types as #query_data_>::State, )* );
@@ -430,7 +429,6 @@ fn generate_query_slice(
             }
 
             #[automatically_derived]
-            #[expect(unsafe_code, reason = "QuerySlice implementation is unsafe")]
             unsafe impl #impl_g #query_slice_ for #readonly_slice_ident #ty_g #where_g {
                 type SliceItem<'world> = #readonly_slice_ident<'world #(, #type_param_idents)*>;
                 type ReadOnlySlice = Self;
@@ -456,7 +454,6 @@ fn generate_query_slice(
     };
     let derived_slice_impl = quote! {
         #[automatically_derived]
-        #[expect(unsafe_code, reason = "QuerySlice implementation is unsafe")]
         unsafe impl #impl_g #query_slice_ for #type_ident #ty_g #where_g {
             type SliceItem<'world> = #slice_ident<'world #(, #type_param_idents)*>;
             type ReadOnlySlice = #derived_readonly_slice;
@@ -757,10 +754,10 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
         // Impls for the companion struct, emitted inside `const _`.
         let impls = quote! {
-            #[expect(unsafe_code, reason = "ReadOnlyQueryData implementation is unsafe")]
+            #[automatically_derived]
             unsafe impl #impl_g #readonly_query_data_ for #readonly_ident #ty_g #where_g {}
 
-            #[expect(unsafe_code, reason = "QueryData implementation is unsafe")]
+            #[automatically_derived]
             unsafe impl #impl_g #query_data_ for #readonly_ident #ty_g #where_g {
                 type ReadOnly = Self;
                 // Use the original field States (not the ReadOnly::State
@@ -824,7 +821,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
         // Readonly / unit / no-'w: `ReadOnly = Self`; implement
         // `ReadOnlyQueryData` directly.
         let ro_impl = quote! {
-            #[expect(unsafe_code, reason = "ReadOnlyQueryData implementation is unsafe")]
+            #[automatically_derived]
             unsafe impl #impl_g #readonly_query_data_ for #type_ident #ty_g #where_g {}
         };
 
@@ -935,7 +932,6 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
             #slice_impls
 
             #[automatically_derived]
-            #[expect(unsafe_code, reason = "QueryData implementation is unsafe")]
             unsafe impl #impl_g #query_data_ for #type_ident #ty_g #where_g {
                 type ReadOnly = #readonly_type;
                 type State = ( #( <#static_field_types as #query_data_>::State, )* );

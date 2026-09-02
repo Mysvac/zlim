@@ -1,0 +1,30 @@
+[package]
+name = "zlim-diagnostic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+dylib = []
+
+sysinfo_plugin = ["dep:sysinfo"]
+
+[dependencies]
+zlim-utils = { path = "../zlim-utils", default-features = false }
+zlim-os = { path = "../zlim-os", default-features = false }
+zlim-log = { path = "../zlim-log", default-features = false }
+
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
+zlim-core = { path = "../zlim-core", default-features = false }
+zlim-app = { path = "../zlim-app", default-features = false }
+
+[target.'cfg(all(target_os = "macos"))'.dependencies]
+sysinfo = { version = "0.38.4", optional = true, default-features = false, features = ["apple-app-store", "system"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "windows", target_os = "android", target_os = "freebsd", target_os = "netbsd"))'.dependencies]
+sysinfo = { version = "0.38.4", optional = true, default-features = false, features = ["system"] }
+
+[lints]
+workspace = true

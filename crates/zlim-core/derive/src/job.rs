@@ -18,11 +18,14 @@
 //! `module_path!()::TypeName`).
 //!
 //! Optional `run_if` expressions gate the job: each is a system returning
-//! `bool` / `Result<bool, E>` and becomes a condition job named
-//! `"{job}#run_if<{ordinal}>#{expression}"` (0-based ordinal; the expression
-//! string is truncated to 15 characters) and interned for `'static`.  The
-//! condition constructors — each taking the job's group name — are stored in
-//! the `JobDB::run_if` slice.
+//! `bool` / `Result<bool, E>` (or `()` — with the "error as control flow"
+//! design, a unit-returning condition passes as long as its parameters are
+//! constructed and it runs without panicking) and becomes a condition job
+//! named `"{job}#run_if<{ordinal}>#{expression}"` (0-based ordinal; the
+//! expression string is truncated to 15 characters) and interned for
+//! `'static`.  Condition jobs are always built **strictly**, independent of
+//! the main job's `strict` argument.  The condition constructors — each
+//! taking the job's group name — are stored in the `JobDB::run_if` slice.
 //!
 //! For non-generic markers the database registers itself through
 //! `zlim_reg::submit!` at program startup.  Registration is controlled by
@@ -358,8 +361,10 @@ fn expand_common(input: JobInput) -> syn::Result<TokenStream> {
     // a job named `"{job}#run_if<{ordinal}>#{expression}"` (interned for
     // `'static`) and built on demand through the same `IntoJob` bridge as
     // the job itself — the caller passes the job's group name explicitly.
-    // The ordinal is the 0-based position within the `run_if` list; the
-    // expression string is truncated to 15 characters.
+    // Conditions are **always strict** (`strict = true`), regardless of the
+    // main job's own `strict` setting.  The ordinal is the 0-based position
+    // within the `run_if` list; the expression string is truncated to 15
+    // characters.
     let run_if_ctors: Vec<TokenStream> = run_if
         .iter()
         .enumerate()
@@ -368,7 +373,7 @@ fn expand_common(input: JobInput) -> syn::Result<TokenStream> {
 
             quote! {
                 |group: &'static str| -> ::std::boxed::Box<dyn #job_trait_> {
-                    #into_job_::into_job::<#strict_arg>(
+                    #into_job_::into_job::<true>(
                         #expr,
                         #intern_str_(&::std::format!(
                             "{}#run_if<{}>#{}",

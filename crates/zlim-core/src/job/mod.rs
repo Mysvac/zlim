@@ -56,9 +56,16 @@
 //! assert_eq!(job.id().group(), "my_group");
 //! ```
 //!
-//! `run_if` gates the job with one or more conditions (systems returning
-//! `bool` or `Result<bool, E>`); `strict: false` relaxes access conflict
-//! reporting:
+//! `run_if` gates the job with one or more conditions.  A condition is
+//! usually a system returning `bool` or `Result<bool, E>`; but thanks to the
+//! "error as control flow" design it may also return `()`, in which case the
+//! condition passes as long as its parameters are constructed successfully
+//! and it runs without panicking.
+//!
+//! Condition systems are always **strict** — regardless of the job's own
+//! `strict` setting — and are scheduled **before** the job itself with
+//! **strong order**, so their deferred commands are guaranteed visible to the
+//! job.  Gating therefore needs no `JobGroup` or explicit `Schedule` ordering:
 //!
 //! ```rust
 //! use zlim_core::prelude::*;

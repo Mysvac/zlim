@@ -424,4 +424,24 @@ impl Plugin for MainSchedulePlugin {
     }
 }
 
+impl MainSchedulePlugin {
+    /// Checks whether `MainSchedulePlugin` itself is present in the app.
+    ///
+    /// If not, emits a standard warning message. This is typically used
+    /// during the `apply` phase of built-in plugins to ensure that the
+    /// required scheduling infrastructure is available.
+    ///
+    /// Without `MainSchedulePlugin`, jobs inserted by plugins that depend
+    /// on the common schedules may fail to run.
+    pub fn warn_if_unset(app: &App, plugin_name: &str) {
+        if !app.contains_plugin::<MainSchedulePlugin>() {
+            ::core::hint::cold_path();
+            zlim_log::warn!(
+                "`{plugin_name}` requires `MainSchedulePlugin` to define the common \
+                 schedules. Without it, jobs inserted by `{plugin_name}` may not run."
+            );
+        }
+    }
+}
+
 // ---------------------------------------------------------------------

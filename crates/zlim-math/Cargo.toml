@@ -14,7 +14,7 @@ debug = ["glam/debug-glam-assert"]
 
 approx = ["dep:approx", "glam/approx"]
 
-rand = ["dep:rand", "dep:rand_distr", "glam/rand"]
+rand = ["dep:rand", "glam/rand"]
 
 [dependencies]
 
@@ -23,11 +23,9 @@ zlim-utils = { path = "../zlim-utils", default-features = false }
 zlim-reflect = { path = "../zlim-reflect", default-features = false, features = ["glam"] }
 
 glam = { version = "0.33", default-features = false, features = ["std", "bytemuck", "serde", "float-types", "integer-types"] }
-itertools = { version = "0.15", default-features = false, features = ["use_alloc"] }
 libm = { version = "0.2", optional = true }
 approx = { version = "0.5", default-features = false, optional = true }
 rand = { version = "0.10", default-features = false, features = ["std"], optional = true }
-rand_distr = { version = "0.6", optional = true }
 
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 

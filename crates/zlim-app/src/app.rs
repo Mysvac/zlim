@@ -4,9 +4,12 @@ use core::fmt::{Debug, Formatter};
 use std::collections::BTreeSet;
 
 use zlim_core::error::ErrorHandler;
+use zlim_core::message::Message;
+use zlim_core::resource::Resource;
 use zlim_core::schedule::InternedScheduleLabel;
 use zlim_core::schedule::Schedule;
 use zlim_core::schedule::ScheduleLabel;
+use zlim_core::world::FromWorld;
 use zlim_core::world::World;
 use zlim_log::LogPlugin;
 use zlim_task::TaskPoolConfigs;
@@ -1215,7 +1218,7 @@ impl Debug for App {
 }
 
 // -----------------------------------------------------------------------------
-// Schedule
+// basic methods
 
 impl SubApp {
     /// Returns a mutable reference to the schedule with the given label.
@@ -1223,6 +1226,20 @@ impl SubApp {
     /// Initializes a new empty schedule if it doesn't exist.
     pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
         self.world_mut().schedule_entry(label.intern())
+    }
+
+    /// Initializes the resource if it does not exist.
+    pub fn init_resource<T: Resource + Send + FromWorld>(&mut self) -> &mut Self {
+        self.world_mut().init_resource::<T>();
+        self
+    }
+
+    /// Registers a message type for use in this world (app).
+    ///
+    /// See [`World::register_message`] for details.
+    pub fn add_message<T: Message>(&mut self) -> &mut Self {
+        self.world_mut().register_message::<T>();
+        self
     }
 }
 
@@ -1232,5 +1249,19 @@ impl App {
     /// Initializes a new empty schedule if it doesn't exist.
     pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
         self.main_world_mut().schedule_entry(label.intern())
+    }
+
+    /// Initializes the resource if it does not exist.
+    pub fn init_resource<T: Resource + Send + FromWorld>(&mut self) -> &mut Self {
+        self.main_world_mut().init_resource::<T>();
+        self
+    }
+
+    /// Registers a message type for use in the main world (app).
+    ///
+    /// See [`World::register_message`] for details.
+    pub fn add_message<T: Message>(&mut self) -> &mut Self {
+        self.main_world_mut().register_message::<T>();
+        self
     }
 }

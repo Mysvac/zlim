@@ -17,10 +17,6 @@ zlim 引擎的数学库，移植自 `bevy_math`，基于 `glam` 。
 
 - `FloatPow` — 浮点幂运算扩展（`powf`/`powi` 等，可指定 std/libm 实现）。
 
-## Primitive2d / Primitive3d
-
-- 2D 与 3D 图元的标记 trait。
-
 ## rotation2d
 
 - `Rot2` — 2D 旋转（角度 + 正弦余弦缓存）。
@@ -33,20 +29,6 @@ zlim 引擎的数学库，移植自 `bevy_math`，基于 `glam` 。
 ## isometry
 
 - `Isometry2d`/`Isometry3d` — 刚体变换（旋转 + 平移）。
-
-## ray
-
-- `Ray2d`/`Ray3d` — 射线（原点 + 方向）。
-
-## measure
-
-- `Measured2d`/`Measured3d` — 带单位的度量值（Aabb/圆/球等）。
-
-## primitives
-
-- 2D 图元：圆、弧、环、菱形、线段、平面、多边形等。
-- 3D 图元：球、盒、圆柱、圆锥、环面、胶囊体、平面、线段等。
-- 半空间、视锥体等。
 
 ## matrix
 
@@ -69,35 +51,9 @@ zlim 引擎的数学库，移植自 `bevy_math`，基于 `glam` 。
 
 - `Rect`/`IRect`/`URect` — 浮点/有符号整型/无符号整型矩形（含 inset/膨胀、交集、`from_center_half_size` 等）。
 
-## bounding
-
-- 包围体：`bounded2d`（`BoundingCircle`、`Aabb2d` 等）、`bounded3d`（`BoundingSphere`、`Aabb3d` 等）。
-- 射线检测：`raycast2d`/`raycast3d`（`RayCast2d`/`RayCast3d`，图元/包围体相交）。
-
-## curve
-
-- `Curve` trait（`sample`/`sample_clamped` 等）及其实现：
-  - `cores`：`EvenCore`/`UnevenCore`（均匀/非均匀采样核心）。
-  - `adaptors`：映射、链式、拼接、反向、重采样等适配器。
-  - `derivatives`：导数曲线。
-  - `easing`：缓动函数（线性、平滑、阶梯等）。
-  - `interval`：`Interval`/`interval`（参数区间，`Normalized`/`Unit`/`Everything` 等）。
-  - `iterable`：可迭代采样。
-  - `sample_curves`：常用采样曲线（指数、幂、logistic、噪声等）。
-
-## cubic_splines
-
-- `CubicBezier`、`CubicHermite`、`CubicCardinalSpline`、`CubicBSpline`、
-  `CubicNurbs`（含 `CubicNurbsError`）、`LinearSpline`。
-- `CubicSegment`/`CubicCurve`、`RationalSegment`/`RationalCurve`。
-- 生成器 trait：`CubicGenerator`、`CyclicCubicGenerator`、`RationalGenerator`。
-- 错误类型：`CubicBezierError`、`InsufficientDataError`。
-
 ## sampling（feature `rand`）
 
-- `FromRng` — 从随机数生成器构造。
-- `ShapeSample` — 图元/包围体表面与内部采样。
-- 子模块：`shape_sampling`、`mesh_sampling`、`standard`。
+- `FromRng` — 从随机数生成器构造（`Dir2`/`Dir3`/`Dir3A`/`Rot2`/`Quat`）。
 
 ## common_traits
 

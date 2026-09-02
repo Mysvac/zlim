@@ -75,9 +75,11 @@ pub mod __macro_exports__ {
 
 /// zlim-core prelude
 pub mod prelude {
+    #[doc(hidden)] // use zlim_reflect instead
+    pub use zlim_reflect::derive::TypePath;
+
     pub use crate::{register_component, register_job, register_job_group, register_resource};
     pub use zlim_core_derive::{job, job_fn, job_group};
-    pub use zlim_reflect::derive::TypePath;
 
     pub use crate::tick::{DetectChanges, DetectChangesMut, Tick};
 

@@ -1,0 +1,25 @@
+[package]
+name = "zlim-curve"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["README.zh.md"]
+
+[dependencies]
+
+zlim-math = { path = "../zlim-math", default-features = false }
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+itertools = { version = "0.15", default-features = false, features = ["use_alloc"] }
+
+[dev-dependencies]
+approx = "0.5"
+zlim-math = { path = "../zlim-math", default-features = false, features = ["approx"] }
+glam = { version = "0.33", default-features = false, features = ["approx"] }
+
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use zlim_math::curve::cores::{EvenCore, EvenCoreError};
-use zlim_math::curve::{Curve, Interval};
+use zlim_curve::cores::{EvenCore, EvenCoreError};
+use zlim_curve::{Curve, Interval};
 use zlim_reflect::derive::Reflect;
 
 use crate::Mix;
@@ -29,8 +29,8 @@ where
     /// ```
     /// # use zlim_color::palettes::basic::*;
     /// # use zlim_color::{Mix, Srgba, ColorCurve};
-    /// # use zlim_math::curve::Interval;
-    /// # use zlim_math::curve::Curve;
+    /// # use zlim_curve::Interval;
+    /// # use zlim_curve::Curve;
     /// #
     /// let broken = ColorCurve::new([RED]);
     /// assert!(broken.is_err());
@@ -76,7 +76,7 @@ mod tests {
     use super::*;
     use crate::Srgba;
     use crate::palettes::basic;
-    use zlim_math::curve::{Curve, CurveExt};
+    use zlim_curve::{Curve, CurveExt};
 
     #[test]
     fn test_color_curve() {

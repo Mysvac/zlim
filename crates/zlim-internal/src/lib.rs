@@ -18,9 +18,15 @@ pub use zlim_app as app;
 
 pub use zlim_math as math;
 
+pub use zlim_shape as shape;
+
+pub use zlim_curve as curve;
+
 pub use zlim_color as color;
 
 pub use zlim_transform as transform;
+
+pub use zlim_diagnostic as diagnostic;
 
 /// Macros
 pub mod derive {

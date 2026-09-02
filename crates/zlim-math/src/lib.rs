@@ -30,12 +30,6 @@ pub use glam::u64::*;
 pub mod ops;
 pub use ops::FloatPow;
 
-/// A marker trait for 2D primitives
-pub trait Primitive2d {}
-
-/// A marker trait for 3D primitives
-pub trait Primitive3d {}
-
 // ---------------------------------------------------------------------
 // 2D Rotation
 
@@ -54,23 +48,6 @@ pub use direction::{Dir2, Dir3, Dir3A, Dir4};
 
 mod isometry;
 pub use isometry::{Isometry2d, Isometry3d};
-
-// ---------------------------------------------------------------------
-// ray
-
-mod ray;
-pub use ray::{Ray2d, Ray3d};
-
-// ---------------------------------------------------------------------
-// measure
-
-mod measure;
-pub use measure::{Measured2d, Measured3d};
-
-// ---------------------------------------------------------------------
-// primitives
-
-pub mod primitives;
 
 // ---------------------------------------------------------------------
 // reflection_matrix
@@ -103,29 +80,13 @@ mod rects;
 pub use rects::{IRect, Rect, URect};
 
 // ---------------------------------------------------------------------
-// bounding
-
-pub mod bounding;
-
-// ---------------------------------------------------------------------
-// curve
-
-pub mod curve;
-pub use curve::Curve;
-
-// ---------------------------------------------------------------------
-// cubic_splines
-
-pub mod cubic_splines;
-
-// ---------------------------------------------------------------------
 // sampling
 
 #[cfg(feature = "rand")]
 pub mod sampling;
 
 #[cfg(feature = "rand")]
-pub use sampling::{FromRng, ShapeSample};
+pub use sampling::FromRng;
 
 // ---------------------------------------------------------------------
 // common traits
@@ -175,16 +136,8 @@ pub mod prelude {
     pub use crate::common_traits::StableInterpolate;
     pub use crate::direction::{Dir2, Dir3, Dir3A};
     pub use crate::isometry::{Isometry2d, Isometry3d};
-    pub use crate::measure::{Measured2d, Measured3d};
-    pub use crate::ray::{Ray2d, Ray3d};
     pub use crate::rects::{IRect, Rect, URect};
 
-    pub use crate::cubic_splines::*;
-    pub use crate::curve::*;
-
-    pub use crate::primitives::*;
-    pub use crate::{Primitive2d, Primitive3d};
-
     #[cfg(feature = "rand")]
-    pub use crate::sampling::{FromRng, ShapeSample};
+    pub use crate::sampling::FromRng;
 }

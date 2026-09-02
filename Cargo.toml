@@ -50,13 +50,14 @@ zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional 
 
 [features]
 
-default = ["debug", "trace", "backtrace", "default_log_level"]
+default = ["dev", "default_log_level"]
 
-debug = ["zlim-internal/debug"]
-
-trace = ["zlim-internal/trace"]
-
-backtrace = ["zlim-internal/backtrace"]
+dev = [
+    "zlim-internal/debug",
+    "zlim-internal/trace",
+    "zlim-internal/backtrace",
+    "zlim-internal/sysinfo_plugin",
+]
 
 trace_tracy = ["zlim-internal/trace_tracy"]
 
@@ -68,7 +69,7 @@ default_log_level = ["zlim-internal/default_log_level"]
 
 dylib = ["dep:zlim-dylib", "zlim-internal/dylib"]
 
-editor = ["debug", "trace", "dylib", "zlim-internal/editor"]
+editor = ["zlim-internal/editor"]
 
 async_io = ["zlim-internal/async_io"]
 

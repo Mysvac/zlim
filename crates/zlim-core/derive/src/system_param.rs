@@ -130,7 +130,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     quote! {
         const _: () = {
             #[automatically_derived]
-            #[expect(unsafe_code, reason = "SystemParam implementation is unsafe")]
+            // #[expect(unsafe_code, reason = "SystemParam implementation is unsafe")]
+            // No needed and cannot use `expect(unsafe_code)`, because `forbid(unsafe_code)` disallows it.
             unsafe impl #impl_g #system_param_ for #type_ident #ty_g #where_g {
                 type State = ( #( <#static_field_types as #system_param_>::State, )* );
                 type Item<'world, 'state> = #item_ty;

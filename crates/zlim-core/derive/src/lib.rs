@@ -512,7 +512,7 @@ pub fn derive_query_data(input: TokenStream) -> TokenStream {
 /// |----------|-------------|
 /// | `type = Name` or `type = Name<GENERICS>` | Identifier of the generated marker type and its optional generic parameters. |
 /// | `name = "..."` | Optional unique string identifier of the job; defaults to the marker's `TypePath` (`<Self as TypePath>::type_path()`). Must be a valid path when given. |
-/// | `run_if = expr` or `run_if = [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` that gates the job. |
+/// | `run_if = expr` or `run_if = [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` (or `()`, which passes as long as it runs without error/panic) that gates the job. Conditions are always strict, independent of the job's `strict`. |
 /// | `strict = true\|false` | Whether the job registers its access strictly (logs conflicts). Defaults to `true`. |
 /// | `auto_register = true\|false` | Whether to emit the auto-registration code. Defaults to `true`; `false` skips it. |
 ///
@@ -575,7 +575,7 @@ pub fn job_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// |----------|-------------|
 /// | `type: Name` or `type: Name<GENERICS>` | The generated marker type and its generic parameters. |
 /// | `name: "..."` | Optional unique string identifier of the job; defaults to the marker's `TypePath` (`<Self as TypePath>::type_path()`). Must be a valid path when given. |
-/// | `run_if: expr` or `run_if: [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` that gates the job. |
+/// | `run_if: expr` or `run_if: [expr, ...]` | Optional run conditions: each is a system returning `bool` / `Result<bool, E>` (or `()`, which passes as long as it runs without error/panic) that gates the job. Conditions are always strict, independent of the job's `strict`. |
 /// | `system: EXPR` | The system expression wrapped by the job's `ctor`. |
 /// | `strict: true\|false` | Whether the job registers its access strictly (logs conflicts). Defaults to `true`. |
 /// | `auto_register: true\|false` | Whether to emit the auto-registration code. Defaults to `true`; `false` skips it. |

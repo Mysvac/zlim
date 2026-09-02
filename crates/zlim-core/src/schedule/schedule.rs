@@ -53,6 +53,21 @@ type Groups = HashMap<&'static str, GroupEntry>;
 
 // -------------------------------------------------------------
 
+/// The run-if conditions attached to a job node.
+///
+/// Conditions are stored per **job** node: [`RunIf::run_if`] holds the nodes
+/// of the condition jobs gating that job.  Conditions have no conditions of
+/// their own, so this is never nested.
+#[derive(Default)]
+struct RunIf {
+    run_if: BTreeSet<Node>,
+}
+
+/// Maps every job node to the set of its run-if condition nodes.
+type Conditions = HashMap<Node, RunIf>;
+
+// -------------------------------------------------------------
+
 struct StageEntry {
     begin: Node,
     end: Node,
@@ -449,6 +464,7 @@ pub struct Schedule {
     groups: Groups,
     stages: Stages,
     hierarchies: Hierarchies,
+    conditions: Conditions,
     ordering: OrderingGraph,
     confict: ConflictGraph,
     schedule: JobSchedule,
@@ -523,6 +539,7 @@ impl Schedule {
                 groups: Default::default(),
                 stages: Default::default(),
                 hierarchies: Default::default(),
+                conditions: Default::default(),
                 ordering: Default::default(),
                 confict: Default::default(),
                 schedule: JobSchedule::new(label),
@@ -662,7 +679,7 @@ impl Schedule {
     /// Used by the multi-threaded executor; a no-op otherwise.  Both nodes
     /// must exist and be live (the caller has already resolved them).
     #[inline(never)]
-    fn insert_sync_point(&mut self, before: Node, after: Node) {
+    fn insert_sync_point<const HANDLE_RUN_IF: bool>(&mut self, before: Node, after: Node) {
         // Skip the sync point if the before-job is not deferred, or if its
         // object is currently compiled into the JobSchedule.
         let Some(job) = self.jobs.get_job(before) else {
@@ -683,34 +700,75 @@ impl Schedule {
             .get_id(after)
             .expect("sync point endpoint should exist");
 
-        let point = SyncPoint::new(before_id, after_id);
-        let job_id = point.id;
+        {
+            let point = SyncPoint::new(before_id, after_id);
+            let job_id = point.id;
 
-        if !self.jobs.contains(job_id) {
-            let job_node = self.jobs.insert(job_id, Box::new(point));
+            if !self.jobs.contains(job_id) {
+                let job_node = self.jobs.insert(job_id, Box::new(point));
 
-            self.ordering.insert_node(job_node); // optional
+                self.ordering.insert_node(job_node); // optional
 
-            self.ordering.insert_strong_order(before, job_node);
-            self.ordering.insert_weak_order(job_node, after);
+                self.ordering.insert_strong_order(before, job_node);
+                self.ordering.insert_weak_order(job_node, after);
 
-            self.confict.set_exclusive(job_node);
+                self.confict.set_exclusive(job_node);
 
-            // Register the cascade relationship: the sync point is removed
-            // together with either of its endpoints.
-            self.hierarchies
-                .entry(before)
-                .or_default()
-                .children
-                .insert(job_node);
-            self.hierarchies
-                .entry(after)
-                .or_default()
-                .children
-                .insert(job_node);
-            let parents = self.hierarchies.entry(job_node).or_default();
-            parents.parents.insert(before);
-            parents.parents.insert(after);
+                // Register the cascade relationship: the sync point is removed
+                // together with either of its endpoints.
+                self.hierarchies
+                    .entry(before)
+                    .or_default()
+                    .children
+                    .insert(job_node);
+                self.hierarchies
+                    .entry(after)
+                    .or_default()
+                    .children
+                    .insert(job_node);
+
+                let parents = self.hierarchies.entry(job_node).or_default();
+                parents.parents.insert(before);
+                parents.parents.insert(after);
+            }
+        }
+
+        // `after`'s run-if conditions run strictly before it, so they must
+        // observe `before`'s deferred commands as well.  Conditions have no
+        // conditions of their own, so the recursion terminates immediately.
+        if HANDLE_RUN_IF && let Some(conditions) = self.conditions.get(&after) {
+            for &run_if in conditions.run_if.iter() {
+                let run_if_id = self.jobs.get_id(run_if).expect("run_if should exist");
+
+                let point = SyncPoint::new(before_id, run_if_id);
+                let job_id = point.id;
+                if !self.jobs.contains(job_id) {
+                    let job_node = self.jobs.insert(job_id, Box::new(point));
+
+                    self.ordering.insert_node(job_node); // optional
+
+                    self.ordering.insert_strong_order(before, job_node);
+                    self.ordering.insert_weak_order(job_node, run_if);
+
+                    self.confict.set_exclusive(job_node);
+
+                    // Register the cascade relationship: the sync point is removed
+                    // together with either of its endpoints.
+                    self.hierarchies
+                        .entry(before)
+                        .or_default()
+                        .children
+                        .insert(job_node);
+                    self.hierarchies
+                        .entry(run_if)
+                        .or_default()
+                        .children
+                        .insert(job_node);
+                    let parents = self.hierarchies.entry(job_node).or_default();
+                    parents.parents.insert(before);
+                    parents.parents.insert(run_if);
+                }
+            }
         }
     }
 
@@ -774,8 +832,14 @@ impl Schedule {
             }
             self.ordering.insert_strong_order(run_if_node, node);
             if multi_thread && run_if_flags.intersects(SystemFlags::DEFERRED) {
-                self.insert_sync_point(run_if_node, node);
+                // HANDLE_RUN_IF = false : `before` is already `run_if` node
+                self.insert_sync_point::<false>(run_if_node, node);
             }
+            self.conditions
+                .entry(node)
+                .or_default()
+                .run_if
+                .insert(run_if_node);
             self.hierarchies
                 .entry(node)
                 .or_default()
@@ -871,6 +935,7 @@ impl Schedule {
         self.is_changed = true;
         self.ordering.remove_node(node);
         self.confict.remove(node);
+        self.conditions.remove(&node);
 
         // Scrub the job from its stage's membership set.
         if let Some(key) = stage
@@ -949,6 +1014,19 @@ impl Schedule {
         } else {
             self.ordering.insert_weak_order(b, a);
         }
+
+        // Propagate the edge onto `after`'s run-if conditions: they gate the
+        // job, so they must also respect the ordering.  Conditions have no
+        // conditions of their own, so no recursion is needed.
+        if let Some(conditions) = self.conditions.get(&a) {
+            for &run_if in &conditions.run_if {
+                if STRONG {
+                    self.ordering.insert_strong_order(b, run_if);
+                } else {
+                    self.ordering.insert_weak_order(b, run_if);
+                }
+            }
+        }
     }
 
     /// Insert a strong order by given sequence.
@@ -958,6 +1036,10 @@ impl Schedule {
     /// The subsequent jobs will only be executed after the previous jobs
     /// have been completed **successfully**, and the results of deferred
     /// commands queued by previous jobs is **definitely visible**.
+    ///
+    /// # note
+    ///
+    /// job's `run_if`
     ///
     /// # Examples
     ///
@@ -980,6 +1062,19 @@ impl Schedule {
     /// schedule.insert_order(&[FixedMain::PreUpdate.stage_end(), FixedMain::Update.stage_begin()]);
     /// schedule.insert_order(&[FixedMain::Update.stage_end(), FixedMain::PostUpdate.stage_begin()]);
     /// ```
+    ///
+    /// # Note on Job `run_if`
+    ///
+    /// A job's `run_if` condition is considered part of the job itself. Although
+    /// execution is separated, the ordering constraints affect both the `run_if`
+    /// evaluation and the job body, and guarantee that deferred commands are
+    /// visible when the job runs.
+    ///
+    /// When specifying ordering dependencies, you should always use the job's own
+    /// [`JobId`], not the ID of its `run_if` sub-item. Doing otherwise may cause
+    /// circular dependencies. As noted above, sub-item dependencies are handled
+    /// automatically — users should treat the `run_if` condition and the job body
+    /// as a single logical unit.
     #[inline(never)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_order(&mut self, order: &[JobId]) {
@@ -1009,7 +1104,8 @@ impl Schedule {
             let Some(after_node) = self.jobs.get_node(after) else {
                 return;
             };
-            self.insert_sync_point(before_node, after_node);
+            // we need to handle run_if order
+            self.insert_sync_point::<true>(before_node, after_node);
         }
     }
 
@@ -1043,6 +1139,19 @@ impl Schedule {
     /// schedule.insert_weak_order(&[FixedMain::PreUpdate.stage_end(), FixedMain::Update.stage_begin()]);
     /// schedule.insert_weak_order(&[FixedMain::Update.stage_end(), FixedMain::PostUpdate.stage_begin()]);
     /// ```
+    ///
+    /// # Note on Job `run_if`
+    ///
+    /// A job's `run_if` condition is considered part of the job itself. Although
+    /// execution is separated, the ordering constraints affect both the `run_if`
+    /// evaluation and the job body, and guarantee that deferred commands are
+    /// visible when the job runs.
+    ///
+    /// When specifying ordering dependencies, you should always use the job's own
+    /// [`JobId`], not the ID of its `run_if` sub-item. Doing otherwise may cause
+    /// circular dependencies. As noted above, sub-item dependencies are handled
+    /// automatically — users should treat the `run_if` condition and the job body
+    /// as a single logical unit.
     #[inline(never)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_weak_order(&mut self, order: &[JobId]) {
@@ -1073,7 +1182,8 @@ impl Schedule {
             let Some(after_node) = self.jobs.get_node(after) else {
                 return;
             };
-            self.insert_sync_point(before_node, after_node);
+            // we need to handle run_if order
+            self.insert_sync_point::<true>(before_node, after_node);
         }
     }
 
@@ -1107,6 +1217,19 @@ impl Schedule {
     /// schedule.insert_relaxed_order(&[FixedMain::PreUpdate.stage_end(), FixedMain::Update.stage_begin()]);
     /// schedule.insert_relaxed_order(&[FixedMain::Update.stage_end(), FixedMain::PostUpdate.stage_begin()]);
     /// ```
+    ///
+    /// # Note on Job `run_if`
+    ///
+    /// A job's `run_if` condition is considered part of the job itself. Although
+    /// execution is separated, the ordering constraints affect both the `run_if`
+    /// evaluation and the job body, and guarantee that deferred commands are
+    /// visible when the job runs.
+    ///
+    /// When specifying ordering dependencies, you should always use the job's own
+    /// [`JobId`], not the ID of its `run_if` sub-item. Doing otherwise may cause
+    /// circular dependencies. As noted above, sub-item dependencies are handled
+    /// automatically — users should treat the `run_if` condition and the job body
+    /// as a single logical unit.
     #[inline(never)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_relaxed_order(&mut self, order: &[JobId]) {
@@ -1212,8 +1335,14 @@ impl Schedule {
                     .parents
                     .insert(node);
                 if multi_thread && run_if_flags.intersects(SystemFlags::DEFERRED) {
-                    self.insert_sync_point(run_if_node, node);
+                    // HANDLE_RUN_IF = false : `before` node is already `run_if` node
+                    self.insert_sync_point::<false>(run_if_node, node);
                 }
+                self.conditions
+                    .entry(node)
+                    .or_default()
+                    .run_if
+                    .insert(run_if_node);
             }
         }
 
@@ -1250,7 +1379,8 @@ impl Schedule {
                 let Some(after_node) = self.jobs.get_node(after) else {
                     continue;
                 };
-                self.insert_sync_point(before_node, after_node);
+                // we need to handle `run_if` nodes
+                self.insert_sync_point::<true>(before_node, after_node);
             }
         }
 

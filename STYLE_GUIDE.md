@@ -60,28 +60,6 @@ crate_1::module_1::{AAA, BBBB, CCCC, DDDDD, EEEEEEE};
 crate_1::module_1::{FFFFFFF, GGGGGGGGG, HHHHHHHHHHHHHHHHH};
 ```
 
-## TODO Comments
-
-The `todo!()` macro marks unimplemented code.  It should generally not appear
-in merged PRs, except for genuinely unsupported target platforms.
-
-For deferred work that does **not** block compilation — missing documentation,
-pending tests, planned optimizations, known limitations — use a comment with
-uppercase `TODO!`. The format is flexible; the only requirement is clarity:
-
-```rust
-/* TODO! - Description */
-
-// TODO! - Description
-
-// TODO!
-// - Item 1
-// - Item 2
-```
-
-The uppercase `TODO!` convention makes every deferred item instantly discoverable
-with an editor-wide text search.
-
 ## Unsafe Code
 
 Every `unsafe fn` must document its preconditions in a `# Safety` section:
