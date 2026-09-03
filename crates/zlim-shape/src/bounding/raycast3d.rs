@@ -9,8 +9,7 @@ use crate::Ray3d;
 // RayCast3d
 
 /// A raycast intersection test for 3D bounding volumes
-#[derive(Clone, Debug)]
-#[derive(Reflect)]
+#[derive(Clone, Debug, Reflect)]
 #[reflect(Debug, Clone)]
 pub struct RayCast3d {
     /// The origin of the ray.
@@ -106,8 +105,7 @@ impl IntersectsVolume<BoundingSphere> for RayCast3d {
 // AabbCast3d
 
 /// An intersection test that casts an [`Aabb3d`] along a ray.
-#[derive(Clone, Debug)]
-#[derive(Reflect)]
+#[derive(Clone, Debug, Reflect)]
 #[reflect(Debug, Clone)]
 pub struct AabbCast3d {
     /// The ray along which to cast the bounding volume
@@ -155,8 +153,7 @@ impl IntersectsVolume<Aabb3d> for AabbCast3d {
 // BoundingSphereCast
 
 /// An intersection test that casts a [`BoundingSphere`] along a ray.
-#[derive(Clone, Debug)]
-#[derive(Reflect)]
+#[derive(Clone, Debug, Reflect)]
 #[reflect(Debug, Clone)]
 pub struct BoundingSphereCast {
     /// The ray along which to cast the bounding volume

@@ -65,7 +65,6 @@ Foundation utilities for the zlim engine.
 
 - `range_invoke!` — repeated range-based macro invocation.
 - `define_atomic_id!` — unique ID generator backed by an atomic counter.
-- `once_expr!` — single-execution expression, faster than `Once`.
 
 ## debug
 

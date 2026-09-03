@@ -65,7 +65,6 @@ zlim 引擎的基础工具库。
 
 - `range_invoke!` —— 基于范围的重复宏调用。
 - `define_atomic_id!` —— 由原子计数器支撑的唯一 ID 生成器。
-- `once_expr!` —— 单次执行表达式，比 `Once` 更快。
 
 ## debug
 

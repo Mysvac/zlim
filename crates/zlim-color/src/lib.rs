@@ -1,4 +1,4 @@
-//! # zlim-core
+//! # zlim-color
 //!
 //! Representations of colors in various color spaces.
 //!

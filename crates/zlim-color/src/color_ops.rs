@@ -1,18 +1,22 @@
 use zlim_math::{Vec3, Vec4, ops};
 
-/// Methods for changing the luminance of a color. Note that these methods are not
-/// guaranteed to produce consistent results across color spaces,
-/// but will be within a given space.
+/// Methods for changing the luminance of a color.
+/// 
+/// Note that these methods are not guaranteed to produce consistent
+/// results across color spaces, but will be within a given space.
 pub trait Luminance: Sized {
-    /// Return the luminance of this color. SDR colors are in `[0.0, 1.0]`. An HDR
-    /// color's luminance can be above or below 1.0.
+    /// Return the luminance of this color. SDR colors are in `[0.0, 1.0]`.
+    /// 
+    /// An HDR color's luminance can be above or below 1.0.
     fn luminance(&self) -> f32;
 
-    /// Return a new version of this color with the given luminance. The result is not
-    /// clamped, so an out-of-range target is stored as-is.
+    /// Return a new version of this color with the given luminance.
+    /// 
+    /// The result is not clamped, so an out-of-range target is stored as-is.
     fn with_luminance(&self, value: f32) -> Self;
 
     /// Return a darker version of this color. The `amount` should be between 0.0 and 1.0.
+    /// 
     /// The amount represents an absolute decrease in luminance, and is distributive:
     /// `color.darker(a).darker(b) == color.darker(a + b)`. Colors are clamped to black
     /// if the amount would cause them to go below black.
@@ -21,6 +25,7 @@ pub trait Luminance: Sized {
     fn darker(&self, amount: f32) -> Self;
 
     /// Return a lighter version of this color. The `amount` should be between 0.0 and 1.0.
+    /// 
     /// The amount represents an absolute increase in luminance, and is distributive:
     /// `color.lighter(a).lighter(b) == color.lighter(a + b)`. Colors are clamped to white
     /// if the amount would cause them to go above white, so this operation is not suitable

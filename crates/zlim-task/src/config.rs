@@ -202,7 +202,8 @@ impl TaskPoolConfigs {
             });
 
             if success {
-                zlim_log::info!("IO TaskPool Threads: {io_threads}");
+                // If there are too many threads, it will be clamped to a maximum value.
+                zlim_log::info!("IO TaskPool Threads: {io_threads}"); // so this is inaccurate
             } else {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
@@ -234,7 +235,7 @@ impl TaskPoolConfigs {
             });
 
             if success {
-                zlim_log::info!("Async TaskPool Threads: {async_threads}");
+                zlim_log::info!("Async TaskPool Threads: {async_threads}"); // inaccurate
             } else {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
@@ -266,7 +267,7 @@ impl TaskPoolConfigs {
             });
 
             if success {
-                zlim_log::info!("Main TaskPool Threads: {main_threads}");
+                zlim_log::info!("Main TaskPool Threads: {main_threads}"); // inaccurate
             } else {
                 ::core::hint::cold_path();
                 zlim_log::warn!(

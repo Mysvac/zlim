@@ -60,8 +60,6 @@ Supplemental conventions not covered by STYLE_GUIDE.md:
 - Use `#[inline(never)]`, `#[inline]` and `#[inline(always)]` when necessary.
 
 ### Error Handling
-- Use `Option<T>` for values that may be absent (e.g., `preferences_dir()`).
-- Use `Result<T, E>` for recoverable errors.
 - Use `assert!`/`debug_assert!` to check invariants.
 
 ## Project Architecture
@@ -91,9 +89,7 @@ zlim (root facade crate, src/lib.rs)
 Auxiliary:
 ├── zlim-derive-utils (proc-macro utilities, crates/zlim-derive-utils/)
 ├── zlim-dylib (dynamic linking optimization, crates/zlim-dylib/)
-│   — enabled only with `feature = "dylib"`.
-└── zlim-sysinfo-dylib (sysinfo isolation layer, crates/zlim-sysinfo/dylib/)
-    — dynamic library embedding `sysinfo`; enabled with `feature = "dylib"`.
+    — enabled only with `feature = "dylib"`.
 ```
 
 ### Crate Responsibilities

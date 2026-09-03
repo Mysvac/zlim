@@ -184,7 +184,7 @@ impl<T> Sender<T> {
 
 impl<T> Debug for Sender<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.write_str("Sender")
+        f.pad("Sender")
     }
 }
 
@@ -266,7 +266,7 @@ impl<T> Receiver<T> {
 
 impl<T> Debug for Receiver<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Receiver").finish()
+        f.pad("Receiver")
     }
 }
 

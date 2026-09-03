@@ -9,8 +9,7 @@ use crate::Ray2d;
 // RayCast2d
 
 /// A raycast intersection test for 2D bounding volumes
-#[derive(Clone, Debug)]
-#[derive(Reflect)]
+#[derive(Clone, Debug, Reflect)]
 #[reflect(Debug, Clone)]
 pub struct RayCast2d {
     /// The ray for the test
@@ -108,8 +107,7 @@ impl IntersectsVolume<BoundingCircle> for RayCast2d {
 // AabbCast2d
 
 /// An intersection test that casts an [`Aabb2d`] along a ray.
-#[derive(Clone, Debug)]
-#[derive(Reflect)]
+#[derive(Clone, Debug, Reflect)]
 #[reflect(Debug, Clone)]
 pub struct AabbCast2d {
     /// The ray along which to cast the bounding volume
@@ -150,8 +148,7 @@ impl IntersectsVolume<Aabb2d> for AabbCast2d {
 // BoundingCircleCast
 
 /// An intersection test that casts a [`BoundingCircle`] along a ray.
-#[derive(Clone, Debug)]
-#[derive(Reflect)]
+#[derive(Clone, Debug, Reflect)]
 #[reflect(Debug, Clone)]
 pub struct BoundingCircleCast {
     /// The ray along which to cast the bounding volume

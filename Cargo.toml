@@ -34,12 +34,12 @@ workspace = true
 
 [package]
 name = "zlim"
-exclude = [".github", "STYLE_GUIDE.md"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+exclude = [".github", "AGENTS.md", "STYLE_GUIDE.md"]
 
 [dependencies]
 

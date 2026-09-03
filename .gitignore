@@ -16,8 +16,8 @@ Cargo.lock
 /.vs
 
 # AI
-/CLAUDE.md
 /.claude
+/CLAUDE.md
 /IDEA.md
 
 # Other

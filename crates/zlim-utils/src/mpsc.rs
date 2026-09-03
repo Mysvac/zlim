@@ -38,23 +38,6 @@ use event_listener::{Event, EventListener, IntoNotification};
 use crate::sync::SegQueue;
 
 // -----------------------------------------------------------------------------
-// RecvError
-
-/// An error returned from [`Receiver::recv()`].
-///
-/// Received because the channel is empty and closed.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub struct RecvError;
-
-impl core::error::Error for RecvError {}
-
-impl Display for RecvError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "receiving from an empty and closed channel")
-    }
-}
-
-// -----------------------------------------------------------------------------
 // channel
 
 /// Creates an unbounded async MPSC channel.
@@ -200,7 +183,7 @@ impl<T> Sender<T> {
 
 impl<T> Debug for Sender<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.write_str("Sender")
+        f.pad("Sender")
     }
 }
 
@@ -265,7 +248,24 @@ impl<T> Receiver<T> {
 
 impl<T> Debug for Receiver<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.write_str("Receiver")
+        f.pad("Receiver")
+    }
+}
+
+// -----------------------------------------------------------------------------
+// RecvError
+
+/// An error returned from [`Receiver::recv()`].
+///
+/// Received because the channel is empty and closed.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub struct RecvError;
+
+impl core::error::Error for RecvError {}
+
+impl Display for RecvError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "receiving from an empty and closed channel")
     }
 }
 

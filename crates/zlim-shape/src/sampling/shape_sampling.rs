@@ -42,9 +42,9 @@ use core::f32::consts::{FRAC_PI_2, PI, TAU};
 use rand::RngExt;
 use rand::distr::weighted::{Weight, WeightedIndex};
 use rand::distr::{Distribution, uniform::SampleUniform};
+use zlim_math::{NormedVectorSpace, ScalarField, Vec2, Vec3, ops};
 
 use crate::*;
-use zlim_math::{NormedVectorSpace, ScalarField, Vec2, Vec3, ops};
 
 /// Exposes methods to uniformly sample a variety of primitive shapes.
 pub trait ShapeSample {

@@ -37,7 +37,7 @@ impl ViewFrustum {
     /// Returns a view frustum derived from `clip_from_world`.
     ///
     /// The clip matrix is expected to use the convention documented on
-    /// [`ViewFrustum`] (`x`/`y` in `[-1, 1]`, `z` in `[0, 1]`, Y-up); the
+    /// [`ViewFrustum`] (`x`/`y` in `[-1, 1]`, `z` in `[0, 1]`); the
     /// produced half-spaces follow the `half_spaces` index order.
     #[inline]
     pub fn from_clip_from_world(clip_from_world: &Mat4) -> Self {
@@ -60,7 +60,7 @@ impl ViewFrustum {
     /// Returns a view frustum derived from `clip_from_world`, but with a custom far plane.
     ///
     /// The clip matrix is expected to use the convention documented on
-    /// [`ViewFrustum`] (`x`/`y` in `[-1, 1]`, `z` in `[0, 1]`, Y-up); only the
+    /// [`ViewFrustum`] (`x`/`y` in `[-1, 1]`, `z` in `[0, 1]`); only the
     /// far plane is replaced, constructed from the camera's backward direction.
     #[inline]
     pub fn from_clip_from_world_custom_far(

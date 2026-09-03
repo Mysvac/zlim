@@ -3,9 +3,9 @@
 use rand::RngExt;
 use rand_distr::Distribution;
 use rand_distr::weighted::{Error as WeightedError, WeightedAliasIndex};
+use zlim_math::Vec3;
 
 use crate::{Measured2d, ShapeSample, Triangle3d};
-use zlim_math::Vec3;
 
 /// A [distribution] that caches data to allow fast sampling from a collection of triangles.
 /// Generally used through [`sample`] or [`sample_iter`].
