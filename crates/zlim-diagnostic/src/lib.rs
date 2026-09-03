@@ -38,14 +38,6 @@ mod log_diagnostic;
 pub use log_diagnostic::{LogDiagnosticsPlugin, LogDiagnosticsState};
 
 // -----------------------------------------------------------------------------
-// SystemInfo
-
-#[cfg(feature = "sysinfo_plugin")]
-mod system_info;
-#[cfg(feature = "sysinfo_plugin")]
-pub use system_info::{SystemInfo, SystemInfoDiagnosticsPlugin};
-
-// -----------------------------------------------------------------------------
 // Plugin
 
 /// Adds core diagnostics resources to an App.
@@ -55,8 +47,7 @@ pub struct DiagnosticsPlugin;
 impl zlim_app::Plugin for DiagnosticsPlugin {
     fn apply(&self, app: &mut zlim_app::App) {
         app.init_resource::<Diagnostics>();
-
-        #[cfg(feature = "sysinfo_plugin")]
-        app.init_resource::<SystemInfo>();
     }
 }
+
+// -----------------------------------------------------------------------------

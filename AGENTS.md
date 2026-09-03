@@ -20,14 +20,14 @@ cargo check --workspace
 # 2. Lint
 cargo clippy --workspace -- -D warnings
 
-# 3. Doc-tests + verify doc links
-cargo doc --workspace --no-deps
-
-# 4. Format
+# 3. Format
 cargo fmt --all -- --check
 
-# 5. Run tests
+# 4. Run tests
 cargo test --workspace
+
+# 5. Doc-tests + verify doc links
+cargo doc -p zlim --no-deps
 ```
 
 Quick check for a single crate (substitute the crate name):
@@ -77,15 +77,23 @@ zlim (root facade crate, src/lib.rs)
     ├── zlim-log        (tracing-based logging, crates/zlim-log/)
     ├── zlim-task       (async task pool, crates/zlim-task/)
     ├── zlim-reflect    (reflection system, crates/zlim-reflect/)
-    ├── zlim-math       (math types, crates/zlim-math/)
+    ├── zlim-math       (math library on glam, crates/zlim-math/)
+    ├── zlim-shape      (shape primitives, crates/zlim-shape/)
+    ├── zlim-curve      (curves & interpolation, crates/zlim-curve/)
+    ├── zlim-color      (color spaces & operations, crates/zlim-color/)
     ├── zlim-core       (ECS core, crates/zlim-core/)
     ├── zlim-app        (app & plugin framework, crates/zlim-app/)
-    └── zlim-transform  (transform propagation, crates/zlim-transform/)
+    ├── zlim-transform  (transform propagation, crates/zlim-transform/)
+    ├── zlim-diagnostic (diagnostics store & plugins, crates/zlim-diagnostic/)
+    └── zlim-sysinfo    (host system info, crates/zlim-sysinfo/)
+        — enabled with `zlim-internal`'s `zlim_sysinfo` / `zlim`'s `sysinfo` feature.
 
 Auxiliary:
 ├── zlim-derive-utils (proc-macro utilities, crates/zlim-derive-utils/)
-└── zlim-dylib (dynamic linking optimization, crates/zlim-dylib/)
-    — enabled only with `feature = "dylib"`.
+├── zlim-dylib (dynamic linking optimization, crates/zlim-dylib/)
+│   — enabled only with `feature = "dylib"`.
+└── zlim-sysinfo-dylib (sysinfo isolation layer, crates/zlim-sysinfo/dylib/)
+    — dynamic library embedding `sysinfo`; enabled with `feature = "dylib"`.
 ```
 
 ### Crate Responsibilities
@@ -134,6 +142,18 @@ Auxiliary:
   - **Purpose**: math types (glam-based re-exports for transforms).
   - **Dependencies**: glam, `zlim-log`, `zlim-utils`, `zlim-reflect`.
 
+- **`zlim-shape`**
+  - **Purpose**: primitive shapes (2D/3D), rays, bounding volumes, shape sampling; ported from `bevy_shape`.
+  - **Dependencies**: `zlim-math`, `zlim-reflect`, serde.
+
+- **`zlim-curve`**
+  - **Purpose**: `Curve` trait and curve types / adaptors built on `zlim-math`; ported from `bevy_curve`.
+  - **Dependencies**: `zlim-math`, `zlim-reflect`, `zlim-utils`, serde, itertools.
+
+- **`zlim-color`**
+  - **Purpose**: color spaces, cross-space conversions, palettes, GPU integration; ported from `bevy_color`.
+  - **Dependencies**: `zlim-math`, `zlim-curve`, `zlim-reflect`, serde, bytemuck, wgpu-types, encase.
+
 - **`zlim-core`**
   - **Purpose**: ECS core: Entity, Component, World, Schedule, Tick, Error, Query, System, etc.
   - **Dependencies**: `zlim-reg`, `zlim-ptr`, `zlim-os`, `zlim-log`, `zlim-utils`, `zlim-task`, `zlim-reflect`, serde.
@@ -145,6 +165,18 @@ Auxiliary:
 - **`zlim-transform`**
   - **Purpose**: `Transform`/`GlobalTransform` + parallel hierarchy propagation.
   - **Dependencies**: `zlim-app`, `zlim-core`, `zlim-math`, `zlim-task`, `zlim-reflect`, `zlim-utils`, `zlim-log`.
+
+- **`zlim-diagnostic`**
+  - **Purpose**: `Diagnostics` resource + built-in measurement plugins (entity count, frame count, log diagnostics); ported from `bevy_diagnostic`.
+  - **Dependencies**: `zlim-app`, `zlim-core`, `zlim-reflect`, `zlim-log`, `zlim-os`, `zlim-utils`.
+
+- **`zlim-sysinfo`**
+  - **Purpose**: host system info (`SystemInfo` resource, `SystemInfoDiagnosticsPlugin` via `sysinfo`); enabled with `zlim-internal`'s `zlim_sysinfo` / `zlim`'s `sysinfo` feature.
+  - **Dependencies**: `zlim-app`, `zlim-core`, `zlim-diagnostic`, `zlim-reflect`, `zlim-task`, `zlim-log`, `zlim-os`, `zlim-utils`, sysinfo, atomic-waker.
+
+- **`zlim-sysinfo-dylib`**
+  - **Purpose**: dynamic-library isolation layer embedding `sysinfo`; keeps `sysinfo` objects out of the engine cdylib (Windows LNK1189). Depends on no zlim workspace crate. Enabled with `feature = "dylib"`.
+  - **Dependencies**: sysinfo.
 
 - **`zlim-derive-utils`**
   - **Purpose**: proc-macro helpers: crate path resolution via Cargo.toml.

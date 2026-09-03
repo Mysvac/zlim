@@ -1,0 +1,38 @@
+[package]
+name = "zlim-sysinfo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["README.zh.md"]
+
+[features]
+dylib = ["dep:zlim-sysinfo-dylib"]
+
+[dependencies]
+
+zlim-os = { path = "../zlim-os", default-features = false }
+zlim-utils = { path = "../zlim-utils", default-features = false }
+zlim-log = { path = "../zlim-log", default-features = false }
+
+zlim-task = { path = "../zlim-task", default-features = false }
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
+
+zlim-core = { path = "../zlim-core", default-features = false }
+zlim-app = { path = "../zlim-app", default-features = false }
+
+zlim-diagnostic = { path = "../zlim-diagnostic", default-features = false }
+
+[target.'cfg(all(target_os = "macos"))'.dependencies]
+zlim-sysinfo-dylib = { path = "./dylib" , default-features = false, optional = true }
+sysinfo = { version = "0.39", default-features = false, features = ["apple-app-store", "system"] }
+atomic-waker = { version = "1", default-features = false }
+
+[target.'cfg(any(target_os = "linux", target_os = "windows", target_os = "android", target_os = "freebsd"))'.dependencies]
+zlim-sysinfo-dylib = { path = "./dylib" , default-features = false, optional = true }
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+atomic-waker = { version = "1", default-features = false }
+
+[lints]
+workspace = true

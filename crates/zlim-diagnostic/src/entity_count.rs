@@ -73,6 +73,10 @@ fn update_entity_count(world: &World, count: Res<EntityCount>) {
 pub struct EntityCountPlugin;
 
 impl Plugin for EntityCountPlugin {
+    fn build(&self, app: &mut App) {
+        MainSchedulePlugin::apply_before::<Self>(app);
+    }
+
     fn apply(&self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "EntityCountPlugin");
 
@@ -133,6 +137,7 @@ impl Plugin for EntityCountDiagnosticsPlugin {
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
         }
+        MainSchedulePlugin::apply_before::<Self>(app);
     }
 
     fn apply(&self, app: &mut App) {

@@ -28,6 +28,9 @@ pub use zlim_transform as transform;
 
 pub use zlim_diagnostic as diagnostic;
 
+#[cfg(feature = "zlim_sysinfo")]
+pub use zlim_sysinfo as sysinfo;
+
 /// Macros
 pub mod derive {
     pub use zlim_app::derive::*;

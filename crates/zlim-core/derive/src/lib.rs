@@ -1,5 +1,4 @@
-#![allow(linker_messages, reason = "It's noisy and interferes with CI output")]
-
+//! Procedural macros for `zlim_core`.
 use proc_macro::TokenStream;
 use syn::{DeriveInput, ItemFn, parse_macro_input};
 

@@ -1,0 +1,21 @@
+[package]
+name = "zlim-sysinfo-dylib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+
+[target.'cfg(all(target_os = "macos"))'.dependencies]
+sysinfo = { version = "0.39", default-features = false, features = ["apple-app-store", "system"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "windows", target_os = "android", target_os = "freebsd"))'.dependencies]
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+[lints]
+workspace = true

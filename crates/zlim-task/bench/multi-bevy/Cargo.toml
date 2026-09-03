@@ -2,8 +2,7 @@
 name = "multi-bevy"
 version = "0.1.0"
 edition = "2024"
-
-[workspace]
+publish = false
 
 [dependencies]
 zlim-task = { path = "../.." }

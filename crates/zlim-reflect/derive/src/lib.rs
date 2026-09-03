@@ -1,8 +1,4 @@
-//! Procedural macros for [`zlim_reflect`].
-//!
-//! [`zlim_reflect`]: https://crates.io/crates/zlim-reflect
-#![allow(linker_messages, reason = "It's noisy and interferes with CI output")]
-
+//! Procedural macros for `zlim-reflect`.
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
 

@@ -19,8 +19,8 @@ use crate::ext::CachePadded;
 struct Slot<T> {
     /// The current stamp.
     ///
-    /// If the stamp equals the tail, this node will be next written to. If it equals head + 1,
-    /// this node will be next read from.
+    /// If the stamp equals the tail, this node will be next written to.
+    /// If it equals head + 1, this node will be next read from.
     stamp: AtomicUsize,
 
     /// The value in this slot.
@@ -262,6 +262,51 @@ impl<T> ArrayQueue<T> {
         *slot.stamp.get_mut() = tail + 1;
 
         Ok(())
+    }
+
+    /// Pushes an element into the queue, replacing the oldest element if necessary.
+    ///
+    /// If the queue is full, the oldest element is replaced and returned,
+    /// otherwise `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zlim_utils::sync::ArrayQueue;
+    ///
+    /// let q = ArrayQueue::new(2);
+    ///
+    /// assert_eq!(q.force_push(10), None);
+    /// assert_eq!(q.force_push(20), None);
+    /// assert_eq!(q.force_push(30), Some(10));
+    /// assert_eq!(q.pop(), Some(20));
+    /// ```
+    pub fn force_push(&self, value: T) -> Option<T> {
+        self.push_or_else(value, |v, tail, new_tail, slot| {
+            let head = tail.wrapping_sub(self.one_lap);
+            let new_head = new_tail.wrapping_sub(self.one_lap);
+
+            // Try moving the head.
+            if self
+                .head
+                .compare_exchange_weak(head, new_head, Ordering::SeqCst, Ordering::Relaxed)
+                .is_ok()
+            {
+                // Move the tail.
+                self.tail.store(new_tail, Ordering::SeqCst);
+
+                // Swap the previous value.
+                let old = unsafe { slot.value.get().replace(MaybeUninit::new(v)).assume_init() };
+
+                // Update the stamp.
+                slot.stamp.store(tail + 1, Ordering::Release);
+
+                Err(old)
+            } else {
+                Ok(v)
+            }
+        })
+        .err()
     }
 
     /// Attempts to pop an element from the queue.

@@ -67,6 +67,10 @@ fn update_frame_count(count: Res<FrameCount>) {
 pub struct FrameCountPlugin;
 
 impl Plugin for FrameCountPlugin {
+    fn build(&self, app: &mut App) {
+        MainSchedulePlugin::apply_before::<Self>(app);
+    }
+
     fn apply(&self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "FrameCountPlugin");
 
@@ -154,6 +158,8 @@ impl Plugin for FrameCountDiagnosticsPlugin {
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
         }
+
+        MainSchedulePlugin::apply_before::<Self>(app);
     }
 
     fn apply(&self, app: &mut App) {

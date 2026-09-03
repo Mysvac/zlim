@@ -442,6 +442,22 @@ impl MainSchedulePlugin {
             );
         }
     }
+
+    /// Ensures that `MainSchedulePlugin` is applied before the specified plugin `P`.
+    ///
+    /// - If `MainSchedulePlugin` is present in the app, this method registers an
+    ///   ordering constraint that applies `Self` before `P`.
+    ///
+    /// - If `MainSchedulePlugin` is not present, the call is silently ignored,
+    ///   as there is nothing to order relative to.
+    ///
+    /// # Panics
+    /// Panic if the target plugin `P` is not present in the app.
+    pub fn apply_before<P: Plugin>(app: &mut App) {
+        if app.contains_plugin::<Self>() {
+            app.add_plugin_order::<Self, P>();
+        }
+    }
 }
 
 // ---------------------------------------------------------------------

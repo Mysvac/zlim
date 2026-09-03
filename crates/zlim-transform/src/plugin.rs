@@ -29,9 +29,7 @@ pub struct TransformPlugin {
 
 impl Plugin for TransformPlugin {
     fn build(&self, app: &mut App) {
-        if app.contains_plugin::<MainSchedulePlugin>() {
-            app.add_plugin_order::<MainSchedulePlugin, Self>();
-        }
+        MainSchedulePlugin::apply_before::<Self>(app);
     }
 
     fn apply(&self, app: &mut App) {

@@ -206,6 +206,7 @@ impl Plugin for LogDiagnosticsPlugin {
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
         }
+        MainSchedulePlugin::apply_before::<Self>(app);
     }
 
     fn apply(&self, app: &mut App) {

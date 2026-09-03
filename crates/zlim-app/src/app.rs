@@ -860,6 +860,8 @@ impl SubApp {
 
     /// Runs the default schedule and updates internal component trackers.
     ///
+    /// Note that this function includes the content of [`SubApp::extract`].
+    ///
     /// # Panics
     ///
     /// Panic if the `update_schedule` if `Some` but schedule does not exist.
@@ -878,6 +880,8 @@ impl SubApp {
         }
 
         world.clear_trackers();
+
+        zlim_task::run_local();
     }
 }
 
@@ -913,6 +917,8 @@ impl App {
             world
         };
 
+        zlim_task::run_local();
+
         for (_label, sub_app) in self.sub_apps.iter_mut() {
             #[cfg(feature = "trace")]
             let _sub_app_span = zlim_log::info_span!("sub app", name = ?_label).entered();
@@ -934,6 +940,8 @@ impl App {
             }
 
             world.clear_trackers();
+
+            zlim_task::run_local();
         }
 
         main_world.clear_trackers();

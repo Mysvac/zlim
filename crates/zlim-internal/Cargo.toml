@@ -9,7 +9,7 @@ exclude = ["README.zh.md"]
 
 [features]
 
-dylib = []
+dylib = ["zlim-sysinfo/dylib"]
 
 debug = [
     "zlim-log/debug",
@@ -53,7 +53,7 @@ rand = ["zlim-math/rand", "zlim-shape/rand"]
 
 approx = ["zlim-math/approx"]
 
-sysinfo_plugin = ["zlim-diagnostic/sysinfo_plugin"]
+zlim_sysinfo = ["dep:zlim-sysinfo"]
 
 [dependencies]
 
@@ -83,6 +83,8 @@ zlim-color = { path = "../zlim-color", default-features = false }
 zlim-transform = { path = "../zlim-transform", default-features = false }
 
 zlim-diagnostic = { path = "../zlim-diagnostic", default-features = false }
+
+zlim-sysinfo = { path = "../zlim-sysinfo", default-features = false, optional = true }
 
 [lints]
 workspace = true

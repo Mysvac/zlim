@@ -56,7 +56,7 @@ dev = [
     "zlim-internal/debug",
     "zlim-internal/trace",
     "zlim-internal/backtrace",
-    "zlim-internal/sysinfo_plugin",
+    "zlim-internal/zlim_sysinfo",
 ]
 
 trace_tracy = ["zlim-internal/trace_tracy"]
