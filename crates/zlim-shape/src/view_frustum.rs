@@ -4,13 +4,18 @@ use zlim_reflect::Reflect;
 
 use crate::HalfSpace;
 
+// ---------------------------------------------------------------------
+// ViewFrustum
+
 /// A region of 3D space defined by the intersection of 6 [`HalfSpace`]s.
 ///
 /// View Frustums are typically an apex-truncated square pyramid (a pyramid
 /// without the top) or a cuboid.
 ///
+/// # [`from_clip_from_world`](Self::from_clip_from_world)
+///
 /// Assumed clipping region: `-1 < x < 1`, `-1 < y < 1`, `0 < z < 1`.
-/// The array indices correspond to:
+/// Then the array indices correspond to:
 ///
 /// - `[0]`: left plane,   `x = -1` (X-axis points right)
 /// - `[1]`: right plane,  `x =  1` (X-axis points right)
@@ -20,6 +25,25 @@ use crate::HalfSpace;
 /// - `[5]`: far plane,    `z =  1` (Z-axis points inward)
 ///
 /// If you assume Y-down, then `[2]` is Top and `[3]` is Bottom.
+///
+/// # [`from_rclip_from_world`](Self::from_rclip_from_world)
+///
+/// Assumed clipping region: `-1 < x < 1`, `-1 < y < 1`, `1 > z > 0`,
+/// `Z` is reversed. Then the array indices correspond to:
+///
+/// - `[0]`: left plane,   `x = -1` (X-axis points right)
+/// - `[1]`: right plane,  `x =  1` (X-axis points right)
+/// - `[2]`: bottom plane, `y = -1` (Y-axis points up)
+/// - `[3]`: top plane,    `y =  1` (Y-axis points up)
+/// - `[4]`: near plane,   `z =  1` (Z-axis points outward)
+/// - `[5]`: far plane,    `z =  0` (Z-axis points outward)
+///
+/// If you assume Y-down, then `[2]` is Top and `[3]` is Bottom.
+///
+/// `Z` is reversed, `z = 1` is near plane and `z = 0` is far plane.
+///
+/// Which improves depth precision when used with a floating-point depth
+/// buffer, because floating-point numbers have higher density near 0.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[derive(Reflect, Serialize, Deserialize)]
 #[reflect(Default, Debug, Clone, Serialize, Deserialize)]
@@ -36,11 +60,49 @@ impl ViewFrustum {
 
     /// Returns a view frustum derived from `clip_from_world`.
     ///
-    /// The clip matrix is expected to use the convention documented on
-    /// [`ViewFrustum`] (`x`/`y` in `[-1, 1]`, `z` in `[0, 1]`); the
-    /// produced half-spaces follow the `half_spaces` index order.
+    /// Assumed clipping region: `-1 < x < 1`, `-1 < y < 1`, `0 < z < 1`.
+    /// The array indices correspond to:
+    ///
+    /// - `[0]`: left plane,   `x = -1` (X-axis points right)
+    /// - `[1]`: right plane,  `x =  1` (X-axis points right)
+    /// - `[2]`: bottom plane, `y = -1` (Y-axis points up)
+    /// - `[3]`: top plane,    `y =  1` (Y-axis points up)
+    /// - `[4]`: near plane,   `z =  0` (Z-axis points inward)
+    /// - `[5]`: far plane,    `z =  1` (Z-axis points inward)
+    ///
+    /// If you assume Y-down, then `[2]` is Top and `[3]` is Bottom.
+    ///
+    /// If `Z` is reversed (e.g. [`proj::perspective_reverse`]),
+    /// use [`from_rclip_from_world`] instead.
+    ///
+    /// [`from_rclip_from_world`]: Self::from_rclip_from_world
+    /// [`proj::perspective_reverse`]: zlim_math::proj::perspective_reverse
     #[inline]
     pub fn from_clip_from_world(clip_from_world: &Mat4) -> Self {
+        // Given a point P = [x, y, z, w] in homogeneous coordinates,
+        // and a HalfSpace defined by [a, b, c, d] representing ax + by + cz + dw >= 0 (K·P >= 0).
+        //
+        // The clip space transformation is: C = M · P, where M = ClipFromWorld.
+        // Expanding C = M · P:
+        // - Cx = M[0] · P
+        // - Cy = M[1] · P
+        // - Cz = M[2] · P
+        // - Cw = M[3] · P
+        //
+        // In clip space, the visible region is defined by:
+        //   -1 < Cx/Cw < 1, -1 < Cy/Cw < 1, 0 < Cz/Cw < 1
+        //
+        // Assuming Cw > 0 (true for points in front of the camera), we can multiply through:
+        //   -Cw < Cx < Cw, -Cw < Cy < Cw, 0 < Cz < Cw
+        //
+        // Rearranging into half-space plane equations (K·P >= 0):
+        // - Cw + Cx > 0  →  P · (M[3] + M[0]) > 0   // Left plane   (x = -1)
+        // - Cw - Cx > 0  →  P · (M[3] - M[0]) > 0   // Right plane  (x =  1)
+        // - Cw + Cy > 0  →  P · (M[3] + M[1]) > 0   // Bottom plane (y = -1)
+        // - Cw - Cy > 0  →  P · (M[3] - M[1]) > 0   // Top plane    (y =  1)
+        // - Cz > 0       →  P · (M[2]) > 0          // Near plane   (z = 0)
+        // - Cw - Cz > 0  →  P · (M[3] - M[2]) > 0   // Far plane    (z =  1)
+
         let row0 = clip_from_world.row(0);
         let row1 = clip_from_world.row(1);
         let row2 = clip_from_world.row(2);
@@ -57,13 +119,27 @@ impl ViewFrustum {
         }
     }
 
-    /// Returns a view frustum derived from `clip_from_world`, but with a custom far plane.
+    /// Returns a view frustum derived from `rclip_from_world`, but with a custom far plane.
     ///
-    /// The clip matrix is expected to use the convention documented on
-    /// [`ViewFrustum`] (`x`/`y` in `[-1, 1]`, `z` in `[0, 1]`); only the
-    /// far plane is replaced, constructed from the camera's backward direction.
+    /// Assumed clipping region: `-1 < x < 1`, `-1 < y < 1`, `0 < z < 1`.
+    /// The array indices correspond to:
+    ///
+    /// - `[0]`: left plane,   `x = -1` (X-axis points right)
+    /// - `[1]`: right plane,  `x =  1` (X-axis points right)
+    /// - `[2]`: bottom plane, `y = -1` (Y-axis points up)
+    /// - `[3]`: top plane,    `y =  1` (Y-axis points up)
+    /// - `[4]`: near plane,   `z =  0` (Z-axis points inward)
+    /// - `[5]`: far plane,    `z =  1` (Z-axis points inward)
+    ///
+    /// If you assume Y-down, then `[2]` is Top and `[3]` is Bottom.
+    ///
+    /// If `Z` is reversed (e.g. [`proj::perspective_reverse`]),
+    /// use [`from_rclip_from_world`] instead.
+    ///
+    /// [`from_rclip_from_world`]: Self::from_rclip_from_world
+    /// [`proj::perspective_reverse`]: zlim_math::proj::perspective_reverse
     #[inline]
-    pub fn from_clip_from_world_custom_far(
+    pub fn from_clip_from_world_with_far(
         clip_from_world: &Mat4,
         view_translation: &Vec3,
         view_backward: &Vec3,
@@ -82,6 +158,111 @@ impl ViewFrustum {
                 HalfSpace::new(row3 + row1),
                 HalfSpace::new(row3 - row1),
                 HalfSpace::new(row2),
+                HalfSpace::new(far),
+            ],
+        }
+    }
+
+    /// Returns a view frustum derived from `rclip_from_world`.
+    ///
+    /// Assumed clipping region: `-1 < x < 1`, `-1 < y < 1`, `1 > z > 0`,
+    /// **`Z` is reversed**. The array indices correspond to:
+    ///
+    /// - `[0]`: left plane,   `x = -1` (X-axis points right)
+    /// - `[1]`: right plane,  `x =  1` (X-axis points right)
+    /// - `[2]`: bottom plane, `y = -1` (Y-axis points up)
+    /// - `[3]`: top plane,    `y =  1` (Y-axis points up)
+    /// - `[4]`: near plane,   `z =  1` (Z-axis points outward)
+    /// - `[5]`: far plane,    `z =  0` (Z-axis points outward)
+    ///
+    /// If you assume Y-down, then `[2]` is Top and `[3]` is Bottom.
+    ///
+    /// The clipping region's `z` must be reversed, `z = 1` is near plane
+    /// and `z = 0` is far plane. Otherwise, use [`from_clip_from_world`] instead.
+    ///
+    /// [`from_clip_from_world`]: Self::from_clip_from_world
+    #[inline]
+    pub fn from_rclip_from_world(rclip_from_world: &Mat4) -> Self {
+        // Given a point P = [x, y, z, w] in homogeneous coordinates,
+        // and a HalfSpace defined by [a, b, c, d] representing ax + by + cz + dw >= 0 (K·P >= 0).
+        //
+        // The clip space transformation is: C = M · P, where M = ClipFromWorld.
+        // Expanding C = M · P:
+        // - Cx = M[0] · P
+        // - Cy = M[1] · P
+        // - Cz = M[2] · P
+        // - Cw = M[3] · P
+        //
+        // In clip space, the visible region is defined by:
+        //   -1 < Cx/Cw < 1, -1 < Cy/Cw < 1, 1 > Cz/Cw > 0
+        //
+        // Assuming Cw > 0 (true for points in front of the camera), we can multiply through:
+        //   -Cw < Cx < Cw, -Cw < Cy < Cw, Cw > Cz > 0
+        //
+        // Rearranging into half-space plane equations (K·P >= 0):
+        // - Cw + Cx > 0  →  P · (M[3] + M[0]) > 0   // Left plane   (x = -1)
+        // - Cw - Cx > 0  →  P · (M[3] - M[0]) > 0   // Right plane  (x =  1)
+        // - Cw + Cy > 0  →  P · (M[3] + M[1]) > 0   // Bottom plane (y = -1)
+        // - Cw - Cy > 0  →  P · (M[3] - M[1]) > 0   // Top plane    (y =  1)
+        //
+        // For **reverse Z** (near = 1, far = 0):
+        // - Cw - Cz > 0 →  P · (M[3] - M[2]) > 0    // Near plane  (z = 1)
+        // - Cz > 0      →  P · M[2] > 0             // Far plane   (z = 0)
+
+        let row0 = rclip_from_world.row(0);
+        let row1 = rclip_from_world.row(1);
+        let row2 = rclip_from_world.row(2);
+        let row3 = rclip_from_world.row(3);
+        Self {
+            half_spaces: [
+                HalfSpace::new(row3 + row0),
+                HalfSpace::new(row3 - row0),
+                HalfSpace::new(row3 + row1),
+                HalfSpace::new(row3 - row1),
+                HalfSpace::new(row3 - row2),
+                HalfSpace::new(row2),
+            ],
+        }
+    }
+
+    /// Returns a view frustum derived from `rclip_from_world`, but with a custom far plane.
+    ///
+    /// Assumed clipping region: `-1 < x < 1`, `-1 < y < 1`, `1 > z > 0`,
+    /// **`Z` is reversed**. The array indices correspond to:
+    ///
+    /// - `[0]`: left plane,   `x = -1` (X-axis points right)
+    /// - `[1]`: right plane,  `x =  1` (X-axis points right)
+    /// - `[2]`: bottom plane, `y = -1` (Y-axis points up)
+    /// - `[3]`: top plane,    `y =  1` (Y-axis points up)
+    /// - `[4]`: near plane,   `z =  1` (Z-axis points outward)
+    /// - `[5]`: far plane,    `z =  0` (Z-axis points outward)
+    ///
+    /// If you assume Y-down, then `[2]` is Top and `[3]` is Bottom.
+    ///
+    /// The clipping region's `z` must be reversed, `z = 1` is near plane and `z = 0`
+    /// is far plane. Otherwise, use [`from_clip_from_world_with_far`] instead.
+    ///
+    /// [`from_clip_from_world_with_far`]: Self::from_clip_from_world_with_far
+    #[inline]
+    pub fn from_rclip_from_world_with_far(
+        rclip_from_world: &Mat4,
+        view_translation: &Vec3,
+        view_backward: &Vec3,
+        far: f32,
+    ) -> Self {
+        let row0 = rclip_from_world.row(0);
+        let row1 = rclip_from_world.row(1);
+        let row2 = rclip_from_world.row(2);
+        let row3 = rclip_from_world.row(3);
+        let far_center = *view_translation - far * *view_backward;
+        let far = view_backward.extend(-view_backward.dot(far_center));
+        Self {
+            half_spaces: [
+                HalfSpace::new(row3 + row0),
+                HalfSpace::new(row3 - row0),
+                HalfSpace::new(row3 + row1),
+                HalfSpace::new(row3 - row1),
+                HalfSpace::new(row3 - row2),
                 HalfSpace::new(far),
             ],
         }
@@ -110,6 +291,9 @@ impl ViewFrustum {
     }
 }
 
+// ---------------------------------------------------------------------
+// Tests
+
 #[cfg(test)]
 mod view_frustum_tests {
     use core::f32::consts::FRAC_1_SQRT_2;
@@ -122,9 +306,52 @@ mod view_frustum_tests {
     use crate::HalfSpace;
 
     #[test]
-    fn test_from_clip_from_world() {
+    fn from_clip_from_world() {
         let clip_from_world = proj::perspective(60.0_f32.to_radians(), 1.0, 1.0, 10.0);
         let frustum = ViewFrustum::from_clip_from_world(&clip_from_world);
+
+        // Left
+        assert_relative_eq!(
+            frustum.half_spaces[0].normal_d(),
+            Vec4::new(0.8660254, 0., -0.5, 0.),
+            epsilon = 2e-5
+        );
+        // Right
+        assert_relative_eq!(
+            frustum.half_spaces[1].normal_d(),
+            Vec4::new(-0.8660254, 0., -0.5, 0.),
+            epsilon = 2e-5
+        );
+        // Bottom
+        assert_relative_eq!(
+            frustum.half_spaces[2].normal_d(),
+            Vec4::new(0., 0.8660254, -0.5, 0.),
+            epsilon = 2e-5
+        );
+        // Top
+        assert_relative_eq!(
+            frustum.half_spaces[3].normal_d(),
+            Vec4::new(0., -0.8660254, -0.5, 0.),
+            epsilon = 2e-5
+        );
+        // Near
+        assert_relative_eq!(
+            frustum.half_spaces[4].normal_d(),
+            Vec4::new(0., 0., -1., -1.),
+            epsilon = 2e-5
+        );
+        // Far
+        assert_relative_eq!(
+            frustum.half_spaces[5].normal_d(),
+            Vec4::new(0., 0., 1., 10.),
+            epsilon = 2e-5
+        );
+    }
+
+    #[test]
+    fn from_rclip_from_world() {
+        let clip_from_world = proj::perspective_reverse(60.0_f32.to_radians(), 1.0, 1.0, 10.0);
+        let frustum = ViewFrustum::from_rclip_from_world(&clip_from_world);
 
         // Left
         assert_relative_eq!(

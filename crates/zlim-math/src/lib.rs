@@ -6,9 +6,6 @@
 // ---------------------------------------------------------------------
 // glam
 
-pub use glam::camera::rh::proj::directx as proj;
-pub use glam::dcamera::rh::proj::directx as dproj;
-
 pub use glam::EulerRot;
 pub use glam::FloatExt;
 pub use glam::bool::*;
@@ -96,6 +93,12 @@ pub use common_traits::*;
 
 mod affine3;
 pub use affine3::Affine3Ext;
+
+// ---------------------------------------------------------------------
+// proj
+
+pub mod dproj;
+pub mod proj;
 
 // ---------------------------------------------------------------------
 // Modules
