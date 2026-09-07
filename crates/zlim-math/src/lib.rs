@@ -80,13 +80,10 @@ mod rects;
 pub use rects::{IRect, Rect, URect};
 
 // ---------------------------------------------------------------------
-// sampling
+// distribution
 
 #[cfg(feature = "rand")]
-pub mod sampling;
-
-#[cfg(feature = "rand")]
-pub use sampling::FromRng;
+mod distribution;
 
 // ---------------------------------------------------------------------
 // common traits
@@ -137,7 +134,4 @@ pub mod prelude {
     pub use crate::direction::{Dir2, Dir3, Dir3A};
     pub use crate::isometry::{Isometry2d, Isometry3d};
     pub use crate::rects::{IRect, Rect, URect};
-
-    #[cfg(feature = "rand")]
-    pub use crate::sampling::FromRng;
 }

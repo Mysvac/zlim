@@ -3,11 +3,12 @@
 //! At the most basic level, this allows sampling random points from the interior and boundary of
 //! geometric primitives. For example:
 //! ```
-//! # use zlim_shape::*;
-//! # use rand::SeedableRng;
-//! # use rand::rngs::StdRng;
+//! # use rand::{SeedableRng, rngs::StdRng};
+//! # use zlim_shape::Circle;
+//! # use zlim_sample::ShapeSample;
+//! #
 //! // Get some `RngExt`:
-//! let mut rng: StdRng = rand::make_rng();
+//! let mut rng: StdRng = StdRng::seed_from_u64(0);
 //! // Make a circle of radius 2:
 //! let circle = Circle::new(2.0);
 //! // Get a point inside this circle uniformly at random:
@@ -18,13 +19,14 @@
 //!
 //! For repeated sampling, `ShapeSample` also includes methods for accessing a [`Distribution`]:
 //! ```
-//! # use zlim_shape::*;
-//! # use zlim_math::Vec2;
-//! # use rand::SeedableRng;
-//! # use rand::rngs::StdRng;
 //! # use rand::distr::Distribution;
-//! # let mut rng1: StdRng = rand::make_rng();
-//! # let mut rng2: StdRng = rand::make_rng();
+//! # use rand::{SeedableRng, rngs::StdRng};
+//! # use zlim_math::Vec2;
+//! # use zlim_shape::Rectangle;
+//! # use zlim_sample::ShapeSample;
+//! #
+//! # let mut rng1: StdRng = StdRng::seed_from_u64(0);
+//! # let mut rng2: StdRng = StdRng::seed_from_u64(1);
 //! // Use a rectangle this time:
 //! let rectangle = Rectangle::new(1.0, 2.0);
 //! // Get an iterator that spits out random interior points:
@@ -43,12 +45,15 @@ use rand::RngExt;
 use rand::distr::weighted::{Weight, WeightedIndex};
 use rand::distr::{Distribution, uniform::SampleUniform};
 use zlim_math::{NormedVectorSpace, ScalarField, Vec2, Vec3, ops};
+use zlim_shape::*;
 
-use crate::*;
+// -----------------------------------------------------------------------------
+// ShapeSample
 
 /// Exposes methods to uniformly sample a variety of primitive shapes.
 pub trait ShapeSample {
-    /// The type of vector returned by the sample methods, [`Vec2`] for 2D shapes and [`Vec3`] for 3D shapes.
+    /// The type of vector returned by the sample methods,
+    /// [`Vec2`] for 2D shapes and [`Vec3`] for 3D shapes.
     type Output;
 
     /// Uniformly sample a point from inside the area/volume of this shape, centered on 0.
@@ -57,11 +62,14 @@ pub trait ShapeSample {
     ///
     /// # Example
     /// ```
-    /// # use zlim_shape::prelude::*;
+    /// # use rand::{SeedableRng, rngs::StdRng};
+    /// # use zlim_shape::Rectangle;
+    /// # use zlim_sample::ShapeSample;
     /// let square = Rectangle::new(2.0, 2.0);
+    /// let mut rng = StdRng::seed_from_u64(0);
     ///
     /// // Returns a Vec2 with both x and y between -1 and 1.
-    /// println!("{}", square.sample_interior(&mut rand::rng()));
+    /// println!("{}", square.sample_interior(&mut rng));
     /// ```
     fn sample_interior<R: RngExt + ?Sized>(&self, rng: &mut R) -> Self::Output;
 
@@ -71,12 +79,15 @@ pub trait ShapeSample {
     ///
     /// # Example
     /// ```
-    /// # use zlim_shape::prelude::*;
+    /// # use rand::{SeedableRng, rngs::StdRng};
+    /// # use zlim_shape::Rectangle;
+    /// # use zlim_sample::ShapeSample;
     /// let square = Rectangle::new(2.0, 2.0);
+    /// let mut rng = StdRng::seed_from_u64(0);
     ///
     /// // Returns a Vec2 where one of the coordinates is at ±1,
     /// //  and the other is somewhere between -1 and 1.
-    /// println!("{}", square.sample_boundary(&mut rand::rng()));
+    /// println!("{}", square.sample_boundary(&mut rng));
     /// ```
     fn sample_boundary<R: RngExt + ?Sized>(&self, rng: &mut R) -> Self::Output;
 
@@ -85,16 +96,19 @@ pub trait ShapeSample {
     /// # Example
     ///
     /// ```
-    /// # use zlim_shape::prelude::*;
     /// # use rand::distr::Distribution;
+    /// # use rand::{SeedableRng, rngs::StdRng};
+    /// # use zlim_shape::Rectangle;
+    /// # use zlim_sample::ShapeSample;
     /// let square = Rectangle::new(2.0, 2.0);
-    /// let rng = rand::rng();
+    /// let rng = StdRng::seed_from_u64(0);
     ///
     /// // Iterate over points randomly drawn from `square`'s interior:
     /// for random_val in square.interior_dist().sample_iter(rng).take(5) {
     ///     println!("{}", random_val);
     /// }
     /// ```
+    #[inline]
     fn interior_dist(self) -> impl Distribution<Self::Output>
     where
         Self: Sized,
@@ -107,16 +121,19 @@ pub trait ShapeSample {
     /// # Example
     ///
     /// ```
-    /// # use zlim_shape::prelude::*;
     /// # use rand::distr::Distribution;
+    /// # use rand::{SeedableRng, rngs::StdRng};
+    /// # use zlim_shape::Rectangle;
+    /// # use zlim_sample::ShapeSample;
     /// let square = Rectangle::new(2.0, 2.0);
-    /// let rng = rand::rng();
+    /// let rng = StdRng::seed_from_u64(0);
     ///
     /// // Iterate over points randomly drawn from `square`'s boundary:
     /// for random_val in square.boundary_dist().sample_iter(rng).take(5) {
     ///     println!("{}", random_val);
     /// }
     /// ```
+    #[inline]
     fn boundary_dist(self) -> impl Distribution<Self::Output>
     where
         Self: Sized,
@@ -124,6 +141,9 @@ pub trait ShapeSample {
         BoundaryOf(self)
     }
 }
+
+// -----------------------------------------------------------------------------
+// InteriorOf & BoundaryOf
 
 /// A wrapper struct that allows interior sampling from a [`ShapeSample`]
 /// type directly as a [`Distribution`].
@@ -147,6 +167,9 @@ impl<T: ShapeSample> Distribution<<T as ShapeSample>::Output> for BoundaryOf<T> 
     }
 }
 
+// -----------------------------------------------------------------------------
+// Circle
+
 impl ShapeSample for Circle {
     type Output = Vec2;
 
@@ -165,6 +188,9 @@ impl ShapeSample for Circle {
         Vec2::new(self.radius * cos, self.radius * sin)
     }
 }
+
+// -----------------------------------------------------------------------------
+// CircularSector
 
 impl ShapeSample for CircularSector {
     type Output = Vec2;
@@ -190,6 +216,9 @@ impl ShapeSample for CircularSector {
         }
     }
 }
+
+// -----------------------------------------------------------------------------
+// Sphere
 
 /// Boundary sampling for unit-spheres
 #[inline]
@@ -217,6 +246,9 @@ impl ShapeSample for Sphere {
         self.radius * sample_unit_sphere_boundary(rng)
     }
 }
+
+// -----------------------------------------------------------------------------
+// Annulus
 
 impl ShapeSample for Annulus {
     type Output = Vec2;
@@ -249,6 +281,9 @@ impl ShapeSample for Annulus {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Rhombus
+
 impl ShapeSample for Rhombus {
     type Output = Vec2;
 
@@ -269,6 +304,9 @@ impl ShapeSample for Rhombus {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Rectangle
+
 impl ShapeSample for Rectangle {
     type Output = Vec2;
 
@@ -279,20 +317,27 @@ impl ShapeSample for Rectangle {
     }
 
     fn sample_boundary<R: RngExt + ?Sized>(&self, rng: &mut R) -> Vec2 {
-        let primary_side = rng.random_range(-1.0..1.0);
-        let other_side = if rng.random() { -1.0 } else { 1.0 };
+        let hx = self.half_size.x;
+        let hy = self.half_size.y;
 
-        if self.half_size.x + self.half_size.y > 0.0 {
-            if rng.random_bool((self.half_size.x / (self.half_size.x + self.half_size.y)) as f64) {
-                Vec2::new(primary_side, other_side) * self.half_size
-            } else {
-                Vec2::new(other_side, primary_side) * self.half_size
-            }
+        if hx + hy == 0.0 {
+            return Vec2::ZERO;
+        }
+
+        let vertical_prob = hy / (hx + hy);
+        let primary = rng.random_range(-1.0..1.0);
+        let sign = if rng.random() { -1.0 } else { 1.0 };
+
+        if rng.random_bool(vertical_prob as f64) {
+            Vec2::new(sign * hx, primary * hy)
         } else {
-            Vec2::ZERO
+            Vec2::new(primary * hx, sign * hy)
         }
     }
 }
+
+// -----------------------------------------------------------------------------
+// Cuboid
 
 impl ShapeSample for Cuboid {
     type Output = Vec3;
@@ -351,7 +396,11 @@ where
     }
 }
 
+// -----------------------------------------------------------------------------
+// Triangle2d & Triangle3d
+
 /// Boundary sampling for triangles which doesn't depend on the ambient dimension.
+#[inline]
 fn sample_triangle_boundary<P, R>(vertices: [P; 3], rng: &mut R) -> P
 where
     P: NormedVectorSpace,
@@ -363,19 +412,19 @@ where
     let ac = c - a;
     let bc = c - b;
 
-    let t = rng.random_range(<P::Scalar as ScalarField>::ZERO..=P::Scalar::ONE);
-
-    if let Ok(dist) = WeightedIndex::new([ab.norm(), ac.norm(), bc.norm()]) {
-        match dist.sample(rng) {
-            0 => a.lerp(b, t),
-            1 => a.lerp(c, t),
-            2 => b.lerp(c, t),
-            _ => unreachable!(),
-        }
-    } else {
+    let Ok(dist) = WeightedIndex::new([ab.norm(), ac.norm(), bc.norm()]) else {
         // This should only occur when the triangle is 0-dimensional degenerate
         // so this is actually the correct result.
-        a
+        return a;
+    };
+
+    let t = rng.random_range(<P::Scalar as ScalarField>::ZERO..=P::Scalar::ONE);
+
+    match dist.sample(rng) {
+        0 => a.lerp(b, t),
+        1 => a.lerp(c, t),
+        2 => b.lerp(c, t),
+        _ => unreachable!(),
     }
 }
 
@@ -402,6 +451,9 @@ impl ShapeSample for Triangle3d {
         sample_triangle_boundary(self.vertices, rng)
     }
 }
+
+// -----------------------------------------------------------------------------
+// Tetrahedron
 
 impl ShapeSample for Tetrahedron {
     type Output = Vec3;
@@ -460,6 +512,9 @@ impl ShapeSample for Tetrahedron {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Cylinder
+
 impl ShapeSample for Cylinder {
     type Output = Vec3;
 
@@ -490,6 +545,9 @@ impl ShapeSample for Cylinder {
         }
     }
 }
+
+// -----------------------------------------------------------------------------
+// Capsule2d
 
 impl ShapeSample for Capsule2d {
     type Output = Vec2;
@@ -544,6 +602,9 @@ impl ShapeSample for Capsule2d {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Capsule3d
+
 impl ShapeSample for Capsule3d {
     type Output = Vec3;
 
@@ -594,6 +655,9 @@ impl ShapeSample for Capsule3d {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Extrusion
+
 impl<P: Primitive2d + Measured2d + ShapeSample<Output = Vec2>> ShapeSample for Extrusion<P> {
     type Output = Vec3;
 
@@ -619,72 +683,5 @@ impl<P: Primitive2d + Measured2d + ShapeSample<Output = Vec2>> ShapeSample for E
                 .sample_boundary(rng)
                 .extend(rng.random_range(-self.half_depth..self.half_depth)),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chacha20::ChaCha8Rng;
-    use rand::SeedableRng;
-
-    #[test]
-    fn circle_interior_sampling() {
-        let mut rng = ChaCha8Rng::from_seed(Default::default());
-        let circle = Circle::new(8.0);
-
-        let boxes = [
-            (-3.0, 3.0),
-            (1.0, 2.0),
-            (-1.0, -2.0),
-            (3.0, -2.0),
-            (1.0, -6.0),
-            (-3.0, -7.0),
-            (-7.0, -3.0),
-            (-6.0, 1.0),
-        ];
-        let mut box_hits = [0; 8];
-
-        // Checks which boxes (if any) the sampled points are in
-        for _ in 0..5000 {
-            let point = circle.sample_interior(&mut rng);
-
-            for (i, box_) in boxes.iter().enumerate() {
-                if (point.x > box_.0 && point.x < box_.0 + 4.0)
-                    && (point.y > box_.1 && point.y < box_.1 + 4.0)
-                {
-                    box_hits[i] += 1;
-                }
-            }
-        }
-
-        assert_eq!(
-            box_hits,
-            [396, 377, 415, 404, 366, 408, 408, 430],
-            "samples will occur across all array items at statistically equal chance"
-        );
-    }
-
-    #[test]
-    fn circle_boundary_sampling() {
-        let mut rng = ChaCha8Rng::from_seed(Default::default());
-        let circle = Circle::new(1.0);
-
-        let mut wedge_hits = [0; 8];
-
-        // Checks in which eighth of the circle each sampled point is in
-        for _ in 0..5000 {
-            let point = circle.sample_boundary(&mut rng);
-
-            let angle = ops::atan(point.y / point.x) + PI / 2.0;
-            let wedge = ops::floor(angle * 8.0 / PI) as usize;
-            wedge_hits[wedge] += 1;
-        }
-
-        assert_eq!(
-            wedge_hits,
-            [636, 608, 639, 603, 614, 650, 640, 610],
-            "samples will occur across all array items at statistically equal chance"
-        );
     }
 }

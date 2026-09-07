@@ -2,7 +2,7 @@
 
 Primitive shape library for the zlim engine, ported from `bevy_shape`.
 
-Defines geometric primitives (2D/3D), rays, bounding volumes, and shape sampling.
+Defines geometric primitives (2D/3D), rays, bounding volumes, and measurements.
 
 ## Primitive2d / Primitive3d
 
@@ -51,7 +51,3 @@ The directions `Dir2`/`Dir3`/`Dir3A` from `zlim-math` also implement them.
 - Ray casting: `raycast2d`/`raycast3d` (`RayCast2d`/`RayCast3d`,
   primitive/bounding-volume intersection).
 
-## sampling (feature `rand`)
-
-- `ShapeSample` — uniformly sample the interior/boundary of a shape.
-- `sampling::mesh_sampling::UniformMeshSampler` — sample triangle meshes.

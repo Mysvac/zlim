@@ -23,5 +23,6 @@ which then enables the matching behavior across all engine subsystems.
 - **`color`** — Re-exports `zlim_color`: color spaces, conversions and palettes.
 - **`transform`** — Re-exports `zlim_transform`: `Transform`/`GlobalTransform` + hierarchy propagation.
 - **`diagnostic`** — Re-exports `zlim_diagnostic`: diagnostics store and built-in measurement plugins.
+- **`sample`** — Re-exports `zlim_sample`: random sampling (shape / mesh sampling, `FromRng`) (enabled with the `zlim_sample` feature).
 - **`sysinfo`** — Re-exports `zlim_sysinfo`: host system info plugins (enabled with the `zlim_sysinfo` feature).
 - **`derive`** — Re-exports all derive macros.

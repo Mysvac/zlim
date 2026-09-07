@@ -1,0 +1,18 @@
+[package]
+name = "zlim-sample"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+zlim-math = { path = "../zlim-math", default-features = false, features = ["rand"] }
+zlim-shape = { path = "../zlim-shape", default-features = false }
+
+rand = { version = "0.10", default-features = false, features = ["std", "std_rng"] }
+rand_distr = { version = "0.6", default-features = false, features = ["alloc", "std"] }
+
+[lints]
+workspace = true

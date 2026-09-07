@@ -28,7 +28,10 @@ pub use zlim_transform as transform;
 
 pub use zlim_diagnostic as diagnostic;
 
-#[cfg(feature = "zlim_sysinfo")]
+#[cfg(feature = "zlim-sample")]
+pub use zlim_sample as sample;
+
+#[cfg(feature = "zlim-sysinfo")]
 pub use zlim_sysinfo as sysinfo;
 
 /// Macros

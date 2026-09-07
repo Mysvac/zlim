@@ -44,10 +44,10 @@ pub fn run_local() {
 // -----------------------------------------------------------------------------
 // block_on
 
-#[cfg(feature = "async_io")]
+#[cfg(feature = "async-io")]
 use async_io::block_on as raw_block_on;
 
-#[cfg(not(feature = "async_io"))]
+#[cfg(not(feature = "async-io"))]
 use futures_lite::future::block_on as raw_block_on;
 
 /// Blocks the current thread on a future.

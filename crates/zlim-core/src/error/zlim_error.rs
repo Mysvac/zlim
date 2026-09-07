@@ -144,24 +144,26 @@ impl ZlimError {
     fn new_boxed(severity: Severity, content: BoxedError, location: DebugLocation) -> Self {
         #[cfg(feature = "backtrace")]
         let backtrace = match severity {
-            Severity::Ignore | Severity::Debug | Severity::Info => Backtrace::disabled(),
-            Severity::Warning | Severity::Error | Severity::Panic => Backtrace::capture(),
+            Severity::Error | Severity::Panic => Backtrace::capture(),
+            _ => Backtrace::disabled(),
         };
 
         #[cfg(not(feature = "backtrace"))]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError { content, location }));
+        let boxed = Box::new(InnerError { content, location });
 
         #[cfg(feature = "backtrace")]
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError {
+        let boxed = Box::new(InnerError {
             content,
             location,
             backtrace,
-        }));
+        });
 
         debug_assert!(
-            (ptr as usize & MASKS) == 0,
+            (Box::as_ptr(&boxed) as usize & MASKS) == 0,
             "InnerError should be align of `8`"
         );
+
+        let ptr: *mut InnerError = Box::leak(boxed);
 
         unsafe {
             let p: *mut () = (ptr as *mut ()).byte_add(severity as usize);
@@ -406,6 +408,7 @@ impl ZlimError {
 
         f.write_str("\n\nstack backtrace:\n")?;
 
+        // `std::env::var` will panic in Wasm.
         #[cfg(not(target_family = "wasm"))]
         static FULL_BACKTRACE: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
             std::env::var("ZLIM_BACKTRACE").is_ok_and(|val| val == "full")
@@ -427,6 +430,7 @@ impl ZlimError {
                 skip_next_location_line = false;
             }
 
+            // Separate the beginning part, for example:
             // "  5: zlim_core::error::zlim_error::ZlimError::panic"
             //     ↑
             if let Some(index) = line.find(": ") {

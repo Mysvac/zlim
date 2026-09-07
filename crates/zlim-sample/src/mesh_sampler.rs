@@ -1,13 +1,14 @@
 //! Functionality related to random sampling from triangle meshes.
 
-use rand::RngExt;
-use rand_distr::Distribution;
-use rand_distr::weighted::{Error as WeightedError, WeightedAliasIndex};
+use rand::{RngExt, distr::Distribution};
+use rand_distr::weighted::{Error, WeightedAliasIndex};
 use zlim_math::Vec3;
+use zlim_shape::{Measured2d, Triangle3d};
 
-use crate::{Measured2d, ShapeSample, Triangle3d};
+use crate::shape_sampler::ShapeSample;
 
 /// A [distribution] that caches data to allow fast sampling from a collection of triangles.
+///
 /// Generally used through [`sample`] or [`sample_iter`].
 ///
 /// [distribution]: Distribution
@@ -18,8 +19,9 @@ use crate::{Measured2d, ShapeSample, Triangle3d};
 /// ```
 /// # use zlim_shape::prelude::*;
 /// # use zlim_math::Vec3;
-/// # use zlim_shape::sampling::mesh_sampling::UniformMeshSampler;
+/// # use zlim_sample::UniformMeshSampler;
 /// # use rand::{SeedableRng, rngs::StdRng, distr::Distribution};
+/// #
 /// let faces = Tetrahedron::default().faces();
 /// let sampler = UniformMeshSampler::try_new(faces).unwrap();
 /// let rng = StdRng::seed_from_u64(8765309);
@@ -28,12 +30,12 @@ use crate::{Measured2d, ShapeSample, Triangle3d};
 /// ```
 pub struct UniformMeshSampler {
     triangles: Vec<Triangle3d>,
-    face_distribution: WeightedAliasIndex<f32>,
+    distribution: WeightedAliasIndex<f32>,
 }
 
 impl Distribution<Vec3> for UniformMeshSampler {
     fn sample<R: RngExt + ?Sized>(&self, rng: &mut R) -> Vec3 {
-        let face_index = self.face_distribution.sample(rng);
+        let face_index = self.distribution.sample(rng);
         self.triangles[face_index].sample_interior(rng)
     }
 }
@@ -41,19 +43,21 @@ impl Distribution<Vec3> for UniformMeshSampler {
 impl UniformMeshSampler {
     /// Construct a new [`UniformMeshSampler`] from a list of [triangles].
     ///
-    /// Returns an error if the distribution of areas for the collection of triangles could not be formed
-    /// (most notably if the collection has zero surface area).
+    /// Returns an error if the distribution of areas for the collection of triangles
+    /// could not be formed (most notably if the collection has zero surface area).
     ///
     /// [triangles]: Triangle3d
-    pub fn try_new<T: IntoIterator<Item = Triangle3d>>(
-        triangles: T,
-    ) -> Result<Self, WeightedError> {
+    pub fn try_new<T>(triangles: T) -> Result<Self, Error>
+    where
+        T: IntoIterator<Item = Triangle3d>,
+    {
         let triangles: Vec<Triangle3d> = triangles.into_iter().collect();
-        let areas = triangles.iter().map(Measured2d::area).collect();
+        let areas: Vec<f32> = triangles.iter().map(Measured2d::area).collect();
 
-        WeightedAliasIndex::new(areas).map(|face_distribution| Self {
+        let distribution = WeightedAliasIndex::new(areas)?;
+        Ok(Self {
             triangles,
-            face_distribution,
+            distribution,
         })
     }
 }

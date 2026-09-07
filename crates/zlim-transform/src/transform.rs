@@ -144,7 +144,7 @@ impl GlobalTransform {
     #[inline]
     #[doc(hidden)]
     pub fn from_isometry(iso: Isometry3d) -> Self {
-        Self(iso.into())
+        Self(Affine3A::from(iso))
     }
 }
 

@@ -339,6 +339,7 @@ macro_rules! define_label {
                 (**self).dyn_clone()
             }
 
+            #[inline]
             fn intern(&self) -> Self {
                 *self
             }

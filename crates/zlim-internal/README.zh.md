@@ -23,5 +23,6 @@ zlim 引擎的核心实现 crate。
 - **`color`** —— 重新导出 `zlim_color`：颜色空间、转换与调色板。
 - **`transform`** —— 重新导出 `zlim_transform`：`Transform`/`GlobalTransform` + 层级传播。
 - **`diagnostic`** —— 重新导出 `zlim_diagnostic`：诊断存储与内置测量插件。
+- **`sample`** —— 重新导出 `zlim_sample`：随机采样（形状 / 网格采样、`FromRng`）（在启用 `zlim_sample` feature 时可用）。
 - **`sysinfo`** —— 重新导出 `zlim_sysinfo`：主机系统信息插件（在启用 `zlim_sysinfo` feature 时可用）。
 - **`derive`** —— 重新导出各个库的派生宏。

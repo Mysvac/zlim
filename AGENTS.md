@@ -79,12 +79,12 @@ zlim (root facade crate, src/lib.rs)
     ├── zlim-shape      (shape primitives, crates/zlim-shape/)
     ├── zlim-curve      (curves & interpolation, crates/zlim-curve/)
     ├── zlim-color      (color spaces & operations, crates/zlim-color/)
+    ├── zlim-sample     (random sampling of shapes/meshes, crates/zlim-sample/)
     ├── zlim-core       (ECS core, crates/zlim-core/)
     ├── zlim-app        (app & plugin framework, crates/zlim-app/)
     ├── zlim-transform  (transform propagation, crates/zlim-transform/)
     ├── zlim-diagnostic (diagnostics store & plugins, crates/zlim-diagnostic/)
     └── zlim-sysinfo    (host system info, crates/zlim-sysinfo/)
-        — enabled with `zlim-internal`'s `zlim_sysinfo` / `zlim`'s `sysinfo` feature.
 
 Auxiliary:
 ├── zlim-derive-utils (proc-macro utilities, crates/zlim-derive-utils/)
@@ -139,7 +139,7 @@ Auxiliary:
   - **Dependencies**: glam, `zlim-log`, `zlim-utils`, `zlim-reflect`.
 
 - **`zlim-shape`**
-  - **Purpose**: primitive shapes (2D/3D), rays, bounding volumes, shape sampling; ported from `bevy_shape`.
+  - **Purpose**: primitive shapes (2D/3D), rays, bounding volumes, measurements; ported from `bevy_shape`.
   - **Dependencies**: `zlim-math`, `zlim-reflect`, serde.
 
 - **`zlim-curve`**
@@ -149,6 +149,10 @@ Auxiliary:
 - **`zlim-color`**
   - **Purpose**: color spaces, cross-space conversions, palettes, GPU integration; ported from `bevy_color`.
   - **Dependencies**: `zlim-math`, `zlim-curve`, `zlim-reflect`, serde, bytemuck, wgpu-types, encase.
+
+- **`zlim-sample`**
+  - **Purpose**: random sampling — `ShapeSample` (shape interior/boundary), `UniformMeshSampler` (triangle meshes), `FromRng`; split out of `zlim-math`/`zlim-shape`.
+  - **Dependencies**: `zlim-math` (features `rand`), `zlim-shape`, rand, rand_distr.
 
 - **`zlim-core`**
   - **Purpose**: ECS core: Entity, Component, World, Schedule, Tick, Error, Query, System, etc.

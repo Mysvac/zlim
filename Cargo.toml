@@ -50,27 +50,100 @@ zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional 
 
 [features]
 
-default = ["dev", "default_log_level"]
+# ----------------------------------------------------------
 
-dev = [
-    "zlim-internal/debug",
-    "zlim-internal/trace",
-    "zlim-internal/backtrace",
-    "zlim-internal/zlim_sysinfo",
-]
+default = []
 
-trace_tracy = ["zlim-internal/trace_tracy"]
+# ----------------------------------------------------------
+# Basic
 
-trace_memory = ["zlim-internal/trace_memory"]
-
-trace_chrome = ["zlim-internal/trace_chrome"]
-
-default_log_level = ["zlim-internal/default_log_level"]
-
+# Forces dynamic linking, which improves iterative compile times.
+# - Not effective in wasm target.
 dylib = ["dep:zlim-dylib", "zlim-internal/dylib"]
 
-editor = ["zlim-internal/editor"]
-
-async_io = ["zlim-internal/async_io"]
-
+# Forces all engine tasks to run on a single thread.
+# - Not effective in wasm target that is always single-threaded.
 single_thread = ["zlim-internal/single_thread"]
+
+# ----------------------------------------------------------
+# default
+
+# Enables default compile time log level and filter out useless logs.
+# - log: `max_level_info` + `release_max_level_warn`
+# - tracing: `max_level_debug` + `release_max_level_info`
+# - zlim_log: as same as `tracing`.
+# Eliminate many third-party crates' logs during compilation to optimize performance.
+default_log_level = ["zlim-internal/default_log_level"]
+
+# ----------------------------------------------------------
+# combination
+
+# COLLECTION: Enables this feature to improve the development experience.
+# - This feature provides better debugging information.
+# - This feature should not be enabled for published apps!
+dev = ["debug", "trace", "backtrace"]
+
+# COLLECTION: Enables editor related dependencies.
+# - Enables editor-specific dependencies.
+# - Enables developer-friendly error messages and more debug-assertions.
+# - Enables dynamic linking for faster rebuild times during development.
+# - This feature should not be enabled for published apps!
+editor = [
+    "dev",
+    "dylib",
+    "zlim-sysinfo",
+]
+
+# ----------------------------------------------------------
+# optional sub-crates
+
+# Enables `zlim-sample` crate.
+zlim-sample = ["zlim-internal/zlim-sample"]
+
+# Enables `zlim-sysinfo` crate.
+# - Not effective in wasm target or other unsupport platforms.
+zlim-sysinfo = ["zlim-internal/zlim-sysinfo"]
+
+# ----------------------------------------------------------
+# others
+
+# Improves panic backtrace, filter noisy rows.
+backtrace = ["zlim-internal/backtrace"]
+
+# Improves debug information, increase debug-assertions.
+debug = ["zlim-internal/debug"]
+
+# Tracing support, improves panic information.
+trace = ["zlim-internal/trace"]
+
+# Tracing support, exposing a port for Tracy.
+# - This feature cannot be used in wasm target.
+# - This feature should not be enabled for published apps!
+trace_tracy = ["zlim-internal/trace_tracy", "trace"]
+
+# Tracing support, with memory profiling, exposing a port for Tracy.
+# - This feature cannot be used in wasm target.
+# - This feature should not be enabled for published apps!
+trace_memory = ["zlim-internal/trace_memory"]
+
+# Tracing support, saving a file in Chrome Tracing format.
+# - This feature cannot be used in wasm target.
+# - This feature should not be enabled for published apps!
+trace_chrome = ["zlim-internal/trace_chrome", "trace"]
+
+# Use async-io's implementation of block_on in multi-thread mode.
+# - This is preferred if your application uses async-io.
+# - Not effective in single-thread mode or wasm target.
+async-io = ["zlim-internal/async-io"]
+
+# ----------------------------------------------------------
+
+[package.metadata.docs.rs]
+
+no-default-features = true
+
+features = [
+    "dev",
+    "zlim-sample",
+    "zlim-sysinfo",
+]

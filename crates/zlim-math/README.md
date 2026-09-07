@@ -59,11 +59,6 @@ Re-exports all of `glam`:
 - `Rect`/`IRect`/`URect` — float / signed-int / unsigned-int rectangles
   (inset, inflate, intersection, `from_center_half_size`, …).
 
-## sampling (feature `rand`)
-
-- `FromRng` — construction from a random number generator (`Dir2`/`Dir3`/
-  `Dir3A`/`Rot2`/`Quat`).
-
 ## common_traits
 
 - `ScalarField`, `VectorSpace`, `NormedVectorSpace` — math space traits.
@@ -75,3 +70,7 @@ Re-exports all of `glam`:
 
 - `Affine3Ext` — `Affine3A` extensions (`from_scale_rotation_translation`,
   `try_inverse`, …).
+
+## feature `rand`
+
+Implement `rand::distr::Distribution` for `Dir2`/`Dir3`/`Dir3A`/`Rot2`.

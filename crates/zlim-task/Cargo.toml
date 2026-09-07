@@ -9,9 +9,11 @@ exclude = ["bench", "tests", "README.zh.md"]
 
 [features]
 
+# Forces all tasks to run on a single thread.
 single_thread = []
 
-async_io = [ "dep:async-io" ]
+# Use async-io's implementation of block_on in multi-thread mode.
+async-io = [ "dep:async-io" ]
 
 [dependencies]
 

@@ -51,10 +51,6 @@ zlim 引擎的数学库，移植自 `bevy_math`，基于 `glam` 。
 
 - `Rect`/`IRect`/`URect` — 浮点/有符号整型/无符号整型矩形（含 inset/膨胀、交集、`from_center_half_size` 等）。
 
-## sampling（feature `rand`）
-
-- `FromRng` — 从随机数生成器构造（`Dir2`/`Dir3`/`Dir3A`/`Rot2`/`Quat`）。
-
 ## common_traits
 
 - `ScalarField`、`VectorSpace`、`NormedVectorSpace` — 数学空间 trait。
@@ -64,3 +60,7 @@ zlim 引擎的数学库，移植自 `bevy_math`，基于 `glam` 。
 ## affine3
 
 - `Affine3Ext` — `Affine3A` 扩展（`from_scale_rotation_translation`、`try_inverse` 等）。
+
+## feature `rand`
+
+为 `Dir2`/`Dir3`/`Dir3A`/`Rot2` 实现 `rand` 的 `Distribution` 。

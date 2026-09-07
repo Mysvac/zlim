@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![forbid(unsafe_code)]
 
 // ---------------------------------------------------------------------
 // Marker traits
@@ -85,15 +86,6 @@ pub use view_frustum::ViewFrustum;
 pub mod bounding;
 
 // ---------------------------------------------------------------------
-// Random sampling of shapes
-
-#[cfg(feature = "rand")]
-pub mod sampling;
-
-#[cfg(feature = "rand")]
-pub use sampling::ShapeSample;
-
-// ---------------------------------------------------------------------
 // Prelude
 
 /// The shape prelude.
@@ -125,8 +117,4 @@ pub mod prelude {
 
     #[doc(hidden)]
     pub use crate::view_frustum::ViewFrustum;
-
-    #[doc(hidden)]
-    #[cfg(feature = "rand")]
-    pub use crate::sampling::ShapeSample;
 }

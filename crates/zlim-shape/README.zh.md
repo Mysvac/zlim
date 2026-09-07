@@ -2,7 +2,7 @@
 
 zlim 引擎的图元形状库，移植自 `bevy_shape`。
 
-定义 2D/3D 几何图元、射线、包围体与形状采样。
+定义 2D/3D 几何图元、射线、包围体与度量。
 
 ## Primitive2d / Primitive3d
 
@@ -49,7 +49,3 @@ zlim 引擎的图元形状库，移植自 `bevy_shape`。
 - 射线检测：`raycast2d`/`raycast3d`（`RayCast2d`/`RayCast3d`，
   图元/包围体相交）。
 
-## sampling（feature `rand`）
-
-- `ShapeSample` — 均匀采样形状内部 / 边界。
-- `sampling::mesh_sampling::UniformMeshSampler` — 三角形网格采样。

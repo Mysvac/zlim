@@ -19,8 +19,9 @@ default_log_level = [
 debug = []
 trace = ["dep:tracing-error"]
 
-# Log based performance analysis
-# wasm target is not supported.
+# Log based performance analysis.
+# - wasm target is not supported.
+
 trace_tracy = ["dep:tracing-tracy"]
 trace_memory = ["dep:tracy-client"]
 trace_chrome = ["dep:tracing-chrome"]
