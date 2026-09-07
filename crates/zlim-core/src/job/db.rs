@@ -5,6 +5,7 @@ use std::sync::{PoisonError, RwLock};
 
 use zlim_log as log;
 use zlim_utils::debug::DebugLocation;
+use zlim_utils::ext::CachePadded;
 use zlim_utils::hash::HashMap;
 use zlim_utils::mem::Global;
 
@@ -64,7 +65,8 @@ impl Debug for JobDB {
 // -----------------------------------------------------------------------------
 // REGISTRY
 
-static REGISTRY: RwLock<HashMap<&'static str, &'static JobDB>> = RwLock::new(HashMap::new());
+static REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'static JobDB>>> =
+    CachePadded::new(RwLock::new(HashMap::new()));
 
 impl JobDB {
     /// Looks up a registered job by name.

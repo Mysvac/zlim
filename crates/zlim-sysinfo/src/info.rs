@@ -15,15 +15,15 @@ use zlim_reflect::derive::TypePath;
 #[derive(Debug, TypePath, Resource)]
 pub struct SystemInfo {
     /// OS name and version.
-    pub os: String,
+    pub os: &'static str,
     /// Kernel version.
-    pub kernel: String,
+    pub kernel: &'static str,
     /// CPU model name.
-    pub cpu: String,
+    pub cpu: &'static str,
     /// Physical core count.
-    pub core_count: String,
+    pub core_count: &'static str,
     /// Total physical memory.
-    pub memory: String,
+    pub memory: &'static str,
 }
 
 /// Registers the static [`SystemInfo`] resource.
@@ -68,6 +68,7 @@ mod normal_impls {
     use sysinfo as sysinfo_impls;
 
     use sysinfo_impls::{MemoryRefreshKind, RefreshKind, System};
+    use zlim_utils::str::intern_str;
 
     use super::SystemInfo;
 
@@ -79,19 +80,19 @@ mod normal_impls {
             let kind = RefreshKind::nothing().with_memory(mem_kind);
             let sys = System::new_with_specifics(kind);
 
+            let os_string = System::long_os_version();
+            let kernel_string = System::long_os_version();
+            let cpu_str = sys.cpus().first().map(|cpu| cpu.brand().trim());
+            let count_str = System::physical_core_count().map(|x| x.to_string());
+            let memory_string = format!("{:.1} GiB", sys.total_memory() as f64 * BYTES_TO_GIB);
+
             let system_info = SystemInfo {
-                os: System::long_os_version().unwrap_or_else(|| String::from("not available")),
-                kernel: System::kernel_version().unwrap_or_else(|| String::from("not available")),
-                cpu: sys
-                    .cpus()
-                    .first()
-                    .map(|cpu| cpu.brand().trim().to_string())
-                    .unwrap_or_else(|| String::from("not available")),
-                core_count: System::physical_core_count()
-                    .map(|x| x.to_string())
-                    .unwrap_or_else(|| String::from("not available")),
+                os: intern_str(os_string.as_deref().unwrap_or("not available")),
+                kernel: intern_str(kernel_string.as_deref().unwrap_or("not available")),
+                cpu: intern_str(cpu_str.unwrap_or("not available")),
+                core_count: intern_str(count_str.as_deref().unwrap_or("not available")),
                 // Convert from Bytes to GibiBytes since it's probably what people expect most of the time
-                memory: format!("{:.1} GiB", sys.total_memory() as f64 * BYTES_TO_GIB),
+                memory: intern_str(&memory_string),
             };
 
             zlim_log::info!("{system_info:?}");
@@ -114,11 +115,11 @@ mod unsupport_impls {
     impl Default for SystemInfo {
         fn default() -> Self {
             Self {
-                os: "Unknown".into(),
-                kernel: "Unknown".into(),
-                cpu: "Unknown".into(),
-                core_count: "Unknown".into(),
-                memory: "Unknown".into(),
+                os: "Unknown",
+                kernel: "Unknown",
+                cpu: "Unknown",
+                core_count: "Unknown",
+                memory: "Unknown",
             }
         }
     }

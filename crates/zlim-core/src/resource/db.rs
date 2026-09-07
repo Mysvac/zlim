@@ -5,7 +5,7 @@ use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use std::sync::{PoisonError, RwLock};
 
-use zlim_utils::ext::TypeMap;
+use zlim_utils::ext::{CachePadded, TypeMap};
 use zlim_utils::hash::HashMap;
 
 use super::alias::{DeserializeFunc, SerializeFunc};
@@ -18,14 +18,16 @@ use crate::utils::Dropper;
 // -----------------------------------------------------------------------------
 
 /// Id-indexed global registry of every registered [`ResourceDB`].
-pub(super) static ID_REGISTRY: RwLock<Vec<&'static ResourceDB>> = RwLock::new(Vec::new());
+pub(super) static ID_REGISTRY: CachePadded<RwLock<Vec<&'static ResourceDB>>> =
+    CachePadded::new(RwLock::new(Vec::new()));
 
 /// [`TypeId`]-indexed global registry of every registered [`ResourceDB`].
-pub(super) static TYPE_REGISTRY: RwLock<TypeMap<&'static ResourceDB>> = RwLock::new(TypeMap::new());
+pub(super) static TYPE_REGISTRY: CachePadded<RwLock<TypeMap<&'static ResourceDB>>> =
+    CachePadded::new(RwLock::new(TypeMap::new()));
 
 /// Type-path-indexed global registry of every registered [`ResourceDB`].
-pub(super) static PATH_REGISTRY: RwLock<HashMap<&'static str, &'static ResourceDB>> =
-    RwLock::new(HashMap::new());
+pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'static ResourceDB>>> =
+    CachePadded::new(RwLock::new(HashMap::new()));
 
 // -----------------------------------------------------------------------------
 // ResourceDB

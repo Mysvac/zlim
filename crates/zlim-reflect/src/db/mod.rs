@@ -30,7 +30,7 @@ use std::sync::{OnceLock, PoisonError, RwLock};
 
 use zlim_log as log;
 use zlim_ptr::{Ptr, PtrMut};
-use zlim_utils::ext::TypeMap;
+use zlim_utils::ext::{CachePadded, TypeMap};
 use zlim_utils::hash::HashMap;
 use zlim_utils::mem::Global;
 
@@ -82,8 +82,11 @@ pub struct TypeDB {
     mut_from_ptr: unsafe fn(PtrMut<'_>) -> &'_ mut dyn Reflect,
 }
 
-static TYPE_REGISTRY: RwLock<TypeMap<&'static TypeDB>> = RwLock::new(TypeMap::new());
-static PATH_REGISTRY: RwLock<HashMap<&'static str, &'static TypeDB>> = RwLock::new(HashMap::new());
+static TYPE_REGISTRY: CachePadded<RwLock<TypeMap<&'static TypeDB>>> =
+    CachePadded::new(RwLock::new(TypeMap::new()));
+
+static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'static TypeDB>>> =
+    CachePadded::new(RwLock::new(HashMap::new()));
 
 type IntoFunc = &'static (dyn Fn(Box<dyn Reflect>) -> Box<dyn Reflect> + Sync + 'static);
 type CtorFunc = &'static (dyn Fn() -> Box<dyn Reflect> + Sync + 'static);

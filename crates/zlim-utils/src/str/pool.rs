@@ -2,6 +2,7 @@
 use core::hash::{Hash, Hasher};
 use std::sync::{PoisonError, RwLock};
 
+use crate::ext::CachePadded;
 use crate::hash::{Equivalent, FixedState};
 use crate::hash::{HashSet, NoopState};
 
@@ -64,11 +65,14 @@ impl Equivalent<HS> for HashStr<'_> {
 // -----------------------------------------------------------------------------
 // Pool
 
-/// Global interning pool.
-///
-/// Multiple pools to reduce lock race
-static POOL_0: RwLock<HashSet<HS, NoopState>> = RwLock::new(HashSet::with_hasher(NoopState));
-static POOL_1: RwLock<HashSet<HS, NoopState>> = RwLock::new(HashSet::with_hasher(NoopState));
+// Global interning pool.
+//
+// Multiple pools to reduce lock race
+static POOL_0: CachePadded<RwLock<HashSet<HS, NoopState>>> =
+    CachePadded::new(RwLock::new(HashSet::with_hasher(NoopState)));
+
+static POOL_1: CachePadded<RwLock<HashSet<HS, NoopState>>> =
+    CachePadded::new(RwLock::new(HashSet::with_hasher(NoopState)));
 
 // -----------------------------------------------------------------------------
 // intern_str

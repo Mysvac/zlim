@@ -69,6 +69,7 @@ impl SystemInfoDiagnosticsPlugin {
 mod normal_impls {
     use core::pin::Pin;
     use core::task::{Context, Poll};
+    use core::time::Duration;
     use std::sync::Arc;
 
     #[cfg(feature = "dylib")]
@@ -77,8 +78,11 @@ mod normal_impls {
     #[cfg(not(feature = "dylib"))]
     use sysinfo as sysinfo_impls;
 
-    use sysinfo_impls::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
-    use sysinfo_impls::{MINIMUM_CPU_UPDATE_INTERVAL, Pid, ProcessesToUpdate};
+    use sysinfo_impls::{CpuRefreshKind, MemoryRefreshKind, RefreshKind};
+    use sysinfo_impls::{Pid, ProcessesToUpdate, System};
+
+    // Note: `sysinfo_impls::MINIMAL_CPU_UPDATE_INTERVAL` <= 200ms
+    const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
 
     use atomic_waker::AtomicWaker;
     use zlim_app::{App, First, MainSchedulePlugin, Plugin, Startup, Update};
@@ -99,11 +103,10 @@ mod normal_impls {
     // Helper
     //
     // A single background task (`DiagnosticTask`) owns the `sysinfo::System`
-    // handle and refreshes it at most once per
-    // `sysinfo::MINIMUM_CPU_UPDATE_INTERVAL`.  Results are pushed through a
-    // small lock-free queue into the `SysinfoTask` resource; per-frame jobs
-    // wake the task (`WakeDiagnosticsTask` in `First`) and drain the queue
-    // into `Diagnostics` (`ReadDiagnosticsTask` in `Update`).
+    // handle and refreshes it at most once per `UPDATE_INTERVAL`.
+    // Results are pushed through a small lock-free queue into the `SysinfoTask`
+    // resource; per-frame jobs wake the task (`WakeDiagnosticsTask` in `First`)
+    // and drain the queue into `Diagnostics` (`ReadDiagnosticsTask` in `Update`).
 
     #[derive(TypePath, Resource)]
     struct SysinfoTask {
@@ -172,7 +175,7 @@ mod normal_impls {
                 pid,
                 system: System::new_with_specifics(kind),
                 // Avoids initial delay on first refresh
-                last_refresh: Instant::now() - MINIMUM_CPU_UPDATE_INTERVAL,
+                last_refresh: Instant::now() - UPDATE_INTERVAL,
                 sender: queue,
                 waker: Arc::new(AtomicWaker::new()),
             }
@@ -185,7 +188,7 @@ mod normal_impls {
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             self.waker.register(cx.waker());
 
-            if self.last_refresh.elapsed() > MINIMUM_CPU_UPDATE_INTERVAL {
+            if self.last_refresh.elapsed() > UPDATE_INTERVAL {
                 self.last_refresh = Instant::now();
 
                 let pid = self.pid;

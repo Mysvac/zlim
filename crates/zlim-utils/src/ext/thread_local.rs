@@ -39,6 +39,7 @@ static ALLOCATOR: AtomicUsize = AtomicUsize::new(1);
 /// Freelist of thread IDs that have been released by exited threads.
 /// Using a min-heap ensures we reuse the smallest available ID first.
 static FREE_LIST: Mutex<BinaryHeap<Reverse<usize>>> = Mutex::new(BinaryHeap::new());
+// ↑ The creation and destruction of threads are usually rare, CachePadded is meanless.
 
 impl Drop for ThreadIndex {
     /// When a thread exits, return its ID to the freelist for reuse.

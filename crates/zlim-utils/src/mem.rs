@@ -12,6 +12,8 @@ use core::ptr::{self, NonNull};
 use std::alloc as malloc;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use crate::ext::CachePadded;
+
 // -----------------------------------------------------------------------------
 // Block
 
@@ -586,7 +588,8 @@ cfg_select! {
 
 struct Pool(PagePool);
 
-static POOL: Mutex<Pool> = Mutex::new(Pool(PagePool::base(CHUNK_SIZE)));
+static POOL: CachePadded<Mutex<Pool>> =
+    CachePadded::new(Mutex::new(Pool(PagePool::base(CHUNK_SIZE))));
 
 /// A global, shared memory pool for static data.
 ///
