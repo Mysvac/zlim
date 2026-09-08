@@ -508,6 +508,13 @@ impl JobGroup {
     /// when the job lists match; otherwise an error is logged and the new
     /// group replaces the old one.
     #[inline(never)]
+    #[expect(unsafe_code, reason = "specify sections to accelerate registeration")]
+    #[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+    #[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+    #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
     pub fn register(group: JobGroup) {
         let name: &'static str = group.name;
         let h = FixedState.hash_one(name);

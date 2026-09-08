@@ -5,7 +5,7 @@ use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
 use zlim_core::job_fn;
 use zlim_core::time::{Real, Time, Timer, TimerMode};
-use zlim_log::{debug, info};
+use zlim_log::info;
 use zlim_reflect::derive::TypePath;
 use zlim_utils::hash::HashSet;
 
@@ -80,11 +80,6 @@ impl LogDiagnosticsState {
 ///
 /// [`FrameCountDiagnosticsPlugin`]: crate::FrameCountDiagnosticsPlugin
 pub struct LogDiagnosticsPlugin {
-    /// - If `true` then the `Debug` representation of each `Diagnostic` is logged.
-    /// - If `false` then a (smoothed) current value and historical average are logged.
-    ///
-    /// Defaults to `false`.
-    pub debug: bool,
     /// Time to wait between logs.
     pub wait_duration: Duration,
     /// Optional allow-list of diagnostic paths.
@@ -94,7 +89,6 @@ pub struct LogDiagnosticsPlugin {
 impl Default for LogDiagnosticsPlugin {
     fn default() -> Self {
         Self {
-            debug: false,
             wait_duration: Duration::from_secs(1),
             filter: None,
         }
@@ -112,28 +106,6 @@ impl LogDiagnosticsPlugin {
 }
 
 impl LogDiagnosticsPlugin {
-    fn for_each_diagnostic(
-        state: &LogDiagnosticsState,
-        diagnostics: &Diagnostics,
-        mut callback: impl FnMut(&Diagnostic),
-    ) {
-        if let Some(filter) = &state.filter {
-            for path in filter {
-                if let Some(diagnostic) = diagnostics.get(path)
-                    && diagnostic.is_enabled
-                {
-                    callback(diagnostic);
-                }
-            }
-        } else {
-            for diagnostic in diagnostics.iter() {
-                if diagnostic.is_enabled {
-                    callback(diagnostic);
-                }
-            }
-        }
-    }
-
     fn log_diagnostic(path_width: usize, diagnostic: &Diagnostic) {
         let Some(value) = diagnostic.smoothed() else {
             return;
@@ -143,7 +115,7 @@ impl LogDiagnosticsPlugin {
             info!(
                 target: "zlim_diagnostic",
                 "{path:<path_width$}: {value:>.6}{suffix:}",
-                path = diagnostic.path(),
+                path = diagnostic.path().as_str(),
                 suffix = diagnostic.suffix(),
             );
             return;
@@ -160,25 +132,50 @@ impl LogDiagnosticsPlugin {
             // Do not reserve columns for the suffix in the average
             // The ) hugging the value is more aesthetically pleasing
             "{path:<path_width$}: {value:>11.6}{suffix:2} (avg {average:>.6}{suffix:})",
-            path = diagnostic.path(),
+            path = diagnostic.path().as_str(),
             suffix = diagnostic.suffix(),
         );
     }
 
     fn log_diagnostics(state: &LogDiagnosticsState, diagnostics: &Diagnostics) {
         let mut path_width = 0;
-        Self::for_each_diagnostic(state, diagnostics, |diagnostic| {
-            let width = diagnostic.path().as_str().len();
-            path_width = path_width.max(width);
-        });
 
-        Self::for_each_diagnostic(state, diagnostics, |diagnostic| {
-            Self::log_diagnostic(path_width, diagnostic);
-        });
+        if let Some(filter) = &state.filter {
+            for path in filter {
+                if let Some(diagnostic) = diagnostics.get(path)
+                    && diagnostic.is_enabled
+                {
+                    let width = diagnostic.path().as_str().len();
+                    path_width = path_width.max(width);
+                }
+            }
+            for path in filter {
+                if let Some(diagnostic) = diagnostics.get(path)
+                    && diagnostic.is_enabled
+                {
+                    Self::log_diagnostic(path_width, diagnostic);
+                }
+            }
+            return; // <--
+        }
+
+        // else: log all diagnostics
+        for diagnostic in diagnostics.iter() {
+            if diagnostic.is_enabled {
+                let width = diagnostic.path().as_str().len();
+                path_width = path_width.max(width);
+            }
+        }
+
+        for diagnostic in diagnostics.iter() {
+            if diagnostic.is_enabled {
+                Self::log_diagnostic(path_width, diagnostic);
+            }
+        }
     }
 }
 
-#[job_fn(type = LogDiagnosticsDefault, name = "zlim_diagnostic::LogDiagnosticsDefault")]
+#[job_fn(type = LogDiagnostics, name = "zlim_diagnostic::LogDiagnostics")]
 fn log_diagnostics_system(
     mut state: ResMut<LogDiagnosticsState>,
     time: Res<Time<Real>>,
@@ -189,41 +186,25 @@ fn log_diagnostics_system(
     }
 }
 
-#[job_fn(type = LogDiagnosticsDebug, name = "zlim_diagnostic::LogDiagnosticsDebug")]
-fn log_diagnostics_debug_system(
-    mut state: ResMut<LogDiagnosticsState>,
-    time: Res<Time<Real>>,
-    diagnostics: Res<Diagnostics>,
-) {
-    let f = |diagnostic: &Diagnostic| debug!("{diagnostic:#?}\n");
-    if state.timer.tick(time.delta()).is_finished() {
-        LogDiagnosticsPlugin::for_each_diagnostic(&state, &diagnostics, f);
-    }
-}
-
 impl Plugin for LogDiagnosticsPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&mut self, app: &mut App) {
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
         }
         MainSchedulePlugin::apply_before::<Self>(app);
     }
 
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "LogDiagnosticsPlugin");
 
         let world = app.main_world_mut();
 
         world.insert_resource(LogDiagnosticsState {
             timer: Timer::new(self.wait_duration, TimerMode::Repeating),
-            filter: self.filter.clone(),
+            filter: self.filter.take(),
         });
-        let schedule = world.schedule_entry(PostUpdate);
 
-        if self.debug {
-            schedule.insert::<LogDiagnosticsDebug>(());
-        } else {
-            schedule.insert::<LogDiagnosticsDefault>(());
-        }
+        let schedule = world.schedule_entry(PostUpdate);
+        schedule.insert::<LogDiagnostics>(());
     }
 }

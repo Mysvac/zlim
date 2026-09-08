@@ -123,7 +123,7 @@ Auxiliary:
   - **Dependencies**: serde_core, hashbrown, foldhash, smol_str, fastvec, event-listener.
 
 - **`zlim-log`**
-  - **Purpose**: tracing-based logging: `LogPlugin`, subscriber setup, `log` bridge.
+  - **Purpose**: tracing-based logging: `LogConfig`, subscriber setup, `log` bridge.
   - **Dependencies**: tracing, tracing-subscriber, tracing-error, tracing-log.
 
 - **`zlim-task`**

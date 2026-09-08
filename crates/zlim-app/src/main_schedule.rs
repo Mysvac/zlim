@@ -351,7 +351,7 @@ fn run_fixed_main_loop(world: &mut World) {
 pub struct MainSchedulePlugin;
 
 impl Plugin for MainSchedulePlugin {
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         let executor = Box::new(SingleThreadedExecutor::new());
         let main_schedule = Schedule::with_executor(Main, executor);
 

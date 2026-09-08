@@ -80,6 +80,36 @@ use crate::utils::Dropper;
     note = "consider annotating `{Self}` with `#[derive(Component)]`"
 )]
 pub trait Component: TypePath + Send + Sync + Sized {
+    /// Registers this component type in the global registry, returning its
+    /// `&'static` [`ComponentDB`].
+    ///
+    /// Registration is lazy and idempotent: the first call registers the
+    /// type, and every subsequent call returns the same [`ComponentDB`]
+    /// without creating a duplicate.
+    ///
+    /// Defaults to a base registration **without** serialization support
+    /// ([`register_base`]).  Components derived with `#[component(serialize)]`
+    /// instead use [`register_serializable`] and additionally require the
+    /// component to implement `Serialize` and `Deserialize`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    /// use zlim_reflect::derive::TypePath;
+    ///
+    /// #[derive(TypePath, Component, Clone)]
+    /// struct Position;
+    ///
+    /// let db = Position::REGISTER();
+    /// assert_eq!(db.type_name, "Position");
+    /// // Registering twice returns the same entry:
+    /// assert!(core::ptr::eq(db, Position::REGISTER()));
+    /// ```
+    ///
+    /// [`register_serializable`]: crate::component::register_serializable
+    const REGISTER: fn() -> &'static ComponentDB = register_base::<Self>;
+
     /// Required components that must be present on any entity with this
     /// component.
     ///
@@ -94,40 +124,6 @@ pub trait Component: TypePath + Send + Sync + Sized {
     ///
     /// [`RequiredComponents`]: crate::component::RequiredComponents
     const REQUIRED: Option<Required> = None;
-
-    /// Registers this component type in the global registry, returning its
-    /// `&'static` [`ComponentDB`].
-    ///
-    /// Registration is lazy and idempotent: the first call registers the
-    /// type, and every subsequent call returns the same [`ComponentDB`]
-    /// without creating a duplicate.
-    ///
-    /// The default implementation performs a base registration **without**
-    /// serialization support ([`register_base`]).  Components derived with
-    /// `#[component(serialize)]` override this to use
-    /// [`register_serializable`] and additionally require the component to
-    /// implement `Serialize` and `Deserialize`.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
-    ///
-    /// #[derive(TypePath, Component, Clone)]
-    /// struct Position;
-    ///
-    /// let db = Position::register();
-    /// assert_eq!(db.type_name, "Position");
-    /// // Registering twice returns the same entry:
-    /// assert!(core::ptr::eq(db, Position::register()));
-    /// ```
-    ///
-    /// [`register_serializable`]: crate::component::register_serializable
-    #[inline(always)]
-    fn register() -> &'static ComponentDB {
-        register_base::<Self>()
-    }
 
     /// When `true`, this component is registered with serialization support.
     ///

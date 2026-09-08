@@ -73,16 +73,17 @@ fn update_entity_count(world: &World, count: Res<EntityCount>) {
 pub struct EntityCountPlugin;
 
 impl Plugin for EntityCountPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&mut self, app: &mut App) {
         MainSchedulePlugin::apply_before::<Self>(app);
     }
 
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "EntityCountPlugin");
 
         let world = app.main_world_mut();
 
         world.init_resource::<EntityCount>();
+
         world
             .schedule_entry(PreUpdate)
             .insert::<UpdateEntityCount>(());
@@ -130,7 +131,7 @@ fn diagnostic_system(count: Res<EntityCount>, mut store: ResMut<Diagnostics>) {
 }
 
 impl Plugin for EntityCountDiagnosticsPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&mut self, app: &mut App) {
         if !app.contains_plugin::<EntityCountPlugin>() {
             app.add_plugins(EntityCountPlugin);
         }
@@ -140,7 +141,7 @@ impl Plugin for EntityCountDiagnosticsPlugin {
         MainSchedulePlugin::apply_before::<Self>(app);
     }
 
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "EntityCountDiagnosticsPlugin");
 
         let diag =

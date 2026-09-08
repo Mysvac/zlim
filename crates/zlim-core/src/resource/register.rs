@@ -22,10 +22,10 @@ use super::resource::Resource;
 
 /// Registers a [`Resource`] type `R` **without** serialization support.
 ///
-/// This is the registration used by [`Resource::register`]'s default
-/// implementation and by `#[derive(Resource)]` unless
-/// `#[resource(serialize)]` is present.  The returned [`ResourceDB`] has its
-/// serialization function pointers set to `None`.
+/// This is the registration behind [`Resource::REGISTER`] and used by
+/// `#[derive(Resource)]` unless `#[resource(serialize)]` is present.
+/// The returned [`ResourceDB`] has its serialization function pointers set
+/// to `None`.
 ///
 /// Registration is idempotent: if `R` is already registered, the existing
 /// entry is returned without creating a duplicate. This function is marked
@@ -41,7 +41,7 @@ use super::resource::Resource;
 /// #[derive(TypePath, Resource)]
 /// struct Score(u32);
 ///
-/// // Usually reached through `ResourceDB::of` / `Resource::register`
+/// // Usually reached through `ResourceDB::of` / `Resource::REGISTER`
 /// // instead of being called directly:
 /// let db = register_base::<Score>();
 /// assert_eq!(db.type_name, "Score");
@@ -50,9 +50,15 @@ use super::resource::Resource;
 ///
 /// [`Resource`]: crate::resource::Resource
 /// [`ResourceDB`]: crate::resource::ResourceDB
-/// [`Resource::register`]: crate::resource::Resource::register
+/// [`Resource::REGISTER`]: crate::resource::Resource::REGISTER
 #[cold]
 #[inline(never)]
+#[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+#[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+#[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
 pub fn register_base<R: Resource>() -> &'static ResourceDB {
     register_impl::<R>(None, None)
 }
@@ -83,9 +89,7 @@ pub fn register_base<R: Resource>() -> &'static ResourceDB {
 /// impl Resource for Score {
 ///     const SERIALIZE: bool = true;
 ///
-///     fn register() -> &'static ResourceDB {
-///         register_serializable::<Self>()
-///     }
+///     const REGISTER: fn() -> &'static ResourceDB = register_serializable::<Self>;
 /// }
 ///
 /// let db = register_serializable::<Score>();
@@ -93,13 +97,18 @@ pub fn register_base<R: Resource>() -> &'static ResourceDB {
 /// ```
 #[cold]
 #[inline(never)]
+#[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+#[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+#[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
 pub fn register_serializable<R: Resource + Serialize + for<'de> Deserialize<'de>>()
 -> &'static ResourceDB {
     register_impl::<R>(Some(serialize_fn::<R>), Some(deserialize_fn::<R>))
 }
 
 /// Shared registration core: builds and stores the [`ResourceDB`] for `R`.
-#[cold]
 #[inline]
 fn register_impl<R: Resource>(
     serialize: Option<SerializeFunc>,

@@ -12,7 +12,6 @@ use core::num::NonZeroU32;
 use std::collections::BTreeSet;
 
 use zlim_core_derive::Error;
-use zlim_log as log;
 
 use super::{EntityId, Location};
 use crate::table::MovedEntityRow;
@@ -521,13 +520,8 @@ impl Entities {
         let info = unsafe { self.entities.get_unchecked_mut(index as usize) };
         debug_assert!(info.location.is_none());
 
-        let generation = info.generation.checked_add(1).unwrap_or_else(|| {
-            ::core::hint::cold_path();
-            log::warn!(
-                "Entity({index}) generation wrapped on `Entities::free_slot`, aliasing may occur."
-            );
-            NonZeroU32::MIN
-        });
+        let next = info.generation.get().wrapping_add(1);
+        let generation = NonZeroU32::new(next).unwrap_or(NonZeroU32::MIN);
 
         info.generation = generation;
 

@@ -36,9 +36,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     quote! {
         const _:() = {
             impl #impl_generics #trait_path for #type_ident #ty_generics #where_clause {
-                fn dyn_clone(&self) -> ::std::boxed::Box<dyn #trait_path> {
-                    ::std::boxed::Box::new(::core::clone::Clone::clone(self))
-                }
+                #[inline]
+                fn clone(v: &Self) -> Self { ::core::clone::Clone::clone(v) }
             }
         };
     }

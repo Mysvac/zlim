@@ -75,11 +75,11 @@ impl ShutdownPlugin {
 }
 
 impl Plugin for ShutdownPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&mut self, app: &mut App) {
         MainSchedulePlugin::apply_before::<Self>(app);
     }
 
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "ShutdownPlugin");
 
         #[cfg(any(all(unix, not(target_os = "horizon")), windows))]

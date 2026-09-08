@@ -297,6 +297,7 @@ impl World {
         {
             // Initialize Messages
             world.register_message::<crate::message::ReparentSignal>();
+            world.register_message::<crate::message::ClampTickSignal>();
         }
 
         world
@@ -537,6 +538,8 @@ impl World {
         #[cold]
         #[inline(never)]
         fn clamp_ticks_cold(world: &mut World) {
+            use crate::message::ClampTickSignal;
+
             let now = world.this_run_fast();
 
             let tables = &mut world.tables;
@@ -564,6 +567,8 @@ impl World {
                     schedules.iter_mut().for_each(|x| x.clamp_ticks(now));
                 }
             }
+
+            world.write_message(ClampTickSignal { now });
         }
 
         let this_run = *self.this_run.get_mut();

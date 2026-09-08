@@ -1,7 +1,6 @@
 use core::fmt::{Debug, Display, Formatter};
 use core::hash::Hash;
 use core::time::Duration;
-use std::borrow::Cow;
 use std::collections::VecDeque;
 
 use zlim_app::{App, SubApp};
@@ -9,8 +8,6 @@ use zlim_core::derive::Resource;
 use zlim_os::time::Instant;
 use zlim_reflect::derive::TypePath;
 use zlim_utils::hash::{HashMap, NoopState};
-
-use crate::DEFAULT_MAX_HISTORY_LENGTH;
 
 // -----------------------------------------------------------------------------
 // hasher
@@ -180,58 +177,44 @@ pub struct DiagnosticMeasurement {
 pub struct Diagnostic {
     path: DiagnosticPath,
     // Optional textual suffix, e.g. `%` or `ms`.
-    suffix: Cow<'static, str>,
-    history: VecDeque<DiagnosticMeasurement>,
+    suffix: &'static str,
     sum: f64,
     ema: f64,
-    ema_smoothing_factor: f64,
+    smoothing_factor: f64,
+    lastest: Option<DiagnosticMeasurement>,
+    history: VecDeque<DiagnosticMeasurement>,
     max_history_length: usize,
     /// Disabled diagnostics are ignored for logging and measurement updates.
     pub is_enabled: bool,
 }
 
 impl Diagnostic {
-    /// Creates a new diagnostic with default history and smoothing behavior.
-    pub fn new(path: DiagnosticPath) -> Self {
+    /// Creates a new diagnostic without history.
+    ///
+    /// - `max_history_length` is `0`, [`smoothed`] and [`average`] use the latest values directly.
+    /// - `smoothing_factor` is `2.0 / 21.0` but unused because `max_history_length` is zero.
+    ///
+    /// [`smoothed`]: Self::smoothed
+    /// [`average`]: Self::average
+    pub const fn new(path: DiagnosticPath) -> Self {
         Self {
             path,
-            suffix: Cow::Borrowed(""),
-            history: VecDeque::with_capacity(DEFAULT_MAX_HISTORY_LENGTH),
-            max_history_length: DEFAULT_MAX_HISTORY_LENGTH,
+            suffix: "",
             sum: 0.0,
             ema: 0.0,
-            ema_smoothing_factor: 2.0 / 21.0,
+            smoothing_factor: 2.0 / 21.0,
+            lastest: None,
+            history: VecDeque::new(),
+            max_history_length: 0,
             is_enabled: true,
         }
-    }
-
-    /// Configures the history length used for averaging.
-    #[must_use]
-    pub fn with_max_history_length(mut self, max_history_length: usize) -> Self {
-        self.max_history_length = max_history_length;
-
-        if self.history.capacity() != max_history_length {
-            let mut history = VecDeque::with_capacity(max_history_length);
-
-            for _ in 0..max_history_length {
-                if let Some(item) = self.history.pop_back() {
-                    history.push_front(item);
-                } else {
-                    break;
-                }
-            }
-
-            self.history = history;
-        }
-
-        self
     }
 
     /// Configures a display suffix for this diagnostic.
     #[inline]
     #[must_use]
-    pub fn with_suffix(mut self, suffix: impl Into<Cow<'static, str>>) -> Self {
-        self.suffix = suffix.into();
+    pub fn with_suffix(mut self, suffix: &'static str) -> Self {
+        self.suffix = suffix;
         self
     }
 
@@ -245,10 +228,36 @@ impl Diagnostic {
     /// change in measurement to be reflected in the smoothed value.
     ///
     /// A smoothing factor of 0.0 will effectively disable smoothing.
+    ///
+    /// Default smoothing factor is `2.0 / 21.0` (by [`Diagnostic::new`]).
     #[inline]
     #[must_use]
     pub fn with_smoothing_factor(mut self, smoothing_factor: f64) -> Self {
-        self.ema_smoothing_factor = smoothing_factor;
+        self.smoothing_factor = smoothing_factor;
+        self
+    }
+
+    /// Configures the history length used for averaging.
+    #[must_use]
+    pub fn with_max_history_length(mut self, max_history_length: usize) -> Self {
+        self.max_history_length = max_history_length;
+
+        if self.history.capacity() == max_history_length {
+            return self;
+        }
+
+        let mut history = VecDeque::with_capacity(max_history_length);
+
+        for _ in 0..max_history_length {
+            if let Some(item) = self.history.pop_back() {
+                history.push_front(item);
+            } else {
+                break;
+            }
+        }
+
+        self.history = history;
+
         self
     }
 
@@ -260,26 +269,29 @@ impl Diagnostic {
 
     /// Get the `suffix` textual suffix.
     #[inline]
-    pub fn suffix(&self) -> &str {
-        &self.suffix
+    pub fn suffix(&self) -> &'static str {
+        self.suffix
     }
 
     /// Get the latest measurement from this diagnostic.
     #[inline]
     pub fn measurement(&self) -> Option<&DiagnosticMeasurement> {
-        self.history.back()
+        self.lastest.as_ref()
     }
 
     /// Get the latest value from this diagnostic.
+    #[inline]
     pub fn value(&self) -> Option<f64> {
-        self.measurement().map(|measurement| measurement.value)
+        self.lastest.as_ref().map(|m| m.value)
     }
 
     /// Return the simple moving average of this diagnostic's recent values.
-    /// N.B. this is a cheap operation as the sum is cached.
+    ///
+    /// This is a cheap operation as the sum is cached.
+    #[inline]
     pub fn average(&self) -> Option<f64> {
-        if !self.history.is_empty() {
-            Some(self.sum / self.history.len() as f64)
+        if self.lastest.is_some() {
+            Some(self.sum / (1 + self.history.len()) as f64)
         } else {
             None
         }
@@ -290,28 +302,51 @@ impl Diagnostic {
     /// This is by default tuned to behave reasonably well for a typical
     /// measurement that changes every frame such as frametime. This can be
     /// adjusted using [`with_smoothing_factor`](Self::with_smoothing_factor).
+    #[inline]
     pub fn smoothed(&self) -> Option<f64> {
-        if !self.history.is_empty() {
+        if self.lastest.is_some() {
             Some(self.ema)
         } else {
             None
         }
     }
 
-    /// Return the number of elements for this diagnostic.
-    pub fn history_len(&self) -> usize {
-        self.history.len()
-    }
-
     /// Return the duration between the oldest and most recent values for this diagnostic.
     pub fn duration(&self) -> Option<Duration> {
-        if self.history.len() < 2 {
+        if self.history.is_empty() {
             return None;
         }
 
-        let newest = self.history.back()?;
+        let newest = self.lastest.as_ref()?;
         let oldest = self.history.front()?;
         Some(newest.time.duration_since(oldest.time))
+    }
+
+    /// Clear all measurements in this diagnostic.
+    pub fn clear(&mut self) {
+        self.lastest = None;
+        self.history.clear();
+        self.sum = 0.0;
+        self.ema = 0.0;
+    }
+
+    /// Return `true` if the diagnotic is empty (without any measurement).
+    pub fn is_empty(&self) -> bool {
+        self.lastest.is_none()
+    }
+
+    /// Return the number of elements for this diagnostic.
+    ///
+    /// As same as `is_empty() as usize + history_len()`.
+    pub fn len(&self) -> usize {
+        self.history.len() + (self.lastest.is_some() as usize)
+    }
+
+    /// Return the number of history elements for this diagnostic.
+    ///
+    /// This does not include the latest element.
+    pub fn history_len(&self) -> usize {
+        self.history.len()
     }
 
     /// Returns the configured maximum history length.
@@ -320,55 +355,42 @@ impl Diagnostic {
     }
 
     /// All measured values from this [`Diagnostic`], up to the configured maximum history length.
-    pub fn values(&self) -> impl Iterator<Item = &f64> {
-        self.history.iter().map(|x| &x.value)
+    pub fn values(&self) -> impl Iterator<Item = f64> {
+        self.history.iter().map(|x| x.value).chain(self.value())
     }
 
     /// All measurements from this [`Diagnostic`], up to the configured maximum history length.
     pub fn measurements(&self) -> impl Iterator<Item = &DiagnosticMeasurement> {
-        self.history.iter()
-    }
-
-    /// Clear the history of this diagnostic.
-    pub fn clear_history(&mut self) {
-        self.history.clear();
-        self.sum = 0.0;
-        self.ema = 0.0;
+        self.history.iter().chain(self.measurement())
     }
 
     /// Appends a new measurement and updates moving statistics.
     pub fn add_measurement(&mut self, measurement: DiagnosticMeasurement) {
-        if measurement.value.is_nan() {
-            // Keep previous EMA when sample is not a number.
-        } else if let Some(previous) = self.measurement() {
-            let delta = (measurement.time - previous.time).as_secs_f64();
-            let alpha = (delta / self.ema_smoothing_factor).clamp(0.0, 1.0);
-            self.ema += alpha * (measurement.value - self.ema);
-        } else {
-            self.ema = measurement.value;
-        }
-
-        if self.max_history_length > 1 {
-            if self.history.len() >= self.max_history_length
-                && let Some(removed) = self.history.pop_front()
-                && !removed.value.is_nan()
-            {
-                self.sum -= removed.value;
-            }
-
-            if measurement.value.is_finite() {
+        if let Some(previous) = self.lastest.take() {
+            if !measurement.value.is_nan() {
+                let delta = (measurement.time - previous.time).as_secs_f64();
+                let alpha = (delta / self.smoothing_factor).clamp(0.0, 1.0);
+                self.ema += alpha * (measurement.value - self.ema);
                 self.sum += measurement.value;
             }
+            self.lastest = Some(measurement);
+
+            if self.max_history_length > 0 {
+                while self.history.len() >= self.max_history_length {
+                    let removed = self.history.pop_front().unwrap();
+                    if !removed.value.is_nan() {
+                        self.sum -= removed.value;
+                    }
+                }
+                self.history.push_back(previous);
+            }
         } else {
-            self.history.clear();
-            if measurement.value.is_nan() {
-                self.sum = 0.0;
-            } else {
+            if !measurement.value.is_nan() {
+                self.ema = measurement.value;
                 self.sum = measurement.value;
             }
+            self.lastest = Some(measurement);
         }
-
-        self.history.push_back(measurement);
     }
 }
 
@@ -504,7 +526,7 @@ mod tests {
             }
             assert!((diagnostic.average().expect("average") - MEASUREMENT).abs() < 0.1);
             assert!((diagnostic.smoothed().expect("smoothed") - MEASUREMENT).abs() < 0.1);
-            diagnostic.clear_history();
+            diagnostic.clear();
         }
     }
 

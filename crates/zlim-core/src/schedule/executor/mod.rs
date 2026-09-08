@@ -294,6 +294,7 @@ pub enum ExecutorKind {
 }
 
 impl Default for ExecutorKind {
+    #[inline]
     fn default() -> Self {
         if zlim_task::cfg::multi_thread!() {
             Self::MultiThreaded

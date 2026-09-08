@@ -207,17 +207,19 @@ mod normal_impls {
     /// Registers the four system-info diagnostics (with their units).
     #[cold]
     fn initialize_sysinfo_resource(world: &mut World) {
+        use SystemInfoDiagnosticsPlugin as P;
+
         let diagnostics = world.resource_mut_or_init::<Diagnostics>().into_inner();
 
-        diagnostics
-            .add(Diagnostic::new(SystemInfoDiagnosticsPlugin::SYSTEM_CPU_USAGE).with_suffix("%"));
-        diagnostics
-            .add(Diagnostic::new(SystemInfoDiagnosticsPlugin::SYSTEM_MEM_USAGE).with_suffix("%"));
-        diagnostics
-            .add(Diagnostic::new(SystemInfoDiagnosticsPlugin::PROCESS_CPU_USAGE).with_suffix("%"));
-        diagnostics.add(
-            Diagnostic::new(SystemInfoDiagnosticsPlugin::PROCESS_MEM_USAGE).with_suffix("GiB"),
-        );
+        diagnostics.add(Diagnostic::new(P::SYSTEM_CPU_USAGE).with_suffix("%"));
+
+        diagnostics.add(Diagnostic::new(P::SYSTEM_CPU_USAGE).with_suffix("%"));
+
+        diagnostics.add(Diagnostic::new(P::SYSTEM_MEM_USAGE).with_suffix("%"));
+
+        diagnostics.add(Diagnostic::new(P::PROCESS_CPU_USAGE).with_suffix("%"));
+
+        diagnostics.add(Diagnostic::new(P::PROCESS_MEM_USAGE).with_suffix("GiB"));
     }
 
     /// Spawns the background sampling task (`Startup`) and stores a handle to
@@ -282,14 +284,14 @@ mod normal_impls {
     // Plugin
 
     impl Plugin for SystemInfoDiagnosticsPlugin {
-        fn build(&self, app: &mut App) {
+        fn build(&mut self, app: &mut App) {
             if !app.contains_plugin::<DiagnosticsPlugin>() {
                 app.add_plugins(DiagnosticsPlugin);
             }
             MainSchedulePlugin::apply_before::<Self>(app);
         }
 
-        fn apply(&self, app: &mut App) {
+        fn apply(&mut self, app: &mut App) {
             MainSchedulePlugin::warn_if_unset(app, "SystemInfoDiagnosticsPlugin");
 
             let world = app.main_world_mut();
@@ -320,7 +322,7 @@ mod unsupport_impls {
     use zlim_app::{App, Plugin};
 
     impl Plugin for SystemInfoDiagnosticsPlugin {
-        fn apply(&self, _app: &mut App) {
+        fn apply(&mut self, _app: &mut App) {
             zlim_log::warn!(
                 "Current platform does not support SystemInfoDiagnosticsPlugin; \
                 the plugin has been disabled."

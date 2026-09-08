@@ -236,9 +236,9 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// struct Transform { x: f32, y: f32 }
 /// ```
 ///
-/// The derive then overrides `Component::register` to use
-/// `register_serializable`, filling the serialization function pointers in
-/// the component's `ComponentDB`, and sets `Component::SERIALIZE` to `true`.
+/// The derive then points `Component::REGISTER` at `register_serializable`,
+/// filling the serialization function pointers in the component's
+/// `ComponentDB`, and sets `Component::SERIALIZE` to `true`.
 ///
 /// # Required traits
 ///

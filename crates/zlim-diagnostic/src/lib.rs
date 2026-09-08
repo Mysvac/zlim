@@ -45,7 +45,7 @@ pub use log_diagnostic::{LogDiagnosticsPlugin, LogDiagnosticsState};
 pub struct DiagnosticsPlugin;
 
 impl zlim_app::Plugin for DiagnosticsPlugin {
-    fn apply(&self, app: &mut zlim_app::App) {
+    fn apply(&mut self, app: &mut zlim_app::App) {
         app.init_resource::<Diagnostics>();
     }
 }

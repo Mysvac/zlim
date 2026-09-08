@@ -13,7 +13,7 @@ use crate::{App, Plugin};
 pub struct PanicHandlerPlugin;
 
 impl Plugin for PanicHandlerPlugin {
-    fn apply(&self, _: &mut App) {
+    fn apply(&mut self, _: &mut App) {
         static SET_HOOK: std::sync::Once = std::sync::Once::new();
 
         SET_HOOK.call_once(set_hook);

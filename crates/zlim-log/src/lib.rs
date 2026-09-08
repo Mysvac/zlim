@@ -58,13 +58,13 @@ pub type BoxedFmtLayer = Box<dyn Layer<PreFormatSubscriber> + Send + Sync + 'sta
 // -----------------------------------------------------------------------------
 // DEFAULT_FILTER
 
-/// The default [`LogPlugin`] [`EnvFilter`].
+/// The default [`LogConfig`] [`EnvFilter`].
 pub const DEFAULT_FILTER: &str = concat!("wgpu=warn,", "naga=warn,",);
 
 // -----------------------------------------------------------------------------
-// LogPlugin
+// LogConfig
 
-pub struct LogPlugin {
+pub struct LogConfig {
     /// Filters logs using the [`EnvFilter`] format
     pub filter: String,
 
@@ -83,16 +83,16 @@ pub struct LogPlugin {
     pub enable_tracy: bool,
 }
 
-impl Debug for LogPlugin {
+impl Debug for LogConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("LogPlugin")
+        f.debug_struct("LogConfig")
             .field("filter", &self.filter)
             .field("level", &self.level)
             .finish_non_exhaustive()
     }
 }
 
-impl Default for LogPlugin {
+impl Default for LogConfig {
     fn default() -> Self {
         Self {
             filter: DEFAULT_FILTER.to_string(),
@@ -111,9 +111,9 @@ impl Default for LogPlugin {
 }
 
 // -----------------------------------------------------------------------------
-// LogPlugin apply
+// LogConfig apply
 
-impl LogPlugin {
+impl LogConfig {
     fn build_filter_layer(&self) -> EnvFilter {
         use tracing_subscriber::filter::Directive;
 
@@ -134,7 +134,7 @@ impl LogPlugin {
                 Err(e) => {
                     ::core::hint::cold_path();
                     // wasm cannot see this warning
-                    std::eprintln!("LogPlugin failed to parse filter from env: {e}");
+                    std::eprintln!("LogConfig failed to parse filter from env: {e}");
                 }
             }
         }
@@ -221,7 +221,7 @@ impl LogPlugin {
         if self.enable_tracy {
             let _ = enable_tracy_ignored;
             tracing::info!(
-                "`LogPlugin::enable_tracy` is `true` but `trace_tracy` feature is not enabled, skipped."
+                "`LogConfig::enable_tracy` is `true` but `trace_tracy` feature is not enabled, skipped."
             );
         }
 
@@ -234,20 +234,20 @@ impl LogPlugin {
             );
         } else {
             tracing::info!(
-                "`trace_tracy` feature is enabled but `LogPlugin::enable_tracy` is `false`, skipped."
+                "`trace_tracy` feature is enabled but `LogConfig::enable_tracy` is `false`, skipped."
             );
         }
 
         match (logger_success, subscriber_success) {
             (true, true) => (),
             (true, false) => tracing::error!(
-                "Could not set global tracing subscriber as it is already set. Consider disabling LogPlugin."
+                "Could not set global tracing subscriber as it is already set. Consider disabling LogConfig."
             ),
             (false, true) => tracing::error!(
-                "Could not set global logger as it is already set. Consider disabling LogPlugin."
+                "Could not set global logger as it is already set. Consider disabling LogConfig."
             ),
             (false, false) => tracing::error!(
-                "Could not set global logger and tracing subscriber as they are already set. Consider disabling LogPlugin."
+                "Could not set global logger and tracing subscriber as they are already set. Consider disabling LogConfig."
             ),
         }
     }

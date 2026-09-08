@@ -35,7 +35,7 @@ pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'stat
 
 /// Static metadata for a single component type.
 ///
-/// Created lazily by [`Component::register`] and stored in the global
+/// Created lazily by [`Component::REGISTER`] and stored in the global
 /// `ID_REGISTRY`. Holds type identity, lifecycle hooks, memory layout,
 /// clone/drop strategy, and serialization routines — all type-erased so
 /// they can be stored homogeneously.
@@ -82,16 +82,29 @@ pub struct ComponentDB {
     pub cloner: ComponentCloner,
     /// Optional custom dropper; `None` means standard drop.
     pub dropper: Option<Dropper>,
+
     /// Type-erased entity-remapping function.
+    ///
+    /// # Warning
+    /// This field is unstable, should not be used by user.
+    #[doc(hidden)]
     pub map_entities: MapEntitiesFunc,
 
     // --------------------------------
     // Serialization
-    /// Type-erased serialization function pointer, `None` when the component
-    /// does not support serialization.
+    /// Type-erased serialization function pointer,
+    /// `None` when the component does not support serialization.
+    ///
+    /// # Warning
+    /// This field is unstable, should not be used by user.
+    #[doc(hidden)]
     pub serialize: Option<SerializeFunc>,
-    /// Type-erased deserialization function pointer, `None` when the
-    /// component does not support serialization.
+    /// Type-erased deserialization function pointer,
+    /// `None` when the component does not support serialization.
+    ///
+    /// # Warning
+    /// This field is unstable, should not be used by user.
+    #[doc(hidden)]
     pub deserialize: Option<DeserializeFunc>,
 }
 
@@ -134,8 +147,8 @@ impl ComponentDB {
         if let Some(db) = ComponentDB::get_by_type(TypeId::of::<T>()) {
             return db;
         }
-
-        <T as Component>::register()
+        ::core::hint::cold_path();
+        <T as Component>::REGISTER()
     }
 
     /// Looks up a [`ComponentDB`] by its [`ComponentId`].

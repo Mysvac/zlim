@@ -240,6 +240,11 @@ impl core::ops::Deref for MainTaskPool {
 }
 
 impl MainTaskPool {
+    /// Return `true` if [`MainTaskPool`] is already initialized.
+    pub fn is_initialized() -> bool {
+        MAIN_TASK_POOL.get().is_some()
+    }
+
     /// Attempts to initialize the pool with a custom [`TaskPool`].
     ///
     /// Returns `true` if the pool was not yet initialized and `f` was used,
@@ -294,6 +299,11 @@ impl core::ops::Deref for AsyncTaskPool {
 }
 
 impl AsyncTaskPool {
+    /// Return `true` if [`AsyncTaskPool`] is already initialized.
+    pub fn is_initialized() -> bool {
+        ASYNC_TASK_POOL.get().is_some()
+    }
+
     /// Attempts to initialize the pool with a custom [`TaskPool`].
     ///
     /// Returns `true` if the pool was not yet initialized and `f` was used,
@@ -343,6 +353,11 @@ impl core::ops::Deref for IoTaskPool {
 }
 
 impl IoTaskPool {
+    /// Return `true` if [`IoTaskPool`] is already initialized.
+    pub fn is_initialized() -> bool {
+        IO_TASK_POOL.get().is_some()
+    }
+
     /// Attempts to initialize the pool with a custom [`TaskPool`].
     ///
     /// Returns `true` if the pool was not yet initialized and `f` was used,

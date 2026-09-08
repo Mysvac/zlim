@@ -12,6 +12,7 @@ use crate::resource::Resource;
 use crate::resource::ResourceCell;
 use crate::resource::Resources;
 use crate::tick::Tick;
+use crate::time::DelayedCommandQueues;
 use crate::utils::DebugCheckedUnwrap;
 
 /// A cache used to accelerate access to the time API.
@@ -31,12 +32,13 @@ impl RefUnwindSafe for TimeCache {}
 
 impl TimeCache {
     pub(crate) fn new() -> Self {
-        let time = UnsafeCell::new(ResourceCell::new(<Time<()>>::register()));
-        let real = UnsafeCell::new(ResourceCell::new(<Time<Real>>::register()));
-        let virt = UnsafeCell::new(ResourceCell::new(<Time<Virtual>>::register()));
-        let fixed = UnsafeCell::new(ResourceCell::new(<Time<Fixed>>::register()));
-        let state = UnsafeCell::new(ResourceCell::new(<TimeState>::register()));
-        let snapshot = UnsafeCell::new(ResourceCell::new(<TimeSnapshot>::register()));
+        let time = UnsafeCell::new(ResourceCell::new(<Time<()>>::REGISTER()));
+        let real = UnsafeCell::new(ResourceCell::new(<Time<Real>>::REGISTER()));
+        let virt = UnsafeCell::new(ResourceCell::new(<Time<Virtual>>::REGISTER()));
+        let fixed = UnsafeCell::new(ResourceCell::new(<Time<Fixed>>::REGISTER()));
+        let state = UnsafeCell::new(ResourceCell::new(<TimeState>::REGISTER()));
+        let snapshot = UnsafeCell::new(ResourceCell::new(<TimeSnapshot>::REGISTER()));
+        let _ = DelayedCommandQueues::REGISTER();
         unsafe {
             Self {
                 time: Global::alloc_unchecked(time),

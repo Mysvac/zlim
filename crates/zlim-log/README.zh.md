@@ -4,13 +4,13 @@
 
 ## 初始化全局日志
 
-使用 [`LogPlugin`](zlim_log::LogPlugin) 初始化日志器：
+使用 [`LogConfig`](zlim_log::LogConfig) 初始化日志器：
 
 ```rust
-use zlim_log::{LogPlugin, info};
+use zlim_log::{LogConfig, info};
 
 // 在启动时调用一次,安装全局 logger 与 tracing subscriber。
-LogPlugin::default().apply();
+LogConfig::default().apply();
 ```
 
 ## 可配置参数
@@ -28,9 +28,9 @@ LogPlugin::default().apply();
 使用 `EnvFilter` 语法(与 `RUST_LOG` 相同)，按 **target + 级别**控制哪些日志会输出，例如:
 
 ```rust
-use zlim_log::LogPlugin;
+use zlim_log::LogConfig;
 
-let plugin = LogPlugin {
+let config = LogConfig {
     filter: "wgpu=warn,naga=warn,zlim_core=debug".to_string(),
     ..Default::default()
 };
@@ -38,7 +38,7 @@ let plugin = LogPlugin {
 
 未指定时使用默认过滤器，请参考内部代码。
 
-`LogPlugin` 内部的 `filter` 会与环境变量中的 `RUST_LOG` 合并。
+`LogConfig` 内部的 `filter` 会与环境变量中的 `RUST_LOG` 合并。
 
 ### 日志级别
 
@@ -79,11 +79,11 @@ let plugin = LogPlugin {
   release 模式时，`log` crate 被限制为 `warn`，`tracing` crate 被限制为 `info` 。
   本库的宏重导出于 `tracing`，不受 `log` 影响。 
 
-- `debug`: 调整 `LogPlugin` 的默认日志级别为 `Debug`，可被覆盖，没什么特殊效果。
+- `debug`: 调整 `LogConfig` 的默认日志级别为 `Debug`，可被覆盖，没什么特殊效果。
 
 - `trace`: 启用 `tracing-error`，通过 `ErrorLayer` 记录错误 span 栈，修改 panic hook，panic 时打印 `SpanTrace`。
 
-- `trace_tracy`: 启用 `tracing-tracy` crate，用于性能分析。当 `LogPlugin` 的 `enable_tracy` 字段为 `true` 时，向 Tracy 流式发送事件。
+- `trace_tracy`: 启用 `tracing-tracy` crate，用于性能分析。当 `LogConfig` 的 `enable_tracy` 字段为 `true` 时，向 Tracy 流式发送事件。
 
 - `trace_memory`: 启用 `tracy-client`，以支持 Tracy 内存分析。
 

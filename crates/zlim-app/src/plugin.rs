@@ -63,7 +63,7 @@ pub trait Plugin: Any + Send + Sync + 'static {
     /// and adjusts the plugin execution order.
     ///
     /// At this stage, you can insert other plugins into the app.
-    fn build(&self, _app: &mut App) {
+    fn build(&mut self, _app: &mut App) {
         // do nothing
     }
 
@@ -73,7 +73,7 @@ pub trait Plugin: Any + Send + Sync + 'static {
     /// — main-app plugins before every sub-app's plugins.
     ///
     /// At this stage, the plugin list has stabilized and new additions are prohibited.
-    fn apply(&self, app: &mut App);
+    fn apply(&mut self, app: &mut App);
 
     /// Runs after every plugin has been applied.
     ///
@@ -119,7 +119,7 @@ impl dyn Plugin {
 pub(crate) struct PlaceholderPlugin;
 
 impl Plugin for PlaceholderPlugin {
-    fn apply(&self, _: &mut App) {}
+    fn apply(&mut self, _: &mut App) {}
 
     fn duplicate_strategy(&self) -> DuplicateStrategy {
         // Placeholders should not be added.

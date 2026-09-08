@@ -120,7 +120,7 @@ pub(crate) use messages::{enable_manual_update, update_messages};
 
 // -----------------------------------------------------------------------------
 
-pub use pre_defined::ReparentSignal;
+pub use signals::*;
 
 /// This module defines a set of built-in messages.
 ///
@@ -130,15 +130,29 @@ pub use pre_defined::ReparentSignal;
 ///
 /// If needed, additional signals such as `DespawnSignal` and `SpawnSignal` may be added
 /// in the future.
-mod pre_defined {
+mod signals {
     use super::Message;
-    use crate::entity::EntityId;
+    use crate::{entity::EntityId, tick::Tick};
     use zlim_reflect::derive::TypePath;
 
     /// A predefined message sent when an entity is reparented.
+    ///
+    /// It is only emitted for reparenting operations; it does
+    /// **not** cover entity spawning or despawning.
     #[derive(Debug, TypePath, Message, Clone, Copy)]
     pub struct ReparentSignal {
         pub entity: EntityId,
+    }
+
+    /// A signal sent to clamp all [`Tick`]s to the current cycle.
+    ///
+    /// This signal is automatically dispatched at the interval specified by
+    /// [`CHECK_CYCLE`] to prevent [`Tick`] values from growing without bound.
+    ///
+    /// [`CHECK_CYCLE`]: crate::tick::CHECK_CYCLE
+    #[derive(Debug, TypePath, Message, Clone, Copy)]
+    pub struct ClampTickSignal {
+        pub now: Tick,
     }
 }
 

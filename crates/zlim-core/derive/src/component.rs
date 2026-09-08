@@ -350,9 +350,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
         quote! {
             const SERIALIZE: bool = true;
 
-            fn register() -> &'static #component_db_ {
-                #zlim_core::component::register_serializable::<Self>()
-            }
+            const REGISTER: fn() -> &'static #component_db_ =
+                #zlim_core::component::register_serializable::<Self>;
         }
     } else {
         TokenStream::new()

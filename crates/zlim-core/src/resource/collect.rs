@@ -70,26 +70,6 @@ impl ResourceDB {
                     .reserve(PRE);
             }
 
-            {
-                // We hope that the built-in resources occupy a smaller ID.
-                use crate::time::{DelayedCommandQueues, TimeSnapshot};
-                use crate::time::{Fixed, Real, Time, TimeState, Virtual};
-                Time::<()>::register();
-                Time::<Real>::register();
-                Time::<Fixed>::register();
-                Time::<Virtual>::register();
-                TimeState::register();
-                TimeSnapshot::register();
-                DelayedCommandQueues::register();
-            }
-
-            {
-                // Internal Messages
-                use crate::message::MessageQueue;
-                use crate::message::ReparentSignal;
-                <MessageQueue<ReparentSignal>>::register();
-            }
-
             zlim_reg::iter::<Reg>().for_each(|r| {
                 (r.0)();
             });
@@ -132,7 +112,7 @@ impl ResourceDB {
 pub mod __internal__ {
     use super::{Resource, ResourceDB};
 
-    /// A registration token that defers [`Resource::register`] for a type.
+    /// A registration token that defers [`Resource::REGISTER`] for a type.
     ///
     /// Collecting these tokens via [`zlim_reg::collect!`] enables bulk
     /// registration at startup instead of incurring the cold-path cost on
@@ -144,7 +124,7 @@ pub mod __internal__ {
         /// Creates a registration token for type `T`.
         #[inline(always)]
         pub const fn of<R: Resource>() -> Self {
-            Self(<R as Resource>::register)
+            Self(<R as Resource>::REGISTER)
         }
     }
 

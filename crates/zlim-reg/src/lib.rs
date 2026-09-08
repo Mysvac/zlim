@@ -25,8 +25,9 @@ struct Node {
     // completes, `next` is never read by iterators, so `next`
     // itself does not need to be atomic.
     next: UnsafeCell<Option<&'static Node>>,
-    // We require the target platform to support `AtomicPtr`, but not necessarily
-    // `AtomicU8`. So we use `AtomicUsize` instead, which also keeps struct size the same.
+    // For no_std support, we may require the target platform to support
+    // `AtomicPtr` in the future, but not necessarily `AtomicU8`. So we
+    // use `AtomicUsize` instead, which also keeps struct size the same.
     state: AtomicUsize,
 }
 
@@ -155,6 +156,12 @@ impl<T: Collect> Item<T> {
     /// Submits this item into `T`'s registry.
     ///
     /// Repeated calls are idempotent.
+    #[cfg_attr(target_family = "windows", unsafe(link_section = ".ZREG"))]
+    #[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zlimreg"))]
+    #[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zlimreg"))]
+    #[cfg_attr(target_os = "android", unsafe(link_section = ".text.zlimreg"))]
+    #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_reg"))]
+    #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_reg"))]
     #[inline(never)] // Ensure it's not inlined.
     pub fn submit(&'static self) {
         use Ordering::{Acquire, Relaxed, Release};
@@ -331,7 +338,7 @@ fn call_ctor_in_wasm() {
 macro_rules! collect {
     ($ty:ty) => {
         impl $crate::Collect for $ty {
-            #[inline]
+            #[inline(always)]
             fn registry() -> &'static $crate::Registry {
                 static REGISTRY: $crate::Registry = $crate::Registry::new::<$ty>();
                 &REGISTRY
@@ -388,10 +395,12 @@ macro_rules! submit {
 #[macro_export]
 macro_rules! __call_ctor {
     ($ident:ident, $ty:ty) => {
-        #[cfg_attr(
-            any(target_os = "linux", target_os = "android"),
-            unsafe(link_section = ".text.startup")
-        )]
+        #[cfg_attr(target_family = "windows", unsafe(link_section = ".ZREG"))]
+        #[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zlimreg"))]
+        #[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zlimreg"))]
+        #[cfg_attr(target_os = "android", unsafe(link_section = ".text.zlimreg"))]
+        #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_reg"))]
+        #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_reg"))]
         unsafe extern "C" fn __ctor() {
             <$crate::Item<$ty>>::submit(&$ident);
         }

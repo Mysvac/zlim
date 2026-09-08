@@ -8,6 +8,12 @@ use crate::job::JobGroup;
 use crate::resource::ResourceDB;
 
 #[cold]
+#[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+#[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+#[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
 fn init_internal() {
     let start = zlim_os::time::Instant::now();
 
@@ -45,4 +51,16 @@ fn init_internal() {
 pub fn core_init() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(init_internal);
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    #[ignore = "manually trigger"]
+    fn init_time() {
+        zlim_log::LogConfig::default().apply();
+        zlim_task::TaskPoolConfigs::default().apply();
+        super::core_init();
+    }
 }

@@ -160,7 +160,7 @@ unsafe impl RequiredComponents for () {
 unsafe impl<T: Component + Default> RequiredComponents for T {
     #[inline(always)]
     fn required_register() {
-        T::register();
+        T::REGISTER();
     }
 
     #[inline(always)]

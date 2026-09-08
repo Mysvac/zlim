@@ -5,13 +5,13 @@ a built-in [`log`](https://crates.io/crates/log) bridge.
 
 ## Initializing the Global Logger
 
-Use `LogPlugin` to initialize the logger:
+Use `LogConfig` to initialize the logger:
 
 ```rust
-use zlim_log::{LogPlugin, info};
+use zlim_log::{LogConfig, info};
 
 // Call once at startup to install the global logger and tracing subscriber.
-LogPlugin::default().apply();
+LogConfig::default().apply();
 ```
 
 ## Configurable Parameters
@@ -30,9 +30,9 @@ Uses the `EnvFilter` syntax (the same as `RUST_LOG`), controlling which logs
 are emitted by **target + level**. For example:
 
 ```rust
-use zlim_log::LogPlugin;
+use zlim_log::LogConfig;
 
-let plugin = LogPlugin {
+let config = LogConfig {
     filter: "wgpu=warn,naga=warn,zlim_core=debug".to_string(),
     ..Default::default()
 };
@@ -40,7 +40,7 @@ let plugin = LogPlugin {
 
 When unset, the default filter is used; see the internal code for details.
 
-`LogPlugin`'s internal `filter` is merged with the `RUST_LOG` environment
+`LogConfig`'s internal `filter` is merged with the `RUST_LOG` environment
 variable.
 
 ### Log Level
@@ -89,7 +89,7 @@ See the Feature section below for details.
   to `warn`, and the `tracing` crate is limited to `info`. This library's
   macros are re-exported from `tracing` and are not affected by `log`.
 
-- `debug`: Adjusts `LogPlugin`'s default log level to `Debug`; overridable,
+- `debug`: Adjusts `LogConfig`'s default log level to `Debug`; overridable,
   no special effect.
 
 - `trace`: Enables `tracing-error`, records error span stacks via
@@ -97,7 +97,7 @@ See the Feature section below for details.
   panic.
 
 - `trace_tracy`: Enables the `tracing-tracy` crate for profiling. When
-  `LogPlugin`'s `enable_tracy` field is `true`, events are streamed to
+  `LogConfig`'s `enable_tracy` field is `true`, events are streamed to
   Tracy.
 
 - `trace_memory`: Enables `tracy-client` to support Tracy memory profiling.

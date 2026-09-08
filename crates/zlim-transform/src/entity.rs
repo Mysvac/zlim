@@ -34,7 +34,7 @@ fn reparent_in_place<'a, 'b>(
             let Some(mut transform) = entity.get_mut::<Transform>() else {
                 return Ok(entity);
             };
-            *transform.bypass() = new_transform;
+            *transform.bypass() = new_transform; // do not trigger change detections
         }
         None => {
             let Some(global_transform) = entity.get::<GlobalTransform>() else {
@@ -44,7 +44,7 @@ fn reparent_in_place<'a, 'b>(
             let Some(mut transform) = entity.get_mut::<Transform>() else {
                 return Ok(entity);
             };
-            *transform.bypass() = new_transform;
+            *transform.bypass() = new_transform; // do not trigger change detections
         }
     }
     Ok(entity)

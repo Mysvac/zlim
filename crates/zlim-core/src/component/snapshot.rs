@@ -57,7 +57,7 @@ impl Components {
     ///
     /// Checks the local `type_map` first (fast path). If the type is not
     /// yet in this snapshot, falls back to lazy registration via
-    /// [`Component::register`].
+    /// [`Component::REGISTER`].
     ///
     /// # Example
     ///
@@ -81,7 +81,7 @@ impl Components {
             return r;
         }
         ::core::hint::cold_path();
-        <C as Component>::register()
+        <C as Component>::REGISTER()
     }
 
     /// Looks up a [`ComponentDB`] by its [`ComponentId`].

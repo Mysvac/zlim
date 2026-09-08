@@ -92,7 +92,6 @@ fn assert_is_normalized(message: &str, length_squared: f32) {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[derive(Reflect, Serialize, Deserialize)]
 #[reflect(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
 #[repr(transparent)]
 #[doc(alias = "Direction2d")]
 pub struct Dir2(Vec2);
@@ -406,7 +405,6 @@ impl approx::UlpsEq for Dir2 {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[derive(Reflect, Serialize, Deserialize)]
 #[reflect(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
 #[repr(transparent)]
 #[doc(alias = "Direction3d")]
 pub struct Dir3(Vec3);
@@ -813,7 +811,6 @@ impl approx::UlpsEq for Dir3 {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[derive(Reflect, Serialize, Deserialize)]
 #[reflect(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
 #[repr(transparent)]
 #[doc(alias = "Direction3dA")]
 pub struct Dir3A(Vec3A);
@@ -1060,7 +1057,6 @@ impl approx::UlpsEq for Dir3A {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[derive(Reflect, Serialize, Deserialize)]
 #[reflect(Debug, Clone, Serialize, Deserialize)]
-#[serde(transparent)]
 #[repr(transparent)]
 #[doc(alias = "Direction4d")]
 pub struct Dir4(Vec4);

@@ -115,6 +115,12 @@ impl JobExecutor for SingleThreadedExecutor {
                 continue;
             }
 
+            enum SystemResult {
+                Ok,
+                Skip,
+                Error,
+            }
+
             // Normal Job
             let func = AssertUnwindSafe(|| unsafe {
                 #[cfg(feature = "trace")]
@@ -122,19 +128,20 @@ impl JobExecutor for SingleThreadedExecutor {
 
                 if let Err(e) = job.run_raw(world.cell()) {
                     core::hint::cold_path();
-                    if !matches!(e, SystemError::None) {
+                    if matches!(e, SystemError::None) {
                         core::hint::cold_path();
                         let tick = job.last_run();
                         let id = job.id();
                         let ctx = ErrorContext::Job { id, tick };
                         handler(e.into(), ctx);
+                        return SystemResult::Error;
                     }
-                    return false; // Error -> false
+                    return SystemResult::Skip;
                 }
-                true // Success -> true
+                SystemResult::Ok
             });
 
-            let result: Result<bool, Box<dyn Any + Send>> =
+            let result: Result<SystemResult, Box<dyn Any + Send>> =
                 if flag.intersects(SystemFlags::NON_SEND) {
                     ::core::hint::cold_path();
                     zlim_task::invoke_on_main(|| std::panic::catch_unwind(func))
@@ -142,17 +149,17 @@ impl JobExecutor for SingleThreadedExecutor {
                     std::panic::catch_unwind(func)
                 };
 
-            let ok: bool = match result {
+            let r: SystemResult = match result {
                 Ok(result) => result,
                 Err(payload) => propagate_panic(payload, &**job, label),
             };
 
-            // Apply deferred
-            if flag.intersects(SystemFlags::DEFERRED) {
+            // It is necessary to apply the deferred commands even if the job failed.
+            if !matches!(r, SystemResult::Skip) && flag.intersects(SystemFlags::DEFERRED) {
                 job.apply_deferred(unsafe { world.cell().full_mut() });
             }
 
-            if ok {
+            if matches!(r, SystemResult::Ok) {
                 // SAFETY: Already checked above - `assert_eq!(job_count, strong_outgoing.len());`
                 let outgoing = unsafe { *strong_outgoing.get_unchecked(index) };
                 for &to in outgoing {

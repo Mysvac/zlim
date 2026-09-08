@@ -38,7 +38,7 @@ pub struct SystemInfo {
 pub struct SystemInfoPlugin;
 
 impl Plugin for SystemInfoPlugin {
-    fn apply(&self, app: &mut zlim_app::App) {
+    fn apply(&mut self, app: &mut zlim_app::App) {
         app.init_resource::<SystemInfo>();
     }
 }

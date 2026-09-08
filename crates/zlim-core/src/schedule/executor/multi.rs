@@ -531,6 +531,12 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
                 apply_deferred();
             }
 
+            enum SystemResult {
+                Ok,
+                Skip,
+                Error,
+            }
+
             let func = AssertUnwindSafe(|| unsafe {
                 #[cfg(feature = "trace")]
                 let _span = span.enter();
@@ -542,26 +548,28 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
                         let tick = job.last_run();
                         let ctx = ErrorContext::Job { id, tick };
                         (context.error_handler)(e.into(), ctx);
+                        return SystemResult::Error;
                     }
-                    return false; // Error -> false
+                    return SystemResult::Skip;
                 }
-                true // Success -> true
+                SystemResult::Ok
             });
 
             let result = ::std::panic::catch_unwind(func);
 
-            let successed = result.unwrap_or_else(|payload| {
+            let r = result.unwrap_or_else(|payload| {
                 context
                     .executor
                     .panic_buffer
                     .preserve_payload(payload, job, context.label);
-                false
+                SystemResult::Error
             });
 
+            // It is necessary to apply the deferred commands even if the job failed.
             let signal = Completed {
                 index,
-                successed,
-                deferred: successed & deferred,
+                deferred: deferred && !matches!(r, SystemResult::Skip),
+                successed: matches!(r, SystemResult::Ok),
             };
 
             context.executor.completed.push(signal);

@@ -4,7 +4,7 @@ zlim 引擎的应用层：`App` 的创建、插件系统、主循环（runner）
 
 ## App 的结构
 
-`App` 由一个**主应用（main sub-app）**与多个**子应用（sub-app）**组成：
+`App` 由一个 **主应用（main-app）** 与多个 **子应用（sub-app）** 组成：
 
 - **主世界（main world）**：`App` 自身就是一个 `SubApp`（其 "main" 子应用），持有
   游戏逻辑所在的 `World`。
@@ -81,15 +81,14 @@ fn run_once(mut app: App) -> AppExit {
 
 `apply` 是必须的，`build` 和 `cleanup` 提供了默认空实现。
 
-## 日志插件
+## 日志配置
 
-日志配置是**独立的**：虽然名为 `LogPlugin`（来自 `zlim-log`），但它没有实现
+日志配置是**独立于插件系统**的：`LogConfig`（来自 `zlim-log`）不实现
 `Plugin` trait，也不属于插件生命周期（`build`/`apply`/`cleanup`）。直接在
 `App` 上初始化日志：
 
 - `App::init_logger()` — 使用默认配置初始化全局日志。
-- `App::with_logger(config)` — 使用给定的 `LogPlugin` 配置初始化（等效于
-  `LogPlugin::apply`）。
+- `App::with_logger(config)` — 使用给定的 `LogConfig` 初始化（等效于 `LogConfig::apply`）。
 
 与插件不同，这两个调用是**立即生效**的：在调用点即安装全局 subscriber，此后所有
 `App` 操作都可见于日志。建议在 `App::new()` 之后立即调用其中一个，以避免各种
@@ -105,7 +104,7 @@ Job、Schedule 等内容，内部的 span 将始终处于 disable 状态。
 
 异步任务池（`zlim_task` 的 `MainTaskPool`）同样是**内置配置而非插件**。
 
-与 `LogPlugin` 不同，任务池配置若未显式提供，则使用**默认配置**（自动设定合适的线程数）：
+与 `LogConfig` 不同，任务池配置若未显式提供，则使用**默认配置**（自动设定合适的线程数）：
 
 ```rust, ignore
 app.with_task_pool_configs(TaskPoolConfigs::default());

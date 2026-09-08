@@ -67,11 +67,11 @@ fn update_frame_count(count: Res<FrameCount>) {
 pub struct FrameCountPlugin;
 
 impl Plugin for FrameCountPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&mut self, app: &mut App) {
         MainSchedulePlugin::apply_before::<Self>(app);
     }
 
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "FrameCountPlugin");
 
         let world = app.main_world_mut();
@@ -136,22 +136,19 @@ fn diagnostic_system(
     time: Res<Time<Real>>,
     frame_count: Res<FrameCount>,
 ) {
-    diagnostics.add_measurement(&FrameCountDiagnosticsPlugin::FRAME_COUNT, || {
-        frame_count.get() as f64
-    });
+    use FrameCountDiagnosticsPlugin as P;
 
     let delta_seconds = time.delta_secs_f64();
 
+    diagnostics.add_measurement(&P::FRAME_COUNT, || frame_count.get() as f64);
     if delta_seconds != 0.0 {
-        diagnostics.add_measurement(&FrameCountDiagnosticsPlugin::FRAME_TIME, || {
-            delta_seconds * 1000.0
-        });
-        diagnostics.add_measurement(&FrameCountDiagnosticsPlugin::FPS, || 1.0 / delta_seconds);
+        diagnostics.add_measurement(&P::FRAME_TIME, || delta_seconds * 1000.0);
+        diagnostics.add_measurement(&P::FPS, || 1.0 / delta_seconds);
     }
 }
 
 impl Plugin for FrameCountDiagnosticsPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&mut self, app: &mut App) {
         if !app.contains_plugin::<FrameCountPlugin>() {
             app.add_plugins(FrameCountPlugin);
         }
@@ -162,25 +159,23 @@ impl Plugin for FrameCountDiagnosticsPlugin {
         MainSchedulePlugin::apply_before::<Self>(app);
     }
 
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "FrameCountDiagnosticsPlugin");
 
         app.register_diagnostic(
             Diagnostic::new(Self::FRAME_TIME)
-                .with_suffix("ms")
                 .with_max_history_length(self.max_history_length)
-                .with_smoothing_factor(self.smoothing_factor),
+                .with_smoothing_factor(self.smoothing_factor)
+                .with_suffix("ms"),
         )
         .register_diagnostic(
             Diagnostic::new(Self::FPS)
                 .with_max_history_length(self.max_history_length)
                 .with_smoothing_factor(self.smoothing_factor),
         )
-        .register_diagnostic(
-            Diagnostic::new(Self::FRAME_COUNT)
-                .with_smoothing_factor(0.0)
-                .with_max_history_length(0),
-        )
+        // An average frame count would be nonsensical,
+        // so we set the max history length to zero and disable smoothing.
+        .register_diagnostic(Diagnostic::new(Self::FRAME_COUNT).with_smoothing_factor(0.0))
         .schedule_entry(Update)
         .insert::<UpdateFrameCountDiagnostics>(());
     }

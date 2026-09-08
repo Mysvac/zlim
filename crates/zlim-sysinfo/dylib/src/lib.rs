@@ -20,10 +20,8 @@ cfg_select! {
         target_os = "macos",
         target_os = "freebsd",
     ) => {
-        pub use sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
-        pub use sysinfo::ProcessesToUpdate;
+        pub use sysinfo::{ProcessesToUpdate, Pid, get_current_pid};
         pub use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
-        pub use sysinfo::{Pid, get_current_pid};
     }
     _ => {}
 }

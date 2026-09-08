@@ -378,7 +378,7 @@ impl Default for Bump {
     /// page will be 1000 bytes and grow by 1.5× from there.
     #[inline]
     fn default() -> Self {
-        Self(PagePool::base(1000))
+        Self(PagePool::base(960))
     }
 }
 
@@ -666,25 +666,19 @@ impl Global {
     /// See [`Bump::alloc_str`] for details.
     #[inline(never)]
     pub fn alloc_str(s: &str) -> &'static str {
-        let binding = &Self::lock().0;
-        let r: &str = binding.alloc_str(s);
-        // SAFETY: The data is allocated in `POOL` (a `static`), giving it `'static` lifetime.
-        // The MutexGuard (`binding`) is dropped after this line, but the pool data persists.
-        unsafe { core::mem::transmute(r) }
-    }
+        let layout = Layout::for_value(s.as_bytes());
+        let guard = Self::lock();
+        let ptr = guard.0.alloc(layout).cast::<u8>();
+        ::core::mem::drop(guard);
 
-    /// Allocates a value of type `T` in the pool.
-    ///
-    /// The returned reference has a `'static` lifetime.
-    ///
-    /// See [`Bump::alloc_value`] for details.
-    #[inline(never)]
-    pub fn alloc_value<T: Copy>(v: T) -> &'static mut T {
-        let binding = &Self::lock().0;
-        let r: &mut T = binding.alloc_value(v);
-        // SAFETY: The data is allocated in `POOL` (a `static`), giving it `'static` lifetime.
-        // The MutexGuard (`binding`) is dropped after this line, but the pool data persists.
-        unsafe { core::mem::transmute(r) }
+        unsafe {
+            let len = s.len();
+            // Copy the slice contents
+            ptr::copy_nonoverlapping(s.as_ptr(), ptr.as_ptr(), len);
+            let bytes: &[u8] = core::slice::from_raw_parts_mut(ptr.as_ptr(), len);
+            // SAFETY: The input is valid UTF-8, and we're copying it verbatim
+            core::str::from_utf8_unchecked(bytes)
+        }
     }
 
     /// Allocates a slice by copying its contents.
@@ -694,11 +688,34 @@ impl Global {
     /// See [`Bump::alloc_slice`] for details.
     #[inline(never)]
     pub fn alloc_slice<T: Copy>(s: &[T]) -> &'static mut [T] {
-        let binding = &Self::lock().0;
-        let r: &mut [T] = binding.alloc_slice(s);
-        // SAFETY: The data is allocated in `POOL` (a `static`), giving it `'static` lifetime.
-        // The MutexGuard (`binding`) is dropped after this line, but the pool data persists.
-        unsafe { core::mem::transmute(r) }
+        let layout = Layout::for_value(s);
+        let guard = Self::lock();
+        let ptr = guard.0.alloc(layout).cast::<T>();
+        ::core::mem::drop(guard);
+
+        unsafe {
+            // Copy the slice contents
+            ptr::copy_nonoverlapping(s.as_ptr(), ptr.as_ptr(), s.len());
+            core::slice::from_raw_parts_mut(ptr.as_ptr(), s.len())
+        }
+    }
+
+    /// Allocates a value of type `T` in the pool.
+    ///
+    /// The returned reference has a `'static` lifetime.
+    ///
+    /// See [`Bump::alloc_value`] for details.
+    #[inline(never)]
+    pub fn alloc_value<T: Copy>(v: T) -> &'static mut T {
+        let layout = Layout::new::<T>();
+        let guard = Self::lock();
+        let ptr = guard.0.alloc(layout).cast::<T>();
+        ::core::mem::drop(guard);
+
+        unsafe {
+            ptr::write(ptr.as_ptr(), v);
+            &mut *ptr.as_ptr()
+        }
     }
 
     /// Allocates a value of type `T` without requiring `Copy`.
@@ -714,12 +731,14 @@ impl Global {
     /// [`drop`]: Drop::drop
     #[inline(never)]
     pub unsafe fn alloc_unchecked<T>(v: T) -> &'static mut T {
-        let binding = &Self::lock().0;
-        // SAFETY: delegated to the pool's `alloc_unchecked`; the caller is
-        // responsible for running `Drop` on the returned value.
-        let r: &mut T = unsafe { binding.alloc_unchecked(v) };
-        // SAFETY: The data is allocated in `POOL` (a `static`), giving it `'static` lifetime.
-        // The MutexGuard (`binding`) is dropped after this line, but the pool data persists.
-        unsafe { core::mem::transmute(r) }
+        let layout = Layout::new::<T>();
+        let guard = Self::lock();
+        let ptr = guard.0.alloc(layout).cast::<T>();
+        ::core::mem::drop(guard);
+
+        unsafe {
+            ptr::write(ptr.as_ptr(), v);
+            &mut *ptr.as_ptr()
+        }
     }
 }

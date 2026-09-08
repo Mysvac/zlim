@@ -91,6 +91,7 @@ impl JobDB {
     /// Collects all statically-registered jobs into the global registry.
     ///
     /// This is idempotent and is typically called once at startup.
+    #[inline]
     pub fn collect() {
         #[cold]
         #[inline(never)]
@@ -123,6 +124,13 @@ impl JobDB {
     /// If a job with the same name is already registered, a warning is logged
     /// (unless the constructor is identical, in which case this is a no-op).
     #[inline(never)]
+    #[expect(unsafe_code, reason = "specify sections to accelerate registeration")]
+    #[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+    #[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+    #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
     pub fn register(db: JobDB) {
         let name = db.name;
         let mut registry = REGISTRY.write().unwrap_or_else(PoisonError::into_inner);

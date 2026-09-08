@@ -28,11 +28,11 @@ pub struct TransformPlugin {
 }
 
 impl Plugin for TransformPlugin {
-    fn build(&self, app: &mut App) {
+    fn build(&mut self, app: &mut App) {
         MainSchedulePlugin::apply_before::<Self>(app);
     }
 
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         MainSchedulePlugin::warn_if_unset(app, "TransformPlugin");
 
         let world: &mut World = app.main_world_mut();

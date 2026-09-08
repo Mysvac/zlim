@@ -19,15 +19,6 @@
 采样在后台任务中进行，间隔不低于 `sysinfo::MINIMUM_CPU_UPDATE_INTERVAL`，
 因此读取到的值可能不是最新的。
 
-## 构建模式
-
-在受支持的平台上，本库读取 `sysinfo` 有两种途径：普通构建直接依赖
-`sysinfo` crate；`dylib` 构建（由 `zlim` 的 `dylib` feature 打开）则改经
-`zlim-sysinfo-dylib` 隔离层。隔离层是一个独立的动态库形态的小 shim crate，
-把 `sysinfo` 依赖封装进它自身；引擎 cdylib 只对它做动态导入，自身从不链接
-`sysinfo` 的目标文件（此前在 Windows 上链入会导致链接器对象数超限，
-LNK1189）。两种构建模式下插件都完整可用。
-
 ## 支持平台
 
 linux / windows / android / macOS / freebsd。其他平台上插件为空操作

@@ -47,7 +47,6 @@ pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'stat
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct Score(u32);
@@ -92,11 +91,19 @@ pub struct ResourceDB {
 
     // --------------------------------
     // Serialization
-    /// Type-erased serialization function pointer, `None` when the resource
-    /// does not support serialization.
+    /// Type-erased serialization function pointer,
+    /// `None` when the resource does not support serialization.
+    ///
+    /// # Warning
+    /// This field is unstable, should not be used by user.
+    #[doc(hidden)]
     pub serialize: Option<SerializeFunc>,
-    /// Type-erased deserialization function pointer, `None` when the
-    /// resource does not support serialization.
+    /// Type-erased deserialization function pointer,
+    /// `None` when the resource does not support serialization.
+    ///
+    /// # Warning
+    /// This field is unstable, should not be used by user.
+    #[doc(hidden)]
     pub deserialize: Option<DeserializeFunc>,
 }
 
@@ -116,13 +123,12 @@ impl ResourceDB {
     ///
     /// This is the primary entry point for obtaining resource metadata. It
     /// first checks the type registry for an existing entry; if none is
-    /// found, it calls [`Resource::register`] to create one.
+    /// found, it calls [`Resource::REGISTER`] to create one.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
     ///
     /// #[derive(TypePath, Resource)]
     /// struct Score(u32);
@@ -131,14 +137,14 @@ impl ResourceDB {
     /// assert_eq!(db.type_name, "Score");
     /// ```
     ///
-    /// [`Resource::register`]: crate::resource::Resource::register
+    /// [`Resource::REGISTER`]: crate::resource::Resource::REGISTER
     #[inline(always)]
     pub fn of<T: Resource>() -> &'static ResourceDB {
         if let Some(db) = ResourceDB::get_by_type(TypeId::of::<T>()) {
             return db;
         }
-
-        <T as Resource>::register()
+        ::core::hint::cold_path();
+        <T as Resource>::REGISTER()
     }
 
     /// Looks up a [`ResourceDB`] by its [`ResourceId`].

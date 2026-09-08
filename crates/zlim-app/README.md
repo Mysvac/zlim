@@ -5,7 +5,7 @@ the main loop (runner) and schedule driving.
 
 ## App structure
 
-An `App` consists of one **main sub-app** and multiple **sub-apps**:
+An `App` consists of one **main-app** and multiple **sub-apps**:
 
 - **Main world**: `App` itself is a `SubApp` (its "main" sub-app), holding the
   `World` where game logic lives.
@@ -94,17 +94,17 @@ Plugins have three stages:
 `apply` is required; `build` and `cleanup` have default no-op
 implementations.
 
-## Log plugin
+## Log configuration
 
-Logging configuration is **independent**: although it is named `LogPlugin`
-(from `zlim-log`), it does **not** implement the `Plugin` trait and is not
-part of the plugin lifecycle (`build`/`apply`/`cleanup`). Initialize the
-logger directly on the `App`:
+Logging configuration is **independent** of the plugin system: `LogConfig`
+(from `zlim-log`) does not implement the `Plugin` trait and is not part of
+the plugin lifecycle (`build`/`apply`/`cleanup`). Initialize the logger
+directly on the `App`:
 
 - `App::init_logger()` — initializes the global logger with the default
   configuration.
-- `App::with_logger(config)` — initializes it with a custom `LogPlugin`
-  configuration (equivalent to `LogPlugin::apply`).
+- `App::with_logger(config)` — initializes it with a custom `LogConfig`
+  (equivalent to calling `LogConfig::apply`).
 
 Unlike plugins, these calls take effect **immediately**: the global
 subscriber is installed at the call site, so every later `App` operation is
@@ -126,7 +126,7 @@ the log output, but do **not** panic.
 The async task pool (`zlim_task`'s `MainTaskPool`) is likewise **built-in
 configuration rather than a plugin**.
 
-Unlike `LogPlugin`, when the task pool configuration is not explicitly
+Unlike `LogConfig`, when the task pool configuration is not explicitly
 provided, the **default configuration** is used (auto-picking a suitable
 thread count):
 

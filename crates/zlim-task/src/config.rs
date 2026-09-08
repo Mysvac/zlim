@@ -276,4 +276,16 @@ impl TaskPoolConfigs {
             }
         }
     }
+
+    /// Initializes the global task pools if it's uninitialized.
+    #[inline]
+    pub fn try_apply(&mut self) {
+        let is_initialized = MainTaskPool::is_initialized()
+            && AsyncTaskPool::is_initialized()
+            && IoTaskPool::is_initialized();
+
+        if !is_initialized {
+            self.apply();
+        }
+    }
 }

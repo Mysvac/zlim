@@ -50,9 +50,8 @@ use crate::ops::Reflect;
 /// [`register_reflect!`]: crate::register_reflect!
 pub trait TypeDatabase: Reflect + Typed {
     /// Called after the type's [`TypeDB`] entry is created.
-    #[expect(unused_variables, reason = "no-op implementation")]
     #[inline(always)]
-    fn on_register(db: &'static TypeDB) {}
+    fn on_register(_db: &'static TypeDB) {}
 
     /// Called after [`on_register`](Self::on_register).
     #[inline(always)]
@@ -153,6 +152,13 @@ impl TypeDB {
     /// called on `T`.
     #[cold]
     #[inline(never)]
+    #[expect(unsafe_code, reason = "specify sections to accelerate registeration")]
+    #[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+    #[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+    #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+    #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
     pub fn register<T: TypeDatabase>() -> &'static TypeDB {
         use zlim_utils::hash::map::Entry;
 
@@ -343,6 +349,7 @@ impl TypeDB {
     /// ECS or reflection operations.
     ///
     /// [`register_reflect!`]: crate::register_reflect!
+    #[inline]
     pub fn collect() {
         #[cold]
         #[inline(never)]

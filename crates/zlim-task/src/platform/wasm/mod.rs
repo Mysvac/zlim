@@ -139,6 +139,13 @@ impl core::ops::Deref for MainTaskPool {
 }
 
 impl MainTaskPool {
+    /// Return `true` if [`MainTaskPool`] is already initialized.
+    /// 
+    /// Always returns `true` in single-threaded mode.
+    pub fn is_initialized() -> bool {
+        true
+    }
+
     /// Always returns `false` in single-threaded mode.
     ///
     /// Custom initialization is not supported — all three pool newtypes
@@ -171,6 +178,13 @@ impl core::ops::Deref for AsyncTaskPool {
 }
 
 impl AsyncTaskPool {
+    /// Return `true` if [`AsyncTaskPool`] is already initialized.
+    /// 
+    /// Always returns `true` in single-threaded mode.
+    pub fn is_initialized() -> bool {
+        true
+    }
+
     /// Always returns `false` in single-threaded mode.
     ///
     /// Custom initialization is not supported — all three pool newtypes
@@ -203,6 +217,13 @@ impl core::ops::Deref for IoTaskPool {
 }
 
 impl IoTaskPool {
+    /// Return `true` if [`IoTaskPool`] is already initialized.
+    /// 
+    /// Always returns `true` in single-threaded mode.
+    pub fn is_initialized() -> bool {
+        true
+    }
+
     /// Always returns `false` in single-threaded mode.
     ///
     /// Custom initialization is not supported — all three pool newtypes

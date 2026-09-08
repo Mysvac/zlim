@@ -22,10 +22,10 @@ use crate::entity::EntityMapper;
 
 /// Registers a component type **without** serialization support.
 ///
-/// This is the registration used by [`Component::register`]'s default
-/// implementation and by `#[derive(Component)]` unless
-/// `#[component(serialize)]` is present.  The returned [`ComponentDB`]
-/// has its serialization function pointers set to `None`.
+/// This is the registration behind [`Component::REGISTER`] and used by
+/// `#[derive(Component)]` unless `#[component(serialize)]` is present.
+/// The returned [`ComponentDB`] has its serialization function pointers
+/// set to `None`.
 ///
 /// Registration is idempotent: if `C` is already registered, the existing
 /// entry is returned without creating a duplicate.
@@ -44,6 +44,13 @@ use crate::entity::EntityMapper;
 /// ```
 #[cold]
 #[inline(never)]
+#[expect(unsafe_code, reason = "specify sections to accelerate registeration")]
+#[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+#[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+#[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
 pub fn register_base<C: Component>() -> &'static ComponentDB {
     register_impl::<C>(None, None)
 }
@@ -74,9 +81,7 @@ pub fn register_base<C: Component>() -> &'static ComponentDB {
 /// impl Component for Position {
 ///     const SERIALIZE: bool = true;
 ///
-///     fn register() -> &'static ComponentDB {
-///         register_serializable::<Self>()
-///     }
+///     const REGISTER: fn() -> &'static ComponentDB = register_serializable::<Self>;
 ///
 ///     const CLONER: ComponentCloner = ComponentCloner::clonable::<Self>();
 /// }
@@ -86,14 +91,20 @@ pub fn register_base<C: Component>() -> &'static ComponentDB {
 /// ```
 #[cold]
 #[inline(never)]
+#[expect(unsafe_code, reason = "specify sections to accelerate registeration")]
+#[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
+#[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
+#[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
+#[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
 pub fn register_serializable<C: Component + Serialize + for<'de> Deserialize<'de>>()
 -> &'static ComponentDB {
     register_impl::<C>(Some(serialize_fn::<C>), Some(deserialize_fn::<C>))
 }
 
 /// Shared registration core: builds and stores the [`ComponentDB`] for `C`.
-#[cold]
-#[inline]
+#[inline(always)]
 fn register_impl<C: Component>(
     serialize: Option<SerializeFunc>,
     deserialize: Option<DeserializeFunc>,

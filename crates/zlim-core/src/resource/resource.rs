@@ -94,11 +94,11 @@ pub trait Resource: TypePath + Sized {
     /// `&'static` [`ResourceDB`].
     ///
     /// Registration is idempotent: calling it again returns the same
-    /// metadata.  The default implementation performs a base registration
-    /// **without** serialization support ([`register_base`]).  Resources
-    /// derived with `#[resource(serialize)]` override this to use
-    /// [`register_serializable`] and additionally require the type to
-    /// implement `Serialize` and `Deserialize`.
+    /// metadata.  Defaults to a base registration **without** serialization
+    /// support ([`register_base`]).  Resources derived with
+    /// `#[resource(serialize)]` instead use [`register_serializable`] and
+    /// additionally require the type to implement `Serialize` and
+    /// `Deserialize`.
     ///
     /// # Examples
     ///
@@ -109,15 +109,12 @@ pub trait Resource: TypePath + Sized {
     /// #[derive(TypePath, Resource)]
     /// struct Score(u32);
     ///
-    /// let db = <Score as Resource>::register();
+    /// let db = <Score as Resource>::REGISTER();
     /// assert_eq!(db.type_name, "Score");
     /// ```
     ///
     /// [`register_base`]: crate::resource::register_base
     /// [`register_serializable`]: crate::resource::register_serializable
     /// [`ResourceDB`]: crate::resource::ResourceDB
-    #[inline(always)]
-    fn register() -> &'static ResourceDB {
-        register_base::<Self>()
-    }
+    const REGISTER: fn() -> &'static ResourceDB = register_base::<Self>;
 }

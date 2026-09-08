@@ -67,7 +67,7 @@ impl ScheduleRunnerPlugin {
 }
 
 impl Plugin for ScheduleRunnerPlugin {
-    fn apply(&self, app: &mut App) {
+    fn apply(&mut self, app: &mut App) {
         if app.contains_runner() {
             ::core::hint::cold_path();
             zlim_log::warn!(

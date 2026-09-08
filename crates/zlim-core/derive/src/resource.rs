@@ -79,9 +79,8 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
         quote! {
             const SERIALIZE: bool = true;
 
-            fn register() -> &'static #resource_db_ {
-                #zlim_core::resource::register_serializable::<Self>()
-            }
+            const REGISTER: fn() -> &'static #resource_db_ =
+                #zlim_core::resource::register_serializable::<Self>;
         }
     } else {
         TokenStream::new()

@@ -18,6 +18,7 @@ impl ComponentDB {
     /// so it only runs once per program lifetime.
     ///
     /// [`register_component!`]: crate::register_component
+    #[inline]
     pub fn collect() {
         #[cold]
         #[inline(never)]
@@ -85,7 +86,7 @@ impl ComponentDB {
 pub mod __internal__ {
     use super::{Component, ComponentDB};
 
-    /// A registration token that defers [`Component::register`] for a type.
+    /// A registration token that defers [`Component::REGISTER`] for a type.
     ///
     /// Collecting these tokens via [`zlim_reg::collect!`] enables bulk
     /// registration at startup instead of incurring the cold-path cost
@@ -97,7 +98,7 @@ pub mod __internal__ {
         /// Creates a registration token for type `T`.
         #[inline(always)]
         pub const fn of<C: Component>() -> Self {
-            Self(<C as Component>::register)
+            Self(<C as Component>::REGISTER)
         }
     }
 
@@ -110,7 +111,7 @@ pub mod __internal__ {
 
 /// Submits one or more component types for bulk registration.
 ///
-/// Equivalent to calling [`Component::register`] for each listed type,
+/// Equivalent to calling [`Component::REGISTER`] for each listed type,
 /// but defers the actual work until [`ComponentDB::collect`] is called.
 /// This amortizes the cold-path cost of lazy registration at startup.
 /// The engine runs the bulk collection pass automatically once during

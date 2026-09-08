@@ -97,6 +97,8 @@ pub fn intern_str<'a>(s: &'a str) -> &'static str {
     // Hash once outside the lock so the read path is as cheap as possible.
     let hs: HashStr<'a> = HashStr::new(s);
 
+    // Should not use hash to distribute, that
+    // reduce the performance of the hash table.
     let delegate: usize = s.len() & 0b1;
 
     {

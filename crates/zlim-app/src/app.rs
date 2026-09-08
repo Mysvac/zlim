@@ -11,7 +11,7 @@ use zlim_core::schedule::Schedule;
 use zlim_core::schedule::ScheduleLabel;
 use zlim_core::world::FromWorld;
 use zlim_core::world::World;
-use zlim_log::LogPlugin;
+use zlim_log::LogConfig;
 use zlim_task::TaskPoolConfigs;
 use zlim_utils::hash::HashMap;
 
@@ -70,7 +70,7 @@ pub type ExtractFn = Box<dyn FnMut(&mut World, &mut World) + Send>;
 /// struct GreetPlugin;
 ///
 /// impl Plugin for GreetPlugin {
-///     fn apply(&self, _: &mut App) {
+///     fn apply(&mut self, _: &mut App) {
 ///         // Register schedules, resources, jobs, ...
 ///     }
 /// }
@@ -105,7 +105,6 @@ pub struct App {
     pub(crate) runner: Option<RunnerFn>,
     pub(crate) sub_apps: HashMap<InternedAppLabel, SubApp>,
     pub(crate) error_handler: Option<ErrorHandler>,
-    pub(crate) task_pool_configs: Option<Box<TaskPoolConfigs>>,
 }
 
 /// A self-contained [`World`] with its own plugins, update schedule and
@@ -174,13 +173,13 @@ impl App {
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
-            task_pool_configs: None,
         }
     }
-    /// Initializes the global logger with the default [`LogPlugin`].
+
+    /// Initializes the global logger with the default [`LogConfig`].
     ///
     /// Equivalent to calling [`with_logger`](Self::with_logger) with
-    /// [`LogPlugin::default()`].
+    /// [`LogConfig::default()`].
     ///
     /// # Behavior
     ///
@@ -195,14 +194,24 @@ impl App {
     /// feature is enabled, jobs/schedules created before the global logger is
     /// up would build their spans while the dispatcher is disabled, leaving
     /// those spans permanently inactive.
+    ///
+    /// # Panics
+    ///
+    /// May panics if called after the app has entered the `Building` stage.
     pub fn init_logger(&mut self) -> &mut Self {
-        LogPlugin::default().apply();
+        debug_assert_eq!(
+            self.main.plugins_state,
+            PluginsState::Adding,
+            "LogConfig can only be set in `Adding` stage (before `App::build` and `App::run`)."
+        );
+        LogConfig::default().apply();
         self
     }
 
-    /// Initializes the global logger with the given [`LogPlugin`] configuration.
+    /// Initializes the global logger with the given [`LogConfig`].
     ///
-    /// Equivalent to [`LogPlugin::apply`] with the provided plugin.
+    /// Equivalent to calling [`LogConfig::apply`] with the provided
+    /// configuration.
     ///
     /// # Behavior
     ///
@@ -219,35 +228,77 @@ impl App {
     /// feature is enabled, jobs/schedules created before the global logger is
     /// up would build their spans while the dispatcher is disabled, leaving
     /// those spans permanently inactive.
-    #[inline]
-    pub fn with_logger(&mut self, plugin: LogPlugin) -> &mut Self {
-        plugin.apply();
-        self
-    }
-
-    /// Configures the parameters of the global task pool.
-    ///
-    /// If not set, default parameters will be used.
-    ///
-    /// The global task pool is shared across the entire process.
-    ///
-    /// If multiple apps attempt to configure it, only the first configuration
-    /// will take effect; subsequent calls will emit a warning and be ignored.
-    ///
-    /// The applys operation is deferred until the [`App::build`] or [`App::run`].
     ///
     /// # Panics
     ///
-    /// Panics if called after the app has entered the `Building` stage.
+    /// May panics if called after the app has entered the `Building` stage.
     #[inline]
-    pub fn with_task_pool_configs(&mut self, configs: TaskPoolConfigs) -> &mut Self {
-        assert_eq!(
+    pub fn with_logger(&mut self, config: LogConfig) -> &mut Self {
+        debug_assert_eq!(
             self.main.plugins_state,
             PluginsState::Adding,
-            "TaskPoolConfigs can only set in `Adding` stage (before `App::build` and `App::run`)."
+            "LogConfig can only be set in `Adding` stage (before `App::build` and `App::run`)."
         );
+        config.apply();
+        self
+    }
 
-        self.task_pool_configs = Some(Box::new(configs));
+    /// Initializes the global logger with the default [`TaskPoolConfigs`].
+    ///
+    /// Equivalent to calling [`with_task_pool`](Self::with_task_pool) with
+    /// [`TaskPoolConfigs::default()`].
+    ///
+    /// # Behavior
+    ///
+    /// - The global task pool can only be initialized **once** per process; later
+    ///   calls fail and report an `warn` to the log output, but do **not** panic.
+    /// - Initialization is **immediate**: the global task pool is initialized right away.
+    /// - Unlike logger, if not set, default parameters will be used to initialize
+    ///   global task pools during [`App::build`].
+    ///
+    /// It is recommended to initialize the logger first and then initialize the task
+    ///  pool. This ensures that the logs during task pool initialization are visible.
+    ///
+    /// # Panics
+    ///
+    /// May panics if called after the app has entered the `Building` stage.
+    pub fn init_task_pool(&mut self) -> &mut Self {
+        debug_assert_eq!(
+            self.main.plugins_state,
+            PluginsState::Adding,
+            "TaskPoolConfigs can only be set in `Adding` stage (before `App::build` and `App::run`)."
+        );
+        TaskPoolConfigs::default().apply();
+        self
+    }
+
+    /// Initializes the global task pool with the given [`TaskPoolConfigs`].
+    ///
+    /// Equivalent to calling [`TaskPoolConfigs::apply`] with the provided
+    /// configuration.
+    ///
+    /// # Behavior
+    ///
+    /// - The global task pool can only be initialized **once** per process; later
+    ///   calls fail and report an `warn` to the log output, but do **not** panic.
+    /// - Initialization is **immediate**: the global task pool is initialized right away.
+    /// - Unlike logger, if not set, default parameters will be used to initialize
+    ///   global task pools during [`App::build`].
+    ///
+    /// It is recommended to initialize the logger first and then initialize the task
+    ///  pool. This ensures that the logs during task pool initialization are visible.
+    ///
+    /// # Panics
+    ///
+    /// May panics if called after the app has entered the `Building` stage.
+    #[inline]
+    pub fn with_task_pool(&mut self, mut configs: TaskPoolConfigs) -> &mut Self {
+        debug_assert_eq!(
+            self.main.plugins_state,
+            PluginsState::Adding,
+            "TaskPoolConfigs can only be set in `Adding` stage (before `App::build` and `App::run`)."
+        );
+        configs.apply();
         self
     }
 
@@ -270,7 +321,6 @@ impl App {
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
-            task_pool_configs: None,
         };
 
         core::mem::swap(self, &mut app);
@@ -396,7 +446,6 @@ impl SubApp {
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
-            task_pool_configs: None,
         };
 
         core::mem::swap(self, &mut app.main);
@@ -588,20 +637,15 @@ impl App {
     pub fn build(&mut self) -> &mut Self {
         match self.main.plugins_state {
             PluginsState::Adding => (),
-            PluginsState::Built => panic!("find a nested App::build in `Build` stage"),
-            PluginsState::Ready => panic!("find a nested App::build in `Apply` stage"),
+            PluginsState::Built => panic!("find a nested App::build in `Apply` stage"),
+            PluginsState::Ready => panic!("find a nested App::build in `Clean` stage"),
             PluginsState::Cleaned => return self,
         }
 
         #[cfg(feature = "trace")]
         let _app_build_span = zlim_log::info_span!(parent: None, "app build").entered();
 
-        // Initialize TaskPool
-        if let Some(mut task_pool_configs) = self.task_pool_configs.take() {
-            task_pool_configs.apply();
-        } else {
-            TaskPoolConfigs::default().apply();
-        }
+        TaskPoolConfigs::default().try_apply();
 
         // Collect all types of information:
         // - Reflect Registry (TypeDB)
@@ -843,10 +887,14 @@ fn missing_world() -> ! {
 impl SubApp {
     /// Extracts data from `world` into the app's world using the registered extract method.
     ///
-    /// **Note:** There is no default extract method. Calling `extract` does nothing if
-    /// [`set_extract`](Self::set_extract) has not been called.
+    /// **Note:** There is no default extract method. Calling `extract` does nothing
+    /// if [`set_extract`](Self::set_extract) has not been called.
+    ///
+    /// # Panics
+    ///
+    /// - May panic if the `plugins_state` is not [`PluginsState::Cleaned`].
     pub fn extract(&mut self, world: &mut World) {
-        assert_eq!(self.plugins_state, PluginsState::Cleaned);
+        debug_assert_eq!(self.plugins_state, PluginsState::Cleaned);
 
         let this_world: &mut World = match &mut self.world {
             Some(world) => world,
@@ -864,9 +912,10 @@ impl SubApp {
     ///
     /// # Panics
     ///
-    /// Panic if the `update_schedule` if `Some` but schedule does not exist.
+    /// - Panic if the `update_schedule` is `Some` but schedule does not exist.
+    /// - May panic if the `plugins_state` is not [`PluginsState::Cleaned`].
     pub fn update(&mut self) {
-        assert_eq!(self.plugins_state, PluginsState::Cleaned);
+        debug_assert_eq!(self.plugins_state, PluginsState::Cleaned);
 
         let world: &mut World = match &mut self.world {
             Some(world) => world,
@@ -892,9 +941,10 @@ impl App {
     ///
     /// # Panics
     ///
-    /// Panic if the `update_schedule` if `Some` but schedule does not exist.
+    /// - Panic if the `update_schedule` is `Some` but schedule does not exist.
+    /// - May panic if the `plugins_state` is not [`PluginsState::Cleaned`].
     pub fn update(&mut self) {
-        assert_eq!(self.main.plugins_state, PluginsState::Cleaned);
+        debug_assert_eq!(self.main.plugins_state, PluginsState::Cleaned);
 
         #[cfg(feature = "trace")]
         let _update_span = zlim_log::info_span!("app update").entered();
@@ -1144,7 +1194,7 @@ impl App {
     ///
     /// This is the preferred constructor for most use cases.
     ///
-    /// This does not include an [`AppRunner`] or [`LogPlugin`];
+    /// This does not include an [`AppRunner`] or [`LogConfig`];
     /// these should be set up manually if needed.
     ///
     /// [`AppRunner`]: RunnerFn
@@ -1156,10 +1206,8 @@ impl App {
         let mut app = App::empty();
         app.main.update_schedule = Some(Main.intern());
 
+        app.add_message::<AppExit>();
         app.add_plugins(MainSchedulePlugin);
-
-        let main_world = app.main.world.as_mut().unwrap();
-        main_world.register_message::<AppExit>();
 
         app
     }
@@ -1172,7 +1220,7 @@ impl Default for App {
     /// As same as [`App::new`], this is the preferred constructor for
     /// most use cases.
     ///
-    /// This does not include an [`AppRunner`] or [`LogPlugin`];
+    /// This does not include an [`AppRunner`] or [`LogConfig`];
     /// these should be set up manually if needed.
     ///
     /// [`AppRunner`]: RunnerFn
