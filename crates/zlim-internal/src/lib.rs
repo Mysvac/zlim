@@ -9,7 +9,7 @@ pub use zlim_log as log;
 pub use zlim_os as os;
 pub use zlim_utils as utils;
 
-pub use zlim_reflect as reflect;
+pub use zlim_path as path;
 pub use zlim_task as task;
 
 pub use zlim_core as core;
@@ -28,6 +28,8 @@ pub use zlim_transform as transform;
 
 pub use zlim_diagnostic as diagnostic;
 
+pub use zlim_asset as asset;
+
 #[cfg(feature = "zlim-sample")]
 pub use zlim_sample as sample;
 
@@ -38,5 +40,5 @@ pub use zlim_sysinfo as sysinfo;
 pub mod derive {
     pub use zlim_app::derive::*;
     pub use zlim_core::derive::*;
-    pub use zlim_reflect::derive::*;
+    pub use zlim_path::derive::*;
 }

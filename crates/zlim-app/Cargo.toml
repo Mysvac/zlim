@@ -24,7 +24,7 @@ zlim-log = { path = "../zlim-log", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
 
 zlim-task = { path = "../zlim-task", default-features = false }
-zlim-reflect = { path = "../zlim-reflect", default-features = false }
+zlim-path = { path = "../zlim-path", default-features = false }
 
 zlim-core = { path = "../zlim-core", default-features = false }
 
@@ -37,7 +37,6 @@ ctrlc = { version = "3.5.2" }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = { version = "0.2", default-features = false, features = ["std"] }
-
 js-sys = { version = "0.3", default-features = false, features = ["std"] }
 web-sys = { version = "0.3", default-features = false, features = ["std", "Window"] }
 

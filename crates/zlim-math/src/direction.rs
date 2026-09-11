@@ -2,7 +2,7 @@ use core::f32::consts::FRAC_1_SQRT_2;
 use core::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use crate::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4};
 
@@ -90,8 +90,8 @@ fn assert_is_normalized(message: &str, length_squared: f32) {
 
 /// A normalized vector pointing in a direction in 2D space
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Dir2"]
 #[repr(transparent)]
 #[doc(alias = "Direction2d")]
 pub struct Dir2(Vec2);
@@ -403,8 +403,8 @@ impl approx::UlpsEq for Dir2 {
 
 /// A normalized vector pointing in a direction in 3D space
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Dir3"]
 #[repr(transparent)]
 #[doc(alias = "Direction3d")]
 pub struct Dir3(Vec3);
@@ -809,8 +809,8 @@ impl approx::UlpsEq for Dir3 {
 /// This type stores a 16 byte aligned [`Vec3A`].
 /// This may or may not be faster than [`Dir3`]: make sure to benchmark!
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Dir3A"]
 #[repr(transparent)]
 #[doc(alias = "Direction3dA")]
 pub struct Dir3A(Vec3A);
@@ -1055,8 +1055,8 @@ impl approx::UlpsEq for Dir3A {
 
 /// A normalized vector pointing in a direction in 4D space
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Dir4"]
 #[repr(transparent)]
 #[doc(alias = "Direction4d")]
 pub struct Dir4(Vec4);

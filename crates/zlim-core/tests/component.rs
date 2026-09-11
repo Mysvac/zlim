@@ -10,7 +10,7 @@ use zlim_core::entity::EntityId;
 use zlim_core::entity::EntityMapper;
 use zlim_core::world::DeferredWorld;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 use serde::{Deserialize, Serialize};
 

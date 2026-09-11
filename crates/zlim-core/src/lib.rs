@@ -61,10 +61,9 @@ pub mod world;
 pub mod __macro_exports__ {
     pub use serde::Deserialize as __Deserialize;
     pub use serde::Serialize as __Serialize;
+    pub use zlim_path::TypePath as __TypePath;
+    pub use zlim_path::derive::TypePath as __TypePathDerive;
     pub use zlim_ptr::OwningPtr as __OwningPtr;
-    pub use zlim_reflect::derive::TypePath as __TypePathDerive;
-    pub use zlim_reflect::ops::Reflect as __Reflect;
-    pub use zlim_reflect::path::TypePath as __TypePath;
     pub use zlim_reg::submit as __submit;
     pub use zlim_utils::debug::DebugLocation as __DebugLocation;
     pub use zlim_utils::str::intern_str as __intern_str;
@@ -75,8 +74,8 @@ pub mod __macro_exports__ {
 
 /// zlim-core prelude
 pub mod prelude {
-    #[doc(hidden)] // use zlim_reflect instead
-    pub use zlim_reflect::derive::TypePath;
+    #[doc(hidden)] // use `zlim_path::TypePath` instead
+    pub use zlim_path::derive::TypePath;
 
     pub use crate::{register_component, register_job, register_job_group, register_resource};
     pub use zlim_core_derive::{job, job_fn, job_group};

@@ -353,7 +353,7 @@ impl CloneContext {
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
-    /// use zlim_reflect::derive::TypePath;
+    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// #[component(cloner = clone_link)]
@@ -423,7 +423,7 @@ impl CloneContext {
 /// ```rust
 /// use zlim_core::prelude::*;
 /// use zlim_core::clone::ComponentCloner;
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
 /// #[component(copy)]
@@ -1096,7 +1096,7 @@ mod tests {
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     use serde::{Deserialize, Serialize};
-    use zlim_reflect::TypePath;
+    use zlim_path::TypePath;
 
     use crate::world::World;
     use crate::{derive::Component, entity::EntityId};

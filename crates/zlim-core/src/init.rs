@@ -1,7 +1,5 @@
 //! Global application initialization (startup collection).
 
-use zlim_reflect::TypeDB;
-
 use crate::component::ComponentDB;
 use crate::job::JobDB;
 use crate::job::JobGroup;
@@ -23,7 +21,6 @@ fn init_internal() {
     zlim_log::debug!("Engine CoreInit Start...");
 
     zlim_task::cfg::single_thread! {
-        TypeDB::collect();
         ResourceDB::collect();
         ComponentDB::collect();
         JobDB::collect();
@@ -32,7 +29,6 @@ fn init_internal() {
 
     zlim_task::cfg::multi_thread! {
         zlim_task::MainTaskPool::get().scope(|s| {
-            s.spawn(async { TypeDB::collect(); });
             s.spawn(async { ResourceDB::collect(); });
             s.spawn(async { ComponentDB::collect(); });
             s.spawn(async { JobDB::collect(); });

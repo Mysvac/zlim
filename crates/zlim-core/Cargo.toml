@@ -28,7 +28,7 @@ zlim-log = { path = "../zlim-log", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
 
 zlim-task = { path = "../zlim-task", default-features = false }
-zlim-reflect = { path = "../zlim-reflect", default-features = false }
+zlim-path = { path = "../zlim-path", default-features = false }
 
 indexmap = { version = "2.14", default-features = false }
 

@@ -23,7 +23,7 @@ use super::{Message, MessageQueue};
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageQueue};
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Event;
@@ -87,7 +87,7 @@ impl<M: Message> FusedIterator for MessageKeyIter<M> {}
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageCursor, MessageQueue};
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Hit;

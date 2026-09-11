@@ -48,6 +48,9 @@ zlim-internal = { path = "./crates/zlim-internal", default-features = false }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional = true }
 
+[dev-dependencies]
+zlim-internal = { path = "./crates/zlim-internal", default-features = false, features = ["debug", "notify"] }
+
 [features]
 
 # ----------------------------------------------------------
@@ -57,18 +60,18 @@ default = []
 # ----------------------------------------------------------
 # Basic
 
-# Forces dynamic linking, which improves iterative compile times.
+# Force dynamic linking, which improves iterative compile times.
 # - Not effective in wasm target.
 dylib = ["dep:zlim-dylib", "zlim-internal/dylib"]
 
-# Forces all engine tasks to run on a single thread.
+# Force all engine tasks to run on a single thread.
 # - Not effective in wasm target that is always single-threaded.
 single_thread = ["zlim-internal/single_thread"]
 
 # ----------------------------------------------------------
 # default
 
-# Enables default compile time log level and filter out useless logs.
+# Enable default compile time log level and filter out useless logs.
 # - log: `max_level_info` + `release_max_level_warn`
 # - tracing: `max_level_debug` + `release_max_level_info`
 # - zlim_log: as same as `tracing`.
@@ -78,15 +81,15 @@ default_log_level = ["zlim-internal/default_log_level"]
 # ----------------------------------------------------------
 # combination
 
-# COLLECTION: Enables this feature to improve the development experience.
+# COLLECTION: Enable this feature to improve the development experience.
 # - This feature provides better debugging information.
 # - This feature should not be enabled for published apps!
-dev = ["debug", "trace", "backtrace"]
+dev = ["debug", "trace", "backtrace", "notify"]
 
-# COLLECTION: Enables editor related dependencies.
-# - Enables editor-specific dependencies.
-# - Enables developer-friendly error messages and more debug-assertions.
-# - Enables dynamic linking for faster rebuild times during development.
+# COLLECTION: Enable editor related dependencies.
+# - Enable editor-specific dependencies.
+# - Enable developer-friendly error messages and more debug-assertions.
+# - Enable dynamic linking for faster rebuild times during development.
 # - This feature should not be enabled for published apps!
 editor = [
     "dev",
@@ -97,20 +100,20 @@ editor = [
 # ----------------------------------------------------------
 # optional sub-crates
 
-# Enables `zlim-sample` crate.
+# Enable `zlim-sample` crate.
 zlim-sample = ["zlim-internal/zlim-sample"]
 
-# Enables `zlim-sysinfo` crate.
+# Enable `zlim-sysinfo` crate.
 # - Not effective in wasm target or other unsupport platforms.
 zlim-sysinfo = ["zlim-internal/zlim-sysinfo"]
 
 # ----------------------------------------------------------
 # others
 
-# Improves panic backtrace, filter noisy rows.
+# Improve panic backtrace, filter noisy rows.
 backtrace = ["zlim-internal/backtrace"]
 
-# Improves debug information, increase debug-assertions.
+# Improve debug information, increase debug-assertions.
 debug = ["zlim-internal/debug"]
 
 # Tracing support, improves panic information.
@@ -135,6 +138,11 @@ trace_chrome = ["zlim-internal/trace_chrome", "trace"]
 # - This is preferred if your application uses async-io.
 # - Not effective in single-thread mode or wasm target.
 async-io = ["zlim-internal/async-io"]
+
+# Enable file system notify for Asset hot-reloading.
+# - Not effective in wasm target or other unsupport platforms.
+# - This feature should not be enabled for published apps!
+notify = ["zlim-internal/notify"]
 
 # ----------------------------------------------------------
 

@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Vec3, Vec4};
-use zlim_reflect::derive::Reflect;
 
 use crate::okcolor_convert::{okhsv_to_oklab, oklab_to_okhsv};
 use crate::{Alpha, ColorToComponents, Gray, Hsla, Hsva, Hue, Hwba, Laba, Lcha};
@@ -22,8 +21,7 @@ use crate::{impl_from_via, impl_stable_interpolate_via_mix};
 /// <div>
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
-#[derive(Debug, Clone, Copy, PartialEq, Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Okhsva {
     /// The hue channel. [0.0, 360.0]
     pub hue: f32,

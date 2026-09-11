@@ -6,7 +6,7 @@ use zlim_core::world::World;
 use zlim_core::{job, job_fn, job_group};
 
 use job::{IntoJob, JobDB, JobGroup, JobGroupLabel, JobLabel};
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 // -----------------------------------------------------------------------------
 // Attribute macro — non-generic

@@ -30,7 +30,7 @@ use crate::world::{World, WorldCell};
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Node;
@@ -192,7 +192,7 @@ impl FusedIterator for ParentSlice<'_> {}
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Node;

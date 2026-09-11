@@ -6,7 +6,7 @@ use zlim_core::derive::Resource;
 use zlim_core::job::{JobDB, job_fn};
 use zlim_core::schedule::{Schedule, ScheduleLabel, Schedules};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 // -----------------------------------------------------------------------------
 // Labels & jobs

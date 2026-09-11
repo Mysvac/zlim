@@ -7,8 +7,8 @@ use zlim_core::derive::{Bundle, Component, Resource};
 use zlim_core::entity::EntityId;
 use zlim_core::ops::EntityOwned;
 use zlim_core::world::World;
+use zlim_path::TypePath;
 use zlim_ptr::OwningPtr;
-use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Components

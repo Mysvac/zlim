@@ -468,7 +468,7 @@ mod tests {
     use crate::component::Component;
     use crate::world::World;
     use serde::{Deserialize, Serialize};
-    use zlim_reflect::TypePath;
+    use zlim_path::TypePath;
 
     #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
     struct Foo;

@@ -6,14 +6,8 @@ use super::interval::*;
 use core::any::type_name;
 use core::fmt::{self, Debug};
 use core::marker::PhantomData;
-use serde::Deserialize;
-use serde::Serialize;
 use zlim_math::VectorSpace;
 use zlim_math::ops;
-use zlim_reflect::Reflect;
-
-#[expect(unused, reason = "imported just for doc links")]
-use super::CurveExt;
 
 // -----------------------------------------------------------------------------
 // ConstantCurve
@@ -35,7 +29,7 @@ use super::CurveExt;
 /// A curve with a constant value over its domain.
 ///
 /// This is a curve that holds an inner value and always produces a clone of that value when sampled.
-#[derive(Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug)]
 pub struct ConstantCurve<T> {
     pub(crate) domain: Interval,
     pub(crate) value: T,
@@ -74,12 +68,10 @@ where
 ///
 /// This is a curve that holds an inner function `f` which takes numbers (`f32`) as input and produces
 /// output of type `T`. The value of this curve when sampled at time `t` is just `f(t)`.
-#[derive(Clone, Reflect, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct FunctionCurve<T, F> {
     pub(crate) domain: Interval,
     pub(crate) f: F,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -125,14 +117,16 @@ where
 // -----------------------------------------------------------------------------
 // MapCurve
 
-/// A curve whose samples are defined by mapping samples from another curve through a
-/// given function. Curves of this type are produced by [`CurveExt::map`].
-#[derive(Clone, Reflect, Serialize, Deserialize)]
+/// A curve whose samples are defined by mapping samples from another curve
+/// through a given function.
+///
+/// Curves of this type are produced by [`CurveExt::map`].
+///
+/// [`CurveExt::map`]: crate::CurveExt::map
+#[derive(Clone)]
 pub struct MapCurve<S, T, C, F> {
     pub(crate) preimage: C,
     pub(crate) f: F,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<(fn() -> S, fn(S) -> T)>,
 }
 
@@ -168,14 +162,15 @@ where
 // ReparamCurve
 
 /// A curve whose sample space is mapped onto that of some base curve's before sampling.
+///
 /// Curves of this type are produced by [`CurveExt::reparametrize`].
-#[derive(Clone, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::reparametrize`]: crate::CurveExt::reparametrize
+#[derive(Clone)]
 pub struct ReparamCurve<T, C, F> {
     pub(crate) domain: Interval,
     pub(crate) base: C,
     pub(crate) f: F,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -212,15 +207,16 @@ where
 // LinearReparamCurve
 
 /// A curve that has had its domain changed by a linear reparameterization (stretching and scaling).
+///
 /// Curves of this type are produced by [`CurveExt::reparametrize_linear`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::reparametrize_linear`]: crate::CurveExt::reparametrize_linear
+#[derive(Clone, Debug)]
 pub struct LinearReparamCurve<T, C> {
     /// Invariants: The domain of this curve must always be bounded.
     pub(crate) base: C,
     /// Invariants: This interval must always be bounded.
     pub(crate) new_domain: Interval,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -244,14 +240,16 @@ where
 // -----------------------------------------------------------------------------
 // CurveReparamCurve
 
-/// A curve that has been reparametrized by another curve, using that curve to transform the
-/// sample times before sampling. Curves of this type are produced by [`CurveExt::reparametrize_by_curve`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+/// A curve that has been reparametrized by another curve, using that curve
+/// to transform the sample times before sampling.
+///
+/// Curves of this type are produced by [`CurveExt::reparametrize_by_curve`].
+///
+/// [`CurveExt::reparametrize_by_curve`]: crate::CurveExt::reparametrize_by_curve
+#[derive(Clone, Debug)]
 pub struct CurveReparamCurve<T, C, D> {
     pub(crate) base: C,
     pub(crate) reparam_curve: D,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -275,13 +273,14 @@ where
 // -----------------------------------------------------------------------------
 // GraphCurve
 
-/// A curve that is the graph of another curve over its parameter space. Curves of this type are
-/// produced by [`CurveExt::graph`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+/// A curve that is the graph of another curve over its parameter space.
+///
+/// Curves of this type are produced by [`CurveExt::graph`].
+///
+/// [`CurveExt::graph`]: crate::CurveExt::graph
+#[derive(Clone, Debug)]
 pub struct GraphCurve<T, C> {
     pub(crate) base: C,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -303,15 +302,16 @@ where
 // -----------------------------------------------------------------------------
 // ZipCurve
 
-/// A curve that combines the output data from two constituent curves into a tuple output. Curves
-/// of this type are produced by [`CurveExt::zip`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+/// A curve that combines the output data from two constituent curves into a tuple output.
+///
+/// Curves of this type are produced by [`CurveExt::zip`].
+///
+/// [`CurveExt::zip`]: crate::CurveExt::zip
+#[derive(Clone, Debug)]
 pub struct ZipCurve<S, T, C, D> {
     pub(crate) domain: Interval,
     pub(crate) first: C,
     pub(crate) second: D,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> (S, T)>,
 }
 
@@ -344,12 +344,12 @@ where
 /// must be left-finite.
 ///
 /// Curves of this type are produced by [`CurveExt::chain`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::chain`]: crate::CurveExt::chain
+#[derive(Clone, Debug)]
 pub struct ChainCurve<T, C, D> {
     pub(crate) first: C,
     pub(crate) second: D,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -392,11 +392,11 @@ where
 /// # Domain
 ///
 /// The original curve's domain must be bounded to get a valid [`ReverseCurve`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::reverse`]: crate::CurveExt::reverse
+#[derive(Clone, Debug)]
 pub struct ReverseCurve<T, C> {
     pub(crate) curve: C,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -431,12 +431,12 @@ where
 /// # Domain
 ///
 /// The original curve's domain must be bounded to get a valid [`RepeatCurve`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::repeat`]: crate::CurveExt::repeat
+#[derive(Clone, Debug)]
 pub struct RepeatCurve<T, C> {
     pub(crate) domain: Interval,
     pub(crate) curve: C,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -488,11 +488,11 @@ where
 /// # Domain
 ///
 /// The original curve's domain must be bounded to get a valid [`ForeverCurve`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::forever`]: crate::CurveExt::forever
+#[derive(Clone, Debug)]
 pub struct ForeverCurve<T, C> {
     pub(crate) curve: C,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -540,11 +540,11 @@ where
 /// # Domain
 ///
 /// The original curve's domain must be right-finite to get a valid [`PingPongCurve`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::ping_pong`]: crate::CurveExt::ping_pong
+#[derive(Clone, Debug)]
 pub struct PingPongCurve<T, C> {
     pub(crate) curve: C,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
@@ -592,14 +592,14 @@ where
 ///
 /// The first curve's domain must be right-finite and the second's must be left-finite to get a
 /// valid [`ContinuationCurve`].
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
+///
+/// [`CurveExt::chain_continue`]: crate::CurveExt::chain_continue
+#[derive(Clone, Debug)]
 pub struct ContinuationCurve<T, C, D> {
     pub(crate) first: C,
     pub(crate) second: D,
     // cache the offset in the curve directly to prevent triple sampling for every sample we make
     pub(crate) offset: T,
-    #[serde(skip)]
-    #[reflect(ignore, clone, default)]
     pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 

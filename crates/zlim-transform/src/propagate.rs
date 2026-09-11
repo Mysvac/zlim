@@ -120,7 +120,7 @@ pub use transform_change_root::TransformChangeRoot;
 /// [`PropagateAll`]: Self::PropagateAll
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[derive(zlim_core::derive::Resource)]
-#[derive(zlim_reflect::derive::TypePath)]
+#[derive(zlim_path::derive::TypePath)]
 #[type_path = "zlim_transform::TransformPropagateStrategy"]
 pub enum TransformPropagateStrategy {
     #[default]
@@ -136,7 +136,7 @@ zlim_task::cfg::single_thread! {
     mod transform_change_root {
         use zlim_core::derive::Resource;
         use zlim_core::entity::EntityId;
-        use zlim_reflect::derive::TypePath;
+        use zlim_path::derive::TypePath;
 
         /// Internal data pipeline for Transform Propagation. Users should not use this.
         ///
@@ -434,7 +434,7 @@ zlim_task::cfg::multi_thread! {
         use core::cell::RefCell;
         use zlim_core::derive::Resource;
         use zlim_core::entity::EntityId;
-        use zlim_reflect::derive::TypePath;
+        use zlim_path::derive::TypePath;
         use zlim_utils::ext::ThreadLocal;
 
         /// Internal data pipeline for Transform Propagation. Users should not use this.

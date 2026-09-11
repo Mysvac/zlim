@@ -24,11 +24,8 @@
 
 pub mod adaptor_impls;
 
-use core::ops::Deref;
-use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
-
 use crate::{Curve, Interval};
+use core::ops::Deref;
 use zlim_math::common_traits::{HasTangent, WithDerivative, WithTwoDerivatives};
 
 /// Trait for curves that have a well-defined notion of derivative, allowing for
@@ -144,7 +141,6 @@ where
 
 /// A wrapper that uses a [`SampleDerivative<T>`] curve to produce a `Curve<WithDerivative<T>>`.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
 pub struct SampleDerivativeWrapper<C>(C);
 
 impl<T, C> Curve<WithDerivative<T>> for SampleDerivativeWrapper<C>
@@ -172,7 +168,6 @@ where
 /// A wrapper that uses a [`SampleTwoDerivatives<T>`] curve to produce a
 /// `Curve<WithTwoDerivatives<T>>`.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
 pub struct SampleTwoDerivativesWrapper<C>(C);
 
 impl<T, C> Curve<WithTwoDerivatives<T>> for SampleTwoDerivativesWrapper<C>

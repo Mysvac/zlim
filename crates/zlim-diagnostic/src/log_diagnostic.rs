@@ -6,7 +6,7 @@ use zlim_core::derive::Resource;
 use zlim_core::job_fn;
 use zlim_core::time::{Real, Time, Timer, TimerMode};
 use zlim_log::info;
-use zlim_reflect::derive::TypePath;
+use zlim_path::derive::TypePath;
 use zlim_utils::hash::HashSet;
 
 use crate::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsPlugin};

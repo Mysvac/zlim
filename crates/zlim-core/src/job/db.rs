@@ -124,13 +124,6 @@ impl JobDB {
     /// If a job with the same name is already registered, a warning is logged
     /// (unless the constructor is identical, in which case this is a no-op).
     #[inline(never)]
-    #[expect(unsafe_code, reason = "specify sections to accelerate registeration")]
-    #[cfg_attr(target_family = "windows", unsafe(link_section = ".ZINIT"))]
-    #[cfg_attr(target_family = "wasm", unsafe(link_section = ".text.zliminit"))]
-    #[cfg_attr(target_os = "linux", unsafe(link_section = ".text.zliminit"))]
-    #[cfg_attr(target_os = "android", unsafe(link_section = ".text.zliminit"))]
-    #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
-    #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
     pub fn register(db: JobDB) {
         let name = db.name;
         let mut registry = REGISTRY.write().unwrap_or_else(PoisonError::into_inner);
@@ -187,6 +180,7 @@ pub trait JobLabel {
     fn database() -> JobDB;
 
     /// Registers this job if it is not already present.
+    #[cold]
     fn register() {
         let name = Self::name();
 

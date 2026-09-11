@@ -2,7 +2,7 @@
 
 use zlim_app::Plugin;
 use zlim_core::derive::Resource;
-use zlim_reflect::derive::TypePath;
+use zlim_path::derive::TypePath;
 
 /// Static system information for diagnostics and profiling UI.
 ///

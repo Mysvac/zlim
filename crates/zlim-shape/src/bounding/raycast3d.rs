@@ -1,6 +1,6 @@
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir3A, Vec3A};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use super::{Aabb3d, BoundingSphere, IntersectsVolume};
 use crate::Ray3d;
@@ -9,8 +9,8 @@ use crate::Ray3d;
 // RayCast3d
 
 /// A raycast intersection test for 3D bounding volumes
-#[derive(Clone, Debug, Reflect)]
-#[reflect(Debug, Clone)]
+#[derive(Clone, Debug, TypePath)]
+#[type_path = "zlim_shape::bounding::RayCast3d"]
 pub struct RayCast3d {
     /// The origin of the ray.
     pub origin: Vec3A,
@@ -105,8 +105,8 @@ impl IntersectsVolume<BoundingSphere> for RayCast3d {
 // AabbCast3d
 
 /// An intersection test that casts an [`Aabb3d`] along a ray.
-#[derive(Clone, Debug, Reflect)]
-#[reflect(Debug, Clone)]
+#[derive(Clone, Debug, TypePath)]
+#[type_path = "zlim_shape::bounding::AabbCast3d"]
 pub struct AabbCast3d {
     /// The ray along which to cast the bounding volume
     pub ray: RayCast3d,
@@ -153,8 +153,8 @@ impl IntersectsVolume<Aabb3d> for AabbCast3d {
 // BoundingSphereCast
 
 /// An intersection test that casts a [`BoundingSphere`] along a ray.
-#[derive(Clone, Debug, Reflect)]
-#[reflect(Debug, Clone)]
+#[derive(Clone, Debug, TypePath)]
+#[type_path = "zlim_shape::bounding::BoundingSphereCast"]
 pub struct BoundingSphereCast {
     /// The ray along which to cast the bounding volume
     pub ray: RayCast3d,

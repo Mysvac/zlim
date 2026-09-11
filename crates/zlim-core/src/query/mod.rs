@@ -58,7 +58,7 @@
 //!
 //! ```rust
 //! use zlim_core::prelude::*;
-//! use zlim_reflect::derive::TypePath;
+//! use zlim_path::derive::TypePath;
 //!
 //! #[derive(TypePath, Component, Clone)]
 //! struct Position { x: f32, y: f32 }

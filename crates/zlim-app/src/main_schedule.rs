@@ -8,7 +8,7 @@ use zlim_core::schedule::ScheduleStage;
 use zlim_core::schedule::SingleThreadedExecutor;
 use zlim_core::system::Local;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 use super::{App, Plugin};
 

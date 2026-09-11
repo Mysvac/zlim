@@ -1,6 +1,6 @@
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir2, Vec2};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use super::{Aabb2d, BoundingCircle, IntersectsVolume};
 use crate::Ray2d;
@@ -9,8 +9,8 @@ use crate::Ray2d;
 // RayCast2d
 
 /// A raycast intersection test for 2D bounding volumes
-#[derive(Clone, Debug, Reflect)]
-#[reflect(Debug, Clone)]
+#[derive(Clone, Debug, TypePath)]
+#[type_path = "zlim_shape::bounding::RayCast2d"]
 pub struct RayCast2d {
     /// The ray for the test
     pub ray: Ray2d,
@@ -107,8 +107,8 @@ impl IntersectsVolume<BoundingCircle> for RayCast2d {
 // AabbCast2d
 
 /// An intersection test that casts an [`Aabb2d`] along a ray.
-#[derive(Clone, Debug, Reflect)]
-#[reflect(Debug, Clone)]
+#[derive(Clone, Debug, TypePath)]
+#[type_path = "zlim_shape::bounding::AabbCast2d"]
 pub struct AabbCast2d {
     /// The ray along which to cast the bounding volume
     pub ray: RayCast2d,
@@ -148,8 +148,8 @@ impl IntersectsVolume<Aabb2d> for AabbCast2d {
 // BoundingCircleCast
 
 /// An intersection test that casts a [`BoundingCircle`] along a ray.
-#[derive(Clone, Debug, Reflect)]
-#[reflect(Debug, Clone)]
+#[derive(Clone, Debug, TypePath)]
+#[type_path = "zlim_shape::bounding::BoundingCircleCast"]
 pub struct BoundingCircleCast {
     /// The ray along which to cast the bounding volume
     pub ray: RayCast2d,

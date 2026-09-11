@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use zlim_app::{App, SubApp};
 use zlim_core::derive::Resource;
 use zlim_os::time::Instant;
-use zlim_reflect::derive::TypePath;
+use zlim_path::derive::TypePath;
 use zlim_utils::hash::{HashMap, NoopState};
 
 // -----------------------------------------------------------------------------

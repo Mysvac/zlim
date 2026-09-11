@@ -591,7 +591,7 @@ impl<'a> EntityCommands<'a> {
     /// ```rust
     /// use zlim_core::derive::Component;
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
+    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Hp(u32);

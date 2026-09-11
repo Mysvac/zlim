@@ -24,6 +24,8 @@
 //! [changing parametrizations]: CurveExt::reparametrize
 //! [mapping output]: CurveExt::map
 //! [rasterization]: CurveResampleExt::resample
+#![cfg_attr(docsrs, expect(internal_features, reason = "needed for fake_variadic"))]
+#![cfg_attr(docsrs, feature(doc_cfg, rustdoc_internals))]
 
 // -----------------------------------------------------------------------------
 // Modules

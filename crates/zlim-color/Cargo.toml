@@ -11,7 +11,7 @@ exclude = ["README.zh.md"]
 
 zlim-math = { path = "../zlim-math", default-features = false }
 zlim-curve = { path = "../zlim-curve", default-features = false }
-zlim-reflect = { path = "../zlim-reflect", default-features = false }
+zlim-path = { path = "../zlim-path", default-features = false }
 
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 bytemuck = { version = "1", features = ["derive"] }

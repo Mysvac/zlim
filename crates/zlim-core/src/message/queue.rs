@@ -11,7 +11,7 @@ use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 use crate::message::MessageKeyIter;
 use crate::message::{Message, MessageKey};
@@ -84,7 +84,7 @@ impl<M: Message> DerefMut for MessageSequence<M> {
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageQueue};
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Hit {
@@ -235,7 +235,7 @@ impl<M: Message> MessageQueue<M> {
     ///
     /// ```rust
     /// use zlim_core::message::{Message, MessageQueue};
-    /// use zlim_reflect::derive::TypePath;
+    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Message)]
     /// struct Ping;
@@ -261,7 +261,7 @@ impl<M: Message> MessageQueue<M> {
     ///
     /// ```rust
     /// use zlim_core::message::{Message, MessageQueue};
-    /// use zlim_reflect::derive::TypePath;
+    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Message)]
     /// struct Ping(u32);
@@ -307,7 +307,7 @@ impl<M: Message> MessageQueue<M> {
     ///
     /// ```rust
     /// use zlim_core::message::{Message, MessageQueue};
-    /// use zlim_reflect::derive::TypePath;
+    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Message)]
     /// struct Hit;

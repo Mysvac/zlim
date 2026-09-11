@@ -20,7 +20,7 @@ rand = ["dep:rand", "glam/rand"]
 
 zlim-log = { path = "../zlim-log", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
-zlim-reflect = { path = "../zlim-reflect", default-features = false, features = ["glam"] }
+zlim-path = { path = "../zlim-path", default-features = false, features = ["glam"] }
 
 glam = { version = "0.33", default-features = false, features = ["std", "bytemuck", "serde", "float-types", "integer-types"] }
 libm = { version = "0.2", optional = true }

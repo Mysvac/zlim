@@ -9,7 +9,10 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Vec2, VectorSpace};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
+
+// -----------------------------------------------------------------------------
+// CubicBezier
 
 /// A spline composed of a single cubic Bezier curve.
 ///
@@ -49,8 +52,8 @@ use zlim_reflect::Reflect;
 /// let bezier = CubicBezier::new(points).to_curve().unwrap();
 /// let positions: Vec<_> = bezier.iter_positions(100).collect();
 /// ```
-#[derive(Reflect, Clone, Debug)]
-#[reflect(Clone, Debug)]
+#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::CubicBezier"]
 pub struct CubicBezier<P: VectorSpace> {
     /// The control points of the Bezier curve.
     pub control_points: Vec<[P; 4]>,
@@ -84,8 +87,11 @@ impl<P: VectorSpace<Scalar = f32>> CubicGenerator<P> for CubicBezier<P> {
     }
 }
 
-/// An error returned during cubic curve generation for cubic Bezier curves indicating that a
-/// segment of control points was not present.
+// -----------------------------------------------------------------------------
+// CubicBezierError
+
+/// An error returned during cubic curve generation for cubic Bezier curves
+/// indicating that a segment of control points was not present.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CubicBezierError;
 
@@ -99,9 +105,14 @@ impl Display for CubicBezierError {
 
 impl core::error::Error for CubicBezierError {}
 
-/// A spline interpolated continuously between the nearest two control points, with the position and
-/// velocity of the curve specified at both control points. This curve passes through all control
-/// points, with the specified velocity which includes direction and parametric speed.
+// -----------------------------------------------------------------------------
+// CubicHermite
+
+/// A spline interpolated continuously between the nearest two control points,
+/// with the position and velocity of the curve specified at both control points.
+///
+/// This curve passes through all control points, with the specified velocity
+/// which includes direction and parametric speed.
 ///
 /// Useful for smooth interpolation when you know the position and velocity at two points in time,
 /// such as network prediction.
@@ -126,8 +137,8 @@ impl core::error::Error for CubicBezierError {}
 /// the final curve segment connects the last control point to the first.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Reflect, Clone, Debug)]
-#[reflect(Clone, Debug)]
+#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::CubicHermite"]
 pub struct CubicHermite<P: VectorSpace> {
     /// The control points of the Hermite curve.
     pub control_points: Vec<(P, P)>,
@@ -211,6 +222,9 @@ impl<P: VectorSpace<Scalar = f32>> CyclicCubicGenerator<P> for CubicHermite<P> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// CubicCardinalSpline
+
 /// A spline interpolated continuously across the nearest four control points, with the position of
 /// the curve specified at every control point and the tangents computed automatically. The associated [`CubicCurve`]
 /// has one segment between each pair of adjacent control points.
@@ -237,8 +251,8 @@ impl<P: VectorSpace<Scalar = f32>> CyclicCubicGenerator<P> for CubicHermite<P> {
 /// the final curve segment connects the last control point to the first.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Reflect, Clone, Debug)]
-#[reflect(Clone, Debug)]
+#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::CubicCardinalSpline"]
 pub struct CubicCardinalSpline<P: VectorSpace> {
     /// Tension
     pub tension: f32,
@@ -358,6 +372,9 @@ impl<P: VectorSpace<Scalar = f32>> CyclicCubicGenerator<P> for CubicCardinalSpli
     }
 }
 
+// -----------------------------------------------------------------------------
+// CubicBSpline
+
 /// A spline interpolated continuously across the nearest four control points. The curve does not
 /// necessarily pass through any of the control points.
 ///
@@ -380,12 +397,13 @@ impl<P: VectorSpace<Scalar = f32>> CyclicCubicGenerator<P> for CubicCardinalSpli
 /// is used to form a cyclic curve, the three additional segments used to close the curve come last.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Reflect, Clone, Debug)]
-#[reflect(Clone, Debug)]
+#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::CubicBSpline"]
 pub struct CubicBSpline<P: VectorSpace> {
     /// The control points of the spline
     pub control_points: Vec<P>,
 }
+
 impl<P: VectorSpace> CubicBSpline<P> {
     /// Build a new B-Spline.
     pub fn new(control_points: impl IntoIterator<Item = P>) -> Self {
@@ -468,6 +486,9 @@ impl<P: VectorSpace<Scalar = f32>> CyclicCubicGenerator<P> for CubicBSpline<P> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// CubicNurbsError
+
 /// Error during construction of [`CubicNurbs`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CubicNurbsError {
@@ -517,6 +538,9 @@ impl Display for CubicNurbsError {
 
 impl core::error::Error for CubicNurbsError {}
 
+// -----------------------------------------------------------------------------
+// CubicNurbs
+
 /// Non-uniform Rational B-Splines (NURBS) are a powerful generalization of the [`CubicBSpline`] which can
 /// represent a much more diverse class of curves (like perfect circles and ellipses).
 ///
@@ -549,8 +573,8 @@ impl core::error::Error for CubicNurbsError {}
 /// continuity makes it useful for camera paths. Knot multiplicity of 2 in intermediate knots reduces the
 /// continuity to C1, and knot multiplicity of 3 reduces the continuity to C0. The curve is always at least
 /// C0, meaning it has no jumps or holes.
-#[derive(Reflect, Clone, Debug)]
-#[reflect(Clone, Debug)]
+#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::CubicNurbs"]
 pub struct CubicNurbs<P: VectorSpace> {
     /// The control points of the NURBS
     pub control_points: Vec<P>,
@@ -758,6 +782,9 @@ impl<P: VectorSpace<Scalar = f32>> RationalGenerator<P> for CubicNurbs<P> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// LinearSpline
+
 /// A spline interpolated linearly between the nearest 2 points.
 ///
 /// ### Interpolation
@@ -778,8 +805,8 @@ impl<P: VectorSpace<Scalar = f32>> RationalGenerator<P> for CubicNurbs<P> {
 /// formed with [`to_curve_cyclic`], the final segment connects the last control point with the first.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Reflect, Clone, Debug)]
-#[reflect(Clone, Debug)]
+#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::LinearSpline"]
 pub struct LinearSpline<P: VectorSpace> {
     /// The control points of the linear spline.
     pub points: Vec<P>,
@@ -847,6 +874,9 @@ impl<P: VectorSpace> CyclicCubicGenerator<P> for LinearSpline<P> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// InsufficientDataError
+
 /// An error indicating that a spline construction didn't have enough control points to generate a curve.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InsufficientDataError {
@@ -866,6 +896,9 @@ impl Display for InsufficientDataError {
 
 impl core::error::Error for InsufficientDataError {}
 
+// -----------------------------------------------------------------------------
+// CubicGenerator
+
 /// Implement this on cubic splines that can generate a cubic curve from their spline parameters.
 pub trait CubicGenerator<P: VectorSpace> {
     /// An error type indicating why construction might fail.
@@ -874,6 +907,9 @@ pub trait CubicGenerator<P: VectorSpace> {
     /// Build a [`CubicCurve`] by computing the interpolation coefficients for each curve segment.
     fn to_curve(&self) -> Result<CubicCurve<P>, Self::Error>;
 }
+
+// -----------------------------------------------------------------------------
+// CyclicCubicGenerator
 
 /// Implement this on cubic splines that can generate a cyclic cubic curve from their spline parameters.
 ///
@@ -887,14 +923,17 @@ pub trait CyclicCubicGenerator<P: VectorSpace> {
     fn to_curve_cyclic(&self) -> Result<CubicCurve<P>, Self::Error>;
 }
 
+// -----------------------------------------------------------------------------
+// CubicSegment
+
 /// A segment of a cubic curve, used to hold precomputed coefficients for fast interpolation.
 ///
 /// Segments can be chained together to form a longer [compound curve].
 ///
 /// [compound curve]: CubicCurve
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::CubicSegment"]
 pub struct CubicSegment<P: VectorSpace> {
     /// Polynomial coefficients for the segment.
     pub coeff: [P; 4],
@@ -1046,13 +1085,16 @@ impl CubicSegment<Vec2> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// CubicCurve
+
 /// A collection of [`CubicSegment`]s chained into a single parametric curve.
 ///
 /// Use any struct that implements the [`CubicGenerator`] trait to create a new curve, such as
 /// [`CubicBezier`].
 #[derive(Clone, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::CubicCurve"]
 pub struct CubicCurve<P: VectorSpace> {
     /// The segments comprising the curve. This must always be nonempty.
     segments: Vec<CubicSegment<P>>,
@@ -1186,6 +1228,9 @@ impl<P: VectorSpace> IntoIterator for CubicCurve<P> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// RationalGenerator
+
 /// Implement this on cubic splines that can generate a rational cubic curve from their spline parameters.
 pub trait RationalGenerator<P: VectorSpace> {
     /// An error type indicating why construction might fail.
@@ -1195,6 +1240,9 @@ pub trait RationalGenerator<P: VectorSpace> {
     fn to_curve(&self) -> Result<RationalCurve<P>, Self::Error>;
 }
 
+// -----------------------------------------------------------------------------
+// RationalSegment
+
 /// A segment of a rational cubic curve, used to hold precomputed coefficients for fast interpolation.
 ///
 /// Note that the `knot_span` is used only by [compound curves] constructed by chaining these
@@ -1202,8 +1250,8 @@ pub trait RationalGenerator<P: VectorSpace> {
 ///
 /// [compound curves]: RationalCurve
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::RationalSegment"]
 pub struct RationalSegment<P: VectorSpace> {
     /// The coefficients matrix of the cubic curve.
     pub coeff: [P; 4],
@@ -1326,13 +1374,16 @@ impl<P: VectorSpace<Scalar = f32>> RationalSegment<P> {
     }
 }
 
+// -----------------------------------------------------------------------------
+// RationalCurve
+
 /// A collection of [`RationalSegment`]s chained into a single parametric curve.
 ///
 /// Use any struct that implements the [`RationalGenerator`] trait to create a new curve, such as
 /// [`CubicNurbs`], or convert [`CubicCurve`] using `into/from`.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::cubic_splines::RationalCurve"]
 pub struct RationalCurve<P: VectorSpace> {
     /// The segments comprising the curve. This must always be nonempty.
     segments: Vec<RationalSegment<P>>,
@@ -1502,6 +1553,9 @@ impl<P: VectorSpace> From<CubicCurve<P>> for RationalCurve<P> {
         }
     }
 }
+
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {

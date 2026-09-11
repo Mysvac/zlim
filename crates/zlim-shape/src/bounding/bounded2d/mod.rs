@@ -2,7 +2,7 @@ mod primitive_impls;
 
 use serde::{Deserialize, Serialize};
 use zlim_math::{FloatPow, Isometry2d, Mat2, Rot2, Vec2, ops};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use super::{BoundingVolume, IntersectsVolume};
 use crate::Circle;
@@ -38,8 +38,8 @@ pub trait Bounded2d {
 
 /// A 2D axis-aligned bounding box, or bounding rectangle
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::bounding::Aabb2d"]
 #[doc(alias = "BoundingRectangle")]
 pub struct Aabb2d {
     /// The minimum, conventionally bottom-left, point of the box
@@ -469,8 +469,8 @@ mod aabb2d_tests {
 
 /// A bounding circle
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::bounding::BoundingCircle"]
 pub struct BoundingCircle {
     /// The center of the bounding circle
     pub center: Vec2,

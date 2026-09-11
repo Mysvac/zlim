@@ -133,7 +133,7 @@ pub use signals::*;
 mod signals {
     use super::Message;
     use crate::{entity::EntityId, tick::Tick};
-    use zlim_reflect::derive::TypePath;
+    use zlim_path::derive::TypePath;
 
     /// A predefined message sent when an entity is reparented.
     ///

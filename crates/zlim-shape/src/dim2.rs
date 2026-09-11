@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir2, InvalidDirectionError, Isometry2d};
 use zlim_math::{Rot2, Vec2};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use super::WindingOrder;
 use super::polygon::is_polygon_simple;
@@ -17,8 +17,8 @@ use crate::{Inset, Primitive2d, Ray2d};
 
 /// A circle primitive, representing the set of points some distance from the origin
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Circle"]
 pub struct Circle {
     /// The radius of the circle
     pub radius: f32,
@@ -99,8 +99,8 @@ impl Measured2d for Circle {
 /// **Warning:** Arcs with negative angle or radius, or with angle greater than an entire circle, are not officially supported.
 /// It is recommended to normalize arcs to have an angle in [0, 2π].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Arc2d"]
 #[doc(alias("CircularArc", "CircleArc"))]
 pub struct Arc2d {
     /// The radius of the circle
@@ -264,8 +264,8 @@ impl Arc2d {
 /// an entire circle, are not officially supported. We recommend normalizing circular sectors
 /// to have an angle in [0, 2π].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::CircularSector"]
 pub struct CircularSector {
     /// The arc defining the sector
     #[serde(flatten)]
@@ -419,8 +419,8 @@ impl CircularSector {
 /// an entire circle, are not officially supported. We recommend normalizing circular segments
 /// to have an angle in [0, 2π].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::CircularSegment"]
 pub struct CircularSegment {
     /// The arc defining the segment
     #[serde(flatten)]
@@ -564,8 +564,8 @@ impl CircularSegment {
 /// if the ellipse is not a circle, the inset shape is not actually an ellipse (although it
 /// may look like one) but can also be a lens-like shape.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Ellipse"]
 pub struct Ellipse {
     /// Half of the width and height of the ellipse.
     ///
@@ -710,8 +710,8 @@ impl Measured2d for Ellipse {
 
 /// A primitive shape formed by the region between two circles, also known as a ring.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Annulus"]
 #[doc(alias = "Ring")]
 pub struct Annulus {
     /// The inner circle of the annulus
@@ -805,8 +805,8 @@ impl Measured2d for Annulus {
 /// A four sided polygon, centered on the origin, where opposite sides are parallel but without
 /// requiring right angles.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Rhombus"]
 #[doc(alias = "Diamond")]
 pub struct Rhombus {
     /// Size of the horizontal and vertical diagonals of the rhombus
@@ -937,8 +937,8 @@ impl Measured2d for Rhombus {
 /// An unbounded plane in 2D space. It forms a separating surface through the origin,
 /// stretching infinitely far
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Plane2d"]
 pub struct Plane2d {
     /// The normal of the plane. The plane will be placed perpendicular to this direction
     pub normal: Dir2,
@@ -974,8 +974,8 @@ impl Plane2d {
 ///
 /// For a finite line: [`Segment2d`]
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Line2d"]
 pub struct Line2d {
     /// The direction of the line. The line extends infinitely in both the given direction
     /// and its opposite direction
@@ -989,8 +989,8 @@ impl Primitive2d for Line2d {}
 
 /// A line segment defined by two endpoints in 2D space.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Segment2d"]
 #[doc(alias = "LineSegment2d")]
 pub struct Segment2d {
     /// The endpoints of the line segment.
@@ -1295,8 +1295,8 @@ impl From<(Vec2, Vec2)> for Segment2d {
 
 /// A series of connected line segments in 2D space.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Polyline2d"]
 pub struct Polyline2d {
     /// The vertices of the polyline
     pub vertices: Vec<Vec2>,
@@ -1347,8 +1347,8 @@ impl Polyline2d {
 
 /// A triangle in 2D space
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Triangle2d"]
 pub struct Triangle2d {
     /// The vertices of the triangle
     pub vertices: [Vec2; 3],
@@ -1516,8 +1516,8 @@ impl Measured2d for Triangle2d {
 
 /// A rectangle primitive, which is like a square, except that the width and height can be different
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Rectangle"]
 #[doc(alias = "Quad")]
 pub struct Rectangle {
     /// Half of the width and height of the rectangle
@@ -1603,8 +1603,8 @@ impl Measured2d for Rectangle {
 
 /// A polygon with N vertices.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Polygon"]
 pub struct Polygon {
     /// The vertices of the `Polygon`
     pub vertices: Vec<Vec2>,
@@ -1648,8 +1648,8 @@ impl From<ConvexPolygon> for Polygon {
 
 /// A convex polygon with `N` vertices.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::ConvexPolygon"]
 pub struct ConvexPolygon {
     /// The vertices of the [`ConvexPolygon`].
     vertices: Vec<Vec2>,
@@ -1734,8 +1734,8 @@ impl TryFrom<Polygon> for ConvexPolygon {
 
 /// A polygon centered on the origin where all vertices lie on a circle, equally far apart.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::RegularPolygon"]
 pub struct RegularPolygon {
     /// The circumcircle on which all vertices lie
     pub circumcircle: Circle,
@@ -1876,8 +1876,8 @@ impl Measured2d for RegularPolygon {
 ///
 /// A two-dimensional capsule is defined as a neighborhood of points at a distance (radius) from a line
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::dim2::Capsule2d"]
 #[doc(alias = "stadium", alias = "pill")]
 pub struct Capsule2d {
     /// The radius of the capsule
@@ -1949,7 +1949,8 @@ impl Measured2d for Capsule2d {
 /// (for example, if the `inner_shape` is in fact larger),
 /// it may result in incorrect geometries.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::dim2::Ring"]
 pub struct Ring<P: Primitive2d> {
     /// The outer shape
     pub outer_shape: P,

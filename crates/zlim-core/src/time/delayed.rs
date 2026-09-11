@@ -5,7 +5,7 @@ use core::fmt::{Debug, Formatter};
 use core::time::Duration;
 
 use zlim_core_derive::job_fn;
-use zlim_reflect::derive::TypePath;
+use zlim_path::derive::TypePath;
 use zlim_utils::debug::DebugLocation;
 use zlim_utils::hash::HashMap;
 

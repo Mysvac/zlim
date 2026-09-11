@@ -2,7 +2,7 @@
 
 //! Marker trait for ECS message payload types.
 
-use zlim_reflect::path::TypePath;
+use zlim_path::TypePath;
 
 /// Marker trait for ECS message payload types.
 ///
@@ -19,7 +19,7 @@ use zlim_reflect::path::TypePath;
 /// update via [`MessageQueue::update`].
 ///
 /// [`MessageQueue::update`]: crate::message::MessageQueue::update
-/// [`TypePath`]: zlim_reflect::TypePath
+/// [`TypePath`]: zlim_path::TypePath
 ///
 /// # Using MessageQueue In World
 ///

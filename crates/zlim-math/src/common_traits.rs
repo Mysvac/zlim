@@ -5,7 +5,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Add, Div, Mul, Neg, Sub};
 
 use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use crate::{DVec2, DVec3, DVec4, Dir2, Dir3, Dir3A};
 use crate::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4, ops};
@@ -169,7 +169,8 @@ impl<T: ScalarField> VectorSpace for T {
 ///
 /// [vector spaces]: VectorSpace
 #[derive(Debug, Clone, Copy)]
-#[derive(Reflect, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Sum"]
 pub struct Sum<V, W>(pub V, pub W);
 
 impl<F: ScalarField, V, W> Mul<F> for Sum<V, W>

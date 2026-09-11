@@ -72,11 +72,14 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Dir2, Dir3, Dir3A, Isometry2d, Isometry3d, Sum};
 use zlim_math::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4, VectorSpace};
-use zlim_reflect::derive::Reflect;
+use zlim_path::derive::TypePath;
 
 use crate::{Curve, CurveExt, FunctionCurve, Interval};
 
 // TODO! Think about merging `Ease` with `StableInterpolate`
+
+// -----------------------------------------------------------------------------
+// Ease
 
 /// A type whose values can be eased between.
 ///
@@ -94,6 +97,9 @@ pub trait Ease: Sized {
     /// [unlimited domain]: Interval::EVERYWHERE
     fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self>;
 }
+
+// -----------------------------------------------------------------------------
+// EaseVectorSpace
 
 /// Marker trait that indicates:
 ///
@@ -119,6 +125,9 @@ where
     W: EaseVectorSpace,
 {
 }
+
+// -----------------------------------------------------------------------------
+// Ease impls
 
 impl<V: EaseVectorSpace> Ease for V {
     fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
@@ -204,7 +213,8 @@ impl Ease for Isometry2d {
 macro_rules! impl_ease_tuple {
     (0: []) => {};
     (1: [0: P0]) => {
-        #[cfg_attr(docsrs, doc = "This trait is implemented for tuples up to 12 items long.\n")]
+        #[cfg_attr(docsrs, doc(fake_variadic))]
+        #[cfg_attr(docsrs, doc = "This trait is implemented for tuples up to 12 items long.")]
         impl<P0: Ease> Ease for (P0,) {
             fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
                 let curve_tuple = ( <P0 as Ease>::interpolating_curve_unbounded(start.0, end.0), );
@@ -213,6 +223,7 @@ macro_rules! impl_ease_tuple {
         }
     };
     ($len:tt: [$($n:tt: $T:ident),*]) => {
+        #[cfg_attr(docsrs, doc(hidden))]
         impl<$($T: Ease),*> Ease for ($($T,)*) {
             fn interpolating_curve_unbounded(start: Self, end: Self) -> impl Curve<Self> {
                 let curve_tuple =
@@ -235,6 +246,9 @@ macro_rules! impl_ease_tuple {
 }
 
 zlim_utils::range_invoke!(impl_ease_tuple, 12);
+
+// -----------------------------------------------------------------------------
+// EasingCurve
 
 /// A [`Curve`] that is defined by
 ///
@@ -315,7 +329,8 @@ zlim_utils::range_invoke!(impl_ease_tuple, 12);
 /// [`sample`]: EasingCurve::sample
 /// [`sample_clamped`]: EasingCurve::sample_clamped
 #[derive(Clone, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::easing::EasingCurve"]
 pub struct EasingCurve<T> {
     start: T,
     end: T,
@@ -355,13 +370,16 @@ where
     }
 }
 
+// -----------------------------------------------------------------------------
+// JumpAt
+
 /// Configuration options for the [`EaseFunction::Steps`] curves. This closely replicates the
 /// [CSS step function specification].
 ///
 /// [CSS step function specification]: https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function/steps#description
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Eq, Default, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::easing::JumpAt"]
 pub enum JumpAt {
     /// Indicates that the first step happens when the animation begins.
     ///
@@ -400,6 +418,9 @@ impl JumpAt {
         (current_step / step_size).clamp(0.0, 1.0)
     }
 }
+
+// -----------------------------------------------------------------------------
+// EaseFunction
 
 /// Curve functions over the [unit interval], commonly used for easing transitions.
 ///
@@ -443,8 +464,8 @@ impl JumpAt {
 /// [unit interval]: `Interval::UNIT`
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::easing::EaseFunction"]
 #[non_exhaustive]
 // Note: Graphs are auto-generated via `tools/build-easefunction-graphs`.
 pub enum EaseFunction {
@@ -980,6 +1001,9 @@ pub struct StepsCurve(pub usize, pub JumpAt);
 #[derive(Copy, Clone)]
 pub struct ElasticCurve(pub f32);
 
+// -----------------------------------------------------------------------------
+// impl_ease_unit_struct
+
 /// Implements `Curve<f32>` for a unit struct using a function in `easing_functions`.
 macro_rules! impl_ease_unit_struct {
     ($ty: ty, $fn: ident) => {
@@ -1375,6 +1399,9 @@ impl Curve<f32> for EaseFunction {
         self.eval(t)
     }
 }
+
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {

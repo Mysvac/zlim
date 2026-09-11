@@ -297,7 +297,7 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 ///
 /// ```ignore
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::TypePath;
+/// use zlim_path::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct Player {

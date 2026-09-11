@@ -26,7 +26,7 @@ impl ResourceDB {
     ///
     /// ```rust
     /// use zlim_core::prelude::*;
-    /// use zlim_reflect::derive::TypePath;
+    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Resource)]
     /// struct Score(u32);
@@ -149,7 +149,7 @@ pub mod __internal__ {
 ///
 /// ```no_run
 /// use zlim_core::prelude::*;
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct MyResource;

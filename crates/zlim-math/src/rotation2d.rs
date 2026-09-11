@@ -2,7 +2,7 @@ use core::f32::consts::TAU;
 
 use glam::FloatExt;
 use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use crate::ops;
 use crate::prelude::{Mat2, Vec2};
@@ -33,8 +33,8 @@ use crate::prelude::{Mat2, Vec2};
 /// assert_relative_eq!(rotation1 * Vec2::X, Vec2::Y);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Rot2"]
 #[doc(alias = "rotation", alias = "rotation2d", alias = "rotation_2d")]
 pub struct Rot2 {
     /// The cosine of the rotation angle.

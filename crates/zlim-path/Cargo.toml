@@ -1,0 +1,25 @@
+[package]
+name = "zlim-path"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["tests", "README.zh.md"]
+
+[features]
+glam = ["dep:glam"]
+uuid = ["dep:uuid"]
+
+[dependencies]
+
+zlim-path-derive = { path = "derive", default-features = false }
+
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+# optional
+glam = { version = "0.33", default-features = false, features = ["std", "float-types", "integer-types"], optional = true }
+uuid = { version = "1.26", default-features = false, optional = true }
+
+[lints]
+workspace = true

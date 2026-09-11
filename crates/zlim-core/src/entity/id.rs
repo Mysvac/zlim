@@ -7,8 +7,6 @@ use core::mem;
 use core::num::NonZeroU32;
 
 use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
-use zlim_reflect::ops::Opaque;
 
 use crate::table::{TableId, TableRow};
 
@@ -48,8 +46,7 @@ use crate::table::{TableId, TableRow};
 ///
 /// [`to_bits`]: Self::to_bits
 #[repr(C, align(8))]
-#[derive(Reflect, Clone, Copy)]
-#[reflect(Opaque, Debug, Clone, Eq, Hash, Serialize, Deserialize)]
+#[derive(zlim_path::derive::TypePath, Clone, Copy)]
 #[type_path = "zlim_core::entity::EntityId"]
 pub struct EntityId {
     #[cfg(target_endian = "little")]
@@ -57,26 +54,6 @@ pub struct EntityId {
     pub(super) generation: NonZeroU32,
     #[cfg(target_endian = "big")]
     pub(super) index: u32,
-}
-
-impl Opaque for EntityId {
-    fn apply_str(&mut self, v: &str) -> Result<(), String> {
-        match v.parse::<u64>() {
-            Ok(v) => match NonZeroU32::try_from((v >> 32) as u32) {
-                Ok(generation) => {
-                    self.index = v as u32;
-                    self.generation = generation;
-                    Ok(())
-                }
-                Err(e) => Err(e.to_string()),
-            },
-            Err(e) => Err(e.to_string()),
-        }
-    }
-
-    fn stringify(&self) -> String {
-        self.to_bits().to_string()
-    }
 }
 
 impl EntityId {
@@ -324,7 +301,6 @@ impl Debug for Location {
 #[cfg(test)]
 mod tests {
     use super::EntityId;
-    use zlim_reflect::ops::Opaque;
 
     #[test]
     fn consistent() {
@@ -337,22 +313,6 @@ mod tests {
         assert_eq!(id.index(), index);
         assert_eq!(id.generation().get(), generation);
         assert_eq!(id.to_bits(), raw);
-    }
-
-    #[test]
-    fn opaque_impl() {
-        let index: u32 = 0x0001_FAAF;
-        let generation: u32 = 0x0010_A730;
-
-        let raw: u64 = (index as u64) + ((generation as u64) << 32);
-        let id: EntityId = EntityId::from_bits(raw).unwrap();
-
-        let mut mid = id;
-        let s = mid.stringify();
-
-        mid.apply_str(&s).unwrap();
-
-        assert_eq!(mid, id);
     }
 }
 

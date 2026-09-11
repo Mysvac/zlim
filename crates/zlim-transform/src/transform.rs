@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use zlim_core::derive::Component;
 use zlim_math::ops;
 use zlim_math::{Affine3A, Dir3, Isometry3d, Mat3, Mat4, Quat, Vec3, Vec3A};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // Transform
@@ -19,8 +19,7 @@ use zlim_reflect::Reflect;
 /// - For transform hierarchies to work correctly, you must have both a [`Transform`] and a [`GlobalTransform`].
 ///   [`GlobalTransform`] is automatically inserted whenever [`Transform`] is inserted.
 #[derive(Debug, PartialEq, Clone, Copy)]
-#[derive(Component, Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Component, TypePath, Serialize, Deserialize)]
 #[type_path = "zlim_transform::GlobalTransform"]
 pub struct GlobalTransform(Affine3A);
 
@@ -81,8 +80,7 @@ impl Default for GlobalTransform {
 /// [change detection]: zlim_core::tick::DetectChanges
 /// [`reparent_in_place`]: crate::EntityTransformExt::reparent_in_place
 #[derive(Debug, PartialEq, Clone, Copy)]
-#[derive(Component, Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Component, TypePath, Serialize, Deserialize)]
 #[type_path = "zlim_transform::Transform"]
 #[component(serialize)] // Transform should be serialized, but GlobalTransform does not.
 #[require(GlobalTransform)]

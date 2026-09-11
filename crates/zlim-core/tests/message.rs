@@ -8,7 +8,7 @@ use zlim_core::message::MessageReader;
 use zlim_core::message::MessageWriter;
 use zlim_core::system::{IntoSystem, System};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 // -----------------------------------------------------------------------------
 // Message types

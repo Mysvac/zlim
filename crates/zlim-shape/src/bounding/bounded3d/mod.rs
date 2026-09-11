@@ -4,7 +4,7 @@ mod primitive_impls;
 use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Isometry3d, Mat3, Quat, Vec3A};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use super::{BoundingVolume, IntersectsVolume};
 use crate::Cuboid;
@@ -44,8 +44,8 @@ pub trait Bounded3d {
 
 /// A 3D axis-aligned bounding box
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::bounding::Aabb3d"]
 pub struct Aabb3d {
     /// The minimum point of the box
     pub min: Vec3A,
@@ -496,8 +496,8 @@ use crate::Sphere;
 
 /// A bounding sphere
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::bounding::BoundingSphere"]
 pub struct BoundingSphere {
     /// The center of the bounding sphere
     pub center: Vec3A,

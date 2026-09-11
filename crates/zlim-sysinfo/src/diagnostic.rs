@@ -93,7 +93,7 @@ mod normal_impls {
     use zlim_core::{derive::Resource, job_fn};
     use zlim_diagnostic::{Diagnostic, Diagnostics, DiagnosticsPlugin};
     use zlim_os::time::Instant;
-    use zlim_reflect::derive::TypePath;
+    use zlim_path::derive::TypePath;
     use zlim_task::AsyncTaskPool;
     use zlim_utils::sync::ArrayQueue;
 

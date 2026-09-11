@@ -5,7 +5,7 @@ use core::fmt::{Display, Formatter};
 
 use itertools::Either;
 use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // Interval
@@ -15,8 +15,8 @@ use zlim_reflect::Reflect;
 /// In other words, the interval may stretch all the way to positive or negative infinity, but it
 /// will always have some nonempty interior.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_curve::interval::Interval"]
 pub struct Interval {
     start: f32,
     end: f32,

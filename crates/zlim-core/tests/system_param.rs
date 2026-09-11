@@ -12,7 +12,7 @@ use zlim_core::system::SystemParam as SystemParamTrait;
 use zlim_core::system::SystemTick;
 use zlim_core::system::{AccessTable, ExclusiveMarker, IntoSystem, Local, NonSendMarker};
 use zlim_core::world::{NonSendWorld, World};
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 // -----------------------------------------------------------------------------
 // Resources

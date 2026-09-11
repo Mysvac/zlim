@@ -2,7 +2,7 @@ use core::num::NonZeroU8;
 
 use zlim_core::derive::ScheduleStage;
 use zlim_core::message::Message;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 /// A [`Message`] that indicates the `App` should exit.
 ///

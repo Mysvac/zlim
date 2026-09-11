@@ -2,7 +2,7 @@
 use core::ops::Mul;
 
 use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
+use zlim_path::derive::TypePath;
 
 use crate::{Affine2, Affine3, Affine3A, Dir2, Dir3};
 use crate::{Mat3, Mat3A, Quat, Rot2, Vec2, Vec3, Vec3A};
@@ -89,8 +89,8 @@ use crate::{Mat3, Mat3A, Quat, Rot2, Vec2, Vec3, Vec3A};
 /// let relative_iso = circle_iso.inverse_mul(rectangle_iso);
 /// ```
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Isometry2d"]
 pub struct Isometry2d {
     /// The rotational part of a two-dimensional isometry.
     pub rotation: Rot2,
@@ -363,8 +363,8 @@ impl approx::UlpsEq for Isometry2d {
 /// let relative_iso = sphere_iso.inverse_mul(cuboid_iso);
 /// ```
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_math::Isometry3d"]
 pub struct Isometry3d {
     /// The rotational part of a three-dimensional isometry.
     pub rotation: Quat,

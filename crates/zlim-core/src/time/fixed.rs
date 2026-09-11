@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use zlim_reflect::derive::TypePath;
+use zlim_path::derive::TypePath;
 
 use super::{Time, TimeContext};
 

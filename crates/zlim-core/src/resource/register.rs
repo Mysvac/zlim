@@ -80,7 +80,7 @@ pub fn register_base<R: Resource>() -> &'static ResourceDB {
 /// use zlim_core::prelude::*;
 /// use zlim_core::resource::register_serializable;
 /// use serde::{Deserialize, Serialize};
-/// use zlim_reflect::derive::TypePath;
+/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Clone, Serialize, Deserialize)]
 /// struct Score(u32);

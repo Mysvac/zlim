@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{FloatPow, Vec3, Vec4};
-use zlim_reflect::derive::Reflect;
 
 use crate::color_difference::EuclideanDistance;
 use crate::impl_componentwise_stable_interpolate;
@@ -19,8 +18,7 @@ use crate::{impl_componentwise_vector_space, impl_from_via};
 /// <div>
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
-#[derive(Debug, Clone, Copy, PartialEq, Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Oklaba {
     /// The 'lightness' channel. [0.0, 1.0]
     pub lightness: f32,

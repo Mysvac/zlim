@@ -2,8 +2,6 @@ use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 use core::ops::Neg;
 
-use zlim_reflect::Reflect;
-
 // -----------------------------------------------------------------------------
 // FloatOrd
 
@@ -20,8 +18,7 @@ use zlim_reflect::Reflect;
 /// `FloatOrd` is incompatible with the `totalOrder` predicate defined by IEEE 754,
 /// but stays consistent with normal float comparison: If a `a.partial_cmp(b)` is `Some`,
 /// the result is the same for `FloatOrd(a).cmp(FloatOrd(b))`.
-#[derive(Reflect, Debug, Copy, Clone)]
-#[reflect(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Copy, Clone)]
 #[repr(transparent)]
 pub struct FloatOrd(pub f32);
 

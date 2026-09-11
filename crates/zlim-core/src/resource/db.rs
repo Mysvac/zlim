@@ -183,7 +183,7 @@ impl ResourceDB {
     /// (e.g., `"my_crate::MyResource"`). Returns `None` if no resource with
     /// the given path has been registered.
     ///
-    /// [`TypePath::type_path`]: zlim_reflect::TypePath::type_path
+    /// [`TypePath::type_path`]: zlim_path::TypePath::type_path
     pub fn get_by_path(path: &str) -> Option<&'static ResourceDB> {
         PATH_REGISTRY
             .read()

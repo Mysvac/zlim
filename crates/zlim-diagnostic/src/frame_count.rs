@@ -10,7 +10,7 @@ use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
 use zlim_core::job_fn;
 use zlim_core::time::{Real, Time};
-use zlim_reflect::derive::TypePath;
+use zlim_path::derive::TypePath;
 
 use core::sync::atomic::{AtomicU32, Ordering};
 

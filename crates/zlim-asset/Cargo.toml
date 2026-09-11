@@ -1,0 +1,61 @@
+[package]
+name = "zlim-asset"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["tests", "README.zh.md"]
+
+[features]
+
+# Enables strict validation and extra assertions.
+debug = []
+
+# Enables filesystem watching (hot reloading), built on `notify-debouncer-full`.
+notify = ["dep:notify-debouncer-full"]
+
+[dependencies]
+
+zlim-cfg = { path = "../zlim-cfg", default-features = false }
+zlim-ptr = { path = "../zlim-ptr", default-features = false }
+zlim-reg = { path = "../zlim-reg", default-features = false }
+
+zlim-os = { path = "../zlim-os", default-features = false }
+zlim-log = { path = "../zlim-log", default-features = false }
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+zlim-path = { path = "../zlim-path", default-features = false, features = ["uuid"] }
+zlim-task = { path = "../zlim-task", default-features = false }
+
+zlim-core = { path = "../zlim-core", default-features = false }
+
+zlim-app = { path = "../zlim-app", default-features = false }
+
+zlim-diagnostic = { path = "../zlim-diagnostic", default-features = false }
+
+atomicow = { version = "1.2", default-features = false, features = ["std"] }
+futures-lite = { version = "2.6", default-features = false, features = ["std"] }
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+uuid = { version = "1.26", default-features = false, features = ["serde"] }
+
+[target.'cfg(not(any(target_os = "windows", target_arch = "wasm32")))'.dependencies]
+async-lock = { version = "3.4", default-features = false }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+async-fs = "2.2"
+
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
+notify-debouncer-full = { version = "0.7.0", optional = true, default-features = false }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen = { version = "0.2", default-features = false, features = ["std"] }
+js-sys = { version = "0.3", default-features = false, features = ["std"] }
+web-sys = { version = "0.3", default-features = false, features = ["std", "Window", "Response", "WorkerGlobalScope"] }
+wasm-bindgen-futures = { version = "0.4", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+ron = { version = "0.12", default-features = false }
+
+[lints]
+workspace = true

@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
 use zlim_curve::cores::{EvenCore, EvenCoreError};
 use zlim_curve::{Curve, Interval};
-use zlim_reflect::derive::Reflect;
 
 use crate::Mix;
 
 /// A curve whose samples are defined by a collection of colors.
-#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ColorCurve<T> {
     core: EvenCore<T>,
 }

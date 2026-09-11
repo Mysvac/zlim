@@ -11,7 +11,7 @@ zlim-utils = { path = "../zlim-utils", default-features = false }
 zlim-os = { path = "../zlim-os", default-features = false }
 zlim-log = { path = "../zlim-log", default-features = false }
 
-zlim-reflect = { path = "../zlim-reflect", default-features = false }
+zlim-path = { path = "../zlim-path", default-features = false }
 zlim-core = { path = "../zlim-core", default-features = false }
 zlim-app = { path = "../zlim-app", default-features = false }
 

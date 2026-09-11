@@ -159,7 +159,6 @@ pub struct WithInputSystem<S, I: SystemInput> {
     i: I::Data<'static>,
 }
 
-#[rustfmt::skip]
 impl<I, O, S, M> IntoSystem<(), O, (WithInputSystemMarker, (M, fn(I) -> O))>
     for IntoWithInputSystem<S, I>
 where
@@ -258,9 +257,13 @@ pub struct PipeSystem<A, B> {
     b: B,
 }
 
-#[rustfmt::skip]
-impl<AI, AO, BI, BO, A, B, MA, MB>
-    IntoSystem<AI, BO, (PipeSystemMarker, (MA, MB, fn(AI) -> AO, fn(BI) -> BO), (A, B))>
+type PipeMarker<AI, AO, BI, BO, A, B, MA, MB> = (
+    PipeSystemMarker,
+    (MA, MB, fn(AI) -> AO, fn(BI) -> BO),
+    (A, B),
+);
+
+impl<AI, AO, BI, BO, A, B, MA, MB> IntoSystem<AI, BO, PipeMarker<AI, AO, BI, BO, A, B, MA, MB>>
     for IntoPipeSystem<A, B>
 where
     AI: SystemInput,
@@ -368,10 +371,9 @@ pub struct MapSystem<S, F> {
     f: F,
 }
 
-#[rustfmt::skip]
-impl<I, O, FO, S, F, M>
-    IntoSystem<I, FO, (MapSystemMarker, (M, fn(I) -> O, fn(O) -> FO), (S, F))>
-    for IntoMapSystem<S, F>
+type MapMarker<I, O, FO, S, F, M> = (MapSystemMarker, (M, fn(I) -> O, fn(O) -> FO), (S, F));
+
+impl<I, O, FO, S, F, M> IntoSystem<I, FO, MapMarker<I, O, FO, S, F, M>> for IntoMapSystem<S, F>
 where
     I: SystemInput,
     S: IntoSystem<I, O, M>,
@@ -468,9 +470,13 @@ pub struct RunIfSystem<A, B> {
     b: B,
 }
 
-#[rustfmt::skip]
-impl<BI, BO, A, B, MA, MB>
-    IntoSystem<BI, BO, (RunIfSystemMarker, (MA, MB, fn() -> bool, fn(BI) -> BO), (A, B))>
+type RunIfMarker<BI, BO, A, B, MA, MB> = (
+    RunIfSystemMarker,
+    (MA, MB, fn() -> bool, fn(BI) -> BO),
+    (A, B),
+);
+
+impl<BI, BO, A, B, MA, MB> IntoSystem<BI, BO, RunIfMarker<BI, BO, A, B, MA, MB>>
     for IntoRunIfSystem<A, B>
 where
     BI: SystemInput,

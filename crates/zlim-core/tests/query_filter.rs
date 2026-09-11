@@ -6,7 +6,7 @@ use zlim_core::component::Component;
 use zlim_core::entity::EntityId;
 use zlim_core::query::{Added, And, Changed, Or, Query, QueryState, With, Without};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 #[derive(TypePath, Component, Clone)]
 struct A;

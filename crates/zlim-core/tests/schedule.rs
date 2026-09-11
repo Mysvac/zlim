@@ -18,7 +18,7 @@ use zlim_core::schedule::{Schedule, ScheduleStage};
 use zlim_core::system::{AccessTable, System, SystemError, SystemFlags, SystemId};
 use zlim_core::tick::Tick;
 use zlim_core::world::{DeferredWorld, World, WorldCell};
-use zlim_reflect::derive::TypePath;
+use zlim_path::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // Job & group definitions

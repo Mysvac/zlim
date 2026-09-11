@@ -6,7 +6,7 @@ use zlim_core::resource::Resource as ResourceTrait;
 use zlim_core::resource::ResourceDB;
 use zlim_core::tick::DetectChanges;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 use serde::{Deserialize, Serialize};
 

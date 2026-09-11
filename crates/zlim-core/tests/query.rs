@@ -4,7 +4,7 @@
 use zlim_core::component::Component;
 use zlim_core::query::{Query, Single, With};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
+use zlim_path::TypePath;
 
 use serde::{Deserialize, Serialize};
 

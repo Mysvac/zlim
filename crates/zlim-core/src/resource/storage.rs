@@ -51,15 +51,15 @@ use crate::utils::Dropper;
 /// insertion/removal (`insert_untyped`, `remove`, `clear`, `take_raw`,
 /// `from_raw`) requires the caller to uphold the type/layout and (for
 /// `NonSend` resources) thread requirements documented on each method.
-#[repr(C, align(64))]
+#[repr(C, align(32))]
 pub struct ResourceCell {
-    /// Pointer to the resource data; null while the slot is absent.
+    // Pointer to the resource data; null while the slot is absent.
     data: *mut u8,
-    /// Tick at which the resource was last inserted.
+    // Tick at which the resource was last inserted.
     added: Tick,
-    /// Tick at which the resource was last mutated.
+    // Tick at which the resource was last mutated.
     changed: Tick,
-    /// Static metadata of the resource type.
+    // Static metadata of the resource type.
     datebase: &'static ResourceDB,
     // Cached layout and dropper.
     layout: Layout,

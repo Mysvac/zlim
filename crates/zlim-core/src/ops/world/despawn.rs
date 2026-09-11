@@ -174,7 +174,7 @@ mod tests {
     use crate::world::World;
     use core::sync::atomic::{AtomicUsize, Ordering};
     use serde::{Deserialize, Serialize};
-    use zlim_reflect::TypePath;
+    use zlim_path::TypePath;
 
     #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
     struct Foo;

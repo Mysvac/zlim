@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
-use zlim_reflect::Reflect;
-
 use zlim_math::ops;
 use zlim_math::{Dir2, Dir3, Vec2, Vec3};
+use zlim_path::derive::TypePath;
 
 use crate::{InfinitePlane3d, Plane2d};
 
@@ -11,8 +10,8 @@ use crate::{InfinitePlane3d, Plane2d};
 
 /// An infinite half-line starting at `origin` and going in `direction` in 2D space.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::Ray2d"]
 pub struct Ray2d {
     /// The origin of the ray.
     pub origin: Vec2,
@@ -63,8 +62,8 @@ impl Ray2d {
 
 /// An infinite half-line starting at `origin` and going in `direction` in 3D space.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Reflect, Serialize, Deserialize)]
-#[reflect(Debug, Clone, Serialize, Deserialize)]
+#[derive(TypePath, Serialize, Deserialize)]
+#[type_path = "zlim_shape::Ray3d"]
 pub struct Ray3d {
     /// The origin of the ray.
     pub origin: Vec3,
