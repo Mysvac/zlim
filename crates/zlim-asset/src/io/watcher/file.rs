@@ -1,3 +1,5 @@
+//! Filesystem watcher for file assets and its event notifier.
+
 use core::time::Duration;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +10,7 @@ use zlim_utils::mpsc::Sender;
 use super::AssetWatcher;
 use super::notifier::{EventNotifier, EventPath};
 use super::notifier::{build_debouncer, make_absolute_path};
-use crate::io::AssetSourceEvent;
+use crate::event::AssetSourceEvent;
 
 // -----------------------------------------------------------------------------
 // FileEventNotifier

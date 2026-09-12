@@ -83,7 +83,11 @@ pub trait TypePath: 'static {
     /// - For `(A, B)`, this is `(_, _)`.
     /// - For `[u32; 5]`, this is `[_; _]`.
     /// - For `&A`, `&str` ... this is `&_`.
-    const IDENT: &str;
+    ///
+    /// The `'static` is written out explicitly: an elided lifetime in an associated
+    /// constant is deprecated (and becomes a lifetime parameter, which then cannot be
+    /// matched by an impl that uses `'static`).
+    const IDENT: &'static str;
 
     /// Optional crate name where the type is defined.
     ///
@@ -92,7 +96,7 @@ pub trait TypePath: 'static {
     /// Compile time evaluation for better performance.
     ///
     /// For `Option<Vec<usize>>`, this is `Some("core")`.
-    const CRATE: Option<&str>;
+    const CRATE: Option<&'static str>;
 
     /// Optional module path where the type is defined.
     ///
@@ -101,7 +105,7 @@ pub trait TypePath: 'static {
     /// Compile time evaluation for better performance.
     ///
     /// For `Option<Vec<usize>>`, this is `Some("core::option")`.
-    const MODULE: Option<&str>;
+    const MODULE: Option<&'static str>;
 }
 
 // -----------------------------------------------------------------------------
@@ -125,9 +129,9 @@ use zlim_utils::ext::TypeMap;
 /// impl TypePath for MyU8 {
 ///     fn type_path() -> &'static str { "my_crate::MyU8" }
 ///     fn type_name() -> &'static str { "MyU8" }
-///     const IDENT: &str = "MyU8";
-///     const MODULE: Option<&str> = Some("my_crate");
-///     const CRATE: Option<&str> = Some("my_crate");
+///     const IDENT: &'static str = "MyU8";
+///     const MODULE: Option<&'static str> = Some("my_crate");
+///     const CRATE: Option<&'static str> = Some("my_crate");
 /// }
 /// ```
 ///
@@ -148,9 +152,9 @@ use zlim_utils::ext::TypeMap;
 ///         static CELL: PathCell = PathCell::new();
 ///         CELL.get_or_init::<Self>(|| concat(&["MyOption<", T::type_name(), ">"]))
 ///     }
-///     const IDENT: &str = "MyOption";
-///     const MODULE: Option<&str> = Some("my_crate");
-///     const CRATE: Option<&str> = Some("my_crate");
+///     const IDENT: &'static str = "MyOption";
+///     const MODULE: Option<&'static str> = Some("my_crate");
+///     const CRATE: Option<&'static str> = Some("my_crate");
 /// }
 /// ```
 pub struct PathCell(RwLock<TypeMap<&'static str>>);

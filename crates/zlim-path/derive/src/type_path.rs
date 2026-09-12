@@ -115,9 +115,9 @@ pub(crate) fn expand_type_path(input: &DeriveInput, zlim_path: &Path) -> TokenSt
                     #type_name
                 }
 
-                const IDENT: &str = #ident_;
-                const MODULE: ::core::option::Option<&str> = #module;
-                const CRATE: ::core::option::Option<&str> = #crate_name;
+                const IDENT: &'static str = #ident_;
+                const MODULE: ::core::option::Option<&'static str> = #module;
+                const CRATE: ::core::option::Option<&'static str> = #crate_name;
             }
         };
     }
@@ -342,27 +342,43 @@ fn split_generics_for_type_path<'a>(
 ) -> (ImplGenerics<'a>, TypeGenerics<'a>, TokenStream) {
     let (impl_ge, ty_gen, z) = generics.split_for_impl();
 
-    if generics.type_params().next().is_none() {
+    let has_lifetime = generics.lifetimes().next().is_some();
+    let has_type_const = generics.type_params().next().is_some();
+
+    if !has_lifetime && !has_type_const {
         let wc = z.map(|w| w.to_token_stream()).unwrap_or_default();
         return (impl_ge, ty_gen, wc);
     }
 
-    let trailing_punct = z.map(|w| w.predicates.trailing_punct()).unwrap_or(false);
+    let mut trailing_punct = z.map(|w| w.predicates.trailing_punct()).unwrap_or(false);
     let mut where_clause = z.map(|w| w.to_token_stream()).unwrap_or_default();
 
-    let type_path_trait = quote! { #zlim_path::TypePath };
+    if has_lifetime {
+        if where_clause.is_empty() {
+            where_clause = quote! { where Self: 'static, };
+        } else if trailing_punct {
+            where_clause = quote! { #where_clause Self: 'static, };
+        } else {
+            where_clause = quote! { #where_clause, Self: 'static, };
+        }
+        trailing_punct = true;
+    }
 
-    let predicates = generics.type_params().map(|tp| {
-        let t = &tp.ident;
-        quote! { #t: #type_path_trait }
-    });
+    if has_type_const {
+        let type_path_trait = quote! { #zlim_path::TypePath };
 
-    if where_clause.is_empty() {
-        where_clause = quote! { where #(#predicates),* };
-    } else if trailing_punct {
-        where_clause = quote! { #where_clause #(#predicates),* };
-    } else {
-        where_clause = quote! { #where_clause, #(#predicates),* };
+        let predicates = generics.type_params().map(|tp| {
+            let t = &tp.ident;
+            quote! { #t: #type_path_trait }
+        });
+
+        if where_clause.is_empty() {
+            where_clause = quote! { where #(#predicates),* };
+        } else if trailing_punct {
+            where_clause = quote! { #where_clause #(#predicates),* };
+        } else {
+            where_clause = quote! { #where_clause, #(#predicates),* };
+        }
     }
 
     (impl_ge, ty_gen, where_clause)

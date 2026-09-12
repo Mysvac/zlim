@@ -1,3 +1,5 @@
+//! Debounced filesystem event plumbing shared by the file and embedded watchers.
+
 use core::time::Duration;
 use std::path::{Path, PathBuf};
 
@@ -7,7 +9,7 @@ use notify_debouncer_full::notify::{self, RecommendedWatcher, RecursiveMode};
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 use zlim_utils::vec::SmallVec;
 
-use crate::io::AssetSourceEvent;
+use crate::event::AssetSourceEvent;
 
 // -----------------------------------------------------------------------------
 // EventNotifier
@@ -77,7 +79,7 @@ pub fn build_debouncer(
             Err(errors) => {
                 // The iterator of slice is faster than that of elements.
                 for error in errors.iter() {
-                    zlim_log::error!("Encountered a filesystem watcher error {error:?}");
+                    zlim_log::error!("Encountered a filesystem watcher error: {error:?}");
                 }
                 return;
             }

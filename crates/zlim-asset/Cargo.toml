@@ -17,6 +17,8 @@ notify = ["dep:notify-debouncer-full"]
 
 [dependencies]
 
+zlim-asset-derive = { path = "derive", default-features = false }
+
 zlim-cfg = { path = "../zlim-cfg", default-features = false }
 zlim-ptr = { path = "../zlim-ptr", default-features = false }
 zlim-reg = { path = "../zlim-reg", default-features = false }
@@ -34,10 +36,13 @@ zlim-app = { path = "../zlim-app", default-features = false }
 
 zlim-diagnostic = { path = "../zlim-diagnostic", default-features = false }
 
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+ron = { version = "0.12", default-features = false }
 atomicow = { version = "1.2", default-features = false, features = ["std"] }
 futures-lite = { version = "2.6", default-features = false, features = ["std"] }
-serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 uuid = { version = "1.26", default-features = false, features = ["serde"] }
+bitflags = { version = "2.13", default-features = false, features = ["serde"] }
+blake3 = { version = "1.8", default-features = false }
 
 [target.'cfg(not(any(target_os = "windows", target_arch = "wasm32")))'.dependencies]
 async-lock = { version = "3.4", default-features = false }
@@ -53,9 +58,6 @@ wasm-bindgen = { version = "0.2", default-features = false, features = ["std"] }
 js-sys = { version = "0.3", default-features = false, features = ["std"] }
 web-sys = { version = "0.3", default-features = false, features = ["std", "Window", "Response", "WorkerGlobalScope"] }
 wasm-bindgen-futures = { version = "0.4", default-features = false, features = ["std"] }
-
-[dev-dependencies]
-ron = { version = "0.12", default-features = false }
 
 [lints]
 workspace = true

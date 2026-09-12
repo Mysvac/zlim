@@ -1,3 +1,5 @@
+//! Source-file watcher that refreshes embedded assets in memory.
+
 use core::time::Duration;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -12,7 +14,7 @@ use zlim_utils::mpsc::Sender;
 use super::AssetWatcher;
 use super::notifier::build_debouncer;
 use super::notifier::{EventNotifier, EventPath};
-use crate::io::AssetSourceEvent;
+use crate::event::AssetSourceEvent;
 use crate::io::memory::Dir;
 
 // -----------------------------------------------------------------------------

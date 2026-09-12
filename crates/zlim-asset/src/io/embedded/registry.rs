@@ -1,11 +1,13 @@
+//! The registry resource that stores embedded assets and registers their source.
+
 use std::path::Path;
 
 use zlim_core::derive::Resource;
 use zlim_path::derive::TypePath;
 
 use super::EMBEDDED;
+use crate::io::ErasedAssetReader;
 use crate::io::memory::{Data, Dir, MemoryAssetReader, Value};
-use crate::io::{AssetSourceBuilder, AssetSourceBuilders, ErasedAssetReader};
 
 crate::cfg::notify! {
     use std::path::PathBuf;
@@ -63,7 +65,7 @@ impl EmbeddedAssetRegistry {
     /// that will be returned for the asset. This can be _either_ a `&'static [u8]`
     /// , a `Vec<u8>` or a `Arc<[u8]>`.
     ///
-    /// [`AssetSource`]: crate::io::AssetSource
+    /// [`AssetSource`]: crate::source::AssetSource
     pub fn insert_asset(&self, full_path: &Path, asset_path: &Path, value: impl Into<Value>) {
         self.insert_asset_internal(full_path, asset_path, value.into());
     }
@@ -76,7 +78,7 @@ impl EmbeddedAssetRegistry {
     /// that will be returned for the asset. This can be _either_ a `&'static [u8]`
     /// , a `Vec<u8>` or a `Arc<[u8]>`.
     ///
-    /// [`AssetSource`]: crate::io::AssetSource
+    /// [`AssetSource`]: crate::source::AssetSource
     pub fn insert_meta(&self, full_path: &Path, asset_path: &Path, value: impl Into<Value>) {
         self.insert_meta_internal(full_path, asset_path, value.into());
     }
@@ -96,12 +98,19 @@ impl EmbeddedAssetRegistry {
 
         self.dir.remove_asset(full_path)
     }
+}
 
+// -----------------------------------------------------------------------------
+// register_source
+
+use crate::source::{AssetSourceBuilder, AssetSourceBuilders};
+
+impl EmbeddedAssetRegistry {
     /// Registers the [`EMBEDDED`] [`AssetSource`] to the given [`AssetSourceBuilders`].
     ///
     /// This is called by `AssetPlugin` (still pending); calling it twice replaces the source.
     ///
-    /// [`AssetSource`]: crate::io::AssetSource
+    /// [`AssetSource`]: crate::source::AssetSource
     #[rustfmt::skip]
     pub fn register_source(&self, sources: &mut AssetSourceBuilders) {
         let dir = self.dir.clone();

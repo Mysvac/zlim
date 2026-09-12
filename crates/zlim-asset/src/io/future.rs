@@ -1,10 +1,12 @@
 //! Hand-written futures for the "give me everything at once" helpers.
 //!
-//! [`Reader::read_all_bytes`](crate::io::Reader::read_all_bytes) and
-//! [`Writer::write_all_bytes`](crate::io::Writer::write_all_bytes) are called on
-//! `dyn Reader` / `dyn Writer` objects all the time, so they must not add another
-//! allocation on top of the boxed trait object. This module therefore hand-writes the two
-//! futures instead of relying on `async fn`, which would need boxing in a trait object.
+//! [`Reader::read_all_bytes`] and [`Writer::write_all_bytes`] are called on `dyn Reader` /
+//! `dyn Writer` objects all the time, so they must not add another allocation on top of the
+//! boxed trait object. This module therefore hand-writes the two futures instead of relying on
+//! `async fn`, which would need boxing in a trait object.
+//!
+//! [`Reader::read_all_bytes`]: crate::io::Reader::read_all_bytes
+//! [`Writer::write_all_bytes`]: crate::io::Writer::write_all_bytes
 //!
 //! # How one type covers several sources
 //!
@@ -235,8 +237,8 @@ fn slice_read_internal(
         _ => return Poll::Ready(Err(overflow())),
     };
 
-    let old_cap = buf.capacity();
-    buf.reserve(result_len.saturating_sub(old_cap));
+    let old_length = buf.len();
+    buf.reserve(result_len.saturating_sub(old_length));
 
     // SAFETY: `result_len` was checked to be below `isize::MAX`, the destination range was
     // just reserved, and `reader` points at `data_size` initialised bytes that outlive this
@@ -258,8 +260,10 @@ fn slice_read_internal(
 ///
 /// Create one with [`WriteAllFuture::async_write`] (any [`AsyncWrite`]) or
 /// [`WriteAllFuture::vec_write`] (a `Vec<u8>`). It never flushes: callers that need the bytes
-/// to reach the storage call `AsyncWriteExt::flush` afterwards, as
-/// [`AssetWriter::write_bytes`](crate::io::AssetWriter::write_bytes) does.
+/// to reach the storage call `AsyncWriteExt::flush` afterwards, as [`AssetWriter::write_bytes`]
+/// does.
+///
+/// [`AssetWriter::write_bytes`]: crate::io::AssetWriter::write_bytes
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct WriteAllFuture<'a> {
     func: fn(Pin<&mut Self>, &mut Context<'_>) -> Poll<std::io::Result<()>>,

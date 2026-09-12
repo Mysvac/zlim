@@ -47,7 +47,7 @@ TODO comment format, and Safety documentation requirements for unsafe code.
 Supplemental conventions not covered by STYLE_GUIDE.md:
 
 ### Documentation
-- Every `pub` item should include a `//!` or `///` doc comment.
+- Every **`pub`** item should include a `//!` or `///` doc comment.
 - README files should include: short description, module list, minimal example,
   design notes.
 

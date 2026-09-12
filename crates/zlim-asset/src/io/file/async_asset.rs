@@ -1,3 +1,5 @@
+//! Asynchronous filesystem asset reader and writer implementations.
+
 use core::pin::Pin;
 use core::task::Poll;
 use std::path::{Path, PathBuf};
@@ -10,7 +12,7 @@ use super::{FileAssetReader, FileAssetWriter};
 use crate::io::future::{ReadAllFuture, WriteAllFuture};
 use crate::io::{AssetReader, AssetReaderError, Reader, ReaderNotSeekableError, SeekableReader};
 use crate::io::{AssetWriter, AssetWriterError, Writer};
-use crate::utils::append_meta_extension;
+use crate::utils::{append_meta_extension, PathStream};
 
 // -----------------------------------------------------------------------------
 // Open File Limiter
@@ -125,7 +127,7 @@ impl AssetReader for FileAssetReader {
     async fn read_directory<'a>(
         &'a self,
         path: &'a Path,
-    ) -> Result<Box<crate::PathStream>, AssetReaderError> {
+    ) -> Result<Box<PathStream>, AssetReaderError> {
         let full_path = self.root_path.join(path);
 
         let read_dir = match async_fs::read_dir(&full_path).await {

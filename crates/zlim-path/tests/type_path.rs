@@ -26,6 +26,13 @@ struct TestMyVec<T>(T);
 #[type_path = "my_crate::boo::MyArray"]
 struct TestMyArray<T, const N: usize>([T; N]);
 
+/// A type with a lifetime parameter: it only implements `TypePath` for `'static`
+/// instantiations, which is what the derive's `where Self: 'static` clause expresses.
+#[derive(TypePath)]
+struct TestLifetime<'a> {
+    _marker: &'a (),
+}
+
 macro_rules! assert_path {
     (
         $t:ty,
@@ -141,5 +148,17 @@ fn with_const_generic() {
         "MyArray",
         Some("my_crate"),
         Some("my_crate::boo"),
+    }
+}
+
+#[test]
+fn with_lifetime() {
+    assert_path! {
+        TestLifetime<'static>,
+        "type_path::TestLifetime",
+        "TestLifetime",
+        "TestLifetime",
+        Some("type_path"),
+        Some("type_path"),
     }
 }

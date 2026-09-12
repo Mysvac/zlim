@@ -10,8 +10,8 @@
 //! to connect a writer to a reader:
 //!
 //! ```rust
-//! use futures_lite::future::block_on;
-//! use std::path::Path;
+//! # use std::path::Path;
+//! # use futures_lite::future::block_on;
 //! use zlim_asset::io::{AssetReader, AssetWriter};
 //! use zlim_asset::io::memory::{MemoryAssetReader, MemoryAssetWriter};
 //!
@@ -49,8 +49,8 @@ use zlim_utils::vec::FastVec;
 use super::{AssetReader, AssetReaderError};
 use super::{AssetWriter, AssetWriterError, Writer};
 use super::{Reader, ReaderNotSeekableError, SeekableReader};
-use crate::PathStream;
 use crate::io::future::{ReadAllFuture, WriteAllFuture};
+use crate::utils::PathStream;
 
 // -----------------------------------------------------------------------------
 // Value
@@ -122,10 +122,11 @@ impl<const N: usize> From<&'static [u8; N]> for Value {
 
 /// Bytes stored at a path, together with that path.
 ///
-/// Returned by the [`Dir`] accessors and by
-/// [`MemoryAssetWriter::remove`](AssetWriter::remove); [`value`](Self::value) borrows the
-/// payload, and the path is kept so callers can report *which* file was involved (e.g. the
-/// watcher and folder loaders).
+/// Returned by the [`Dir`] accessors and by [`MemoryAssetWriter::remove`];
+/// [`value`](Self::value) borrows the payload, and the path is kept so callers
+/// can report *which* file was involved (e.g. the watcher and folder loaders).
+///
+/// [`MemoryAssetWriter::remove`]: AssetWriter::remove
 #[derive(Clone, Debug)]
 pub struct Data {
     path: PathBuf,
@@ -213,7 +214,7 @@ impl Dir {
     ///
     /// - `.` and `..` are applied where possible; a missing parent is ignored with a warning.
     /// - `Prefix` components (e.g. `C:`) are ignored with a warning.
-    pub fn resolve_dir(&self, path: &Path) -> Dir {
+    pub fn get_or_init_dir(&self, path: &Path) -> Dir {
         let mut dir = self.clone();
 
         let size_hint = path.as_os_str().len();
@@ -278,7 +279,7 @@ impl Dir {
         let mut dir = self.clone();
 
         if let Some(parent) = path.parent() {
-            dir = self.resolve_dir(parent);
+            dir = self.get_or_init_dir(parent);
         }
 
         // Separate to reduce the lock occupation time.
@@ -297,7 +298,7 @@ impl Dir {
         let mut dir = self.clone();
 
         if let Some(parent) = path.parent() {
-            dir = self.resolve_dir(parent);
+            dir = self.get_or_init_dir(parent);
         }
 
         let name: Box<str> = path.file_name().unwrap().to_string_lossy().into();
@@ -381,7 +382,7 @@ impl Dir {
     pub fn remove_dir(&self, path: &Path) -> Option<Dir> {
         let mut dir = self.clone();
         if let Some(parent) = path.parent() {
-            dir = self.resolve_dir(parent);
+            dir = self.get_or_init_dir(parent);
         }
 
         let name: &str = path.file_name()?.to_str()?;
@@ -394,9 +395,11 @@ impl Dir {
 
     /// Returns the directory at `path`, or `None` when it does not exist.
     ///
-    /// Unlike [`resolve_dir`](Self::resolve_dir) this never creates anything, and it resolves
-    /// `..` strictly: a `..` that would walk above the root makes the lookup fail instead of
-    /// being ignored.
+    /// Unlike [`get_or_init_dir`] this never creates anything, and it resolves
+    /// `..` strictly: a `..` that would walk above the root makes the lookup fail
+    /// instead of being ignored.
+    ///
+    /// [`get_or_init_dir`]: Self::get_or_init_dir
     pub fn get_dir(&self, path: &Path) -> Option<Dir> {
         let mut dir = self.clone();
 
@@ -613,18 +616,15 @@ impl Reader for DataReader {
 /// # Examples
 ///
 /// ```rust
-/// use std::path::Path;
-/// use futures_lite::future::block_on;
+/// # use std::path::Path;
+/// # use futures_lite::future::block_on;
 /// use zlim_asset::io::{AssetReader, memory::MemoryAssetReader};
 ///
 /// let reader = MemoryAssetReader::default();
 /// reader.root.insert_asset_text(Path::new("tex/icon.png"), "png bytes");
 ///
 /// assert!(block_on(reader.is_directory(Path::new("tex"))).unwrap());
-/// assert_eq!(
-///     block_on(reader.read_bytes(Path::new("tex/icon.png"))).unwrap(),
-///     b"png bytes"
-/// );
+/// assert_eq!(block_on(reader.read_bytes(Path::new("tex/icon.png"))).unwrap(), b"png bytes");
 /// assert!(block_on(reader.read_bytes(Path::new("tex/missing.png"))).is_err());
 /// ```
 #[derive(Default, Clone)]
@@ -740,9 +740,9 @@ impl Writer for DataWriter {
 /// Pair it with a [`MemoryAssetReader`] by sharing the root:
 ///
 /// ```rust
-/// use std::path::Path;
-/// use futures_lite::future::block_on;
-/// use zlim_asset::io::{AssetReader, AssetWriter};
+/// # use std::path::Path;
+/// # use futures_lite::future::block_on;
+/// # use zlim_asset::io::{AssetReader, AssetWriter};
 /// use zlim_asset::io::memory::{MemoryAssetReader, MemoryAssetWriter};
 ///
 /// let reader = MemoryAssetReader::default();
@@ -855,7 +855,7 @@ impl AssetWriter for MemoryAssetWriter {
     }
 
     async fn create_directory<'a>(&'a self, path: &'a Path) -> Result<(), AssetWriterError> {
-        self.root.resolve_dir(path);
+        self.root.get_or_init_dir(path);
         Ok(())
     }
 

@@ -4,13 +4,42 @@ use std::path::{Path, PathBuf};
 use atomicow::CowArc;
 use serde::{Deserialize, Serialize, de::Visitor};
 use zlim_core::derive::Error;
+use zlim_path::derive::TypePath;
+use zlim_utils::str::SmolStr;
 
 // -----------------------------------------------------------------------------
 // AssetPath
 
 /// An error that occurs when parsing a string type to create an [`AssetPath`] fails.
+///
+/// The parser splits the input into up to three parts:
+/// `[source://]path[#label]`.
+///
+/// - `source` is optional and is separated from `path` by `://`.
+/// - `label` is optional and is separated from `path` by `#`.
+///
+/// # Rules
+///
+/// - The input must not contain a `\` character. Asset paths use `/` as the
+///   only path separator, so `\` must be replaced by `/` before parsing.
+///   This error is always checked.
+///
+/// - If `://`(or `#`)  is present, the `source`(or `label`)
+///   part must not be empty. This error is always checked.
+///
+/// - `://` and `#` may each appear at most once.
+///   This error is only checked in debug mode.
+///
+/// - `://` must appear before `#`.
+///   This error is only checked in debug mode.
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ParseAssetPathError {
+    /// Error that occurs when the input path contains a `\` character.
+    ///
+    /// Asset paths use `/` as the only path separator, so `\` is not
+    /// allowed and must be replaced by `/` before parsing.
+    #[error("Asset path should not contain `\\` character. Use `/` instead.")]
+    InvalidBackslash,
     /// Error that occurs when a path string has deplicated `://` or `#`.
     #[error("Asset path contains invalid `#` or `://` (duplicated?)")]
     InvalidPath,
@@ -32,32 +61,65 @@ pub enum ParseAssetPathError {
 // AssetPath
 
 /// Represents a path to an asset in a "virtual filesystem".
-#[derive(Default, Clone, PartialEq, Eq, Hash)]
+///
+/// Asset paths consist of three main parts:
+///
+/// - [`AssetPath::source`]: An optional name of the [`AssetSource`] to load the asset from.
+///   If one is not set the default source will be used (which is the `assets` folder by default).
+///
+/// - [`AssetPath::path`]: The "virtual filesystem path" pointing to an asset source file.
+///   In the current implementation, this path is guaranteed to use `/` as its separator.
+///
+/// - [`AssetPath::label`]: An optional "named sub asset". When assets are loaded, they are
+///   allowed to load "sub assets" of any type, which are identified by a named "label".
+///
+/// [`AssetPath`] implements [`From`] for `&'static str`, `&'static Path`, and `&'a String`,
+/// which allows us to optimize the static cases.
+///
+/// The [`AssetPath::path`] and [`AssetPath::label`] segments use [`CowArc`] for optimization,
+/// preferring borrowing over allocating extra space.
+///
+/// The [`AssetPath::source`] segment uses [`SmolStr`] for optimization, since custom source
+/// names typically do not exceed 23 bytes and can therefore always remain inline.
+///
+/// [`AssetSource`]: crate::source::AssetSource
+#[derive(Default, Clone, PartialEq, Eq, Hash, TypePath)]
+#[type_path = "zlim_asset::path::AssetPath"]
 pub struct AssetPath<'a> {
-    source: Option<CowArc<'a, str>>,
+    source: Option<SmolStr>,
     path: CowArc<'a, Path>,
     label: Option<CowArc<'a, str>>,
 }
+
+// ---------------------------------------------------------------------
+// owned
 
 impl AssetPath<'_> {
     /// Converts this into an "owned" value.
     pub fn into_owned(self) -> AssetPath<'static> {
         AssetPath {
-            source: self.source.map(CowArc::into_owned),
+            source: self.source.clone(),
             path: self.path.into_owned(),
             label: self.label.map(CowArc::into_owned),
         }
     }
 
     /// Clones this into an "owned" value.
-    #[inline]
     pub fn clone_owned(&self) -> AssetPath<'static> {
-        self.clone().into_owned()
+        AssetPath {
+            source: self.source.clone(),
+            path: self.path.clone_owned(),
+            label: self.label.as_ref().map(CowArc::clone_owned),
+        }
     }
 }
 
+// ---------------------------------------------------------------------
+// parse
+
 impl<'a> AssetPath<'a> {
     // Attempts to Parse a &str into an `AssetPath`'s components.
+    #[inline(never)]
     fn parse_internal(
         asset_path: &str,
     ) -> Result<(Option<&str>, &Path, Option<&str>), ParseAssetPathError> {
@@ -103,6 +165,12 @@ impl<'a> AssetPath<'a> {
             return Err(ParseAssetPathError::InvalidPath);
         }
 
+        // `<[u8]>::contains` usually faster than `str::contains`
+        if path_segment.as_bytes().contains(&b'\\') {
+            ::core::hint::cold_path(); // E.g. `some\file#seg2`
+            return Err(ParseAssetPathError::InvalidBackslash);
+        }
+
         let source = match source_range {
             Some(source_range) => {
                 // validate source segment
@@ -141,28 +209,73 @@ impl<'a> AssetPath<'a> {
     }
 
     /// Creates a new [`AssetPath`] from a string in the asset path format:
+    /// - An asset at the root: `"scene.gltf"`
+    /// - An asset nested in some folders: `"some/path/scene.gltf"`
+    /// - An asset with a "label": `"some/path/scene.gltf#Mesh0"`
+    /// - An asset with a custom "source": `"custom://some/path/scene.gltf#Mesh0"`
+    ///
+    /// Prefer [`AssetPath::try_parse_static`] for static strings, as this will prevent
+    /// allocations and reference counting for [`AssetPath::into_owned`].
+    ///
+    /// This will return a [`ParseAssetPathError`] if `asset_path` is in an invalid format.
+    /// Note that some error formats is only checked in debug mode for performance.
+    ///
+    /// The path segment must not contain `\`; this is always treated as an error.
+    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
+    ///
+    /// [Normalize]: normalize_separators
     pub fn try_parse(asset_path: &'a str) -> Result<AssetPath<'a>, ParseAssetPathError> {
         let (source, path, label) = Self::parse_internal(asset_path)?;
         Ok(AssetPath {
-            source: source.map(CowArc::Borrowed),
+            source: source.map(SmolStr::from_str),
             path: CowArc::Borrowed(path),
             label: label.map(CowArc::Borrowed),
         })
     }
 
     /// Creates a new [`AssetPath`] from a static string in the asset path format:
+    /// - An asset at the root: `"scene.gltf"`
+    /// - An asset nested in some folders: `"some/path/scene.gltf"`
+    /// - An asset with a "label": `"some/path/scene.gltf#Mesh0"`
+    /// - An asset with a custom "source": `"custom://some/path/scene.gltf#Mesh0"`
+    ///
+    /// This will return a [`ParseAssetPathError`] if `asset_path` is in an invalid format.
+    /// Note that some error formats is only checked in debug mode for performance.
+    ///
+    /// The path segment must not contain `\`; this is always treated as an error.
+    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
+    ///
+    /// [Normalize]: normalize_separators
     pub fn try_parse_static(
         asset_path: &'static str,
     ) -> Result<AssetPath<'static>, ParseAssetPathError> {
         let (source, path, label) = Self::parse_internal(asset_path)?;
         Ok(AssetPath {
-            source: source.map(CowArc::Borrowed),
+            source: source.map(SmolStr::from_str),
             path: CowArc::Borrowed(path),
             label: label.map(CowArc::Borrowed),
         })
     }
 
     /// Creates a new [`AssetPath`] from a string in the asset path format:
+    /// - An asset at the root: `"scene.gltf"`
+    /// - An asset nested in some folders: `"some/path/scene.gltf"`
+    /// - An asset with a "label": `"some/path/scene.gltf#Mesh0"`
+    /// - An asset with a custom "source": `"custom://some/path/scene.gltf#Mesh0"`
+    ///
+    /// Prefer [`AssetPath::parse_static`] for static strings, as this will prevent
+    /// allocations and reference counting for [`AssetPath::into_owned`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the asset path is in an invalid format.
+    ///
+    /// The path segment must not contain `\`; this is always treated as an error.
+    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
+    ///
+    /// Use [`AssetPath::try_parse`] instead for a fallible variant.
+    ///
+    /// [Normalize]: normalize_separators
     #[inline]
     #[track_caller]
     pub fn parse(asset_path: &'a str) -> AssetPath<'a> {
@@ -176,6 +289,21 @@ impl<'a> AssetPath<'a> {
     }
 
     /// Creates a new [`AssetPath`] from a static string in the asset path format:
+    /// - An asset at the root: `"scene.gltf"`
+    /// - An asset nested in some folders: `"some/path/scene.gltf"`
+    /// - An asset with a "label": `"some/path/scene.gltf#Mesh0"`
+    /// - An asset with a custom "source": `"custom://some/path/scene.gltf#Mesh0"`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the asset path is in an invalid format.
+    ///
+    /// The path segment must not contain `\`; this is always treated as an error.
+    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
+    ///
+    /// Use [`AssetPath::try_parse_static`] instead for a fallible variant.
+    ///
+    /// [Normalize]: normalize_separators
     #[inline]
     #[track_caller]
     pub fn parse_static(asset_path: &'static str) -> AssetPath<'static> {
@@ -189,8 +317,15 @@ impl<'a> AssetPath<'a> {
     }
 }
 
+// ---------------------------------------------------------------------
+// fields
+
 impl<'a> AssetPath<'a> {
     /// Gets the path to the asset in the "virtual filesystem".
+    ///
+    /// Note that this function only return the `path` segment.
+    /// If you need full asset path with source and label, use
+    /// [`ToString::to_string`] instead.
     #[inline]
     pub fn path(&self) -> &Path {
         &self.path
@@ -208,21 +343,27 @@ impl<'a> AssetPath<'a> {
         self.label.as_deref()
     }
 
-    /// Gets the "asset source".
+    /// Gets the raw "asset source".
     #[inline]
-    pub fn source_cow(&self) -> Option<CowArc<'a, str>> {
+    pub fn source_raw(&self) -> Option<SmolStr> {
         self.source.clone()
     }
 
-    /// Gets the "sub-asset label".
+    /// Gets the raw "sub-asset label".
     #[inline]
-    pub fn label_cow(&self) -> Option<CowArc<'a, str>> {
+    pub fn label_raw(&self) -> Option<CowArc<'a, str>> {
         self.label.clone()
     }
 }
 
+// ---------------------------------------------------------------------
+// builder
+
 impl<'a> AssetPath<'a> {
     /// Creates a empty [`AssetPath`] with a empty path.
+    ///
+    /// The asset source is default and the label is none.
+    #[inline]
     pub fn empty() -> AssetPath<'static> {
         AssetPath {
             source: None,
@@ -232,8 +373,23 @@ impl<'a> AssetPath<'a> {
     }
 
     /// Creates a new [`AssetPath`] from a [`Path`].
+    ///
+    /// The asset source is default and the label is none.
+    ///
+    /// The input path should not contain `\`; otherwise it may cause unexpected
+    /// results (e.g. serialization). [Normalize] Windows paths before parsing.
+    ///
+    /// [Normalize]: normalize_separators
+    ///
+    /// # Panic
+    /// May panic if the path contains `\`.
     #[inline]
     pub fn from_path(path: &'a Path) -> AssetPath<'a> {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
+            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
+        }
+
         AssetPath {
             source: None,
             path: CowArc::Borrowed(path),
@@ -241,19 +397,22 @@ impl<'a> AssetPath<'a> {
         }
     }
 
-    /// Creates a new [`AssetPath`] from a [`PathBuf`].
-    #[inline]
-    pub fn from_path_buf(path_buf: PathBuf) -> AssetPath<'static> {
-        AssetPath {
-            source: None,
-            path: CowArc::Owned(path_buf.into()),
-            label: None,
-        }
-    }
-
     /// Returns this asset path with the given path segment.
+    ///
+    /// The input path should not contain `\`; otherwise it may cause unexpected
+    /// results (e.g. serialization). [Normalize] Windows paths before parsing.
+    ///
+    /// [Normalize]: normalize_separators
+    ///
+    /// # Panic
+    /// May panic if the path contains `\`.
     #[inline]
     pub fn with_path(self, path: &'a Path) -> AssetPath<'a> {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
+            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
+        }
+
         AssetPath {
             source: self.source,
             path: CowArc::Borrowed(path),
@@ -263,7 +422,7 @@ impl<'a> AssetPath<'a> {
 
     /// Returns this asset path with the given asset source.
     #[inline]
-    pub fn with_source(self, source: impl Into<CowArc<'a, str>>) -> AssetPath<'a> {
+    pub fn with_source(self, source: impl Into<SmolStr>) -> AssetPath<'a> {
         AssetPath {
             source: Some(source.into()),
             path: self.path,
@@ -301,24 +460,29 @@ impl<'a> AssetPath<'a> {
             label: None,
         }
     }
-}
 
-impl<'a> AssetPath<'a> {
     /// Removes a "sub-asset label" from this [`AssetPath`], if one was set.
     #[inline]
-    pub fn remove_label(&mut self) {
-        self.label = None;
+    pub fn remove_label(&mut self) -> Option<CowArc<'a, str>> {
+        self.label.take()
     }
 
-    /// Takes the "sub-asset label" from this [`AssetPath`], if one was set.
-    #[inline]
-    pub fn take_label(&mut self) -> Option<CowArc<'a, str>> {
-        self.label.take()
+    #[inline(always)]
+    #[expect(unused, reason = "todo")]
+    pub(crate) fn reset_label(&mut self) {
+        self.label = None;
     }
 }
 
+// ---------------------------------------------------------------------
+// parent
+
 impl<'a> AssetPath<'a> {
-    /// Returns an [`AssetPath`] for the parent folder of this path.
+    /// Returns an [`AssetPath`] for the parent folder of this path,
+    /// if there is a parent folder in the path.
+    ///
+    /// The returned path keeps the same [`AssetPath::source`] as `self`,
+    /// but its [`AssetPath::label`] is always reset to `None`.
     pub fn parent(&self) -> Option<AssetPath<'_>> {
         Some(AssetPath {
             path: match &self.path {
@@ -326,15 +490,15 @@ impl<'a> AssetPath<'a> {
                 CowArc::Static(path) => CowArc::Static(path.parent()?),
                 CowArc::Owned(path) => CowArc::Borrowed(path.parent()?),
             },
-            source: match &self.source {
-                Some(x) => Some(CowArc::Borrowed(x.as_ref())),
-                None => None,
-            },
+            source: self.source.clone(),
             label: None,
         })
     }
 
     /// Clones the [`AssetPath`] of the parent folder of this path.
+    ///
+    /// The returned path keeps the same [`AssetPath::source`] as `self`,
+    /// but its [`AssetPath::label`] is always reset to `None`.
     pub fn clone_parent(&self) -> Option<AssetPath<'a>> {
         Some(AssetPath {
             path: match &self.path {
@@ -348,8 +512,15 @@ impl<'a> AssetPath<'a> {
     }
 }
 
+// ---------------------------------------------------------------------
+// extension
+
 impl<'a> AssetPath<'a> {
     /// Returns the last extension, excluding multiple `.` values.
+    ///
+    /// Ex: Returns `"ron"` for `"my_asset.config.ron"`
+    ///
+    /// Also strips out anything following a `?` to handle query parameters in URIs.
     pub fn extension(&self) -> Option<&str> {
         let full_extension = self.full_extension()?;
         match full_extension.rfind(".") {
@@ -359,6 +530,10 @@ impl<'a> AssetPath<'a> {
     }
 
     /// Returns the full extension (including multiple '.' values).
+    ///
+    /// Ex: Returns `"config.ron"` for `"my_asset.config.ron"`
+    ///
+    /// Also strips out anything following a `?` to handle query parameters in URIs.
     pub fn full_extension(&self) -> Option<&str> {
         let file_name = self.path().file_name()?.to_str()?;
         let index = file_name.find('.')?;
@@ -374,103 +549,40 @@ impl<'a> AssetPath<'a> {
     }
 }
 
+// ---------------------------------------------------------------------
+// resolve
+
 impl<'a> AssetPath<'a> {
-    /// Resolves an [`AssetPath`] relative to `self`.
-    pub fn resolve(&self, path: &AssetPath<'_>) -> AssetPath<'static> {
-        let is_label_only =
-            path.source().is_none() && path.path.as_os_str().is_empty() && path.label.is_some();
-
-        if is_label_only {
-            // path.label.is_some is checked above
-            let label = path.label.as_ref().unwrap();
-            self.clone_owned().with_label(label.clone_owned())
-        } else {
-            let explicit_source = path.source.as_deref();
-            self.resolve_from_parts(false, explicit_source, path.path(), path.label())
-        }
-    }
-
-    /// Resolves an [`AssetPath`] relative to `self` using embedded (RFC 1808) semantics.
-    pub fn resolve_embed(&self, path: &AssetPath<'_>) -> AssetPath<'static> {
-        let is_label_only =
-            path.source().is_none() && path.path.as_os_str().is_empty() && path.label.is_some();
-
-        if is_label_only {
-            // path.label.is_some is checked above
-            let label = path.label.as_ref().unwrap();
-            self.clone_owned().with_label(label.clone_owned())
-        } else {
-            let explicit_source = path.source.as_deref();
-            self.resolve_from_parts(true, explicit_source, path.path(), path.label())
-        }
-    }
-
-    /// Parses `path` as an [`AssetPath`], then resolves it relative to `self`.
-    pub fn resolve_str(&self, path: &str) -> Result<AssetPath<'static>, ParseAssetPathError> {
-        self.resolve_internal(path, false)
-    }
-
-    /// Parses `path` as an [`AssetPath`], then resolves it relative to `self` using embedded
-    pub fn resolve_embed_str(&self, path: &str) -> Result<AssetPath<'static>, ParseAssetPathError> {
-        self.resolve_internal(path, true)
-    }
-
-    fn resolve_from_parts(
-        &self,
-        replace: bool,
-        source: Option<&str>,
-        rpath: &Path,
-        rlabel: Option<&str>,
-    ) -> AssetPath<'static> {
-        let mut base_path = PathBuf::from(self.path());
-        if replace && !self.path.to_str().unwrap().ends_with('/') {
-            // No error if base is empty (per RFC 1808).
-            base_path.pop();
-        }
-
-        // Strip off leading slash
-        let mut is_absolute = false;
-        let rpath = match rpath.strip_prefix("/") {
-            Ok(p) => {
-                is_absolute = true;
-                p
-            }
-            _ => rpath,
-        };
-
-        let mut result_path = if !is_absolute && source.is_none() {
-            base_path
-        } else {
-            PathBuf::new()
-        };
-        result_path.push(rpath);
-        result_path = normalize_path(result_path.as_path());
-
-        AssetPath {
-            source: match source {
-                Some(s) => Some(CowArc::Owned(s.into())),
-                None => self.source.clone().map(CowArc::into_owned),
-            },
-            path: CowArc::Owned(result_path.into()),
-            label: rlabel.map(|l| CowArc::Owned(l.into())),
-        }
-    }
-
-    fn resolve_internal(
-        &self,
-        path: &str,
-        replace: bool,
-    ) -> Result<AssetPath<'static>, ParseAssetPathError> {
-        if let Some(label) = path.strip_prefix('#') {
-            // It's a label only
-            Ok(self.clone_owned().with_label(label.to_owned()))
-        } else {
-            let (source, rpath, rlabel) = AssetPath::parse_internal(path)?;
-            Ok(self.resolve_from_parts(replace, source, rpath, rlabel))
-        }
-    }
-
     /// Returns `true` if this [`AssetPath`] points outside its source folder.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use zlim_asset::path::AssetPath;
+    /// // Inside the default AssetSource.
+    /// let path = AssetPath::parse("thingy.png");
+    /// assert!( ! path.is_unapproved());
+    /// let path = AssetPath::parse("gui/thingy.png");
+    /// assert!( ! path.is_unapproved());
+    ///
+    /// // Inside a different AssetSource.
+    /// let path = AssetPath::parse("embedded://thingy.png");
+    /// assert!( ! path.is_unapproved());
+    ///
+    /// // Exits the `AssetSource`s directory.
+    /// let path = AssetPath::parse("../thingy.png");
+    /// assert!(path.is_unapproved());
+    /// let path = AssetPath::parse("folder/../../thingy.png");
+    /// assert!(path.is_unapproved());
+    ///
+    /// // This references the linux root directory.
+    /// let path = AssetPath::parse("/home/thingy.png");
+    /// assert!(path.is_unapproved());
+    ///
+    /// // This references the windows root directory.
+    /// let path = AssetPath::parse("C:/home/thingy.png");
+    /// assert!(path.is_unapproved());
+    /// ```
     pub fn is_unapproved(&self) -> bool {
         use std::path::Component;
         let mut component_count: usize = 0;
@@ -487,33 +599,187 @@ impl<'a> AssetPath<'a> {
 
         false
     }
-}
 
-/// Normalizes the path by collapsing all occurrences of '.' and '..' dot-segments
-fn normalize_path(path: &Path) -> PathBuf {
-    let size_hint = path.as_os_str().len();
-    let mut result_path = PathBuf::with_capacity(size_hint);
+    /// Resolves an [`AssetPath`] relative to `self`.
+    ///
+    /// Semantics:
+    /// - If `path` is label-only (default source, empty path, label set), replace `self`'s label.
+    /// - If `path` begins with `/`, treat it as rooted at the asset-source root (not the filesystem).
+    /// - If `path` has an explicit source (`name://...`), it replaces the base source.
+    /// - Relative segments are concatenated and normalized (`.`/`..` removal), preserving extra `..` if the base underflows.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use zlim_asset::path::AssetPath;
+    /// let base = AssetPath::parse("a/b");
+    /// assert_eq!(base.resolve(&AssetPath::parse("c")), AssetPath::parse("a/b/c"));
+    /// assert_eq!(base.resolve(&AssetPath::parse("./c")), AssetPath::parse("a/b/c"));
+    /// assert_eq!(base.resolve(&AssetPath::parse("../c")), AssetPath::parse("a/c"));
+    /// assert_eq!(base.resolve(&AssetPath::parse("c.png")), AssetPath::parse("a/b/c.png"));
+    /// assert_eq!(base.resolve(&AssetPath::parse("/c")), AssetPath::parse("c"));
+    /// assert_eq!(AssetPath::parse("a/b.png").resolve(&AssetPath::parse("#c")), AssetPath::parse("a/b.png#c"));
+    /// assert_eq!(AssetPath::parse("a/b.png#c").resolve(&AssetPath::parse("#d")), AssetPath::parse("a/b.png#d"));
+    /// ```
+    pub fn resolve(&self, path: &AssetPath<'_>) -> AssetPath<'static> {
+        let is_label_only =
+            path.source().is_none() && path.path.as_os_str().is_empty() && path.label.is_some();
 
-    for elt in path.iter() {
-        if elt == "." {
-            // Skip
-        } else if elt == ".." {
-            // Note: If the result_path ends in `..`, Path::file_name returns None,
-            // so we'll end up preserving it.
-            if result_path.file_name().is_some() {
-                // This assert is just a sanity check - we already know the path
-                // has a file_name, so we know there is something to pop.
-                assert!(result_path.pop());
-            } else {
-                // Preserve ".." if insufficient matches (per RFC 1808).
-                result_path.push(elt);
-            }
+        if is_label_only {
+            // path.label.is_some is checked above
+            let label = path.label.as_ref().unwrap();
+            self.clone_owned().with_label(label.clone_owned())
         } else {
-            result_path.push(elt);
+            let explicit_source = path.source.as_deref();
+            self.resolve_from_parts(false, explicit_source, path.path(), path.label())
         }
     }
-    result_path
+
+    /// Resolves an [`AssetPath`] relative to `self` using embedded (RFC 1808) semantics.
+    ///
+    /// Semantics:
+    /// - Remove the "file portion" of the base before concatenation (unless the base ends with `/`).
+    /// - Otherwise identical to [`AssetPath::resolve`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use zlim_asset::path::AssetPath;
+    /// let base = AssetPath::parse("a/b");
+    /// assert_eq!(base.resolve_embed(&AssetPath::parse("c")), AssetPath::parse("a/c"));
+    /// assert_eq!(base.resolve_embed(&AssetPath::parse("./c")), AssetPath::parse("a/c"));
+    /// assert_eq!(base.resolve_embed(&AssetPath::parse("../c")), AssetPath::parse("c"));
+    /// assert_eq!(base.resolve_embed(&AssetPath::parse("c.png")), AssetPath::parse("a/c.png"));
+    /// assert_eq!(base.resolve_embed(&AssetPath::parse("/c")), AssetPath::parse("c"));
+    /// assert_eq!(AssetPath::parse("a/b.png").resolve_embed(&AssetPath::parse("#c")), AssetPath::parse("a/b.png#c"));
+    /// assert_eq!(AssetPath::parse("a/b.png#c").resolve_embed(&AssetPath::parse("#d")), AssetPath::parse("a/b.png#d"));
+    /// ```
+    pub fn resolve_embed(&self, path: &AssetPath<'_>) -> AssetPath<'static> {
+        let is_label_only =
+            path.source().is_none() && path.path.as_os_str().is_empty() && path.label.is_some();
+
+        if is_label_only {
+            // path.label.is_some is checked above
+            let label = path.label.as_ref().unwrap();
+            self.clone_owned().with_label(label.clone_owned())
+        } else {
+            let explicit_source = path.source.as_deref();
+            self.resolve_from_parts(true, explicit_source, path.path(), path.label())
+        }
+    }
+
+    /// Parses `path` as an [`AssetPath`], then resolves it relative to `self`.
+    ///
+    /// This function currently does not support Windows-style
+    /// paths using `\` as a path separator. Use `/` instead.
+    ///
+    /// Returns an error if parsing fails.
+    ///
+    /// The path segment should not contain `\`; this is always treated as an error.
+    /// Normalize Windows-style paths (e.g. replace `\` with `/`) before parsing.
+    ///
+    /// For more details, see [`AssetPath::resolve`].
+    pub fn resolve_str(&self, path: &str) -> Result<AssetPath<'static>, ParseAssetPathError> {
+        self.resolve_str_internal(path, false)
+    }
+
+    /// Parses `path` as an [`AssetPath`], then resolves it relative to `self` using embedded
+    ///
+    /// Returns an error if parsing fails.
+    ///
+    /// The path segment should not contain `\`; this is always treated as an error.
+    /// Normalize Windows-style paths (e.g. replace `\` with `/`) before parsing.
+    ///
+    /// For more details, see [`AssetPath::resolve_embed`].
+    pub fn resolve_embed_str(&self, path: &str) -> Result<AssetPath<'static>, ParseAssetPathError> {
+        self.resolve_str_internal(path, true)
+    }
+
+    fn resolve_from_parts(
+        &self,
+        replace: bool,
+        source: Option<&str>,
+        rpath: &Path,
+        rlabel: Option<&str>,
+    ) -> AssetPath<'static> {
+        let mut base_path = PathBuf::from(self.path());
+
+        if replace {
+            // TODO: use unstable fn Path::has_trailing_sep instead
+            let bytes = self.path.as_os_str().as_encoded_bytes();
+            let last = bytes.last().copied();
+            let _ = (last != Some(b'/')).then(|| base_path.pop());
+        }
+
+        // Strip off leading slash
+        let (rpath, is_absolute) = match rpath.strip_prefix("/") {
+            Ok(stripped) => (stripped, true),
+            Err(_) => (rpath, false),
+        };
+
+        let mut result_path = if !is_absolute && source.is_none() {
+            base_path
+        } else {
+            PathBuf::new()
+        };
+
+        result_path.push(rpath);
+
+        if result_path.iter().any(|elt| elt == "..") {
+            // PathBuf::canonicalize(), but faster
+            ::core::hint::cold_path();
+            let size_hint = result_path.as_os_str().len();
+            let mut buffer = PathBuf::with_capacity(size_hint);
+            for elt in result_path.iter() {
+                if elt == "." {
+                    // Skip
+                } else if elt == ".." {
+                    // `file_name` is `None` for a path that already ends
+                    // in `..`: the latter must be preserved rather than
+                    // popped (RFC 1808), so `..`/`..` does not cancel itself out.
+                    if buffer.file_name().is_some() {
+                        buffer.pop();
+                    } else {
+                        buffer.push(elt);
+                    }
+                } else {
+                    buffer.push(elt);
+                }
+            }
+            result_path = buffer;
+        }
+
+        #[cfg(target_family = "windows")]
+        let result_path = normalize_separators(result_path);
+
+        AssetPath {
+            // An explicit `name://` in the resolved path replaces the base source.
+            source: match source {
+                Some(x) => Some(SmolStr::from_str(x)),
+                None => self.source.clone(),
+            },
+            path: CowArc::Owned(result_path.into()),
+            label: rlabel.map(|l| CowArc::Owned(l.into())),
+        }
+    }
+
+    fn resolve_str_internal(
+        &self,
+        path: &str,
+        replace: bool,
+    ) -> Result<AssetPath<'static>, ParseAssetPathError> {
+        if let Some(label) = path.strip_prefix('#') {
+            // It's a label only
+            Ok(self.clone_owned().with_label(label.to_owned()))
+        } else {
+            let (source, rpath, rlabel) = AssetPath::parse_internal(path)?;
+            Ok(self.resolve_from_parts(replace, source, rpath, rlabel))
+        }
+    }
 }
+
+// ---------------------------------------------------------------------
+// Serialize
 
 impl<'a> Debug for AssetPath<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -620,12 +886,15 @@ impl<'de> Deserialize<'de> for AssetPath<'static> {
     }
 }
 
+// ---------------------------------------------------------------------
+// Conversion
+
 // This is only implemented for static lifetimes to ensure `Path::clone`
 // does not allocate by ensuring that this is stored as a `CowArc::Static`.
 impl From<&'static str> for AssetPath<'static> {
     #[inline]
     fn from(asset_path: &'static str) -> Self {
-        Self::parse_static(asset_path)
+        AssetPath::parse_static(asset_path)
     }
 }
 
@@ -648,6 +917,11 @@ impl From<String> for AssetPath<'static> {
 impl From<&'static Path> for AssetPath<'static> {
     #[inline]
     fn from(path: &'static Path) -> Self {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
+            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
+        }
+
         Self {
             source: None,
             path: CowArc::Static(path),
@@ -659,6 +933,11 @@ impl From<&'static Path> for AssetPath<'static> {
 impl<'a> From<&'a PathBuf> for AssetPath<'a> {
     #[inline]
     fn from(path: &'a PathBuf) -> Self {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
+            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
+        }
+
         Self {
             source: None,
             path: CowArc::Borrowed(path.as_path()),
@@ -670,6 +949,11 @@ impl<'a> From<&'a PathBuf> for AssetPath<'a> {
 impl From<PathBuf> for AssetPath<'static> {
     #[inline]
     fn from(path: PathBuf) -> Self {
+        #[cfg(any(debug_assertions, feature = "debug"))]
+        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
+            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
+        }
+
         Self {
             source: None,
             path: path.into(),
@@ -691,3 +975,36 @@ impl<'a> From<AssetPath<'a>> for PathBuf {
         value.path().to_path_buf()
     }
 }
+
+// ---------------------------------------------------------------------
+
+/// Converts all `\` separators in `path` to `/`.
+///
+/// This is used to normalize Windows-style paths into the `/`-separated
+/// form expected by [`AssetPath`]. Since [`AssetPath::path`] is required to
+/// use `/` as its only separator, any `\` coming from the host platform must
+/// be replaced before the path is stored.
+///
+/// If the path is not valid UTF-8, a lossy conversion is performed via
+/// [`OsStr::to_string_lossy`], and any invalid bytes are replaced with
+/// `U+FFFD`. This matches the behavior of [`Path::display`] and keeps the
+/// function infallible.
+///
+/// [`OsStr::to_string_lossy`]: std::ffi::OsStr::to_string_lossy
+pub fn normalize_separators(path: PathBuf) -> PathBuf {
+    let osstring = path.into_os_string();
+    let mut s = osstring
+        .into_string()
+        .unwrap_or_else(|x| x.to_string_lossy().into_owned());
+
+    #[expect(unsafe_code, reason = "raw bytes modification")]
+    unsafe {
+        let iter = s.as_bytes_mut().iter_mut();
+        iter.filter(|c| **c == b'\\').for_each(|c| *c = b'/');
+    }
+
+    PathBuf::from(s)
+}
+
+// ---------------------------------------------------------------------
+// Tests

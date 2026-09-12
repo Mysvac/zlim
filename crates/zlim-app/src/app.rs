@@ -1293,6 +1293,7 @@ impl SubApp {
     /// Registers a message type for use in this world (app).
     ///
     /// See [`World::register_message`] for details.
+    #[doc(alias = "init_message")]
     pub fn add_message<T: Message>(&mut self) -> &mut Self {
         self.world_mut().register_message::<T>();
         self
@@ -1316,6 +1317,7 @@ impl App {
     /// Registers a message type for use in the main world (app).
     ///
     /// See [`World::register_message`] for details.
+    #[doc(alias = "init_message")]
     pub fn add_message<T: Message>(&mut self) -> &mut Self {
         self.main_world_mut().register_message::<T>();
         self

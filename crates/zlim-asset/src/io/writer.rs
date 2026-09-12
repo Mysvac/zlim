@@ -8,8 +8,7 @@
 //! - [`AssetWriter`] is a *source*: it creates those streams for asset paths and also owns the
 //!   directory operations (create/remove/rename/clear). It is written with RPITIT
 //!   (`-> impl Future<…> + Send`) and therefore **not object safe**; [`ErasedAssetWriter`] is
-//!   the boxed mirror stored in [`AssetSource`](crate::io::AssetSource), implemented
-//!   automatically for every `AssetWriter`.
+//!   the boxed mirror stored in [`AssetSource`], implemented automatically for every `AssetWriter`.
 //!
 //! Two rules make sources interchangeable:
 //!
@@ -24,8 +23,8 @@
 //! Writing into memory, then reading it back:
 //!
 //! ```rust
-//! use futures_lite::future::block_on;
-//! use std::path::Path;
+//! # use std::path::Path;
+//! # use futures_lite::future::block_on;
 //! use zlim_asset::io::{AssetWriter, memory::MemoryAssetWriter};
 //!
 //! let writer = MemoryAssetWriter::default();
@@ -34,6 +33,8 @@
 //! let stored = writer.root.get_asset(Path::new("models/level.ron")).unwrap();
 //! assert_eq!(stored.value(), b"level");
 //! ```
+//!
+//! [`AssetSource`]: crate::source::AssetSource
 
 use core::future::Future;
 use std::path::{Path, PathBuf};
@@ -41,6 +42,7 @@ use std::path::{Path, PathBuf};
 use zlim_core::derive::Error;
 
 use super::future::WriteAllFuture;
+use crate::utils::BoxedFuture;
 
 // -----------------------------------------------------------------------------
 // AssetWriterError
@@ -119,13 +121,11 @@ pub use futures_lite::io::AsyncWrite;
 /// # Examples
 ///
 /// ```rust
-/// use futures_lite::future::block_on;
-/// use futures_lite::io::AsyncWriteExt;
-/// use std::path::Path;
-/// // The concrete `Writer` implementations come from sources, so this example asks a
-/// // `MemoryAssetWriter` for one.
-/// use zlim_asset::io::AssetWriter;
-/// use zlim_asset::io::Writer;
+/// # use futures_lite::future::block_on;
+/// # use futures_lite::io::AsyncWriteExt;
+/// # use std::path::Path;
+/// # use zlim_asset::io::AssetWriter;
+/// # use zlim_asset::io::Writer;
 /// use zlim_asset::io::memory::MemoryAssetWriter;
 ///
 /// let source = MemoryAssetWriter::default();
@@ -135,10 +135,8 @@ pub use futures_lite::io::AsyncWrite;
 /// block_on(writer.write_all_bytes(b".ron")).unwrap();
 /// block_on(writer.flush()).unwrap();
 ///
-/// assert_eq!(
-///     source.root.get_asset(Path::new("a.txt")).unwrap().value(),
-///     b"level.ron"
-/// );
+/// let data = source.root.get_asset(Path::new("a.txt")).unwrap();
+/// assert_eq!(data.value(), b"level.ron");
 /// ```
 pub trait Writer: AsyncWrite + Unpin + Send + Sync {
     /// Writes the whole slice, looping until every byte is accepted.
@@ -199,16 +197,16 @@ impl Writer for Box<dyn Writer + '_> {
 /// [`remove_meta`]: Self::remove_meta
 /// [`NotFound`]: AssetWriterError::NotFound
 /// [`AssetReader`]: crate::io::AssetReader
-/// [`default_writer`]: crate::io::AssetSource::default_writer
+/// [`default_writer`]: crate::source::AssetSource::default_writer
 ///
 /// # Examples
 ///
 /// ```rust
-/// use futures_lite::future::block_on;
-/// use futures_lite::io::AsyncWriteExt;
-/// use std::path::Path;
-/// use zlim_asset::io::AssetWriter;
-/// use zlim_asset::io::Writer;
+/// # use futures_lite::future::block_on;
+/// # use futures_lite::io::AsyncWriteExt;
+/// # use std::path::Path;
+/// # use zlim_asset::io::AssetWriter;
+/// # use zlim_asset::io::Writer;
 /// use zlim_asset::io::memory::MemoryAssetWriter;
 ///
 /// let writer = MemoryAssetWriter::default();
@@ -345,7 +343,7 @@ pub trait AssetWriter: Send + Sync + 'static {
 // -----------------------------------------------------------------------------
 // ErasedAssetWriter
 
-type BoxedAssetWriterFuture<'a, T> = crate::BoxedFuture<'a, Result<T, AssetWriterError>>;
+type BoxedAssetWriterFuture<'a, T> = BoxedFuture<'a, Result<T, AssetWriterError>>;
 
 /// A type-erased [`AssetWriter`] with boxed futures, used internally by the asset server.
 ///
@@ -356,8 +354,8 @@ type BoxedAssetWriterFuture<'a, T> = crate::BoxedFuture<'a, Result<T, AssetWrite
 /// # Examples
 ///
 /// ```rust
-/// use futures_lite::future::block_on;
-/// use std::path::Path;
+/// # use std::path::Path;
+/// # use futures_lite::future::block_on;
 /// use zlim_asset::io::{ErasedAssetWriter, memory::MemoryAssetWriter};
 ///
 /// let memory = MemoryAssetWriter::default();

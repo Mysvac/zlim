@@ -11,9 +11,10 @@ mod registry;
 /// macro populates it, and [`register_source`] turns it into the `embedded` asset source.
 /// Loading by name (`load_embedded_asset!`) needs `AssetServer` and is still pending.
 ///
+/// [`Dir`]: crate::io::memory::Dir
 /// [`embedded_asset!`]: crate::embedded_asset
 /// [`Resource`]: trait@zlim_core::resource::Resource
-/// [`register_source`]: EmbeddedAssetRegistry::register_source)
+/// [`register_source`]: EmbeddedAssetRegistry::register_source
 #[doc(inline)]
 pub use registry::EmbeddedAssetRegistry;
 
@@ -22,7 +23,7 @@ pub use registry::EmbeddedAssetRegistry;
 
 /// The name of the `embedded` [`AssetSource`].
 ///
-/// [`AssetSource`]: crate::io::AssetSource
+/// [`AssetSource`]: crate::source::AssetSource
 pub const EMBEDDED: &str = "embedded";
 
 // -----------------------------------------------------------------------------
@@ -34,11 +35,10 @@ pub const EMBEDDED: &str = "embedded";
 macro_rules! embedded_path {
     ($path_str: expr) => {{ $crate::embedded_path!("src", $path_str) }};
     ($source_path: expr, $path_str: expr) => {{
-        let crate_name = module_path!().split(':').next().unwrap();
         $crate::io::embedded::__embedded_asset_path(
-            crate_name,
+            ::core::file!(),
+            ::core::env!("CARGO_CRATE_NAME"),
             $source_path.as_ref(),
-            file!().as_ref(),
             $path_str.as_ref(),
         )
     }};
@@ -88,17 +88,28 @@ pub fn watched_path(source_file_path: &'static str, asset_path: &'static str) ->
 /// Maps a source file path onto its `embedded` asset path.
 #[doc(hidden)]
 pub fn __embedded_asset_path(
+    file_path: &str,
     crate_name: &str,
     src_prefix: &Path,
-    file_path: &Path,
     asset_path: &Path,
 ) -> PathBuf {
-    let file_path = if cfg!(not(target_family = "windows")) {
-        // Windows -> WASM, need to replace the delimiter.
-        PathBuf::from(file_path.to_str().unwrap().replace("\\", "/"))
+    #[cfg(target_family = "windows")]
+    let file_path: PathBuf = PathBuf::from(file_path);
+
+    // ↓ `file_path` is complition string, need to handle cross compilation.
+    #[cfg(not(target_family = "windows"))]
+    let file_path: PathBuf = if file_path.as_bytes().contains(&b'\\') {
+        let mut buffer = String::from(file_path);
+        #[expect(unsafe_code, reason = "raw bytes modification")]
+        unsafe {
+            let iter = buffer.as_bytes_mut().iter_mut();
+            iter.filter(|c| **c == b'\\').for_each(|c| *c = b'/');
+        }
+        PathBuf::from(buffer)
     } else {
         PathBuf::from(file_path)
     };
+
     let mut maybe_parent = file_path.parent();
     let after_src = loop {
         let Some(parent) = maybe_parent else {
@@ -110,5 +121,6 @@ pub fn __embedded_asset_path(
         maybe_parent = parent.parent();
     };
     let asset_path = after_src.parent().unwrap().join(asset_path);
+
     Path::new(crate_name).join(asset_path)
 }

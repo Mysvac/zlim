@@ -1,3 +1,5 @@
+//! Blocking filesystem asset reader and writer implementations.
+
 use core::pin::Pin;
 use core::task::Poll;
 use std::fs::File;
@@ -8,11 +10,10 @@ use futures_lite::Stream;
 use futures_lite::io::{AsyncRead, AsyncSeek, AsyncWrite};
 
 use super::{FileAssetReader, FileAssetWriter};
-use crate::PathStream;
 use crate::io::future::{ReadAllFuture, WriteAllFuture};
 use crate::io::{AssetReader, AssetReaderError, Reader, ReaderNotSeekableError, SeekableReader};
 use crate::io::{AssetWriter, AssetWriterError, Writer};
-use crate::utils::append_meta_extension;
+use crate::utils::{append_meta_extension, PathStream};
 
 // -----------------------------------------------------------------------------
 // FileReader

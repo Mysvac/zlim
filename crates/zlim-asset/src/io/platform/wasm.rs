@@ -1,3 +1,5 @@
+//! Wasm asset reader that fetches assets over HTTP.
+
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +11,7 @@ use web_sys::Response;
 
 use crate::io::{AssetReader, AssetReaderError, Reader, VecReader};
 use crate::utils::append_meta_extension;
-use crate::{EmptyPathStream, PathStream};
+use crate::utils::{EmptyPathStream, PathStream};
 
 /// Represents the global object in the JavaScript context
 #[wasm_bindgen]

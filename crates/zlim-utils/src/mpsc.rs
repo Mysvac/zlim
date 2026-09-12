@@ -244,6 +244,12 @@ impl<T> Receiver<T> {
     pub fn try_recv(&self) -> Option<T> {
         self.inner.queue.pop()
     }
+
+    /// Returns true if the queue is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.inner.queue.is_empty()
+    }
 }
 
 impl<T> Debug for Receiver<T> {

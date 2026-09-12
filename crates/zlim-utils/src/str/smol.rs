@@ -60,6 +60,12 @@ impl SmolStr {
         Self(Inner::new(s))
     }
 
+    /// Create a `SmolStr` from a `Arc<str>`.
+    #[inline(always)]
+    pub fn from_arc(s: Arc<str>) -> Self {
+        Self(Inner::from(s))
+    }
+
     /// Returns a `&str` slice of this SmolStr.
     #[inline(always)]
     pub fn as_str(&self) -> &str {
@@ -76,6 +82,12 @@ impl SmolStr {
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Returns true if self is heap-allocated.
+    #[inline(always)]
+    pub const fn is_heap_allocated(&self) -> bool {
+        self.0.is_heap_allocated()
     }
 }
 

@@ -6,6 +6,7 @@
 //!   `AsyncSeek`) with one addition — [`Reader::read_all_bytes`], the "append everything to a
 //!   `Vec<u8>`" fast path. [`VecReader`] and [`SliceReader`] are ready-made implementations
 //!   over memory that complete without an async state machine.
+//!
 //! - [`AssetReader`] is a *source*: it maps asset paths onto byte streams, meta sidecars and
 //!   directory listings. It is written with RPITIT (`-> impl Future<…> + Send`), which is
 //!   cheap for implementors but **not object safe**, so [`ErasedAssetReader`] is the boxed
@@ -31,15 +32,13 @@
 //! Reading through the source level:
 //!
 //! ```rust
-//! use futures_lite::future::block_on;
-//! use std::path::Path;
-//! use zlim_asset::io::AssetReader;
+//! # use futures_lite::future::block_on;
+//! # use std::path::Path;
+//! # use zlim_asset::io::AssetReader;
 //! use zlim_asset::io::memory::MemoryAssetReader;
 //!
 //! let source = MemoryAssetReader::default();
-//! source
-//!     .root
-//!     .insert_asset_text(Path::new("models/level.ron"), "level");
+//! source.root.insert_asset_text(Path::new("models/level.ron"), "level");
 //!
 //! let bytes = block_on(source.read_bytes(Path::new("models/level.ron"))).unwrap();
 //! assert_eq!(bytes, b"level");
@@ -54,7 +53,7 @@ use std::path::{Path, PathBuf};
 use zlim_core::derive::Error;
 
 use super::future::ReadAllFuture;
-use crate::{BoxedFuture, PathStream};
+use crate::utils::{BoxedFuture, PathStream};
 
 // -----------------------------------------------------------------------------
 // AssetReaderError
@@ -150,8 +149,8 @@ pub trait Reader: AsyncRead + Unpin + Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns [`ReaderNotSeekableError`] when the storage cannot seek, e.g. an HTTP response
-    /// body or a decompression stream.
+    /// Returns [`ReaderNotSeekableError`] when the storage cannot seek,
+    /// e.g. an HTTP response body or a decompression stream.
     fn seekable(&mut self) -> Result<&mut dyn SeekableReader, ReaderNotSeekableError>;
 
     /// Reads this reader to EOF, appending the bytes to `buf`.
@@ -242,14 +241,14 @@ pub struct ReaderNotSeekableError;
 /// automatically for any `AssetReader`.
 ///
 /// [`AssetSourceId`]: crate::ident::AssetSourceId
-/// [`AssetSources`]: crate::io::AssetSources
+/// [`AssetSources`]: crate::source::AssetSources
 ///
 /// # Examples
 ///
 /// ```rust
-/// use std::path::Path;
-/// use futures_lite::future::block_on;
-/// use zlim_asset::io::AssetReader;
+/// # use std::path::Path;
+/// # use futures_lite::future::block_on;
+/// # use zlim_asset::io::AssetReader;
 /// use zlim_asset::io::memory::MemoryAssetReader;
 ///
 /// let source = MemoryAssetReader::default();
@@ -285,10 +284,10 @@ pub trait AssetReader: Sized + Sync + Send + 'static {
     /// # Examples
     ///
     /// ```rust
-    /// use std::path::Path;
-    /// use futures_lite::future::block_on;
-    /// use futures_lite::StreamExt;
-    /// use zlim_asset::io::AssetReader;
+    /// # use std::path::Path;
+    /// # use futures_lite::future::block_on;
+    /// # use futures_lite::StreamExt;
+    /// # use zlim_asset::io::AssetReader;
     /// use zlim_asset::io::memory::MemoryAssetReader;
     ///
     /// let source = MemoryAssetReader::default();
@@ -297,6 +296,7 @@ pub trait AssetReader: Sized + Sync + Send + 'static {
     ///
     /// let mut entries = block_on(source.read_directory(Path::new("models"))).unwrap();
     /// let mut paths = Vec::new();
+    ///
     /// while let Some(path) = block_on(entries.next()) {
     ///     paths.push(path);
     /// }
@@ -366,8 +366,8 @@ type BoxedAssetReaderFuture<'a, T> = BoxedFuture<'a, Result<T, AssetReaderError>
 /// # Examples
 ///
 /// ```rust
-/// use std::path::Path;
-/// use futures_lite::future::block_on;
+/// # use std::path::Path;
+/// # use futures_lite::future::block_on;
 /// use zlim_asset::io::ErasedAssetReader;
 /// use zlim_asset::io::memory::MemoryAssetReader;
 ///
@@ -379,7 +379,7 @@ type BoxedAssetReaderFuture<'a, T> = BoxedFuture<'a, Result<T, AssetReaderError>
 /// assert_eq!(bytes, b"asset");
 /// ```
 ///
-/// [`AssetSource`]: crate::io::AssetSource
+/// [`AssetSource`]: crate::source::AssetSource
 pub trait ErasedAssetReader: Send + Sync + 'static {
     /// Returns a future for the full file data at the provided path.
     fn read<'a>(&'a self, path: &'a Path) -> BoxedAssetReaderFuture<'a, Box<dyn Reader + 'a>>;
@@ -444,9 +444,9 @@ impl<T: AssetReader> ErasedAssetReader for T {
 /// # Examples
 ///
 /// ```rust
-/// use std::io::SeekFrom;
-/// use futures_lite::future::block_on;
-/// use futures_lite::io::AsyncSeekExt;
+/// # use std::io::SeekFrom;
+/// # use futures_lite::future::block_on;
+/// # use futures_lite::io::AsyncSeekExt;
 /// use zlim_asset::io::{Reader, VecReader};
 ///
 /// let mut reader = VecReader::new(b"0123456789".to_vec());

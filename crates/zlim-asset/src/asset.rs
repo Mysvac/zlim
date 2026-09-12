@@ -9,6 +9,9 @@ use zlim_utils::hash::{HashMap, HashSet};
 use crate::handle::{ErasedHandle, Handle};
 use crate::ident::{AssetId, ErasedAssetId};
 
+pub use zlim_asset_derive::Asset;
+pub use zlim_asset_derive::VisitAssetDependencies;
+
 // -----------------------------------------------------------------------------
 // Asset
 
@@ -140,6 +143,25 @@ impl<K, V: VisitAssetDependencies> VisitAssetDependencies for BTreeMap<K, V> {
 // AssetComponent
 
 /// A component that exposes the id of the asset it refers to.
+///
+/// This is the handle-to-id protocol used by [`AssetChanged`]:
+///
+/// ```rust, ignore
+/// #[derive(TypePath, Component)]
+/// struct MaterialRef(Handle<Material>);
+///
+/// impl AssetComponent for MaterialRef {
+///     type Asset = Material;
+///     fn asset_id(&self) -> AssetId<Material> {
+///         self.0.id()
+///     }
+/// }
+///
+/// // Then, on the entity that references the asset:
+/// fn react(materials: Query<&MaterialRef, AssetChanged<MaterialRef>>) { /* ... */ }
+/// ```
+///
+/// [`AssetChanged`]: crate::change::AssetChanged
 pub trait AssetComponent: Component {
     /// The asset type this component refers to.
     type Asset: Asset;

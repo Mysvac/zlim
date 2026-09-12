@@ -5,10 +5,9 @@ use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use atomicow::CowArc;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zlim_core::derive::Error;
+use zlim_utils::str::SmolStr;
 use zlim_utils::sync::SegQueue;
 
 use crate::asset::Asset;
@@ -16,35 +15,28 @@ use crate::asset::Asset;
 // -----------------------------------------------------------------------------
 // AssetSourceId
 
-/// Identifies the `AssetSource` that owns an asset path.
+/// Identifies the [`AssetSource`] that owns an asset path.
+///
+/// - [`Default`]: the unnamed primary source (e.g. `assets/`).
+/// - [`Name`]: a named secondary source registered with the asset server.
+///
+/// [`Default`]: AssetSourceId::Default
+/// [`Name`]: AssetSourceId::Name
+/// [`AssetSource`]: crate::source::AssetSource
 #[derive(Default, Clone, Debug, Eq)]
-pub enum AssetSourceId<'a> {
+pub enum AssetSourceId {
     #[default]
     Default,
-    Name(CowArc<'a, str>),
+    Name(SmolStr),
 }
 
-impl<'a> AssetSourceId<'a> {
+impl AssetSourceId {
     /// Creates a new [`AssetSourceId`]
-    pub fn new(source: Option<impl Into<CowArc<'a, str>>>) -> AssetSourceId<'a> {
+    pub fn new(source: Option<impl Into<SmolStr>>) -> AssetSourceId {
         match source {
             Some(source) => AssetSourceId::Name(source.into()),
             None => AssetSourceId::Default,
         }
-    }
-
-    /// If this is not already an owned / static id, create one.
-    pub fn into_owned(self) -> AssetSourceId<'static> {
-        match self {
-            AssetSourceId::Default => AssetSourceId::Default,
-            AssetSourceId::Name(v) => AssetSourceId::Name(v.into_owned()),
-        }
-    }
-
-    /// Clones into an owned [`AssetSourceId<'static>`].
-    #[inline]
-    pub fn clone_owned(&self) -> AssetSourceId<'static> {
-        self.clone().into_owned()
     }
 
     /// Returns the source name, or [`None`] for [`AssetSourceId::Default`].
@@ -57,19 +49,19 @@ impl<'a> AssetSourceId<'a> {
     }
 }
 
-impl<'a> Hash for AssetSourceId<'a> {
+impl Hash for AssetSourceId {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.as_str().hash(state);
     }
 }
 
-impl<'a> PartialEq for AssetSourceId<'a> {
+impl PartialEq for AssetSourceId {
     fn eq(&self, other: &Self) -> bool {
         self.as_str().eq(&other.as_str())
     }
 }
 
-impl<'a> Display for AssetSourceId<'a> {
+impl Display for AssetSourceId {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.as_str() {
             None => f.write_str("AssetSourceId::Default"),
@@ -78,48 +70,54 @@ impl<'a> Display for AssetSourceId<'a> {
     }
 }
 
-impl<'a, 'b> From<&'a AssetSourceId<'b>> for AssetSourceId<'b> {
-    fn from(value: &'a AssetSourceId<'b>) -> Self {
+impl From<&AssetSourceId> for AssetSourceId {
+    fn from(value: &AssetSourceId) -> Self {
         value.clone()
     }
 }
 
 // This is only implemented for static lifetimes to ensure `Path::clone`
 // does not allocate by ensuring that this is stored as a `CowArc::Static`.
-impl From<&'static str> for AssetSourceId<'static> {
+impl From<&'static str> for AssetSourceId {
     #[inline]
     fn from(value: &'static str) -> Self {
-        AssetSourceId::Name(CowArc::Static(value))
+        AssetSourceId::Name(SmolStr::new(value))
     }
 }
 
-impl From<String> for AssetSourceId<'static> {
+impl From<&String> for AssetSourceId {
+    fn from(value: &String) -> Self {
+        AssetSourceId::Name(SmolStr::from_str(value))
+    }
+}
+
+impl From<String> for AssetSourceId {
     fn from(value: String) -> Self {
-        AssetSourceId::Name(value.into())
+        AssetSourceId::Name(SmolStr::from_str(&value))
     }
 }
 
-impl From<Arc<str>> for AssetSourceId<'static> {
+impl From<Arc<str>> for AssetSourceId {
     fn from(value: Arc<str>) -> Self {
-        AssetSourceId::Name(CowArc::Owned(value))
+        AssetSourceId::Name(SmolStr::from(value))
     }
 }
 
-impl From<Option<&'static str>> for AssetSourceId<'static> {
+impl From<Option<&'static str>> for AssetSourceId {
     fn from(value: Option<&'static str>) -> Self {
         match value {
-            Some(value) => AssetSourceId::Name(value.into()),
             None => AssetSourceId::Default,
+            Some(value) => AssetSourceId::Name(SmolStr::new(value)),
         }
     }
 }
 
-impl<'a> From<Option<CowArc<'a, str>>> for AssetSourceId<'a> {
+impl From<Option<SmolStr>> for AssetSourceId {
     #[inline]
-    fn from(value: Option<CowArc<'a, str>>) -> Self {
+    fn from(value: Option<SmolStr>) -> Self {
         match value {
-            None => Self::Default,
-            Some(v) => Self::Name(v),
+            None => AssetSourceId::Default,
+            Some(v) => AssetSourceId::Name(v),
         }
     }
 }
@@ -127,7 +125,19 @@ impl<'a> From<Option<CowArc<'a, str>>> for AssetSourceId<'a> {
 // -----------------------------------------------------------------------------
 // AssetIndex
 
-/// A generation-aware slot index that uniquely identifies an asset within its storage.
+/// A generational runtime-only identifier for a specific [`Asset`] stored in [`Assets`].
+///
+/// This is a **runtime-local** value: the allocator starts from zero in every process, and the
+/// generation only guards against a slot being reused *within one run*.
+///
+/// Persisting it is therefore meaningless (the same bits may point at a different
+/// asset next time), which is why it deliberately implements neither `Serialize`
+/// nor `Deserialize`. For anything that crosses a process boundary use [`AssetId::Uuid`].
+///
+/// The bit comparison is still exposed through [`to_bits`](Self::to_bits): it is what `Ord` and
+/// `Hash` use, and it makes the ordering independent of the target's endianness.
+///
+/// [`Assets`]: crate::assets::Assets
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(C, align(8))]
 pub struct AssetIndex {
@@ -179,16 +189,6 @@ impl Hash for AssetIndex {
     }
 }
 
-impl Serialize for AssetIndex {
-    #[inline]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_u64(self.to_bits())
-    }
-}
-
 impl Debug for AssetIndex {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         Display::fmt(self, f)
@@ -201,25 +201,23 @@ impl Display for AssetIndex {
     }
 }
 
-impl<'de> Deserialize<'de> for AssetIndex {
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Ok(Self::from_bits(u64::deserialize(deserializer)?))
-    }
-}
-
 // -----------------------------------------------------------------------------
 // AssetIndexAllocator
 
 /// Lock-free allocator for [`AssetIndex`] values.
-#[derive(Debug)]
 pub(crate) struct AssetIndexAllocator {
     pub next_index: AtomicU32,
     pub recycled_queue: SegQueue<AssetIndex>,
+    // See `AssetTable::flush`
     pub recycled: SegQueue<AssetIndex>,
+}
+
+impl Debug for AssetIndexAllocator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("AssetIndexAllocator")
+            .field("next_index", &self.next_index.load(Ordering::Relaxed))
+            .finish_non_exhaustive()
+    }
 }
 
 impl AssetIndexAllocator {
@@ -227,7 +225,6 @@ impl AssetIndexAllocator {
     pub(crate) const MAX_ASSET_INDEX: u32 = i32::MAX as u32;
 
     /// Creates an empty allocator.
-    #[expect(unused, reason = "todo")]
     pub(crate) const fn new() -> Self {
         Self {
             next_index: AtomicU32::new(0),
@@ -246,7 +243,7 @@ impl AssetIndexAllocator {
         }
 
         if let Some(mut recycled) = self.recycled_queue.pop() {
-            recycled.generation += 1;
+            recycled.generation = recycled.generation.wrapping_add(1);
             self.recycled.push(recycled);
             return recycled;
         }
@@ -263,7 +260,7 @@ impl AssetIndexAllocator {
         }
     }
 
-    #[expect(unused, reason = "todo")]
+    /// Returns a slot to the allocator so it can be handed out again with a bumped generation.
     pub(crate) fn recycle(&self, index: AssetIndex) {
         self.recycled_queue.push(index);
     }
@@ -272,14 +269,19 @@ impl AssetIndexAllocator {
 // -----------------------------------------------------------------------------
 // AssetId
 
-/// A stable, typed identifier of an asset of type `A`.
-#[derive(Clone, Copy, Serialize, Deserialize)]
+/// A unique runtime-only identifier for an [`Asset`].
+///
+/// This is cheap to [`Copy`]/[`Clone`] and is not directly tied to the lifetime
+/// of the Asset. This means it _can_ point to an [`Asset`] that no longer exists.
+///
+/// For an identifier tied to the lifetime of an asset, see [`Handle`].
+///
+/// [`Handle`]: crate::handle::Handle
 pub enum AssetId<A: Asset> {
     /// A runtime slot index.
     Index {
         /// The generation-aware slot index.
         index: AssetIndex,
-        #[serde(skip)]
         marker: PhantomData<fn() -> A>,
     },
     /// A stable UUID reference.
@@ -329,6 +331,15 @@ impl<A: Asset> AssetId<A> {
         }
     }
 }
+
+impl<A: Asset> Clone for AssetId<A> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: Asset> Copy for AssetId<A> {}
 
 impl<A: Asset> Default for AssetId<A> {
     #[inline]
@@ -424,6 +435,9 @@ impl<A: Asset> From<Uuid> for AssetId<A> {
 // ErasedAssetId
 
 /// A type-erased asset identifier that still records the concrete asset [`TypeId`].
+///
+/// This increases the size of the type, but it enables storing asset ids
+/// across asset types together and enables comparisons between them.
 #[derive(Clone, Copy)]
 pub enum ErasedAssetId {
     /// A runtime slot index plus its asset type.
@@ -449,6 +463,12 @@ impl ErasedAssetId {
         match self {
             Self::Index { type_id, .. } | Self::Uuid { type_id, .. } => *type_id,
         }
+    }
+
+    /// Returns `true` if this id refers to a runtime asset.
+    #[inline]
+    pub const fn is_index(&self) -> bool {
+        matches!(self, Self::Index { .. })
     }
 
     /// Returns `true` if this id refers to a UUID asset.
@@ -477,7 +497,7 @@ impl ErasedAssetId {
 
     /// Types this id back **without** checking the asset type.
     #[inline]
-    pub const fn typed_unchecked<A: Asset>(self) -> AssetId<A> {
+    pub const fn with_type_unchecked<A: Asset>(self) -> AssetId<A> {
         match self {
             Self::Index { index, .. } => AssetId::Index {
                 index,
@@ -489,38 +509,49 @@ impl ErasedAssetId {
 
     /// Types this id back, asserting in debug builds that the type matches.
     #[inline]
-    pub fn typed_debug_checked<A: Asset>(self) -> AssetId<A> {
+    pub fn with_type_debug_checked<A: Asset>(self) -> AssetId<A> {
         debug_assert_eq!(
             self.type_id(),
             TypeId::of::<A>(),
             "The target AssetId<{}>'s TypeId does not match this ErasedAssetId",
             core::any::type_name::<A>(),
         );
-        self.typed_unchecked()
+        self.with_type_unchecked()
     }
 
     /// Types this id back, panicking when the asset type does not match.
     #[inline]
     #[track_caller]
-    pub fn typed<A: Asset>(self) -> AssetId<A> {
-        match self.try_typed::<A>() {
+    pub fn with_type<A: Asset>(self) -> AssetId<A> {
+        #[cold]
+        #[inline(never)]
+        #[track_caller]
+        fn mismatch(name: &'static str) -> ! {
+            panic!("The target AssetId<{name}>'s TypeId does not match this ErasedAssetId")
+        }
+
+        match self.try_with_type::<A>() {
             Ok(id) => id,
-            Err(_) => {
-                #[cold]
-                #[inline(never)]
-                #[track_caller]
-                fn mismatch(name: &'static str) -> ! {
-                    panic!("The target AssetId<{name}>'s TypeId does not match this ErasedAssetId")
-                }
-                mismatch(core::any::type_name::<A>())
-            }
+            Err(_) => mismatch(core::any::type_name::<A>()),
         }
     }
 
     /// Types this id back, returning an error when the asset type does not match.
     #[inline]
-    pub fn try_typed<A: Asset>(self) -> Result<AssetId<A>, AssetIdTypedError> {
-        AssetId::<A>::try_from(self)
+    pub fn try_with_type<A: Asset>(self) -> Result<AssetId<A>, AssetIdTypeError> {
+        let actual = self.type_id();
+        let expect = TypeId::of::<A>();
+
+        if actual != expect {
+            ::core::hint::cold_path();
+            return Err(AssetIdTypeError {
+                type_name: core::any::type_name::<A>(),
+                expect,
+                actual,
+            });
+        }
+
+        Ok(self.with_type_unchecked())
     }
 }
 
@@ -635,22 +666,10 @@ impl<A: Asset> From<AssetId<A>> for ErasedAssetId {
 }
 
 impl<A: Asset> TryFrom<ErasedAssetId> for AssetId<A> {
-    type Error = AssetIdTypedError;
+    type Error = AssetIdTypeError;
 
     fn try_from(value: ErasedAssetId) -> Result<Self, Self::Error> {
-        let actual = value.type_id();
-        let expect = TypeId::of::<A>();
-
-        if actual != expect {
-            ::core::hint::cold_path();
-            return Err(AssetIdTypedError {
-                type_name: core::any::type_name::<A>(),
-                expect,
-                actual,
-            });
-        }
-
-        Ok(value.typed_unchecked())
+        value.try_with_type::<A>()
     }
 }
 
@@ -701,58 +720,6 @@ impl<A: Asset> PartialOrd<AssetId<A>> for ErasedAssetId {
 }
 
 // -----------------------------------------------------------------------------
-// TypedAssetIndex
-
-/// An [`AssetIndex`] bundled with its (dynamic) asset type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypedAssetIndex {
-    /// The generation-aware slot index.
-    pub index: AssetIndex,
-    /// The concrete asset type.
-    pub type_id: TypeId,
-}
-
-impl TypedAssetIndex {
-    /// Creates a new typed index.
-    #[inline(always)]
-    pub const fn new(index: AssetIndex, type_id: TypeId) -> Self {
-        Self { index, type_id }
-    }
-}
-
-impl Display for TypedAssetIndex {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("TypedAssetIndex")
-            .field("type_id", &self.type_id)
-            .field("index", &self.index.index)
-            .field("generation", &self.index.generation)
-            .finish()
-    }
-}
-
-impl From<TypedAssetIndex> for ErasedAssetId {
-    #[inline]
-    fn from(value: TypedAssetIndex) -> Self {
-        Self::Index {
-            type_id: value.type_id,
-            index: value.index,
-        }
-    }
-}
-
-impl TryFrom<ErasedAssetId> for TypedAssetIndex {
-    type Error = UuidNotSupportedError;
-
-    #[inline]
-    fn try_from(asset_id: ErasedAssetId) -> Result<Self, Self::Error> {
-        match asset_id {
-            ErasedAssetId::Index { type_id, index } => Ok(Self { index, type_id }),
-            ErasedAssetId::Uuid { uuid, .. } => Err(UuidNotSupportedError(uuid)),
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
 // Errors
 
 /// Returned when a UUID id (or handle) is used where a managed slot index is required.
@@ -763,8 +730,8 @@ pub struct UuidNotSupportedError(pub Uuid);
 /// Returned when an [`ErasedAssetId`] is typed back as the wrong asset type.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[error("ErasedAssetId({actual:?}) cannot be converted into AssetId<{type_name}>({expect:?})")]
-pub struct AssetIdTypedError {
-    /// The type path we tried to convert to.
+pub struct AssetIdTypeError {
+    /// The (debug) type name we tried to convert to.
     type_name: &'static str,
     /// The type id we tried to convert to.
     expect: TypeId,
@@ -772,7 +739,7 @@ pub struct AssetIdTypedError {
     actual: TypeId,
 }
 
-impl AssetIdTypedError {
+impl AssetIdTypeError {
     /// The expected asset type.
     #[inline]
     pub const fn expected(&self) -> TypeId {
@@ -787,75 +754,3 @@ impl AssetIdTypedError {
 }
 
 // -----------------------------------------------------------------------------
-// Tests
-
-#[cfg(test)]
-mod tests {
-    use zlim_path::derive::TypePath;
-
-    use super::*;
-    use crate::asset::VisitAssetDependencies;
-
-    /// A second asset type, used to exercise type-mismatch paths.
-    #[derive(TypePath)]
-    struct Other;
-
-    impl VisitAssetDependencies for Other {
-        fn visit_dependencies(&self, _visit: &mut dyn FnMut(ErasedAssetId)) {}
-    }
-
-    impl Asset for Other {}
-
-    #[test]
-    fn asset_index_bits_roundtrip() {
-        let index = AssetIndex {
-            index: 42,
-            generation: 7,
-        };
-        assert_eq!(AssetIndex::from_bits(index.to_bits()), index);
-        assert_eq!(index.index, 42);
-        assert_eq!(index.generation, 7);
-
-        let zero = AssetIndex {
-            index: 0,
-            generation: 0,
-        };
-        assert_eq!(zero.to_bits(), 0);
-    }
-
-    #[test]
-    fn default_id_is_the_default_uuid() {
-        let id: AssetId<()> = AssetId::default();
-        assert_eq!(id.uuid(), Some(AssetId::<()>::DEFAULT_UUID));
-        assert!(id.is_uuid());
-        assert_eq!(id.index(), None);
-    }
-
-    #[test]
-    fn typed_and_erased_ids_roundtrip() {
-        let index = AssetIndex {
-            index: 3,
-            generation: 1,
-        };
-        let typed: AssetId<()> = AssetId::from(index);
-        let erased = typed.erased();
-
-        assert_eq!(erased.type_id(), TypeId::of::<()>());
-        assert_eq!(erased.index(), Some(index));
-        assert_eq!(erased.try_typed::<()>().unwrap(), typed);
-        assert_eq!(erased, typed);
-        assert!(erased.try_typed::<Other>().is_err());
-    }
-
-    #[test]
-    fn uuid_ids_do_not_convert_to_typed_index() {
-        let uuid = Uuid::from_u128(0x1234);
-        let erased: ErasedAssetId = ErasedAssetId::Uuid {
-            type_id: TypeId::of::<()>(),
-            uuid,
-        };
-
-        assert!(TypedAssetIndex::try_from(erased).is_err());
-        assert_eq!(erased.uuid(), Some(uuid));
-    }
-}

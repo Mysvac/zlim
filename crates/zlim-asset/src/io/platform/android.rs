@@ -1,12 +1,13 @@
+//! Android asset reader backed by the platform `AssetManager`.
+
 use std::ffi::CString;
 use std::path::Path;
 
 use futures_lite::stream;
 use zlim_os::sys::android_activity;
 
-use crate::PathStream;
 use crate::io::{AssetReader, AssetReaderError, Reader, VecReader};
-use crate::utils::append_meta_extension;
+use crate::utils::{PathStream, append_meta_extension};
 
 // -----------------------------------------------------------------------------
 // AndroidAssetReader

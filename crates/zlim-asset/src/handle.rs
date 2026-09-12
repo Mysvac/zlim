@@ -19,7 +19,11 @@ use crate::path::AssetPath;
 // -----------------------------------------------------------------------------
 // StrongHandle
 
-/// Shared state behind every strong handle of one asset.
+/// The internal "strong" [`Asset`] handle storage for [`Handle::Strong`].
+///
+/// When this is dropped, the [`Asset`] will be freed.
+///
+/// It also stores some asset metadata for easy access from handles.
 #[derive(TypePath, Debug)]
 #[type_path = "zlim_asset::handle::StrongHandle"]
 pub struct StrongHandle {
@@ -55,7 +59,9 @@ pub(crate) struct DropEvent {
 // -----------------------------------------------------------------------------
 // AssetHandleProvider
 
-/// Allocates [`AssetIndex`] slots for one asset type and collects handle-drop events.
+/// Provides [`Handle`] and [`ErasedHandle`] for a specific asset type.
+///
+/// This should **only** be used for one specific asset type.
 #[derive(Clone)]
 pub struct AssetHandleProvider {
     allocator: Arc<AssetIndexAllocator>,
@@ -65,15 +71,12 @@ pub struct AssetHandleProvider {
 
 impl Debug for AssetHandleProvider {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("AssetHandleProvider")
-            .field("type_id", &self.type_id)
-            .finish_non_exhaustive()
+        write!(f, "AssetHandleProvider({:?})", self.type_id)
     }
 }
 
 impl AssetHandleProvider {
     /// Creates a provider that shares an existing allocator.
-    #[expect(unused, reason = "todo")]
     #[inline]
     pub(crate) fn new(type_id: TypeId, allocator: Arc<AssetIndexAllocator>) -> Self {
         let drop_events = Arc::new(SegQueue::new());
@@ -84,14 +87,13 @@ impl AssetHandleProvider {
         }
     }
 
-    #[expect(unused, reason = "todo")]
     #[inline]
     pub(crate) fn try_recv(&self) -> Option<DropEvent> {
         self.drop_events.pop()
     }
 
+    /// Allocates a new strong handle (a fresh slot plus its [`StrongHandle`]) for the server.
     #[expect(unused, reason = "todo")]
-    #[inline]
     pub(crate) fn alloc_handle(
         &self,
         path: Option<AssetPath<'static>>,
@@ -108,7 +110,6 @@ impl AssetHandleProvider {
     }
 
     /// Builds a strong handle for an already reserved slot.
-    #[inline]
     pub(crate) fn build_handle(
         &self,
         index: AssetIndex,
@@ -124,7 +125,11 @@ impl AssetHandleProvider {
         })
     }
 
-    /// Allocates a new slot and returns an erased strong handle for it.
+    /// Reserves a new strong [`ErasedHandle`] (with a new [`ErasedAssetId`]).
+    ///
+    /// The stored [`Asset`] [`TypeId`] in the [`ErasedHandle`] will match
+    /// the [`Asset`] [`TypeId`] assigned to this [`AssetHandleProvider`].
+    #[must_use]
     pub fn reserve_handle(&self) -> ErasedHandle {
         let index = self.allocator.reserve();
         ErasedHandle::Strong(self.build_handle(index, None, false))
@@ -134,11 +139,42 @@ impl AssetHandleProvider {
 // -----------------------------------------------------------------------------
 // Handle
 
-/// A typed reference to an asset.
+/// A handle to a specific [`Asset`] of type `A`.
+///
+/// Handles act as abstract "references" to assets, whose data are stored
+/// in the [`Assets<A>`] resource, avoiding the need to store multiple
+/// copies of the same data.
+///
+/// - If a [`Handle`] is [`Handle::Strong`], the [`Asset`] will be
+///   kept alive until the [`Handle`] is dropped.
+///
+/// - If a [`Handle`] is [`Handle::Uuid`], it does not necessarily
+///   reference a live [`Asset`], nor will it keep assets alive.
+///
+/// Modifying a *handle* will change which existing asset is referenced,
+/// but modifying the *asset* (by mutating the [`Assets`] resource) will
+/// change the asset for all handles referencing it.
+///
+/// [`Handle`] can be cloned. If a [`Handle::Strong`] is cloned, the
+/// referenced [`Asset`] will not be freed until _all_ instances of the
+/// [`Handle`] are dropped.
+///
+/// [`Handle::Strong`], via [`StrongHandle`] also provides access to useful
+/// [`Asset`] metadata, such as the [`AssetPath`] (if it exists).
+///
+/// [`Assets`]: crate::assets::Assets
+/// [`Assets<A>`]: crate::assets::Assets
+#[derive(TypePath)]
 pub enum Handle<A: Asset> {
-    /// A reference-counted slot reference.
+    /// A "strong" reference to a live (or loading) [`Asset`].
+    ///
+    /// If a [`Handle`] is [`Handle::Strong`], the [`Asset`]
+    /// will be kept alive until the [`Handle`] is dropped.
     Strong(Arc<StrongHandle>),
-    /// A stable UUID reference.
+
+    /// A "uuid" reference to an [`Asset`] using a stable-across-runs / const identifier.
+    ///
+    /// Dropping this handle will not result in the asset being dropped.
     Uuid(Uuid, PhantomData<fn() -> A>),
 }
 
@@ -300,16 +336,19 @@ impl<A: Asset> From<Uuid> for Handle<A> {
 // ErasedHandle
 
 /// A handle whose asset type is only known at runtime, but **is** recorded.
+///
+/// This allows handles across [`Asset`] types to be stored together and compared.
 #[derive(Clone)]
 pub enum ErasedHandle {
     /// A reference-counted slot reference.
     Strong(Arc<StrongHandle>),
+
     /// A stable UUID reference.
     Uuid {
-        /// The concrete asset type.
-        type_id: TypeId,
         /// The referenced UUID.
         uuid: Uuid,
+        /// The concrete asset type.
+        type_id: TypeId,
     },
 }
 
@@ -317,10 +356,8 @@ impl ErasedHandle {
     /// The default UUID handle for a given asset type.
     #[inline]
     pub const fn default_for_type(type_id: TypeId) -> Self {
-        Self::Uuid {
-            type_id,
-            uuid: AssetId::<()>::DEFAULT_UUID,
-        }
+        let uuid = AssetId::<()>::DEFAULT_UUID;
+        Self::Uuid { uuid, type_id }
     }
 
     /// The concrete asset type this handle refers to.
@@ -370,7 +407,7 @@ impl ErasedHandle {
 
     /// Types this handle back **without** checking the asset type.
     #[inline]
-    pub fn typed_unchecked<A: Asset>(self) -> Handle<A> {
+    pub fn with_type_unchecked<A: Asset>(self) -> Handle<A> {
         match self {
             Self::Strong(handle) => Handle::Strong(handle),
             Self::Uuid { uuid, .. } => Handle::Uuid(uuid, PhantomData),
@@ -379,50 +416,49 @@ impl ErasedHandle {
 
     /// Types this handle back, asserting in debug builds that the type matches.
     #[inline]
-    pub fn typed_debug_checked<A: Asset>(self) -> Handle<A> {
+    pub fn with_type_debug_checked<A: Asset>(self) -> Handle<A> {
         debug_assert_eq!(
             self.type_id(),
             TypeId::of::<A>(),
             "The target Handle<{}>'s TypeId does not match this ErasedHandle",
             core::any::type_name::<A>(),
         );
-        self.typed_unchecked()
+        self.with_type_unchecked()
     }
 
     /// Types this handle back, panicking when the asset type does not match.
     #[inline]
     #[track_caller]
-    pub fn typed<A: Asset>(self) -> Handle<A> {
-        match self.try_typed::<A>() {
+    pub fn with_type<A: Asset>(self) -> Handle<A> {
+        #[cold]
+        #[inline(never)]
+        #[track_caller]
+        fn mismatch(name: &'static str) -> ! {
+            panic!("The target Handle<{name}>'s TypeId does not match this ErasedHandle")
+        }
+
+        match self.try_with_type::<A>() {
             Ok(handle) => handle,
-            Err(_) => {
-                #[cold]
-                #[inline(never)]
-                #[track_caller]
-                fn mismatch(name: &'static str) -> ! {
-                    panic!("The target Handle<{name}>'s TypeId does not match this ErasedHandle")
-                }
-                mismatch(core::any::type_name::<A>())
-            }
+            Err(_) => mismatch(core::any::type_name::<A>()),
         }
     }
 
     /// Types this handle back, returning an error when the asset type does not match.
     #[inline]
-    pub fn try_typed<A: Asset>(self) -> Result<Handle<A>, AssetHandleTypedError> {
+    pub fn try_with_type<A: Asset>(self) -> Result<Handle<A>, AssetHandleTypedError> {
         let actual = self.type_id();
         let expect = TypeId::of::<A>();
 
         if actual != expect {
             ::core::hint::cold_path();
             return Err(AssetHandleTypedError {
-                type_name: A::IDENT,
+                type_name: core::any::type_name::<A>(),
                 expect,
                 actual,
             });
         }
 
-        Ok(self.typed_unchecked())
+        Ok(self.with_type_unchecked())
     }
 }
 
@@ -500,7 +536,7 @@ impl<A: Asset> TryFrom<ErasedHandle> for Handle<A> {
 
     #[inline]
     fn try_from(value: ErasedHandle) -> Result<Self, Self::Error> {
-        value.try_typed()
+        value.try_with_type()
     }
 }
 
@@ -528,7 +564,7 @@ impl<A: Asset> PartialEq<Handle<A>> for ErasedHandle {
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[error("ErasedHandle({actual:?}) cannot be converted into Handle<{type_name}>({expect:?})")]
 pub struct AssetHandleTypedError {
-    /// The type path we tried to convert to.
+    /// The (debug) type name we tried to convert to.
     type_name: &'static str,
     /// The type id we tried to convert to.
     expect: TypeId,
@@ -554,6 +590,14 @@ impl AssetHandleTypedError {
 // uuid_handle!
 
 /// Creates a [`Handle`] from a string literal containing a UUID.
+///
+/// # Examples
+///
+/// ```
+/// # use zlim_asset::handle::Handle;
+/// # use zlim_asset::uuid_handle;
+/// # type Image = ();
+/// const IMAGE: Handle<Image> = uuid_handle!("1347c9b7-c46a-48e7-b7b8-023a354b7cac");
 #[macro_export]
 macro_rules! uuid_handle {
     ($uuid:expr) => {

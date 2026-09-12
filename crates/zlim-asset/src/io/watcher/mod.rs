@@ -7,7 +7,7 @@
 // use `cfg_select` to support rustfmt
 cfg_select! {
     not(feature = "notify") => {}
-    any(target_os = "windows", target_os = "linux", target_os = "android") => {
+    any(target_os = "windows", target_os = "linux", target_os = "macos") => {
         mod notifier;
 
         mod file;
@@ -25,5 +25,5 @@ cfg_select! {
 /// Implemented by `FileWatcher` and `EmbeddedWatcher` when the `notify` feature is enabled.
 /// Dropping the handle stops the watcher and closes its event channel.
 ///
-/// [`AssetSourceEvent`]: crate::io::AssetSourceEvent
+/// [`AssetSourceEvent`]: crate::event::AssetSourceEvent
 pub trait AssetWatcher: Send + Sync + 'static {}

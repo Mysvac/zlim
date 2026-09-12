@@ -18,6 +18,9 @@ pub type BoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// A stream of asset paths, relative to a source root.
 pub type PathStream = dyn Stream<Item = PathBuf> + Unpin + Send;
 
+// -----------------------------------------------------------------------------
+// EmptyPathStream
+
 /// A [`PathStream`] implementation that immediately returns nothing.
 pub struct EmptyPathStream;
 
@@ -98,8 +101,27 @@ pub(crate) fn slice_seek(
 }
 
 // -----------------------------------------------------------------------------
-// Meta path
+// Loader extension
 
+/// Interns a loader extension as it is keyed in the loader registry.
+///
+/// Extensions are matched case-insensitively and without the leading dot, and the result is
+/// interned so that the registry can key on `&'static str` without allocating per lookup.
+#[expect(unused, reason = "todo")]
+pub(crate) fn intern_extension(extension: &str) -> &'static str {
+    let extension = extension.strip_prefix('.').unwrap_or(extension);
+
+    if extension.bytes().all(|byte| !byte.is_ascii_uppercase()) {
+        // ↑ cannot use `all(to_ascii_lowercase)`, which means all in `b'a'..=b'z'`.
+        return zlim_utils::str::intern_str(extension);
+    }
+
+    ::core::hint::cold_path();
+    zlim_utils::str::intern_str(&extension.to_ascii_lowercase())
+}
+
+// -----------------------------------------------------------------------------
+// Meta path
 /// Appends `.meta` to the given path (`foo` → `foo.meta`, `foo.bar` → `foo.bar.meta`).
 pub(crate) fn append_meta_extension(path: &Path) -> PathBuf {
     let mut meta_path = path.to_path_buf();
@@ -116,3 +138,37 @@ pub(crate) fn append_meta_extension(path: &Path) -> PathBuf {
 }
 
 // -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+
+    #[track_caller]
+    fn append_meta_extension(path: &Path) -> PathBuf {
+        let mut meta_path = path.to_path_buf();
+        let extension_str = path.extension().unwrap_or_default();
+        // Directly `to_os_string` will cause a additional reallocation.
+        let mut extension = OsString::with_capacity(extension_str.len() + 5);
+
+        let cap = extension.capacity();
+
+        extension.push(extension_str);
+        if !extension.is_empty() {
+            extension.push(".");
+        }
+        extension.push("meta");
+
+        assert_eq!(cap, extension.capacity());
+
+        meta_path.set_extension(extension);
+        meta_path
+    }
+
+    #[test]
+    fn append_meta_capacity_fixed() {
+        let _ = append_meta_extension(Path::new("123456"));
+        let _ = append_meta_extension(Path::new("123456.txt"));
+        let _ = append_meta_extension(Path::new("123456.txt.zip"));
+    }
+}

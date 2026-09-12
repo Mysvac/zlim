@@ -1,15 +1,17 @@
+//! Asset source bundles, their builder and the application-wide source collections.
+
 use core::time::Duration;
 use std::sync::Arc;
 
-use atomicow::CowArc;
 use zlim_core::derive::Resource;
 use zlim_path::derive::TypePath;
 use zlim_utils::hash::HashMap;
 use zlim_utils::mpsc::{self, Receiver, Sender};
+use zlim_utils::str::SmolStr;
 
-use super::AssetSourceEvent;
 use super::{MissingAssetSource, MissingAssetWriter};
 use super::{MissingProcessedAssetReader, MissingProcessedAssetWriter};
+use crate::event::AssetSourceEvent;
 use crate::ident::AssetSourceId;
 use crate::io::watcher::AssetWatcher;
 use crate::io::{ErasedAssetReader, ErasedAssetWriter};
@@ -62,7 +64,7 @@ pub struct AssetSourceBuilder {
 /// [`AssetReader`]: crate::io::AssetReader
 /// [`AssetWriter`]: crate::io::AssetWriter
 pub struct AssetSource {
-    id: AssetSourceId<'static>,
+    id: AssetSourceId,
     reader: Box<dyn ErasedAssetReader>,
     writer: Option<Box<dyn ErasedAssetWriter>>,
     watcher: Option<Box<dyn AssetWatcher>>,
@@ -102,19 +104,14 @@ impl AssetSourceBuilder {
     /// - If `watch_processed` is true, the processed source will watch for changes.
     ///
     /// Note that the default watcher needs the `notify` feature.
-    pub fn build(
-        &mut self,
-        id: AssetSourceId<'static>,
-        watch: bool,
-        watch_processed: bool,
-    ) -> AssetSource {
+    pub fn build(&mut self, id: AssetSourceId, watch: bool, watch_processed: bool) -> AssetSource {
         let reader = self.reader.as_mut()();
         let writer = self.writer.as_mut().and_then(|w| w());
         let processed_reader = self.processed_reader.as_mut().map(|r| Arc::from(r()));
         let processed_writer = self.processed_writer.as_mut().and_then(|w| w());
 
         let mut source = AssetSource {
-            id: id.clone(),
+            id: id.clone(), // already interned by AssetSourcesBuilder::build
             reader,
             writer,
             processed_reader,
@@ -266,7 +263,7 @@ impl AssetSourceBuilder {
 impl AssetSource {
     /// Returns this [`AssetSourceId`].
     #[inline]
-    pub fn id(&self) -> AssetSourceId<'static> {
+    pub fn id(&self) -> AssetSourceId {
         self.id.clone()
     }
 
@@ -281,7 +278,7 @@ impl AssetSource {
     pub fn writer(&self) -> Result<&dyn ErasedAssetWriter, MissingAssetWriter> {
         self.writer
             .as_deref()
-            .ok_or_else(|| MissingAssetWriter(self.id.clone_owned()))
+            .ok_or_else(|| MissingAssetWriter(self.id.clone()))
     }
 
     /// Return's this source's processed [`ErasedAssetReader`], if it exists.
@@ -289,7 +286,7 @@ impl AssetSource {
     pub fn processed_reader(&self) -> Result<&dyn ErasedAssetReader, MissingProcessedAssetReader> {
         self.processed_reader
             .as_deref()
-            .ok_or_else(|| MissingProcessedAssetReader(self.id.clone_owned()))
+            .ok_or_else(|| MissingProcessedAssetReader(self.id.clone()))
     }
 
     /// Return's this source's processed [`ErasedAssetWriter`], if it exists.
@@ -297,7 +294,7 @@ impl AssetSource {
     pub fn processed_writer(&self) -> Result<&dyn ErasedAssetWriter, MissingProcessedAssetWriter> {
         self.processed_writer
             .as_deref()
-            .ok_or_else(|| MissingProcessedAssetWriter(self.id.clone_owned()))
+            .ok_or_else(|| MissingProcessedAssetWriter(self.id.clone()))
     }
 
     /// Return's this source's unprocessed watcher, if the source is currently watching.
@@ -337,13 +334,15 @@ impl AssetSource {
     /// - `path` is the relative path to the asset root.
     /// - `processed` control whether the data has been processed.
     pub fn default_reader(
-        _path: String,
-        _processed: bool,
+        path: String,
+        processed: bool,
     ) -> impl FnMut() -> Box<dyn ErasedAssetReader> + Send + Sync {
+        let _path = path;
+        let _processed = processed;
         move || {
             cfg_select! {
                 target_family = "wasm" => {
-                    let reader = crate::io::http::HttpWasmAssetReader::new(&_path);
+                    let reader = crate::io::platform::HttpWasmAssetReader::new(&_path);
                     Box::new(reader) as Box<dyn ErasedAssetReader>
                 }
                 target_os = "android" => {
@@ -362,9 +361,11 @@ impl AssetSource {
     /// - `path` is the relative path to the asset root.
     /// - `processed` control whether the data has been processed.
     pub fn default_writer(
-        _path: String,
-        _processed: bool,
+        path: String,
+        processed: bool,
     ) -> impl FnMut() -> Option<Box<dyn ErasedAssetWriter>> + Send + Sync {
+        let _path = path;
+        let _processed = processed;
         move || {
             cfg_select! {
                 target_family = "wasm" => None,
@@ -382,10 +383,13 @@ impl AssetSource {
     /// - `path` is the relative path to the asset root.
     /// - `processed` control whether the data has been processed.
     pub fn default_watcher(
-        _path: String,
-        _processed: bool,
-        _debounce_wait_time: Duration,
+        path: String,
+        processed: bool,
+        debounce_wait_time: Duration,
     ) -> impl FnMut(Sender<AssetSourceEvent>) -> Option<Box<dyn AssetWatcher>> + Send + Sync {
+        let _path = path;
+        let _processed = processed;
+        let _debounce_wait_time = debounce_wait_time;
         move |_sender: Sender<AssetSourceEvent>| {
             crate::cfg::notify! {
                 if {
@@ -434,13 +438,13 @@ const MISSING_DEFAULT_SOURCE: &str =
 /// [`AssetWriter`]: crate::io::AssetWriter
 #[derive(TypePath, Resource, Default)]
 pub struct AssetSourceBuilders {
-    sources: HashMap<CowArc<'static, str>, AssetSourceBuilder>,
+    sources: HashMap<SmolStr, AssetSourceBuilder>,
     default: Option<AssetSourceBuilder>,
 }
 
 impl AssetSourceBuilders {
     /// Inserts a new builder with the given `id`
-    pub fn insert(&mut self, id: impl Into<AssetSourceId<'static>>, source: AssetSourceBuilder) {
+    pub fn insert(&mut self, id: impl Into<AssetSourceId>, source: AssetSourceBuilder) {
         match id.into() {
             AssetSourceId::Default => {
                 self.default = Some(source);
@@ -452,13 +456,10 @@ impl AssetSourceBuilders {
     }
 
     /// Gets a mutable builder with the given `id`, if it exists.
-    pub fn get_mut<'a, 'b>(
-        &'a mut self,
-        id: impl Into<AssetSourceId<'b>>,
-    ) -> Option<&'a mut AssetSourceBuilder> {
+    pub fn get_mut(&mut self, id: impl Into<AssetSourceId>) -> Option<&mut AssetSourceBuilder> {
         match id.into() {
             AssetSourceId::Default => self.default.as_mut(),
-            AssetSourceId::Name(name) => self.sources.get_mut(&name.into_owned()),
+            AssetSourceId::Name(name) => self.sources.get_mut(&name),
         }
     }
 
@@ -478,15 +479,9 @@ impl AssetSourceBuilders {
         let mut sources: HashMap<&'static str, AssetSource> = HashMap::new();
 
         for (key, source) in &mut self.sources {
-            let k: &'static str = match key {
-                CowArc::Static(k) => k,
-                CowArc::Borrowed(b) => zlim_utils::str::intern_str(b),
-                CowArc::Owned(o) => zlim_utils::str::intern_str(o),
-            };
-
-            let id = AssetSourceId::Name(CowArc::Static(k));
+            let k: &'static str = zlim_utils::str::intern_str(key.as_str());
+            let id = AssetSourceId::Name(SmolStr::new(k));
             let source = source.build(id, watch, watch_processed);
-
             sources.insert(k, source);
         }
 
@@ -504,6 +499,7 @@ impl AssetSourceBuilders {
 // AssetSources
 
 /// A collection of [`AssetSource`]s.
+#[derive(TypePath, Resource)]
 pub struct AssetSources {
     sources: HashMap<&'static str, AssetSource>,
     default: AssetSource,
@@ -511,15 +507,12 @@ pub struct AssetSources {
 
 impl AssetSources {
     /// Gets the [`AssetSource`] with the given `id`, if it exists.
-    pub fn get<'a, 'b>(
-        &'a self,
-        id: impl Into<AssetSourceId<'b>>,
-    ) -> Result<&'a AssetSource, MissingAssetSource> {
-        match id.into().into_owned() {
+    pub fn get(&self, id: impl Into<AssetSourceId>) -> Result<&AssetSource, MissingAssetSource> {
+        match id.into() {
             AssetSourceId::Default => Ok(&self.default),
             AssetSourceId::Name(name) => self
                 .sources
-                .get(name.as_ref())
+                .get(name.as_str())
                 .ok_or(MissingAssetSource(AssetSourceId::Name(name))),
         }
     }
@@ -545,10 +538,10 @@ impl AssetSources {
     }
 
     /// Iterates over the [`AssetSourceId`] of every source (including the default source).
-    pub fn iter_id(&self) -> impl Iterator<Item = AssetSourceId<'static>> + '_ {
+    pub fn iter_id(&self) -> impl Iterator<Item = AssetSourceId> + '_ {
         self.sources
             .keys()
-            .map(|k| AssetSourceId::Name(CowArc::Static(*k)))
+            .map(|k| AssetSourceId::Name(SmolStr::new(k)))
             .chain(Some(AssetSourceId::Default))
     }
 }
@@ -570,7 +563,7 @@ mod tests {
     }
 
     /// Looks a source up, failing the test when it is missing.
-    fn source(sources: &AssetSources, id: impl Into<AssetSourceId<'static>>) -> &AssetSource {
+    fn source(sources: &AssetSources, id: impl Into<AssetSourceId>) -> &AssetSource {
         match sources.get(id) {
             Ok(source) => source,
             Err(error) => panic!("{error}"),
