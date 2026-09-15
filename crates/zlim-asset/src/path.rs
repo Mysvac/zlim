@@ -1,28 +1,26 @@
+//! The [`AssetPath`]: represents a path to an asset in a "virtual filesystem".
+
 use core::fmt::{Debug, Display, Formatter};
 use std::path::{Path, PathBuf};
 
 use atomicow::CowArc;
-use serde::{Deserialize, Serialize, de::Visitor};
+use serde::de::Visitor;
+use serde::{Deserialize, Serialize};
 use zlim_core::derive::Error;
 use zlim_path::derive::TypePath;
 use zlim_utils::str::SmolStr;
 
 // -----------------------------------------------------------------------------
-// AssetPath
+// ParseAssetPathError
 
 /// An error that occurs when parsing a string type to create an [`AssetPath`] fails.
 ///
-/// The parser splits the input into up to three parts:
-/// `[source://]path[#label]`.
+/// The parser splits the input into up to three parts: `[source://]path[#label]`.
 ///
 /// - `source` is optional and is separated from `path` by `://`.
 /// - `label` is optional and is separated from `path` by `#`.
 ///
 /// # Rules
-///
-/// - The input must not contain a `\` character. Asset paths use `/` as the
-///   only path separator, so `\` must be replaced by `/` before parsing.
-///   This error is always checked.
 ///
 /// - If `://`(or `#`)  is present, the `source`(or `label`)
 ///   part must not be empty. This error is always checked.
@@ -34,25 +32,22 @@ use zlim_utils::str::SmolStr;
 ///   This error is only checked in debug mode.
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ParseAssetPathError {
-    /// Error that occurs when the input path contains a `\` character.
-    ///
-    /// Asset paths use `/` as the only path separator, so `\` is not
-    /// allowed and must be replaced by `/` before parsing.
-    #[error("Asset path should not contain `\\` character. Use `/` instead.")]
-    InvalidBackslash,
-    /// Error that occurs when a path string has deplicated `://` or `#`.
+    /// Error that occurs when a second `://` or `#` is left inside the path segment.
+    /// This error is only checked in debug mode.
     #[error("Asset path contains invalid `#` or `://` (duplicated?)")]
     InvalidPath,
-    /// Error that occurs when a path string has an [`AssetPath::source`]
+    /// Error that occurs when the source segment contains a `#`.
+    /// This error is only checked in debug mode.
     #[error("Asset source should not contains `#` character.")]
     InvalidSource,
-    /// Error that occurs when a path string has an [`AssetPath::label`]
+    /// Error that occurs when the label segment contains a `://`.
+    /// This error is only checked in debug mode.
     #[error("Asset label should not contains `://` string.")]
     InvalidLabel,
-    /// Error that occurs when a path string has an [`AssetPath::source`]
+    /// Error that occurs when `://` is given without a source name in front of it.
     #[error("Asset source must be at least one character.")]
     MissingSource,
-    /// Error that occurs when a path string has an [`AssetPath::label`]
+    /// Error that occurs when `#` is given without a label after it.
     #[error("Asset label must be at least one character.")]
     MissingLabel,
 }
@@ -68,7 +63,8 @@ pub enum ParseAssetPathError {
 ///   If one is not set the default source will be used (which is the `assets` folder by default).
 ///
 /// - [`AssetPath::path`]: The "virtual filesystem path" pointing to an asset source file.
-///   In the current implementation, this path is guaranteed to use `/` as its separator.
+///   It is stored and parsed with the host platform's path rules: on Windows it may therefore
+///   contain `\` separators, while `/` is the one separator every platform accepts.
 ///
 /// - [`AssetPath::label`]: An optional "named sub asset". When assets are loaded, they are
 ///   allowed to load "sub assets" of any type, which are identified by a named "label".
@@ -82,6 +78,21 @@ pub enum ParseAssetPathError {
 /// The [`AssetPath::source`] segment uses [`SmolStr`] for optimization, since custom source
 /// names typically do not exceed 23 bytes and can therefore always remain inline.
 ///
+/// # Separators
+///
+/// The *internal* representation is platform-specific: the `path` segment keeps whatever the
+/// host platform uses (on Windows a `\` is a separator, elsewhere it is an ordinary character)
+/// and [`AssetPath::path`] returns it unchanged.
+///
+/// The guarantee is on the *textual* form instead: on Windows [`AssetPath::to_string`] — and with
+/// it [`Debug`], [`Display`] and the [`Serialize`] impl — rewrites the host separator `\` to `/`,
+/// so a path that came from the host serializes to the same text on every platform and can be
+/// deserialized on another one. (A literal `\` inside a Unix path *name* is not portable and is
+/// left alone.) Writing asset paths with `/` is always valid, since [`Path`] accepts `/` on all
+/// platforms; [`normalize_separators`] is the input-side helper that turns a host-produced string
+/// (for example the `file!()` literal an embedded asset records, which may have been written on
+/// Windows) into that portable form.
+///
 /// [`AssetSource`]: crate::source::AssetSource
 #[derive(Default, Clone, PartialEq, Eq, Hash, TypePath)]
 #[type_path = "zlim_asset::path::AssetPath"]
@@ -91,7 +102,7 @@ pub struct AssetPath<'a> {
     label: Option<CowArc<'a, str>>,
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // owned
 
 impl AssetPath<'_> {
@@ -114,7 +125,7 @@ impl AssetPath<'_> {
     }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // parse
 
 impl<'a> AssetPath<'a> {
@@ -165,12 +176,6 @@ impl<'a> AssetPath<'a> {
             return Err(ParseAssetPathError::InvalidPath);
         }
 
-        // `<[u8]>::contains` usually faster than `str::contains`
-        if path_segment.as_bytes().contains(&b'\\') {
-            ::core::hint::cold_path(); // E.g. `some\file#seg2`
-            return Err(ParseAssetPathError::InvalidBackslash);
-        }
-
         let source = match source_range {
             Some(source_range) => {
                 // validate source segment
@@ -218,12 +223,7 @@ impl<'a> AssetPath<'a> {
     /// allocations and reference counting for [`AssetPath::into_owned`].
     ///
     /// This will return a [`ParseAssetPathError`] if `asset_path` is in an invalid format.
-    /// Note that some error formats is only checked in debug mode for performance.
-    ///
-    /// The path segment must not contain `\`; this is always treated as an error.
-    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
-    ///
-    /// [Normalize]: normalize_separators
+    /// Note that some invalid formats are only checked in debug mode, for performance.
     pub fn try_parse(asset_path: &'a str) -> Result<AssetPath<'a>, ParseAssetPathError> {
         let (source, path, label) = Self::parse_internal(asset_path)?;
         Ok(AssetPath {
@@ -240,12 +240,7 @@ impl<'a> AssetPath<'a> {
     /// - An asset with a custom "source": `"custom://some/path/scene.gltf#Mesh0"`
     ///
     /// This will return a [`ParseAssetPathError`] if `asset_path` is in an invalid format.
-    /// Note that some error formats is only checked in debug mode for performance.
-    ///
-    /// The path segment must not contain `\`; this is always treated as an error.
-    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
-    ///
-    /// [Normalize]: normalize_separators
+    /// Note that some invalid formats are only checked in debug mode, for performance.
     pub fn try_parse_static(
         asset_path: &'static str,
     ) -> Result<AssetPath<'static>, ParseAssetPathError> {
@@ -270,12 +265,7 @@ impl<'a> AssetPath<'a> {
     ///
     /// Panics if the asset path is in an invalid format.
     ///
-    /// The path segment must not contain `\`; this is always treated as an error.
-    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
-    ///
     /// Use [`AssetPath::try_parse`] instead for a fallible variant.
-    ///
-    /// [Normalize]: normalize_separators
     #[inline]
     #[track_caller]
     pub fn parse(asset_path: &'a str) -> AssetPath<'a> {
@@ -298,12 +288,7 @@ impl<'a> AssetPath<'a> {
     ///
     /// Panics if the asset path is in an invalid format.
     ///
-    /// The path segment must not contain `\`; this is always treated as an error.
-    /// [Normalize] Windows-style paths (replace `\` with `/`) before parsing.
-    ///
     /// Use [`AssetPath::try_parse_static`] instead for a fallible variant.
-    ///
-    /// [Normalize]: normalize_separators
     #[inline]
     #[track_caller]
     pub fn parse_static(asset_path: &'static str) -> AssetPath<'static> {
@@ -317,7 +302,7 @@ impl<'a> AssetPath<'a> {
     }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // fields
 
 impl<'a> AssetPath<'a> {
@@ -356,11 +341,11 @@ impl<'a> AssetPath<'a> {
     }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // builder
 
 impl<'a> AssetPath<'a> {
-    /// Creates a empty [`AssetPath`] with a empty path.
+    /// Creates an empty [`AssetPath`] whose path is empty.
     ///
     /// The asset source is default and the label is none.
     #[inline]
@@ -375,21 +360,8 @@ impl<'a> AssetPath<'a> {
     /// Creates a new [`AssetPath`] from a [`Path`].
     ///
     /// The asset source is default and the label is none.
-    ///
-    /// The input path should not contain `\`; otherwise it may cause unexpected
-    /// results (e.g. serialization). [Normalize] Windows paths before parsing.
-    ///
-    /// [Normalize]: normalize_separators
-    ///
-    /// # Panic
-    /// May panic if the path contains `\`.
     #[inline]
     pub fn from_path(path: &'a Path) -> AssetPath<'a> {
-        #[cfg(any(debug_assertions, feature = "debug"))]
-        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
-            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
-        }
-
         AssetPath {
             source: None,
             path: CowArc::Borrowed(path),
@@ -398,21 +370,8 @@ impl<'a> AssetPath<'a> {
     }
 
     /// Returns this asset path with the given path segment.
-    ///
-    /// The input path should not contain `\`; otherwise it may cause unexpected
-    /// results (e.g. serialization). [Normalize] Windows paths before parsing.
-    ///
-    /// [Normalize]: normalize_separators
-    ///
-    /// # Panic
-    /// May panic if the path contains `\`.
     #[inline]
     pub fn with_path(self, path: &'a Path) -> AssetPath<'a> {
-        #[cfg(any(debug_assertions, feature = "debug"))]
-        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
-            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
-        }
-
         AssetPath {
             source: self.source,
             path: CowArc::Borrowed(path),
@@ -440,7 +399,7 @@ impl<'a> AssetPath<'a> {
         }
     }
 
-    /// Returns this asset path that removed label.
+    /// Returns this asset path with the label removed.
     #[inline]
     pub fn without_label(self) -> AssetPath<'a> {
         Self {
@@ -466,15 +425,9 @@ impl<'a> AssetPath<'a> {
     pub fn remove_label(&mut self) -> Option<CowArc<'a, str>> {
         self.label.take()
     }
-
-    #[inline(always)]
-    #[expect(unused, reason = "todo")]
-    pub(crate) fn reset_label(&mut self) {
-        self.label = None;
-    }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // parent
 
 impl<'a> AssetPath<'a> {
@@ -512,7 +465,7 @@ impl<'a> AssetPath<'a> {
     }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // extension
 
 impl<'a> AssetPath<'a> {
@@ -521,6 +474,8 @@ impl<'a> AssetPath<'a> {
     /// Ex: Returns `"ron"` for `"my_asset.config.ron"`
     ///
     /// Also strips out anything following a `?` to handle query parameters in URIs.
+    #[inline]
+    #[doc(alias = "get_extension")]
     pub fn extension(&self) -> Option<&str> {
         let full_extension = self.full_extension()?;
         match full_extension.rfind(".") {
@@ -534,6 +489,8 @@ impl<'a> AssetPath<'a> {
     /// Ex: Returns `"config.ron"` for `"my_asset.config.ron"`
     ///
     /// Also strips out anything following a `?` to handle query parameters in URIs.
+    #[inline]
+    #[doc(alias = "get_full_extension")]
     pub fn full_extension(&self) -> Option<&str> {
         let file_name = self.path().file_name()?.to_str()?;
         let index = file_name.find('.')?;
@@ -549,7 +506,7 @@ impl<'a> AssetPath<'a> {
     }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // resolve
 
 impl<'a> AssetPath<'a> {
@@ -578,11 +535,13 @@ impl<'a> AssetPath<'a> {
     /// // This references the linux root directory.
     /// let path = AssetPath::parse("/home/thingy.png");
     /// assert!(path.is_unapproved());
-    ///
-    /// // This references the windows root directory.
-    /// let path = AssetPath::parse("C:/home/thingy.png");
-    /// assert!(path.is_unapproved());
     /// ```
+    ///
+    /// On Windows, absolute paths such as `C:/home/thingy.png` are also
+    /// considered unapproved. On other platforms, `std::path::Path` treats
+    /// them as an ordinary relative path, where `C:` is a legal, ordinary
+    /// component (not a drive prefix). This case is therefore not part of
+    /// the example above, as its behavior is platform-dependent.
     pub fn is_unapproved(&self) -> bool {
         use std::path::Component;
         let mut component_count: usize = 0;
@@ -670,13 +629,7 @@ impl<'a> AssetPath<'a> {
 
     /// Parses `path` as an [`AssetPath`], then resolves it relative to `self`.
     ///
-    /// This function currently does not support Windows-style
-    /// paths using `\` as a path separator. Use `/` instead.
-    ///
     /// Returns an error if parsing fails.
-    ///
-    /// The path segment should not contain `\`; this is always treated as an error.
-    /// Normalize Windows-style paths (e.g. replace `\` with `/`) before parsing.
     ///
     /// For more details, see [`AssetPath::resolve`].
     pub fn resolve_str(&self, path: &str) -> Result<AssetPath<'static>, ParseAssetPathError> {
@@ -684,11 +637,9 @@ impl<'a> AssetPath<'a> {
     }
 
     /// Parses `path` as an [`AssetPath`], then resolves it relative to `self` using embedded
+    /// (RFC 1808) semantics.
     ///
     /// Returns an error if parsing fails.
-    ///
-    /// The path segment should not contain `\`; this is always treated as an error.
-    /// Normalize Windows-style paths (e.g. replace `\` with `/`) before parsing.
     ///
     /// For more details, see [`AssetPath::resolve_embed`].
     pub fn resolve_embed_str(&self, path: &str) -> Result<AssetPath<'static>, ParseAssetPathError> {
@@ -728,29 +679,8 @@ impl<'a> AssetPath<'a> {
         if result_path.iter().any(|elt| elt == "..") {
             // PathBuf::canonicalize(), but faster
             ::core::hint::cold_path();
-            let size_hint = result_path.as_os_str().len();
-            let mut buffer = PathBuf::with_capacity(size_hint);
-            for elt in result_path.iter() {
-                if elt == "." {
-                    // Skip
-                } else if elt == ".." {
-                    // `file_name` is `None` for a path that already ends
-                    // in `..`: the latter must be preserved rather than
-                    // popped (RFC 1808), so `..`/`..` does not cancel itself out.
-                    if buffer.file_name().is_some() {
-                        buffer.pop();
-                    } else {
-                        buffer.push(elt);
-                    }
-                } else {
-                    buffer.push(elt);
-                }
-            }
-            result_path = buffer;
+            result_path = crate::utils::normalize_path(&result_path);
         }
-
-        #[cfg(target_family = "windows")]
-        let result_path = normalize_separators(result_path);
 
         AssetPath {
             // An explicit `name://` in the resolved path replaces the base source.
@@ -778,28 +708,73 @@ impl<'a> AssetPath<'a> {
     }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Serialize
+
+impl<'a> AssetPath<'a> {
+    /// Formats this asset path as `[source://]path[#label]`.
+    ///
+    /// On Windows the host separator `\` is rewritten to `/`, so a path produced by the host
+    /// serializes to the same text on every platform (and this is therefore what [`Serialize`]
+    /// writes). See the separator policy on [`AssetPath`].
+    #[expect(
+        clippy::inherent_to_string_shadow_display,
+        reason = "the inherent method is the documented entry point; format! / Display delegate to it"
+    )]
+    pub fn to_string(&self) -> String {
+        use core::fmt::Write;
+
+        let source: Option<&str> = self.source.as_deref();
+        let path: &Path = self.path.as_ref();
+        let label: Option<&str> = self.label.as_deref();
+
+        let hint = path.as_os_str().len()
+            + source.map(|x| x.len() + 3).unwrap_or(0)
+            + label.map(|x| x.len() + 1).unwrap_or(0);
+
+        let mut buffer = String::with_capacity(hint);
+
+        if let Some(source) = source {
+            buffer.push_str(source);
+            buffer.push_str("://");
+        }
+
+        let _start = buffer.len();
+
+        write!(&mut buffer, "{}", path.display()).unwrap();
+
+        #[cfg(target_family = "windows")]
+        if buffer.as_bytes()[_start..].contains(&b'\\') {
+            #[expect(unsafe_code, reason = "raw bytes modification")]
+            for b in unsafe { &mut buffer.as_bytes_mut()[_start..] } {
+                *b = if *b == b'\\' { b'/' } else { *b };
+            }
+            // faster than ↓, testing in https://godbolt.org/
+            // #[expect(unsafe_code, reason = "raw bytes modification")]
+            // unsafe {
+            //     let iter = buffer.as_bytes_mut()[_start..].iter_mut();
+            //     iter.filter(|c| **c == b'\\').for_each(|c| *c = b'/');
+            // }
+        }
+
+        if let Some(label) = label {
+            buffer.push('#');
+            buffer.push_str(label);
+        }
+
+        buffer
+    }
+}
 
 impl<'a> Debug for AssetPath<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(self, f)
+        Display::fmt(&self.to_string(), f)
     }
 }
 
 impl<'a> Display for AssetPath<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        if let Some(name) = &self.source {
-            write!(f, "{name}://")?;
-        }
-
-        write!(f, "{}", self.path.display())?;
-
-        if let Some(label) = &self.label {
-            write!(f, "#{label}")?;
-        }
-
-        Ok(())
+        Display::fmt(&self.to_string(), f)
     }
 }
 
@@ -809,35 +784,7 @@ impl<'a> Serialize for AssetPath<'a> {
     where
         S: serde::Serializer,
     {
-        #[inline(never)]
-        fn to_string(asset_path: &AssetPath<'_>) -> String {
-            use core::fmt::Write;
-
-            let source: Option<&str> = asset_path.source.as_deref();
-            let path: &Path = asset_path.path.as_ref();
-            let label: Option<&str> = asset_path.label.as_deref();
-
-            let hint = path.as_os_str().len()
-                + source.map(|x| x.len() + 3).unwrap_or(0)
-                + label.map(|x| x.len() + 1).unwrap_or(0);
-
-            let mut buffer = String::with_capacity(hint);
-
-            if let Some(source) = source {
-                buffer.push_str(source);
-                buffer.push_str("://");
-            }
-
-            write!(&mut buffer, "{}", path.display()).unwrap();
-
-            if let Some(label) = label {
-                buffer.push('#');
-                buffer.push_str(label);
-            }
-            buffer
-        }
-
-        to_string(self).serialize(serializer)
+        self.to_string().serialize(serializer)
     }
 }
 
@@ -868,17 +815,12 @@ impl<'de> Deserialize<'de> for AssetPath<'static> {
                 }
             }
 
+            #[inline]
             fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                match AssetPath::try_parse(v.as_str()) {
-                    Ok(val) => Ok(val.into_owned()),
-                    Err(err) => {
-                        ::core::hint::cold_path();
-                        Err(serde::de::Error::custom(format_args!("{err}: `{v}`")))
-                    }
-                }
+                self.visit_str(&v)
             }
         }
 
@@ -886,11 +828,11 @@ impl<'de> Deserialize<'de> for AssetPath<'static> {
     }
 }
 
-// ---------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Conversion
 
-// This is only implemented for static lifetimes to ensure `Path::clone`
-// does not allocate by ensuring that this is stored as a `CowArc::Static`.
+// This is only implemented for static lifetimes: the resulting path borrows the input, and the
+// `AssetPath<'static>` it is stored in requires that borrow to live for `'static`.
 impl From<&'static str> for AssetPath<'static> {
     #[inline]
     fn from(asset_path: &'static str) -> Self {
@@ -917,12 +859,7 @@ impl From<String> for AssetPath<'static> {
 impl From<&'static Path> for AssetPath<'static> {
     #[inline]
     fn from(path: &'static Path) -> Self {
-        #[cfg(any(debug_assertions, feature = "debug"))]
-        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
-            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
-        }
-
-        Self {
+        AssetPath {
             source: None,
             path: CowArc::Static(path),
             label: None,
@@ -933,12 +870,7 @@ impl From<&'static Path> for AssetPath<'static> {
 impl<'a> From<&'a PathBuf> for AssetPath<'a> {
     #[inline]
     fn from(path: &'a PathBuf) -> Self {
-        #[cfg(any(debug_assertions, feature = "debug"))]
-        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
-            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
-        }
-
-        Self {
+        AssetPath {
             source: None,
             path: CowArc::Borrowed(path.as_path()),
             label: None,
@@ -949,14 +881,9 @@ impl<'a> From<&'a PathBuf> for AssetPath<'a> {
 impl From<PathBuf> for AssetPath<'static> {
     #[inline]
     fn from(path: PathBuf) -> Self {
-        #[cfg(any(debug_assertions, feature = "debug"))]
-        if let Some(bytes) = path.as_os_str().to_str().map(str::as_bytes) {
-            assert!(!bytes.contains(&b'\\'), "AssetPath must not contain '\\'");
-        }
-
-        Self {
+        AssetPath {
             source: None,
-            path: path.into(),
+            path: CowArc::Owned(path.into()),
             label: None,
         }
     }
@@ -976,35 +903,80 @@ impl<'a> From<AssetPath<'a>> for PathBuf {
     }
 }
 
-// ---------------------------------------------------------------------
-
-/// Converts all `\` separators in `path` to `/`.
-///
-/// This is used to normalize Windows-style paths into the `/`-separated
-/// form expected by [`AssetPath`]. Since [`AssetPath::path`] is required to
-/// use `/` as its only separator, any `\` coming from the host platform must
-/// be replaced before the path is stored.
-///
-/// If the path is not valid UTF-8, a lossy conversion is performed via
-/// [`OsStr::to_string_lossy`], and any invalid bytes are replaced with
-/// `U+FFFD`. This matches the behavior of [`Path::display`] and keeps the
-/// function infallible.
-///
-/// [`OsStr::to_string_lossy`]: std::ffi::OsStr::to_string_lossy
-pub fn normalize_separators(path: PathBuf) -> PathBuf {
-    let osstring = path.into_os_string();
-    let mut s = osstring
-        .into_string()
-        .unwrap_or_else(|x| x.to_string_lossy().into_owned());
-
-    #[expect(unsafe_code, reason = "raw bytes modification")]
-    unsafe {
-        let iter = s.as_bytes_mut().iter_mut();
-        iter.filter(|c| **c == b'\\').for_each(|c| *c = b'/');
+impl<'a> From<AssetPath<'a>> for String {
+    #[inline]
+    fn from(value: AssetPath<'a>) -> Self {
+        value.to_string()
     }
-
-    PathBuf::from(s)
 }
 
-// ---------------------------------------------------------------------
-// Tests
+impl<'a> From<&AssetPath<'a>> for String {
+    #[inline]
+    fn from(value: &AssetPath<'a>) -> Self {
+        value.to_string()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Source Id
+
+impl<'a> AssetPath<'a> {
+    /// Returns this asset path with the given [`AssetSourceId`].
+    ///
+    /// [`AssetSourceId::Default`] clears a source that was set before.
+    ///
+    /// [`AssetSourceId`]: crate::ident::AssetSourceId
+    /// [`AssetSourceId::Default`]: crate::ident::AssetSourceId::Default
+    #[inline]
+    pub fn with_source_id(self, source: crate::ident::AssetSourceId) -> AssetPath<'a> {
+        AssetPath {
+            source: source.into(),
+            path: self.path,
+            label: self.label,
+        }
+    }
+
+    /// Gets the "asset source" as an [`AssetSourceId`], which is the form the source registry is
+    /// keyed by; an asset path without a source is [`AssetSourceId::Default`].
+    ///
+    /// [`AssetSourceId`]: crate::ident::AssetSourceId
+    /// [`AssetSourceId::Default`]: crate::ident::AssetSourceId::Default
+    #[inline]
+    pub fn source_id(&self) -> crate::ident::AssetSourceId {
+        crate::ident::AssetSourceId::from(self.source.clone())
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Separators
+
+/// Converts every `\` separator in `s` to `/`.
+///
+/// This is an *input-side* helper: it turns a host-produced path string (such as the `file!()`
+/// literal an embedded asset is registered under, which may have been written on Windows) into the
+/// portable, `/`-separated form used by [`AssetPath`]'s textual representation. It is **not**
+/// required before parsing a string into an [`AssetPath`], because parsing keeps the host
+/// platform's representation and only [`AssetPath::to_string`] normalizes separators on output
+/// (see the separator policy on [`AssetPath`]).
+///
+/// The rewrite is a pure ASCII byte substitution and therefore infallible. Callers that start
+/// from an [`OsStr`](std::ffi::OsStr) should do the lossy conversion first ([`Path::display`]
+/// / [`OsStr::to_string_lossy`]), which is also what [`AssetPath::to_string`] does; invalid bytes
+/// then become `U+FFFD` as usual.
+///
+/// [`OsStr::to_string_lossy`]: std::ffi::OsStr::to_string_lossy
+#[inline]
+pub fn normalize_separators(s: &mut str) {
+    #[expect(unsafe_code, reason = "raw bytes modification")]
+    for b in unsafe { s.as_bytes_mut() } {
+        *b = if *b == b'\\' { b'/' } else { *b };
+    }
+    // faster than ↓ , testing in https://godbolt.org/
+    // #[expect(unsafe_code, reason = "raw bytes modification")]
+    // unsafe {
+    //     let iter = s.as_bytes_mut().iter_mut();
+    //     iter.filter(|c| **c == b'\\').for_each(|c| *c = b'/');
+    // }
+}
+
+// -----------------------------------------------------------------------------

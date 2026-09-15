@@ -305,6 +305,9 @@ mod view_frustum_tests {
     use super::ViewFrustum;
     use crate::HalfSpace;
 
+    /// Derives the six bounding planes from a standard perspective projection and
+    /// checks each normal and distance, which pins the plane ordering documented
+    /// on `ViewFrustum` for a non-reversed depth range.
     #[test]
     fn from_clip_from_world() {
         let clip_from_world = proj::perspective(60.0_f32.to_radians(), 1.0, 1.0, 10.0);
@@ -348,6 +351,9 @@ mod view_frustum_tests {
         );
     }
 
+    /// The same check for a reverse-Z projection: the four side planes are
+    /// derived as before, while the near and far entries swap which row
+    /// combination they use, so this pins the array order for reversed depth.
     #[test]
     fn from_rclip_from_world() {
         let clip_from_world = proj::perspective_reverse(60.0_f32.to_radians(), 1.0, 1.0, 10.0);
@@ -391,6 +397,9 @@ mod view_frustum_tests {
         );
     }
 
+    /// Builds a box-shaped frustum from six axis-aligned half-spaces and checks
+    /// that the eight corners come back in the documented near-to-far,
+    /// top-left-first order.
     #[test]
     fn cuboid_frustum_corners() {
         let cuboid_frustum = ViewFrustum {
@@ -431,6 +440,9 @@ mod view_frustum_tests {
         assert_relative_eq!(corners[7], Vec3::new(-5., 6., -2.), epsilon = 2e-7);
     }
 
+    /// A frustum whose near plane touches the other four planes at a single
+    /// point, so all four near corners collapse onto it while the far corners
+    /// stay at the corners of a square.
     #[test]
     fn pyramid_frustum_corners() {
         // a frustum where the near plane intersects the left right top and bottom planes
@@ -470,6 +482,10 @@ mod view_frustum_tests {
         assert_relative_eq!(corners[7], Vec3::new(-4., 3., -4.), epsilon = 2e-7);
     }
 
+    /// Checks the documented behaviour for a far plane that never cuts the other
+    /// planes: the near corners are still solved normally, while every corner
+    /// that needs the far plane comes back as `NaN` instead of failing the whole
+    /// call.
     #[test]
     fn frustum_with_some_nan_corners() {
         // frustum with no far plane has NAN far corners

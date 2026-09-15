@@ -302,6 +302,9 @@ impl Debug for Location {
 mod tests {
     use super::EntityId;
 
+    /// Round-trips a raw bit pattern through the id: the index occupies the low half
+    /// of the word and the generation the high half, so unpacking the two fields has
+    /// to reproduce the value that was packed.
     #[test]
     fn consistent() {
         let index: u32 = 0x0001_FAAF;

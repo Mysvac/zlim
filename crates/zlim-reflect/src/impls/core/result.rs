@@ -23,6 +23,8 @@ mod tests {
     use crate::ops::Enum;
     use std::string::String;
 
+    /// A hand-built `Ok` variant is accepted by `from_reflect`, and its tuple
+    /// payload becomes the success value.
     #[test]
     fn dynamic_enum_to_result_ok() {
         let mut t = DynamicTuple::new();
@@ -36,6 +38,8 @@ mod tests {
         assert_eq!(*result, Ok(2026_i32));
     }
 
+    /// The same conversion for the error arm: the payload has to land in `E` and
+    /// survive the trip as a `String`.
     #[test]
     fn dynamic_enum_to_result_err() {
         let mut t = DynamicTuple::new();
@@ -49,6 +53,8 @@ mod tests {
         assert_eq!(*result, Err(String::from("oops")));
     }
 
+    /// The reverse direction, turning a concrete `Ok` into a `DynamicEnum` that
+    /// keeps the variant name and exposes the payload as field 0.
     #[test]
     fn result_to_dynamic_enum_ok() {
         let val: Result<i32, String> = Ok(7);
@@ -61,6 +67,8 @@ mod tests {
         assert_eq!(*f, 7_i32);
     }
 
+    /// The reverse direction for `Err`, whose payload is the error type rather
+    /// than the success type.
     #[test]
     fn result_to_dynamic_enum_err() {
         let val: Result<i32, String> = Err(String::from("boom"));
@@ -73,6 +81,8 @@ mod tests {
         assert_eq!(f, "boom");
     }
 
+    /// Chains both directions, so a value that goes through the dynamic form has
+    /// to come back equal to the original.
     #[test]
     fn result_roundtrip_via_dynamic() {
         let original: Result<i32, String> = Err(String::from("boom"));

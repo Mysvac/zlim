@@ -25,7 +25,7 @@ LogConfig::default().apply();
 
 ### 内容过滤器
 
-使用 `EnvFilter` 语法(与 `RUST_LOG` 相同)，按 **target + 级别**控制哪些日志会输出，例如:
+使用 `Targets` 语法，按 **target + level** 控制哪些日志会输出，例如:
 
 ```rust
 use zlim_log::LogConfig;
@@ -36,9 +36,13 @@ let config = LogConfig {
 };
 ```
 
-未指定时使用默认过滤器，请参考内部代码。
+允许包含空格，例如 `"wgpu= warn ,naga =warn"`，前后缀的空格会被正常剔除。
+
+未指定时使用默认过滤器（而非空字符串），请参考内部代码。
 
 `LogConfig` 内部的 `filter` 会与环境变量中的 `RUST_LOG` 合并。
+
+我们使用简单的 `Targets` 过滤器而不是更强大的 `EnvFilter`，以尽量优化日志性能。
 
 ### 日志级别
 
@@ -85,7 +89,7 @@ let config = LogConfig {
 
 - `trace_tracy`: 启用 `tracing-tracy` crate，用于性能分析。当 `LogConfig` 的 `enable_tracy` 字段为 `true` 时，向 Tracy 流式发送事件。
 
-- `trace_memory`: 启用 `tracy-client`，以支持 Tracy 内存分析。
+- `tracy_memory`: 启用 `tracy-client`，以支持 Tracy 内存分析。
 
 - `trace_chrome`:  启用 `tracing-chrome`,导出 Chrome tracing 格式(JSON)，用环境变量 `TRACE_CHROME` 指定输出文件路径。
 

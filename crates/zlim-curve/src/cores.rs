@@ -675,6 +675,12 @@ mod tests {
         }
     }
 
+    /// Checks interpolation over an evenly sampled core. The core holds 11 samples across
+    /// the unit domain, so sampling never produces an exact hit: times at or below the
+    /// start and at or past the end carry the outermost value instead, marking that the
+    /// sample lies off the end of the family. In between, the core reports the neighboring
+    /// pair of values and the fractional position within that segment, and a sample landing
+    /// exactly on a knot may be attributed to either of the segments meeting there.
     #[test]
     fn even_sample_interp() {
         let even_core = EvenCore::<f32>::new(
@@ -697,6 +703,7 @@ mod tests {
         let InterpolationDatum::Between(0.0, 1.0, p) = datum else {
             panic!("Sample did not lie in the correct subinterval")
         };
+        // Half way through the first of the ten segments, so a fraction of one half.
         assert_abs_diff_eq!(p, 0.5);
 
         let datum = even_core.sample_interp(0.05);
@@ -707,11 +714,17 @@ mod tests {
         assert!(approx_between(datum, &7.0, &8.0, 0.8));
 
         let datum = even_core.sample_interp(0.5);
+        // Landing on the knot between two segments, either neighboring pair is acceptable.
         assert!(approx_between(datum, &4.0, &5.0, 1.0) || approx_between(datum, &5.0, &6.0, 0.0));
         let datum = even_core.sample_interp(0.7);
         assert!(approx_between(datum, &6.0, &7.0, 1.0) || approx_between(datum, &7.0, &8.0, 0.0));
     }
 
+    /// Checks interpolation over an unevenly sampled core, where the times are given
+    /// explicitly and are far from uniform. Sampling before the first time or after the
+    /// last is reported as tail data, while landing exactly on one of the given times is
+    /// an exact hit that needs no interpolation. Times in between report the surrounding
+    /// values and the fractional position across that particular pair.
     #[test]
     fn uneven_sample_interp() {
         let uneven_core = UnevenCore::<f32>::new(vec![
@@ -732,6 +745,8 @@ mod tests {
         let datum = uneven_core.sample_interp(9.0);
         assert!(is_right_tail(datum));
 
+        // The fraction is measured against the gap between the two surrounding times,
+        // which widens as the samples spread out.
         let datum = uneven_core.sample_interp(0.5);
         assert!(approx_between(datum, &0.0, &3.0, 0.5));
         let datum = uneven_core.sample_interp(2.5);
@@ -745,6 +760,10 @@ mod tests {
         assert!(is_exact(datum, &10.0));
     }
 
+    /// Checks interpolation over a chunked uneven core, whose samples are stored as
+    /// equal-length chunks addressed by a separate axis of times. Tails, exact hits and
+    /// fractional positions should behave exactly as for the unchunked core, only with
+    /// vector-valued samples and with the fractions spanning whole chunks.
     #[test]
     fn chunked_uneven_sample_interp() {
         let core =
@@ -762,6 +781,8 @@ mod tests {
 
         let datum = core.sample_interp(1.0);
         assert!(approx_between(datum, &[0.0, 1.0], &[2.0, 3.0], 0.5));
+        // The gap from the second chunk time to the third spans six units, so a sample
+        // one unit into that gap sits at a sixth of the interpolation parameter.
         let datum = core.sample_interp(3.0);
         assert!(approx_between(datum, &[2.0, 3.0], &[4.0, 5.0], 1.0 / 6.0));
 

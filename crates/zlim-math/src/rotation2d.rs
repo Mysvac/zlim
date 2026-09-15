@@ -539,6 +539,8 @@ mod tests {
     use super::Rot2;
     use crate::{Dir2, Mat2, Vec2, ops};
 
+    /// The four constructors all describe the same quarter turn, so their sine and cosine have to
+    /// match, and the three accessors have to report that angle in radians, degrees and turns.
     #[test]
     fn creation() {
         let rotation1 = Rot2::radians(FRAC_PI_2);
@@ -633,6 +635,11 @@ mod tests {
         assert!(normalized_rotation.is_normalized());
     }
 
+    /// Squaring a rotation six times multiplies it 64x and amplifies any drift with it, which is
+    /// what makes the error observable. Two chains are renormalized after every step, one cheaply
+    /// and one exactly, and they have to agree with each other and with normalizing the drifted
+    /// and the initially normalized chains at the end. This pins down that the approximation keeps
+    /// the error from accumulating.
     #[test]
     fn fast_renormalize() {
         let rotation = Rot2 { sin: 1.0, cos: 0.5 };
@@ -654,6 +661,8 @@ mod tests {
             fully_normalized_rot = fully_normalized_rot.normalize();
         }
 
+        // The chain that is never renormalized is the control: it has to drift out of tolerance,
+        // otherwise the comparisons below would prove nothing.
         assert!(!unnormalized_rot.is_normalized());
 
         assert!(renormalized_rot.is_normalized());
@@ -708,6 +717,10 @@ mod tests {
         );
     }
 
+    /// The blend is linear in the rotation's sine and cosine rather than in its angle, so the
+    /// fractions do not advance at a constant angular speed: a third of the way through the 135°
+    /// turn lands near 28.7° instead of 45°. The antipodal pair is covered as well, because the
+    /// blend degenerates there and the fallback has to return the starting rotation.
     #[test]
     fn nlerp() {
         let rot1 = Rot2::IDENTITY;
@@ -728,6 +741,9 @@ mod tests {
         assert_eq!(ops::abs(rot1.nlerp(rot2, 1.0).as_degrees()), 180.0);
     }
 
+    /// Interpolation follows the arc, so each fraction advances the angle by that fraction of the
+    /// 135° turn, unlike the component-wise blend. The second half drives a half turn instead,
+    /// where the samples a third and a half of the way through have to land on 60° and 90°.
     #[test]
     fn slerp() {
         let rot1 = Rot2::IDENTITY;

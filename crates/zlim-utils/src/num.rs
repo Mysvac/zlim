@@ -321,6 +321,9 @@ mod tests {
     use super::*;
     use core::mem::size_of;
 
+    /// The entire point of these wrappers is that the sentinel leaves a niche behind, so an
+    /// `Option` around one of them keeps the size of the bare integer instead of growing a
+    /// discriminant.
     #[test]
     fn size_optimization() {
         assert_eq!(size_of::<Option<NonMaxU8>>(), size_of::<u8>());
@@ -335,6 +338,8 @@ mod tests {
         assert_eq!(size_of::<Option<NonMaxIsize>>(), size_of::<isize>());
     }
 
+    /// Checks the published constants against the underlying integer: the sentinel costs each type
+    /// its largest value, so `MAX` sits one below `T::MAX` while the other bounds are unchanged.
     #[test]
     fn constants() {
         // Unsigned
@@ -360,6 +365,9 @@ mod tests {
         assert_eq!(NonMaxI32::BITS, i32::BITS);
     }
 
+    /// Covers both constructors for a signed and an unsigned type alike: the unchecked one hands
+    /// the input straight back, while the checked one rejects exactly the sentinel and accepts
+    /// everything else.
     #[test]
     fn new_and_get() {
         unsafe {
@@ -450,6 +458,9 @@ mod tests {
         assert_eq!(val, 42);
     }
 
+    /// Locks in the representation guarantee that the type promises its users: the wrapper stores
+    /// the bitwise complement of the value, so transmuting it back to the integer yields
+    /// `value ^ T::MAX` rather than the value itself.
     #[test]
     fn transmute_guarantee() {
         // transmute::<NonMax<T>, T>(nonmax) == nonmax.get() ^ T::MAX
@@ -462,6 +473,9 @@ mod tests {
         }
     }
 
+    /// Exercises the full domain of both a signed and an unsigned wrapper, so every value except
+    /// the sentinel is shown to survive a round trip while the sentinel itself is the one input
+    /// that cannot be constructed.
     #[test]
     fn all_values_except_max() {
         for i in 0..=u8::MAX - 1 {

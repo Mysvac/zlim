@@ -1,5 +1,6 @@
 use core::fmt::Display;
 
+use futures_lite::{AsyncRead, AsyncReadExt};
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
@@ -9,8 +10,7 @@ use serde::{Deserialize, Serialize};
 /// A 32-byte content hash used to identify assets and detect changes.
 ///
 /// Serialized as a 64-character ASCII string where each byte is encoded
-/// as two characters in the range `0x41..=0x50` (`'A'..='P'`). This is
-/// *not* standard hex — nibbles `10..=15` map to `:;<=>?` instead of `a..f`.
+/// as two characters in the range `0x41..=0x50` (`'A'..='P'`).
 ///
 /// Encoding and decoding are symmetric, and the output is always printable
 /// ASCII, so it never needs escaping in string contexts. This also makes
@@ -128,8 +128,6 @@ impl AssetHash {
 // -----------------------------------------------------------------------------
 // Methods
 
-use futures_lite::{AsyncRead, AsyncReadExt};
-
 impl AssetHash {
     /// Hashes `meta` followed by the full contents of `reader` and `meta` into a single [`AssetHash`].
     ///
@@ -179,6 +177,8 @@ impl AssetHash {
 mod tests {
     use super::AssetHash;
 
+    /// The zero hash is `AssetHash::default()`. It survives a RON round-trip, and its serialized
+    /// form is the two quotes `serde` adds around 64 `A`s, the character a zero nibble encodes to.
     #[test]
     fn zero_hash() {
         let hash = AssetHash::default();
@@ -206,5 +206,156 @@ mod tests {
         let deserialized: AssetHash = ron::from_str(&serialized).unwrap();
 
         assert_eq!(original, deserialized);
+    }
+
+    // -------------------------------------------------------------------------
+    // Encoding
+
+    /// The encoding described by [`AssetHash`]: `'A' + low nibble`, then `'A' + high nibble.
+    fn encoded(hash: &AssetHash) -> String {
+        let mut text = String::with_capacity(64);
+
+        for byte in hash.0 {
+            text.push(char::from(b'A' + (byte & 0b1111)));
+            text.push(char::from(b'A' + (byte >> 4)));
+        }
+
+        text
+    }
+
+    /// Each byte becomes exactly two characters: the low nibble first and then the high one, each
+    /// offset from `A`, which keeps the text printable and always 64 characters long. The cases
+    /// walk the ends of the nibble range, which is what tells the two halves apart.
+    #[test]
+    fn the_encoding_uses_one_character_per_nibble() {
+        let cases = [
+            ([0x00; 32], "AA"),
+            ([0x11; 32], "BB"),
+            ([0x0F; 32], "PA"),
+            ([0xF0; 32], "AP"),
+            ([0xFF; 32], "PP"),
+        ];
+
+        for (bytes, pair) in cases {
+            let hash = AssetHash(bytes);
+            let text = hash.display().to_string();
+
+            assert_eq!(text.len(), 64);
+            assert_eq!(text, pair.repeat(32));
+            assert_eq!(text, encoded(&hash));
+            assert!(text.bytes().all(|byte| (b'A'..=b'P').contains(&byte)));
+        }
+    }
+
+    /// `Display` and the `serde` form must not drift apart: the text a person reads and the text a
+    /// `.meta` file stores have to name the same bytes.
+    #[test]
+    fn display_and_serialization_use_the_same_encoding() {
+        let hash = AssetHash(core::array::from_fn(|index| {
+            (index as u8).wrapping_mul(37).wrapping_add(0x9E)
+        }));
+
+        let displayed = hash.display().to_string();
+        let serialized = ron::to_string(&hash).expect("an AssetHash serializes");
+
+        assert_eq!(displayed, encoded(&hash));
+        assert_eq!(serialized, format!("\"{displayed}\""));
+    }
+
+    #[test]
+    fn decoding_inverts_the_encoding() {
+        let hash = AssetHash(core::array::from_fn(|index| {
+            (index as u8).wrapping_mul(37).wrapping_add(0x9E)
+        }));
+
+        let serialized = ron::to_string(&hash).expect("an AssetHash serializes");
+        let decoded: AssetHash = ron::from_str(&serialized).expect("the encoding decodes");
+
+        assert_eq!(decoded, hash);
+
+        // The encoding is a bijection, so a hand-written string decodes to the same bytes:
+        // `'A'` is a zero low nibble and `'B'` a high nibble of one.
+        let handcrafted = format!("\"{}\"", "AB".repeat(32));
+        let decoded: AssetHash = ron::from_str(&handcrafted).expect("the encoding decodes");
+
+        assert_eq!(decoded, AssetHash([0x10; 32]));
+    }
+
+    #[test]
+    fn decoding_rejects_a_hash_of_the_wrong_length() {
+        let too_short = format!("\"{}\"", "A".repeat(63));
+        let too_long = format!("\"{}\"", "A".repeat(65));
+
+        assert!(ron::from_str::<AssetHash>(&too_short).is_err());
+        assert!(ron::from_str::<AssetHash>(&too_long).is_err());
+    }
+
+    // -------------------------------------------------------------------------
+    // Hashing
+
+    #[test]
+    fn fold_hash_returns_the_base_when_there_is_nothing_to_fold() {
+        let base = AssetHash([7; 32]);
+
+        assert_eq!(AssetHash::fold_hash(&base, core::iter::empty()), base);
+    }
+
+    /// Folding is one blake3 pass over the base and then the inputs in iteration order: the same
+    /// inputs give the same result, a different order does not, and the result is neither the base
+    /// alone nor what a shorter fold would give.
+    ///
+    /// The expected value is recomputed by hand, so changing what gets folded — or the order it is
+    /// folded in — fails here instead of quietly changing every hash the importer records.
+    #[test]
+    fn fold_hash_mixes_the_base_and_the_hashes_in_order() {
+        let base = AssetHash([1; 32]);
+        let first = AssetHash([2; 32]);
+        let second = AssetHash([3; 32]);
+
+        let forward = AssetHash::fold_hash(&base, [first, second].iter());
+        let again = AssetHash::fold_hash(&base, [first, second].iter());
+        let reversed = AssetHash::fold_hash(&base, [second, first].iter());
+
+        assert_eq!(forward, again, "folding must be deterministic");
+        assert_ne!(forward, reversed, "folding must depend on the order");
+        assert_ne!(forward, base);
+        assert_ne!(forward, AssetHash::fold_hash(&base, [first].iter()));
+
+        // The base is hashed first, then the folded hashes in iteration order.
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&base.0);
+        hasher.update(&first.0);
+        hasher.update(&second.0);
+
+        assert_eq!(forward, AssetHash(*hasher.finalize().as_bytes()));
+    }
+
+    /// The hash covers the `.meta` bytes first and the asset contents after them, so a change to
+    /// either one shows up as a different hash.
+    #[test]
+    fn async_hash_appends_the_reader_to_the_meta() {
+        let meta = b"some meta bytes";
+        let contents = b"the asset contents";
+
+        let mut reader: &[u8] = contents;
+        let hash = futures_lite::future::block_on(AssetHash::async_hash(meta, &mut reader))
+            .expect("hashing a slice cannot fail");
+
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(meta);
+        hasher.update(contents);
+
+        assert_eq!(hash, AssetHash(*hasher.finalize().as_bytes()));
+    }
+
+    #[test]
+    fn async_hash_of_an_empty_reader_hashes_the_meta_alone() {
+        let meta = b"meta without contents";
+
+        let mut reader: &[u8] = &[];
+        let hash = futures_lite::future::block_on(AssetHash::async_hash(meta, &mut reader))
+            .expect("hashing a slice cannot fail");
+
+        assert_eq!(hash, AssetHash(*blake3::hash(meta).as_bytes()));
     }
 }

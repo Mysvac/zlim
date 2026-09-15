@@ -135,6 +135,9 @@ pub fn intern_str<'a>(s: &'a str) -> &'static str {
 mod tests {
     use super::intern_str;
 
+    /// Interning is about identity, not equality: asking for the same text twice has to hand back
+    /// the very same pointer, and that pointer belongs to the pool's permanent copy rather than to
+    /// any borrowed literal the caller passed in.
     #[test]
     fn double_intern() {
         let a = intern_str("123456");

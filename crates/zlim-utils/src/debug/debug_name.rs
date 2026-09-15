@@ -165,6 +165,12 @@ mod tests {
 
     pub struct Foo;
 
+    /// Pins down the collapsing of type names into their short, readable form across the shapes
+    /// that actually appear in the engine: primitives, references, raw pointers, arrays, slices,
+    /// unit and tuple types, and nested generic arguments such as `Option<&u32>`. Everything is
+    /// rendered through `Display`, which is the formatting path used when a name lands in a
+    /// diagnostic string, and module-qualified names are expected to shrink to their last segment,
+    /// so `core::option::Option<u32>` prints as `Option<u32>` and the local `Foo` loses its path.
     #[test]
     fn parse() {
         assert_eq!(DebugName::type_name::<u32>().to_string(), "u32");

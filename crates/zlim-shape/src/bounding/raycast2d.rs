@@ -194,6 +194,10 @@ mod tests {
 
     const EPSILON: f32 = 0.001;
 
+    /// A ray and a bounding circle for every case in which they are expected to collide, chosen so
+    /// that the ray reaches the volume from different origins and directions. Each case must
+    /// report an intersection and report it at the exact distance, and the same ray run backwards
+    /// must miss now that it points away from the volume.
     #[test]
     fn test_ray_intersection_circle_hits() {
         for (test, volume, expected_distance) in &[
@@ -252,6 +256,9 @@ mod tests {
         }
     }
 
+    /// The three ways a ray can fail to hit a circle: the ray points the wrong way, its direction
+    /// is too far off to reach the circle before leaving, or the circle lies beyond the maximum
+    /// distance the ray is allowed to travel.
     #[test]
     fn test_ray_intersection_circle_misses() {
         for (test, volume) in &[
@@ -278,6 +285,9 @@ mod tests {
         }
     }
 
+    /// A ray whose origin is already inside the volume counts as an intersection at distance zero,
+    /// whichever way it points and however far it may travel. The origins and directions are
+    /// crossed exhaustively to make sure that convention holds for every combination.
     #[test]
     fn test_ray_intersection_circle_inside() {
         let volume = BoundingCircle::new(Vec2::splat(0.5), 1.);
@@ -302,6 +312,10 @@ mod tests {
         }
     }
 
+    /// A ray and a box for every case in which they are expected to collide, chosen so that the ray
+    /// reaches the volume from different origins and directions. Each case must report an
+    /// intersection and report it at the exact distance, and the same ray reversed must be a miss
+    /// now that it points away from the volume.
     #[test]
     fn test_ray_intersection_aabb_hits() {
         for (test, volume, expected_distance) in &[
@@ -360,6 +374,9 @@ mod tests {
         }
     }
 
+    /// The three ways a ray can fail to hit a box: the ray points the wrong way, its direction is
+    /// too far off to reach the box before leaving, or the box lies beyond the maximum distance the
+    /// ray is allowed to travel.
     #[test]
     fn test_ray_intersection_aabb_misses() {
         for (test, volume) in &[
@@ -386,6 +403,9 @@ mod tests {
         }
     }
 
+    /// A ray whose origin is already inside the box counts as an intersection at distance zero,
+    /// whichever way it points and however far it may travel. The origins and directions are
+    /// crossed exhaustively to make sure that convention holds for every combination.
     #[test]
     fn test_ray_intersection_aabb_inside() {
         let volume = Aabb2d::new(Vec2::splat(0.5), Vec2::ONE);
@@ -410,6 +430,10 @@ mod tests {
         }
     }
 
+    /// A box cast along a ray, tested against another box for the distances at which the two touch.
+    /// The cases show what a cast buys over a plain ray: the cast box is wider than a ray, so it
+    /// also touches the target when only an edge would have met, and it collides even when the cast
+    /// box itself is off-center. Reversing the ray must miss in every case.
     #[test]
     fn test_aabb_cast_hits() {
         for (test, volume, expected_distance) in &[
@@ -472,6 +496,11 @@ mod tests {
         }
     }
 
+    /// A circle cast along a ray, tested against another circle for the distances at which the
+    /// two touch. As with the box cast, the collision is found even when the two only meet rim to
+    /// rim or when the cast circle is off-center. The cast circle carries a radius of its own, so
+    /// a head-on cast reports a distance one radius shorter than a plain ray would. Reversing the
+    /// ray must miss in every case.
     #[test]
     fn test_circle_cast_hits() {
         for (test, volume, expected_distance) in &[

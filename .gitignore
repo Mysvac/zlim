@@ -20,5 +20,8 @@ Cargo.lock
 /CLAUDE.md
 /IDEA.md
 
+# Assets
+.web-asset-cache
+
 # Other
 /temp

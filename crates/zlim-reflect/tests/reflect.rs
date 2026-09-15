@@ -178,6 +178,9 @@ fn from_reflect_same_type_enum() {
 // from_reflect: struct field matching
 // -----------------------------------------------------------------------------
 
+/// Converts `Named` into the different type `WithDefault` by matching field names. The target's
+/// `#[reflect(default)]` only matters when the source omits the name; here the source supplies
+/// `y`, so the source value is copied over instead.
 #[test]
 fn from_reflect_struct_extra_fields_allowed() {
     let src = Named { x: 10, y: 20.0 };
@@ -186,6 +189,9 @@ fn from_reflect_struct_extra_fields_allowed() {
     assert_eq!(*result, WithDefault { x: 10, y: 20.0 });
 }
 
+/// Converts `Named` into `AllDefault`, where every field carries `#[reflect(default)]`. The source
+/// happens to supply both names, so this covers the branch where a defaultable field is present
+/// rather than a field actually falling back to its default.
 #[test]
 fn from_reflect_struct_default_field_fills_missing() {
     let src = Named { x: 10, y: 0.0 };
@@ -194,6 +200,9 @@ fn from_reflect_struct_default_field_fills_missing() {
     assert_eq!(*result, AllDefault { x: 10, y: 0.0 });
 }
 
+/// A field marked `#[reflect(ignore, default)]` is absent from the reflected view and cannot be
+/// taken from the source, so the conversion starts from `Default::default()` and overwrites only
+/// the active fields — `_cache` therefore keeps its default value.
 #[test]
 fn from_reflect_struct_with_ignore_uses_default() {
     let src = Named { x: 5, y: 1.0 };
@@ -222,15 +231,24 @@ fn from_reflect_struct_ignore_with_type_default() {
 // from_reflect: tuple
 // -----------------------------------------------------------------------------
 
+/// Converts a `TupleStruct` into a tuple whose first field is ignored, which exercises how tuple
+/// conversion numbers fields. Only active fields take part in the reflected view, so the source's
+/// first item lines up with the target's `i32` slot even though that slot is declared second, the
+/// ignored `u64` is built from its default, and trailing source items are skipped.
 #[test]
 fn from_reflect_tuple_with_ignore_default() {
     let val = TupleStruct(3, 4.0);
     let boxed: Box<dyn Reflect> = Box::new(val);
     let result = TupleWithIgnoreDefault::from_reflect(boxed).unwrap();
+    // Active fields are matched in reflected order, so the source's `3` fills the `i32` slot.
     assert_eq!(result.1, 3);
+    // The ignored field is not reflected and stays at its default.
     assert_eq!(result.0, 0);
 }
 
+/// `TupleWithIgnore` ignores a `String` without giving it a default, so the generated conversion
+/// has no value to put in that field and rejects any source that is not already the target type;
+/// a differently typed tuple fails even though its values would otherwise fit.
 #[test]
 fn from_reflect_tuple_with_ignore_rejected() {
     let val = TupleStruct(3, 4.0);
@@ -344,6 +362,8 @@ fn tuple_field_access() {
     assert!(t.field(2).is_none());
 }
 
+/// `unpack` exposes only the active fields, so the ignored `String` is missing from the result and
+/// the remaining `i32` sits at index 0 of the returned vector.
 #[test]
 fn tuple_unpack_respects_ignore() {
     let t = TupleWithIgnore("ignored".into(), 99);

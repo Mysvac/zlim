@@ -352,6 +352,9 @@ impl IRect {
 mod tests {
     use super::*;
 
+    /// Building a rectangle from its center and size has to produce normalized corners, and the
+    /// accessors are checked against those corners, including points on its edges, which
+    /// `contains` counts as inside.
     #[test]
     fn well_formed() {
         let r = IRect::from_center_size(IVec2::new(3, -5), IVec2::new(8, 12));

@@ -5,7 +5,7 @@
 //! `PreUpdate`.  [`EntityCountDiagnosticsPlugin`] additionally feeds that
 //! count into the `entity_count` diagnostic.
 
-use zlim_app::{App, MainSchedulePlugin, Plugin, PreUpdate, Update};
+use zlim_app::{App, MainSchedulePlugin, Plugin, PluginExt, PreUpdate, Update};
 use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
 use zlim_core::job_fn;
@@ -83,10 +83,7 @@ impl Plugin for EntityCountPlugin {
         let world = app.main_world_mut();
 
         world.init_resource::<EntityCount>();
-
-        world
-            .schedule_entry(PreUpdate)
-            .insert::<UpdateEntityCount>(());
+        world.insert_job::<UpdateEntityCount>(PreUpdate, ());
     }
 }
 
@@ -134,9 +131,15 @@ impl Plugin for EntityCountDiagnosticsPlugin {
     fn build(&mut self, app: &mut App) {
         if !app.contains_plugin::<EntityCountPlugin>() {
             app.add_plugins(EntityCountPlugin);
+            zlim_log::info!(
+                "`EntityCountPlugin` was added as a dependency af `EntityCountDiagnosticsPlugin`"
+            );
         }
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
+            zlim_log::info!(
+                "`DiagnosticsPlugin` was added as a dependency af `EntityCountDiagnosticsPlugin`"
+            );
         }
         MainSchedulePlugin::apply_before::<Self>(app);
     }
@@ -148,8 +151,7 @@ impl Plugin for EntityCountDiagnosticsPlugin {
             Diagnostic::new(Self::ENTITY_COUNT).with_max_history_length(self.max_history_length);
 
         app.register_diagnostic(diag)
-            .schedule_entry(Update)
-            .insert::<UpdateEntityCountDiagnostics>(());
+            .add_job::<UpdateEntityCountDiagnostics>(Update, ());
     }
 }
 
@@ -185,6 +187,10 @@ mod tests {
         }
     }
 
+    /// Runs the relaxed-order check with the default schedule layout: the
+    /// asserting job is inserted into `Update`, a stage strictly after the
+    /// `PreUpdate` job that refreshes the counter, so the relaxed load must
+    /// see the count written earlier in the same frame.
     #[test]
     fn entity_count_relaxed_order_v1() {
         let mut app = App::new();
@@ -200,6 +206,9 @@ mod tests {
         }
     }
 
+    /// The same check with both jobs in `PreUpdate`, tied together by an
+    /// explicit relaxed ordering edge: sharing one schedule instead of relying
+    /// on stage separation must still keep the relaxed read correct.
     #[test]
     fn entity_count_relaxed_order_v2() {
         let mut app = App::new();

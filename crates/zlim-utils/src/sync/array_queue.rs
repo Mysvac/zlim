@@ -662,6 +662,11 @@ mod tests {
         assert!(!q.is_full());
     }
 
+    /// A producer and a consumer hammering a queue that is far smaller than the number of items,
+    /// so both sides keep running into the full and empty cases and have to retry. The consumer is
+    /// the one that checks the values, and it sees them in the order they were pushed; its final
+    /// `pop` confirms the queue is empty once everything has been accounted for. `COUNT` is scaled
+    /// down under Miri so the interpreter finishes in reasonable time.
     #[test]
     fn spsc() {
         #[cfg(miri)]
@@ -672,6 +677,7 @@ mod tests {
         let q = ArrayQueue::new(3);
 
         scope(|scope| {
+            // The queue holds three items, so both loops spin until the other side makes progress.
             scope.spawn(|| {
                 for i in 0..COUNT {
                     loop {
@@ -692,6 +698,10 @@ mod tests {
         });
     }
 
+    /// The same shape with several producers and consumers: every producer pushes the same
+    /// `0..COUNT` range and the consumers tally the hits per value, so each count has to come
+    /// out at exactly the number of producers. The queue is deliberately tiny to keep both the
+    /// full and the empty path under contention.
     #[test]
     fn mpmc() {
         #[cfg(miri)]
@@ -701,9 +711,11 @@ mod tests {
         const THREADS: usize = 4;
 
         let q = ArrayQueue::<usize>::new(3);
+        // One counter per value; receiving a value more or fewer than `THREADS` times is a failure.
         let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
         scope(|scope| {
+            // Consumers are spawned first so the queue is under pressure from both ends.
             for _ in 0..THREADS {
                 scope.spawn(|| {
                     for _ in 0..COUNT {

@@ -507,6 +507,9 @@ impl AppDiagnosticExt for App {
 mod tests {
     use super::*;
 
+    /// Repeatedly fills a diagnostic up to its maximum history length and then
+    /// clears it, asserting after each cycle that average and smoothed value
+    /// still describe the one constant measurement that was pushed.
     #[test]
     fn clear_history() {
         const MEASUREMENT: f64 = 20.0;

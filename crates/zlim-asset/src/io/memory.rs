@@ -26,14 +26,16 @@
 //! ```
 //!
 //! Reads never copy the payload: [`MemoryAssetReader`] hands out a `DataReader` over the
-//! shared `Arc<[u8]>`, and `read_all_bytes` copies it into the destination buffer in one go
-//! (see [`crate::io::future`]). Writes go through a `DataWriter`, which buffers until it is
-//! flushed, so the tree only changes when the caller flushes.
+//! stored bytes (an `Arc<[u8]>` or a `&'static [u8]`), and `read_all_bytes` copies them into
+//! the destination buffer in one go (see [`crate::io::future`]). Writes go through a
+//! `DataWriter`, which buffers until it is flushed, so the tree only changes when the caller
+//! flushes.
 //!
 //! Paths are interpreted relative to the root that the reader/writer was created with: `.` is
-//! skipped, `..` walks back as far as it can (and is preserved when there is nothing to pop),
-//! and a `Prefix` component (`C:`) is ignored with a warning. Intermediate directories are
-//! created on demand.
+//! skipped and `..` walks back as far as it can. A component that cannot be resolved — a `..`
+//! above the root, or a `Prefix` component like `C:` — is reported with a warning and skipped
+//! by [`Dir::get_or_init_dir`], while [`Dir::get_dir`] turns it into `None`. Intermediate
+//! directories are created on demand.
 
 use core::fmt::Debug;
 use core::pin::Pin;
@@ -110,6 +112,13 @@ impl From<&'static [u8]> for Value {
     }
 }
 
+impl From<&'static str> for Value {
+    #[inline]
+    fn from(value: &'static str) -> Self {
+        Self::Static(value.as_bytes())
+    }
+}
+
 impl<const N: usize> From<&'static [u8; N]> for Value {
     #[inline]
     fn from(value: &'static [u8; N]) -> Self {
@@ -155,10 +164,10 @@ impl Data {
 
 #[derive(Default, Debug)]
 struct DirInternal {
+    path: PathBuf,
+    dirs: HashMap<Box<str>, Dir>,
     assets: HashMap<Box<str>, Data>,
     metadata: HashMap<Box<str>, Data>,
-    dirs: HashMap<Box<str>, Dir>,
-    path: PathBuf,
 }
 
 /// One directory of the in-memory filesystem.
@@ -214,6 +223,7 @@ impl Dir {
     ///
     /// - `.` and `..` are applied where possible; a missing parent is ignored with a warning.
     /// - `Prefix` components (e.g. `C:`) are ignored with a warning.
+    /// - A `RootDir` component (e.g. the leading `/` of `/a/b`) restarts the walk at the root.
     pub fn get_or_init_dir(&self, path: &Path) -> Dir {
         let mut dir = self.clone();
 
@@ -330,12 +340,18 @@ impl Dir {
     }
 
     /// Inserts an asset from a string at `path`.
+    ///
+    /// For a `&'static` string use [`Dir::insert_asset`] instead: it needs no allocation and
+    /// no copy.
     pub fn insert_asset_text(&self, path: &Path, asset: &str) {
         let value = Value::Borrow(Arc::<[u8]>::from(asset.as_bytes()));
         self.insert_asset_internal(path, value);
     }
 
     /// Inserts metadata from a string at `path`.
+    ///
+    /// For a `&'static` string use [`Dir::insert_meta`] instead: it needs no allocation and
+    /// no copy.
     pub fn insert_meta_text(&self, path: &Path, asset: &str) {
         let value = Value::Borrow(Arc::<[u8]>::from(asset.as_bytes()));
         self.insert_meta_internal(path, value);
@@ -379,6 +395,14 @@ impl Dir {
     ///
     /// The whole subtree goes away with it; the returned [`Dir`] keeps the removed node (and
     /// therefore its contents) alive for as long as it is held.
+    ///
+    /// Unlike [`remove_asset`] and [`remove_meta`], the parent is resolved with
+    /// [`get_or_init_dir`], so a missing intermediate directory is created
+    /// as a side effect even though the removal then returns `None`.
+    ///
+    /// [`remove_asset`]: Self::remove_asset
+    /// [`remove_meta`]: Self::remove_meta
+    /// [`get_or_init_dir`]: Self::get_or_init_dir
     pub fn remove_dir(&self, path: &Path) -> Option<Dir> {
         let mut dir = self.clone();
         if let Some(parent) = path.parent() {
@@ -609,7 +633,8 @@ impl Reader for DataReader {
 ///
 /// Holds a [`Dir`] root and answers reads from it. Cloning the reader (or copying
 /// [`root`](Self::root) into a [`MemoryAssetWriter`]) shares the same tree, which is how a
-/// writer is paired with a reader in tests and in [`EmbeddedAssetRegistry`].
+/// writer is paired with a reader in tests; [`EmbeddedAssetRegistry`] likewise hands the same
+/// `Dir` to every reader it builds from its own inserts.
 ///
 /// [`EmbeddedAssetRegistry`]: crate::io::embedded::EmbeddedAssetRegistry
 ///
@@ -903,13 +928,13 @@ impl AssetWriter for MemoryAssetWriter {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+    use std::sync::Arc;
+
     use futures_lite::StreamExt;
     use futures_lite::future::block_on;
 
-    use super::Dir;
     use super::*;
-    use std::path::Path;
-    use std::sync::Arc;
 
     #[test]
     fn memory_dir() {
@@ -943,6 +968,9 @@ mod tests {
         assert_eq!(meta.value(), b_meta);
     }
 
+    /// A writer built over the reader's own root round-trips: what it writes comes back through
+    /// the reader, a written path's parent counts as a directory while the file itself does not,
+    /// and an unknown path is `NotFound` rather than some other failure.
     #[test]
     fn memory_source_roundtrip() {
         let reader = MemoryAssetReader::default();
@@ -969,6 +997,9 @@ mod tests {
         ));
     }
 
+    /// Listing and mutating through the in-memory tree: a listing yields the immediate children
+    /// only, a rename moves the bytes, and a directory that still holds something is refused by
+    /// the empty-only removal but taken — with its subtree — by the plain one.
     #[test]
     fn memory_directory_stream_and_mutation() {
         let reader = MemoryAssetReader::default();
@@ -985,12 +1016,14 @@ mod tests {
         while let Some(entry) = block_on(directory.next()) {
             entries.push(entry);
         }
+        // The listing is one level deep and hides the metadata, and its order is unspecified.
         entries.sort();
         assert_eq!(
             entries,
             vec![PathBuf::from("dir/a.txt"), PathBuf::from("dir/sub")]
         );
 
+        // A rename moves the bytes rather than copying them: the old path stops resolving.
         block_on(writer.rename(Path::new("dir/a.txt"), Path::new("dir/b.txt"))).unwrap();
         assert!(block_on(reader.read_bytes(Path::new("dir/a.txt"))).is_err());
         assert_eq!(
@@ -998,10 +1031,12 @@ mod tests {
             b"a"
         );
 
+        // The directory still holds `dir/sub`, so the removal that insists on empty refuses it.
         assert!(matches!(
             block_on(writer.remove_empty_directory(Path::new("dir"))),
             Err(AssetWriterError::DirectoryNotEmpty(_))
         ));
+        // The plain removal takes the whole subtree with it.
         block_on(writer.remove_directory(Path::new("dir"))).unwrap();
         assert!(!block_on(reader.is_directory(Path::new("dir"))).unwrap());
     }

@@ -22,6 +22,10 @@ struct GenericMsg<T: Send + Sync + 'static>(T);
 // -----------------------------------------------------------------------------
 // Queue lifecycle
 
+/// The queue is double buffered: `update` rotates the buffers instead of
+/// clearing them, so a message stays readable through the next `update` and
+/// only expires on the one after that. Three writes spread over two updates
+/// pin down exactly when each message leaves the readable range.
 #[test]
 fn queue_write_read_update_lifecycle() {
     let mut queue = MessageQueue::<Payload>::default();
@@ -87,6 +91,10 @@ fn queue_drain_and_update_drain() {
 // -----------------------------------------------------------------------------
 // Cursors
 
+/// Every cursor tracks its own read position inside the queue, so one reader
+/// consuming a sequence must leave another reader untouched. The test also
+/// covers the key-returning read, which yields each message together with the
+/// key that identifies it.
 #[test]
 fn cursors_are_independent() {
     let mut queue = MessageQueue::<Payload>::default();
@@ -157,11 +165,18 @@ fn sum_messages(mut reader: MessageReader<Payload>) -> u32 {
     reader.read().map(|m| m.0).sum()
 }
 
+/// Drives the three message system params through a real world: a writer adds
+/// two messages, a mutator rewrites them in place, and a reader sums what it
+/// sees. The reader is then invoked again to show that its own cursor advanced,
+/// while a write made outside a system is still visible to it in the same
+/// frame.
 #[test]
 fn system_params_end_to_end() {
     let mut world = World::alloc();
     world.register_message::<Payload>();
 
+    // One system instance per function, so each keeps its own param state
+    // (including the reader's cursor) across invocations.
     let mut writer = IntoSystem::into_system(write_messages);
     writer.initialize(&world);
     let mut mutator = IntoSystem::into_system(clamp_messages);
@@ -172,6 +187,8 @@ fn system_params_end_to_end() {
     world.invoke(write_messages, ()).unwrap();
     world.invoke(clamp_messages, ()).unwrap();
 
+    // The mutator edited the queue in place, so its clamp is observable through
+    // the resource that backs the param.
     let x = world
         .resource::<MessageQueue<Payload>>()
         .get(0)
@@ -185,6 +202,7 @@ fn system_params_end_to_end() {
         .1
         .0;
     assert_eq!(x, 10);
+    // Only the second message exceeded the clamp.
     assert_eq!(y, 15);
 
     let s = world.invoke(sum_messages, ()).unwrap();

@@ -521,6 +521,10 @@ mod tests {
         assert!(lighter2.distance_squared(&twice_as_light) < 0.0001);
     }
 
+    /// Checks the accepted hex forms: three, four, six and eight digits, with or
+    /// without a leading `#`, where the short forms are expanded by duplicating
+    /// each digit. A wrong number of digits is reported as a length error, while
+    /// characters that are not hexadecimal are reported as a parse error.
     #[test]
     fn hex_color() {
         assert_eq!(Srgba::hex("FFF"), Ok(Srgba::WHITE));

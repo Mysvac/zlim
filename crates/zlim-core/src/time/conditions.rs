@@ -201,6 +201,8 @@ mod tests {
         repeating_after_delay, repeating_after_real_delay,
     };
 
+    /// Checks that the interval condition reports `true` only on the frame where the
+    /// whole interval has elapsed, and stays quiet on the frames before it.
     #[test]
     fn on_timer_fires_on_interval() {
         let mut world = World::alloc();
@@ -222,6 +224,10 @@ mod tests {
         assert!(world.invoke(condition.clone(), ()).unwrap());
     }
 
+    /// Checks the same interval condition against the real clock, whose deltas are
+    /// not scaled by virtual time.  The first frame only establishes the baseline, so
+    /// the remaining frames are chosen to add up to exactly one second before the
+    /// condition may fire.
     #[test]
     fn on_real_timer_fires_on_interval() {
         let mut world = World::alloc();
@@ -242,6 +248,8 @@ mod tests {
         assert!(world.invoke(condition.clone(), ()).unwrap());
     }
 
+    /// Checks that the one-shot delay reports `true` on the first frame past the
+    /// delay and `false` on every frame afterwards.
     #[test]
     fn once_after_delay_fires_once() {
         let mut world = World::alloc();
@@ -260,6 +268,8 @@ mod tests {
         assert!(!world.invoke(condition.clone(), ()).unwrap());
     }
 
+    /// Checks the one-shot delay against the real clock: it becomes active once the
+    /// accumulated real time passes the delay and never fires a second time.
     #[test]
     fn once_after_real_delay_fires_once() {
         let mut world = World::alloc();
@@ -282,6 +292,8 @@ mod tests {
         assert!(!world.invoke(condition.clone(), ()).unwrap());
     }
 
+    /// Checks that the repeating delay is inert before the delay has passed and then
+    /// stays active on every later frame instead of reporting only once.
     #[test]
     fn repeating_after_delay_stays_active() {
         let mut world = World::alloc();
@@ -304,22 +316,28 @@ mod tests {
         assert!(world.invoke(condition.clone(), ()).unwrap());
     }
 
+    /// Checks the real-clock variant of the repeating delay, which is the easiest one
+    /// to misread: the condition stays inert until the accumulated real time passes
+    /// the delay, and from then on it reports `true` on every frame.
     #[test]
     fn repeating_after_real_delay_stays_active() {
         let mut world = World::alloc();
         world.insert_resource::<Time<Real>>(Time::<Real>::default());
 
         let condition = repeating_after_real_delay(Duration::from_secs(1));
+        // The first real update only records the baseline, so it adds no time.
         world
             .resource_mut::<Time<Real>>()
             .update_with_duration(Duration::from_millis(500));
         assert!(!world.invoke(condition.clone(), ()).unwrap());
 
+        // 600 ms is still short of the one second delay.
         world
             .resource_mut::<Time<Real>>()
             .update_with_duration(Duration::from_millis(600));
         assert!(!world.invoke(condition.clone(), ()).unwrap());
 
+        // Once the delay has passed, the condition keeps reporting `true`.
         world
             .resource_mut::<Time<Real>>()
             .update_with_duration(Duration::from_secs(10));

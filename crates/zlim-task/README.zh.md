@@ -266,8 +266,19 @@ assert_eq!(result, 42);
 - **工作线程**上：阻塞期间同时驱动池执行器与 `LocalExecutor`。
 - 单线程 / WASM 模式下：阻塞期间驱动执行器。
 
-底层通过 `futures_lite::future::block_on` 停放线程；启用 `async_io` feature
+底层通过 `futures_lite` 的 `block_on` 实现；启用 `async_io` feature
 时改用 `async_io::block_on`。
+
+如果你的异步任务内部包含了 `TaskPool` 的工作（或依赖），则应当使用本库提供的
+`block_on`，而非 `futures_lite` 等底层库的 `block_on` 。
+
+底层的 `block_on`，比如 `futures_lite` 的实现，在任务返回 `Pending` 时会
+直接挂起线程，但此时工作线程的本地队列可能还有可执行的任务。极端情况下，用户
+`block_on` 的工作还依赖线程池的执行，就可能出现所有工作线程都被用户任务挂起
+而无人执行线程池的死锁情况。
+
+而本库提供的 `block_on` 同在用户任务 `Pending` 时执行任务池本地队列的工作，
+从而避免了这一问题。
 
 ## invoke_on_main
 

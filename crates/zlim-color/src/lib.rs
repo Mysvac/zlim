@@ -394,6 +394,10 @@ mod tests {
     // TODO! Fully perceptually-uniform interpolation (via Oklab) for the
     // cylindrical spaces; currently they interpolate channel-wise with
     // short-arc hue wrapping through `Mix`.
+    /// Checks the midpoint each of these spaces produces between black and white.
+    /// `Srgba` is the odd one out: it interpolates in linear space, so its
+    /// midpoint is not 0.5. The remaining spaces interpolate channel-wise and
+    /// land on the midpoint of their own components.
     #[test]
     pub fn test_color_stable_interpolate() {
         let b = Srgba::BLACK;

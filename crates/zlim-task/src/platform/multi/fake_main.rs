@@ -1,11 +1,12 @@
-use std::thread::{ThreadId, JoinHandle};
-use event_listener::{Event, EventListener};
+use std::thread::ThreadId;
 use std::sync::OnceLock;
 use core::panic::AssertUnwindSafe;
 
+use futures_lite::future::pending;
+
 use super::{raw_block_on, MainExecutor, LocalExecutor};
 
-/// Fake main thread
+/// Fake main thread.
 ///
 /// `spawn_to_main` tasks are pushed into the global `MainExecutor`, which
 /// must be driven by a *main thread*. In multi-threaded mode the library
@@ -18,8 +19,8 @@ use super::{raw_block_on, MainExecutor, LocalExecutor};
 ///   running on that thread).
 /// - Otherwise, the first call to `main_thread_id()` transparently starts
 ///   a dedicated fake main thread (`FakeMain`) that owns the
-///   `MainExecutor` waker exclusively and keeps polling it until the
-///   process exits.
+///   `MainExecutor` waker exclusively and parks on it until the process
+///   exits (or a task panics, in which case it re-enters the loop).
 ///
 /// The fake-main path keeps the design uniform at the `TaskPool` level:
 /// every `TaskPool` captures that thread as its main thread, so no `scope`
@@ -27,27 +28,24 @@ use super::{raw_block_on, MainExecutor, LocalExecutor};
 /// tasks are always executed no matter which thread created the pool.
 /// Applications that want to avoid the extra thread call
 /// [`designate_main_thread`] up front.
+///
+/// The fake main thread is deliberately never stopped: static items are
+/// not dropped at program exit, so no `Drop` impl could stop it anyway.
+/// It is spawned as a detached thread and reclaimed by the OS when the
+/// process exits.
 struct FakeMain {
     thread_id: ThreadId,
-    handle: Option<JoinHandle<()>>,
-    stop_event: Option<Event<()>>,
-}
-
-impl Drop for FakeMain {
-    fn drop(&mut self) {
-        if let Some(event) = self.stop_event.take() {
-            event.notify(usize::MAX);
-        }
-
-        if let Some(handle) = self.handle.take() {
-            let panicking = std::thread::panicking();
-            let x = handle.join();
-            assert!(panicking || x.is_ok());
-        }
-    }
 }
 
 static FAKE_MAIN: OnceLock<FakeMain> = OnceLock::new();
+
+// No `Drop` impl on purpose:
+//
+// Static items do not call `drop` at the end of the program, so a `Drop`
+// impl here would never run. The thread is detached and reclaimed by the
+// OS on process exit.
+//
+// https://doc.rust-lang.org/reference/items/static-items.html
 
 /// Returns the ID of the main thread — the thread `spawn_to_main` tasks are
 /// destined for.
@@ -58,27 +56,18 @@ static FAKE_MAIN: OnceLock<FakeMain> = OnceLock::new();
 pub(super) fn main_thread_id() -> ThreadId {
     FAKE_MAIN.get_or_init(|| {
         ::core::hint::cold_path();
-        
-        // shutdown signal
-        let stop_event = Event::new();
-        let listener = stop_event.listen();
 
         let handle = std::thread::spawn(move || {
-            let mut listener: EventListener = listener;
-
             // Loop working
             loop {
-                // The fake main thread is the *only* driver of the
-                // `MainExecutor` (scopes on other threads never drive it),
-                // so it owns the waker exclusively and can park on it via
-                // `run`.
-                let func = || raw_block_on(MainExecutor::run(LocalExecutor::run(&mut listener)));
-
-                // Err -> panicked
-                // Ok(()) -> FakeMain dropped (channel closed)
-                if std::panic::catch_unwind(AssertUnwindSafe(func)).is_ok() {
-                    return;
-                }
+                // Ok(()) -> Never
+                // Err -> panicked, continue
+                let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    // The fake main thread is the *only* driver of the `MainExecutor`
+                    // (scopes on other threads never drive it), so it owns the waker
+                    // exclusively and can park on it via `run`.
+                    raw_block_on(MainExecutor::run(LocalExecutor::run(pending::<()>())));
+                }));
             }
         });
 
@@ -86,8 +75,6 @@ pub(super) fn main_thread_id() -> ThreadId {
 
         FakeMain {
             thread_id,
-            handle: Some(handle),
-            stop_event: Some(stop_event),
         }
     }).thread_id
 }
@@ -112,15 +99,15 @@ pub(super) fn main_thread_id() -> ThreadId {
 /// On single-threaded / WASM platforms this is a no-op.
 pub fn designate_main_thread() {
     let thread_id = std::thread::current().id();
-    let fake_main = FakeMain { thread_id, handle: None, stop_event: None };
+    let fake_main = FakeMain { thread_id };
 
     let main_id = FAKE_MAIN.get_or_init(|| fake_main).thread_id;
 
     assert_eq!(
         main_id, thread_id,
         "`designate_main_thread()` must be called before any TaskPool is created: \
-         the main thread is already fixed to {main_id:?}, but the current \
-         thread is {thread_id:?}. \nIn a real application, call `designate_main_thread()` \
+         the main thread is already fixed to {main_id:?}, but the current thread \
+         is {thread_id:?}. \nIn a real application, call `designate_main_thread()` \
          once at the very start of `main()`, it's usually handled by `#[zlim_main]` macro.\
          In a test environment, do not call it — the fake main thread is started automatically.",
     );

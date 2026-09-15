@@ -361,6 +361,9 @@ impl URect {
 mod tests {
     use super::*;
 
+    /// Building a rectangle from its center and size has to produce normalized corners, and the
+    /// accessors are checked against those corners, including points on its edges, which
+    /// `contains` counts as inside.
     #[test]
     fn well_formed() {
         let r = URect::from_center_size(UVec2::new(10, 16), UVec2::new(8, 12));

@@ -275,9 +275,7 @@ impl InfoCell {
     #[cold]
     #[inline(never)]
     fn insert_by_type_id(&self, type_id: TypeId, s: TypeInfo) -> &'static TypeInfo {
-        // SAFETY: TypeInfo does not implement `Drop`.
-        #[expect(unsafe_code, reason = "TypeInfo does not impl `Copy`")]
-        let value = unsafe { Global::alloc_unchecked(s) };
+        let value: &'static TypeInfo = Global::alloc_static(s);
 
         // Concurrent allocations of the same type are rare and acceptable —
         // we avoid holding the write lock during allocation.

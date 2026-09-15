@@ -502,6 +502,9 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, Vec3::ZERO);
     }
 
+    /// Chaining should reproduce each constituent curve over its own stretch of the
+    /// domain, with the second curve's times shifted so that it begins where the first one
+    /// ends. Values and derivatives are both compared.
     #[test]
     fn chain_curve() {
         let curve1 = test_curve();
@@ -519,6 +522,9 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, true_jet.derivative);
     }
 
+    /// Chaining with continuation joins two curves so that the seam has no jump. The two
+    /// test curves already meet at the join, so the offset applied there is zero and the
+    /// second stretch of the domain reproduces the second curve directly.
     #[test]
     fn continuation_curve() {
         let curve1 = test_curve();
@@ -536,6 +542,8 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, true_jet.derivative);
     }
 
+    /// A repeated curve should return the original value and derivative at the wrapped
+    /// time, both inside the first repetition and inside a later one.
     #[test]
     fn repeat_curve() {
         let curve1 = test_curve();
@@ -552,6 +560,8 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, true_jet.derivative);
     }
 
+    /// The unbounded repetition should wrap a sample time far outside the original domain
+    /// back onto it, without disturbing the value or the derivative.
     #[test]
     fn forever_curve() {
         let curve1 = test_curve();
@@ -568,6 +578,9 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, true_jet.derivative);
     }
 
+    /// The ping-pong adaptor plays the curve backwards over the second half of its domain,
+    /// so a sample there must match the original at the mirrored time while its derivative
+    /// is negated, because the traversal direction is reversed.
     #[test]
     fn ping_pong_curve() {
         let curve1 = test_curve();
@@ -579,11 +592,14 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, comparison_jet.derivative);
 
         let jet = curve.sample_with_derivative(1.3).unwrap();
+        // 1.3 on the doubled domain mirrors back onto 0.7 of the original.
         let comparison_jet = curve1.sample_with_derivative(0.7).unwrap();
         assert_abs_diff_eq!(jet.value, comparison_jet.value);
         assert_abs_diff_eq!(jet.derivative, -comparison_jet.derivative, epsilon = 1.0e-5);
     }
 
+    /// Zipping two curves pairs their values and sums their derivatives, since the combined
+    /// curve moves in both constituent directions at once.
     #[test]
     fn zip_curve() {
         let curve1 = test_curve();
@@ -600,6 +616,9 @@ mod tests {
         assert_abs_diff_eq!(derivative2, comparison_jet2.derivative);
     }
 
+    /// The graph adaptor prefixes the output with the sample time, so the first component
+    /// is the time itself and its derivative is one, while the remaining component and its
+    /// derivative come from the wrapped curve.
     #[test]
     fn graph_curve() {
         let curve1 = test_curve();
@@ -614,6 +633,8 @@ mod tests {
         assert_abs_diff_eq!(derivative, comparison_jet.derivative);
     }
 
+    /// Reversing a curve samples the original at the mirrored time and negates the
+    /// derivative, because the direction of travel is flipped.
     #[test]
     fn reverse_curve() {
         let curve1 = test_curve();
@@ -625,6 +646,9 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, -comparison_jet.derivative);
     }
 
+    /// Reparametrizing by another curve composes the two: the base curve is sampled at the
+    /// time produced by the reparametrization curve, and the derivative follows the chain
+    /// rule, multiplying in the derivative of the reparametrization curve.
     #[test]
     fn curve_reparam_curve() {
         let reparam_curve = reparam_curve();
@@ -641,6 +665,8 @@ mod tests {
         assert_abs_diff_eq!(jet.derivative, base_jet.derivative * reparam_jet.derivative);
     }
 
+    /// A linear reparametrization onto a domain half the size evaluates the original curve
+    /// at double the parameter, so the derivative is scaled by the same factor.
     #[test]
     fn linear_reparam_curve() {
         let curve1 = test_curve();

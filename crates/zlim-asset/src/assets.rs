@@ -1,4 +1,11 @@
-//! Typed asset storage: [`Assets<A>`].
+//! Typed asset storage: [`Assets<A>`] and the machinery around it.
+//!
+//! The module owns the storage of one asset type — a dense slot table plus a UUID map — the
+//! [`AssetMut`] guard that queues [`AssetEvent::Modified`] only when the asset is actually
+//! accessed mutably, the [`InvalidGenerationError`] a stale id produces, the [`AssetsIterator`],
+//! [`AssetsMutIterator`] and [`AssetIdIterator`] over it, and the two per-type jobs: `asset_events`
+//! drains the queued events into messages and the change table, `track_assets` processes dropped
+//! handles.
 
 use core::any::TypeId;
 use core::marker::PhantomData;
@@ -15,11 +22,12 @@ use zlim_core::system::SystemTick;
 use zlim_path::TypePath;
 use zlim_utils::hash::HashMap;
 use zlim_utils::hash::map::Entry as MapEntry;
+use zlim_utils::sync::SpinLock;
 
 use crate::asset::Asset;
 use crate::change::AssetChanges;
 use crate::event::AssetEvent;
-use crate::handle::{AssetHandleProvider, ErasedHandle, Handle};
+use crate::handle::{AssetHandleProvider, Handle};
 use crate::ident::{AssetId, AssetIndex, AssetIndexAllocator};
 
 // -----------------------------------------------------------------------------
@@ -31,10 +39,7 @@ struct Entry<A: Asset> {
 }
 
 impl<A: Asset> Entry<A> {
-    const DEFAULT: Entry<A> = Entry {
-        value: None,
-        generation: 0,
-    };
+    const DEFAULT: Entry<A> = Entry::none(0);
 
     #[inline(always)]
     const fn none(generation: u32) -> Self {
@@ -63,10 +68,16 @@ impl<A: Asset> Default for AssetTable<A> {
 }
 
 impl<A: Asset> AssetTable<A> {
+    /// Grows `storage` to the allocator's high-water mark and installs a fresh empty entry for
+    /// every recycled slot, at the generation the allocator bumped it to.
     fn flush(&mut self) {
         let new_len = self.allocator.next_index.load(Ordering::Relaxed);
         let len = new_len as usize;
-        self.storage.resize_with(len, || Some(Entry::<A>::DEFAULT));
+
+        if len > self.storage.len() {
+            ::core::hint::cold_path();
+            self.storage.resize_with(len, || Some(Entry::<A>::DEFAULT));
+        }
 
         while let Some(recycled) = self.allocator.recycled.pop() {
             let index = recycled.index as usize;
@@ -92,15 +103,17 @@ impl<A: Asset> AssetTable<A> {
             });
         }
 
-        let replaced = value.is_none();
-        if replaced {
+        let was_empty = value.is_none();
+        if was_empty {
             self.len += 1;
         }
 
         *value = Some(asset);
-        Ok(!replaced)
+        Ok(!was_empty)
     }
 
+    /// Removes the value at `index` and hands the slot back to the allocator, so that a later
+    /// `reserve` hands it out again under a bumped generation.
     fn remove_and_recycle(&mut self, index: AssetIndex) -> Option<A> {
         self.flush();
 
@@ -118,6 +131,8 @@ impl<A: Asset> AssetTable<A> {
         value
     }
 
+    /// Removes the value at `index` but keeps the slot at its current generation, so that strong
+    /// handles still pointing at it can store a value there again.
     fn remove_still_alive(&mut self, index: AssetIndex) -> Option<A> {
         self.flush();
 
@@ -227,7 +242,6 @@ pub enum InvalidGenerationError {
 /// if the value was actually mutably accessed; [`get_mut_untracked`] skips the event entirely.
 ///
 /// [`get_mut`]: Self::get_mut
-/// [`uuid_handle!`]: crate::uuid_handle
 /// [`get_mut_untracked`]: Self::get_mut_untracked
 #[derive(TypePath, Resource)]
 pub struct Assets<A: Asset> {
@@ -237,7 +251,7 @@ pub struct Assets<A: Asset> {
     queued_events: Vec<AssetEvent<A>>,
     /// Extra strong handles that were upgraded from an [`AssetId`], per slot. They keep the
     /// slot alive until they are dropped, so recycling has to wait for the count to reach zero.
-    duplicate_handles: HashMap<AssetIndex, u16>,
+    duplicate_handles: HashMap<AssetIndex, u32>,
 }
 
 impl<A: Asset> Default for Assets<A> {
@@ -383,7 +397,7 @@ impl<A: Asset> Assets<A> {
     /// Extra strong handles upgraded through [`resolve_handle`] defer the recycle:
     /// the counter is decremented first and the call returns early while duplicates are still alive.
     ///
-    /// See [`asset_drops`] for details.
+    /// Called by `track_assets` for every drop event that passes the server's bookkeeping check.
     ///
     /// [`resolve_handle`]: Self::resolve_handle
     fn remove_dropped(&mut self, index: AssetIndex) {
@@ -415,6 +429,7 @@ impl<A: Asset> Assets<A> {
     /// asset must be visible to change tracking and to the event pump.
     ///
     /// Note: This will never return an error for UUID asset IDs.
+    #[doc(alias = "get_or_insert_with")]
     #[inline]
     pub fn get_or_insert(
         &mut self,
@@ -439,6 +454,7 @@ impl<A: Asset> Assets<A> {
             changed: false,
             id,
             queued_events: &mut self.queued_events,
+            lock: None,
         };
 
         Ok(AssetMut { asset, notifier })
@@ -480,6 +496,7 @@ impl<A: Asset> Assets<A> {
             changed: false,
             id,
             queued_events: &mut self.queued_events,
+            lock: None,
         };
 
         Some(AssetMut { asset, notifier })
@@ -490,6 +507,12 @@ impl<A: Asset> Assets<A> {
     /// Returns `None` if the provided `id` is not part of this `Assets` collection.
     ///
     /// StrongHandle created using this function cannot be serialized (skipped).
+    ///
+    /// # Panics
+    ///
+    /// Panics when the number of strong handles already upgraded for the same slot reaches the
+    /// per-slot counter limit.
+    #[doc(alias = "get_strong_handle")]
     #[doc(alias = "get_handle")]
     pub fn resolve_handle(&mut self, id: AssetId<A>) -> Option<Handle<A>> {
         if !self.contains(id) {
@@ -509,7 +532,7 @@ impl<A: Asset> Assets<A> {
 
         let counter = self.duplicate_handles.entry(index).or_insert(0);
 
-        if *counter == u16::MAX {
+        if *counter >= const { u32::MAX >> 2 } {
             overflow(core::any::type_name::<A>());
         }
 
@@ -530,11 +553,15 @@ impl<A: Asset> Assets<A> {
         }
     }
 
-    /// Iterates over all stored `(id, &mut A)` pairs,
-    /// queueing [`AssetEvent::Modified`] for every yielded asset.
+    /// Iterates over all stored `(AssetId<A>, AssetMut<'_, A>)` pairs.
+    ///
+    /// Each yielded guard queues [`AssetEvent::Modified`] only if it is used to access the asset
+    /// mutably (through [`DerefMut`], [`AssetMut::into_inner`] or [`AssetMut::set_changed`]);
+    /// iterating alone queues nothing.
     #[inline]
     pub fn iter_mut(&mut self) -> AssetsMutIterator<'_, A> {
         AssetsMutIterator {
+            locker: Arc::new(SpinLock::new(())),
             queued_events: &mut self.queued_events,
             dense: self.table.storage.iter_mut().enumerate(),
             uuid: self.hash_map.iter_mut(),
@@ -543,6 +570,8 @@ impl<A: Asset> Assets<A> {
 
     /// Iterates over the ids of all stored assets.
     #[inline]
+    #[doc(alias = "ids")]
+    #[doc(alias = "iter_ids")]
     pub fn iter_id(&self) -> AssetIdIterator<'_, A> {
         AssetIdIterator {
             dense: self.table.storage.iter().enumerate(),
@@ -559,11 +588,17 @@ struct AssetChangeNotifier<'a, A: Asset> {
     changed: bool,
     id: AssetId<A>,
     queued_events: &'a mut Vec<AssetEvent<A>>,
+    // AssetsMutIterator may produce multiple AssetMut values simultaneously, all of
+    // which hold a mutable borrow of queued_events. If an AssetMut is sent to
+    // multiple threads at this point, a data race would occur. Therefore, when we
+    // use AssetsMutIterator to produce an AssetMut, a built-in lock must be provided.
+    lock: Option<Arc<SpinLock<()>>>,
 }
 
 impl<A: Asset> Drop for AssetChangeNotifier<'_, A> {
     fn drop(&mut self) {
         if self.changed {
+            let _guard = self.lock.as_ref().map(|l| l.lock());
             let event = AssetEvent::Modified { id: self.id };
             self.queued_events.push(event);
         }
@@ -590,6 +625,7 @@ impl<'a, A: Asset> AssetMut<'a, A> {
     /// Consumes the guard and returns a mutable reference
     /// without triggering change detection.
     #[inline]
+    #[doc(alias = "into_inner_untracked")]
     pub fn bypass_inner(self) -> &'a mut A {
         self.asset
     }
@@ -669,18 +705,16 @@ impl<'a, A: Asset> Iterator for AssetsIterator<'a, A> {
 // -----------------------------------------------------------------------------
 // AssetsMutIterator
 
-/// Iterator over the `(AssetId<A>, &mut A)` pairs of an [`Assets<A>`].
-///
-/// Every yielded asset is marked as modified: an [`AssetEvent::Modified`] is queued for it as
-/// soon as it is returned.
+/// Iterator over the `(AssetId<A>, AssetMut<'a, A>)` pairs of an [`Assets<A>`].
 pub struct AssetsMutIterator<'a, A: Asset> {
+    locker: Arc<SpinLock<()>>,
     queued_events: &'a mut Vec<AssetEvent<A>>,
     dense: core::iter::Enumerate<core::slice::IterMut<'a, Option<Entry<A>>>>,
     uuid: zlim_utils::hash::map::IterMut<'a, Uuid, A>,
 }
 
 impl<'a, A: Asset> Iterator for AssetsMutIterator<'a, A> {
-    type Item = (AssetId<A>, &'a mut A);
+    type Item = (AssetId<A>, AssetMut<'a, A>);
 
     fn next(&mut self) -> Option<Self::Item> {
         for (index, entry) in self.dense.by_ref() {
@@ -701,14 +735,41 @@ impl<'a, A: Asset> Iterator for AssetsMutIterator<'a, A> {
                 marker: PhantomData,
             };
 
-            self.queued_events.push(AssetEvent::Modified { id });
-            return Some((id, value));
+            let ptr = self.queued_events as *mut Vec<_>;
+
+            let notifier = AssetChangeNotifier {
+                changed: false,
+                id,
+                #[expect(unsafe_code, reason = "ensured by locker")]
+                queued_events: unsafe { &mut *ptr },
+                lock: Some(self.locker.clone()),
+            };
+
+            let asset = AssetMut {
+                asset: value,
+                notifier,
+            };
+            return Some((id, asset));
         }
 
         let (uuid, value) = self.uuid.next()?;
         let id = AssetId::Uuid { uuid: *uuid };
-        self.queued_events.push(AssetEvent::Modified { id });
-        Some((id, value))
+
+        let ptr = self.queued_events as *mut Vec<_>;
+
+        let notifier = AssetChangeNotifier {
+            changed: false,
+            id,
+            #[expect(unsafe_code, reason = "ensured by locker")]
+            queued_events: unsafe { &mut *ptr },
+            lock: Some(self.locker.clone()),
+        };
+        let asset = AssetMut {
+            asset: value,
+            notifier,
+        };
+
+        Some((id, asset))
     }
 }
 
@@ -752,7 +813,7 @@ impl<A: Asset> Iterator for AssetIdIterator<'_, A> {
 // -----------------------------------------------------------------------------
 // AssetEvents
 
-#[job_fn(type = HandleAssetEvents<A: Asset>, run_if = contains_asset_event::<A>)]
+#[job_fn(type = HandleAssetEventsJob<A: Asset>, run_if = contains_asset_event::<A>)]
 fn asset_events<A: Asset>(
     mut assets: ResMut<Assets<A>>,
     mut messages: MessageWriter<AssetEvent<A>>,
@@ -783,41 +844,244 @@ fn contains_asset_event<A: Asset>(assets: Res<Assets<A>>) -> bool {
 // AssetServer
 // -----------------------------------------------------------------------------
 
-#[job_fn(type = HandleAssetDropEvents<A: Asset>)]
-fn asset_drops<A: Asset>(mut assets: ResMut<Assets<A>>) {
+use crate::server::AssetServer;
+
+#[job_fn(type = HandleAssetDropEventsJob<A: Asset>, run_if = contains_drop_event::<A>)]
+fn track_assets<A: Asset>(mut assets: ResMut<Assets<A>>, asset_server: ResMut<AssetServer>) {
+    let mut infos = asset_server.0.write_infos();
     while let Some(drop_event) = assets.handle_provider.try_recv() {
         if drop_event.asset_server_managed {
-            // TODO(server): a server-managed handle should also consult `AssetInfos`
-            // (`asset_server_managed` distinguishes the two) so that an unloaded asset can be
-            // re-loaded on demand. Until M2 drops it like any other handle.
+            // the `process_handle_drop` call checks whether new handles have been
+            // created since the drop event was fired, before removing the asset
+            if !infos.process_handle_drop(drop_event.index, drop_event.type_id) {
+                // a new handle has been created, or the asset doesn't exist
+                continue;
+            }
         }
 
         assets.remove_dropped(drop_event.index);
     }
 }
 
-// -----------------------------------------------------------------------------
-
-/// A "loaded folder" containing handles for all assets stored in a given [`AssetPath`].
-///
-/// [`AssetPath`]: crate::path::AssetPath
-#[derive(Asset, TypePath)]
-#[type_path = "zlim_asset::assets::LoadedFolder"]
-pub struct LoadedFolder {
-    /// The handles of all assets stored in the folder.
-    #[asset(dependency)]
-    pub handles: Vec<ErasedHandle>,
+fn contains_drop_event<A: Asset>(assets: Res<Assets<A>>) -> bool {
+    assets.handle_provider.has_drop_event()
 }
 
-/// A "loaded asset" containing the handle of the asset that was loaded without knowing its type.
-///
-/// [`AssetPath`]: crate::path::AssetPath
-#[derive(Asset, TypePath)]
-#[type_path = "zlim_asset::assets::LoadedUntypedAsset"]
-pub struct LoadedUntypedAsset {
-    /// The handle of the loaded asset, typed only at runtime.
-    #[asset(dependency)]
-    pub handle: ErasedHandle,
+// -----------------------------------------------------------------------------
+// Tests
+
+#[cfg(test)]
+mod tests {
+    use zlim_app::{App, Last, Plugin, PluginExt};
+    use zlim_core::component::Component;
+    use zlim_core::message::MessageQueue;
+    use zlim_core::world::World;
+    use zlim_path::TypePath;
+
+    use super::*;
+    use crate::asset::{AssetComponent, VisitAssetDependencies};
+    use crate::change::AssetChanged;
+    use crate::ident::ErasedAssetId;
+    use crate::plugin::{AppAssetExt, AssetPlugin};
+    use crate::server::AssetServer;
+
+    /// The asset the filter tracks.
+    #[derive(TypePath)]
+    struct Tracked;
+
+    impl VisitAssetDependencies for Tracked {
+        fn visit_dependencies(&self, _visit: &mut dyn FnMut(ErasedAssetId)) {}
+    }
+
+    impl Asset for Tracked {}
+
+    /// A component that points at a `Tracked` asset, which is what the filter matches on.
+    #[derive(TypePath, Component, Clone)]
+    struct TrackedRef(Handle<Tracked>);
+
+    impl AssetComponent for TrackedRef {
+        type Asset = Tracked;
+
+        fn asset_id(&self) -> AssetId<Tracked> {
+            self.0.id()
+        }
+    }
+
+    /// How many entities the filter matched in the frame that just ran.
+    #[derive(TypePath, Resource, Default)]
+    struct Matches(usize);
+
+    #[job_fn(type = CountChangedRefs)]
+    fn count_changed_refs(world: &mut World) {
+        let matches = world.query::<(), AssetChanged<TrackedRef>>().iter().count();
+        world.resource_mut::<Matches>().0 = matches;
+    }
+
+    /// Registers the asset type and the counting job.
+    struct TrackedPlugin;
+
+    impl Plugin for TrackedPlugin {
+        fn build(&mut self, app: &mut App) {
+            AssetPlugin::apply_before::<Self>(app);
+        }
+
+        fn apply(&mut self, app: &mut App) {
+            app.init_asset::<Tracked>();
+
+            let world = app.main_world_mut();
+            world.insert_resource(Matches::default());
+            // `Last` runs after `PostUpdate`, where the per-type event job drains `Assets<A>`.
+            world.schedule_entry(Last).insert::<CountChangedRefs>(());
+        }
+    }
+
+    /// The filter is wired to `Assets<A>`: adding or mutably borrowing an asset queues an event, the
+    /// per-type event job turns it into a change tick, and the filter sees it for exactly one frame.
+    #[test]
+    fn the_changed_filter_sees_added_and_modified_assets() {
+        let mut app = App::new();
+        app.add_plugins((
+            AssetPlugin {
+                watch_for_changes_override: Some(false),
+                ..AssetPlugin::default()
+            },
+            TrackedPlugin,
+        ));
+        app.build();
+
+        let handle = app
+            .main_world_mut()
+            .resource_mut::<Assets<Tracked>>()
+            .add(Tracked);
+        app.main_world_mut().spawn(TrackedRef(handle.clone()), None);
+
+        let matches = |app: &App| app.main_world().resource::<Matches>().0;
+
+        // The `Added` event of the `add` above is drained during this frame.
+        app.update();
+        assert_eq!(matches(&app), 1, "a newly added asset matches");
+
+        app.update();
+        assert_eq!(matches(&app), 0, "the match does not last a second frame");
+
+        // A guard that is never borrowed mutably is not a change: `get_mut` alone says nothing.
+        {
+            let world = app.main_world_mut();
+            let mut assets = world.resource_mut::<Assets<Tracked>>();
+            let _untouched = assets.get_mut(&handle).expect("the asset was just added");
+        }
+
+        app.update();
+        assert_eq!(matches(&app), 0, "an untouched guard is not a change");
+
+        // Borrowing the asset mutably is what queues `Modified`, which the next frame drains.
+        {
+            let world = app.main_world_mut();
+            let mut assets = world.resource_mut::<Assets<Tracked>>();
+            let mut guard = assets.get_mut(&handle).expect("the asset was just added");
+            *guard = Tracked;
+        }
+
+        app.update();
+        assert_eq!(matches(&app), 1, "a mutably borrowed asset matches again");
+
+        app.update();
+        assert_eq!(matches(&app), 0, "and only for that frame");
+    }
+
+    /// The ids of the `Unused` events currently queued.
+    fn unused_ids(app: &App) -> Vec<AssetId<Tracked>> {
+        let Some(queue) = app
+            .main_world()
+            .get_resource::<MessageQueue<AssetEvent<Tracked>>>()
+        else {
+            return Vec::new();
+        };
+
+        let mut ids = Vec::new();
+        for index in queue.oldest_message_index()..queue.counter() {
+            if let Some((_, AssetEvent::Unused { id })) = queue.get(index) {
+                ids.push(*id);
+            }
+        }
+        ids
+    }
+
+    /// Dropping the last strong handle releases the value and queues `Unused` — both for a handle
+    /// this collection alone knows about and for one the server manages.
+    #[test]
+    fn dropping_the_last_handle_releases_the_asset() {
+        let mut app = App::new();
+        app.add_plugins((
+            AssetPlugin {
+                watch_for_changes_override: Some(false),
+                ..AssetPlugin::default()
+            },
+            TrackedPlugin,
+        ));
+        app.build();
+
+        let handle = app
+            .main_world_mut()
+            .resource_mut::<Assets<Tracked>>()
+            .add(Tracked);
+        let id = handle.id();
+
+        app.update();
+        assert!(
+            app.main_world()
+                .resource::<Assets<Tracked>>()
+                .get(id)
+                .is_some(),
+            "the added value is stored",
+        );
+
+        ::core::mem::drop(handle);
+        app.update();
+
+        assert!(
+            app.main_world()
+                .resource::<Assets<Tracked>>()
+                .get(id)
+                .is_none(),
+            "the value is released once its last handle is gone",
+        );
+        assert!(
+            unused_ids(&app).contains(&id),
+            "an `Unused` event is queued for the released asset, got {:?}",
+            unused_ids(&app),
+        );
+
+        // A server-managed handle goes through the server's own bookkeeping as well.
+        let server = app.main_world().resource::<AssetServer>().clone();
+        let handle = server.add(Tracked);
+        let id = handle.id();
+
+        app.update();
+        assert!(server.is_managed(id), "the server tracks the added asset");
+        assert!(
+            app.main_world()
+                .resource::<Assets<Tracked>>()
+                .get(id)
+                .is_some(),
+            "the added value is stored",
+        );
+
+        ::core::mem::drop(handle);
+        app.update();
+
+        assert!(
+            !server.is_managed(id),
+            "the server forgets the asset once its last handle is gone",
+        );
+        assert!(
+            app.main_world()
+                .resource::<Assets<Tracked>>()
+                .get(id)
+                .is_none(),
+            "and the value is released",
+        );
+    }
 }
 
 // -----------------------------------------------------------------------------

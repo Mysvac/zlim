@@ -26,7 +26,7 @@ app.insert_sub_app(Render, render_sub_app);
 ## App 的运行流程
 
 1. **应用插件**：`App::run` 首先调用 `App::build`（如果已被调用，则跳过）。
-   按 `build → apply → cleanup` 的顺序执行所有已添加的插件。
+   按 `build → apply → finish → cleanup` 的顺序执行所有已添加的插件。
 2. **启动 runner**：build 完成后，`App` 使用 `set_runner` 设置的 runner（或默认
    runner）驱动帧循环，最后返回 `AppExit`。
 
@@ -71,20 +71,21 @@ fn run_once(mut app: App) -> AppExit {
 
 插件是**延迟生效**的：`add_plugins` 只是暂存插件，不执行任何操作，直到 `App::build`（或 `App::run`）时才会真正生效。
 
-插件分三个阶段，：
+插件分四个阶段：
 
 | 阶段 | 时机与用途 |
 |---|---|
 | `build` | 初始化插件自身；在 App 中添加**依赖插件**；设定各插件 `apply` 的执行顺序（依赖图）。此阶段可继续添加插件。 |
 | `apply` | 此时插件的列表已**不可变**（不能再添加）。通常在此运行插件逻辑、修改世界（注册系统/资源/消息等）。执行顺序由 build 阶段建立的依赖图决定（拓扑序，环会 panic）。 |
+| `finish` | 在**所有**插件的 `apply` 完成后执行，按**安装顺序**遍历。适用于需要"App 已完全 apply"的收尾工作：读取或校验其他插件注册的内容、构建最终的查找表等。 |
 | `cleanup` | 清理插件自身的数据。**cleanup 阶段完成后，所有插件都会被移除**，因此插件添加的游戏逻辑不应依赖插件自身的存在。 |
 
-`apply` 是必须的，`build` 和 `cleanup` 提供了默认空实现。
+`apply` 是必须的，`build`、`finish` 和 `cleanup` 提供了默认空实现。
 
 ## 日志配置
 
 日志配置是**独立于插件系统**的：`LogConfig`（来自 `zlim-log`）不实现
-`Plugin` trait，也不属于插件生命周期（`build`/`apply`/`cleanup`）。直接在
+`Plugin` trait，也不属于插件生命周期（`build`/`apply`/`finish`/`cleanup`）。直接在
 `App` 上初始化日志：
 
 - `App::init_logger()` — 使用默认配置初始化全局日志。

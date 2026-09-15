@@ -133,6 +133,12 @@ mod tests {
         assert_eq!(ray.get_point(2.0), Vec3::Z * 2.0);
     }
 
+    /// Covers the ways a 2D ray can meet a plane: a clean orthogonal hit, a hit
+    /// through a diagonal plane, and the parallel or behind-the-origin cases that
+    /// must report no intersection.
+    ///
+    /// The plane normal is allowed to point either way, so flipping it must not
+    /// change the reported distance.
     #[test]
     fn intersect_plane_2d() {
         let ray = Ray2d::new(Vec2::ZERO, Dir2::Y);
@@ -178,6 +184,9 @@ mod tests {
         );
     }
 
+    /// The 3D counterpart of the 2D plane-intersection cases: orthogonal,
+    /// diagonal, parallel and near-parallel planes, with the normal pointing
+    /// either way.
     #[test]
     fn intersect_plane_3d() {
         let ray = Ray3d::new(Vec3::ZERO, Dir3::Z);

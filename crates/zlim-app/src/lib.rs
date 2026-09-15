@@ -24,7 +24,8 @@ pub use zlim_app_derive::AppLabel;
 pub use app::{App, ExtractFn, RunnerFn, SubApp};
 pub use exit::{AppExit, AppExitStage};
 pub use label::{AppLabel, InternedAppLabel};
-pub use plugin::{DuplicateStrategy, Plugin, PluginGroup, Plugins, PluginsState};
+pub use plugin::{DuplicateStrategy, Plugin, PluginExt};
+pub use plugin::{PluginGroup, Plugins, PluginsState};
 
 pub use shutdown::ShutdownPlugin;
 

@@ -39,6 +39,7 @@ pub struct ZlimError(NonNull<()>, PhantomData<Box<InnerError>>);
 /// Indicates how severe a [`ZlimError`] is.
 #[derive(Clone, Copy, Hash)]
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
 pub enum Severity {
     /// The error can be safely ignored and completely discarded.
     Ignore = 0,
@@ -143,9 +144,13 @@ impl ZlimError {
     #[inline(never)]
     fn new_boxed(severity: Severity, content: BoxedError, location: DebugLocation) -> Self {
         #[cfg(feature = "backtrace")]
-        let backtrace = match severity {
-            Severity::Error | Severity::Panic => Backtrace::capture(),
-            _ => Backtrace::disabled(),
+        let blevel = backtrace_impls::get_level() as u8;
+
+        #[cfg(feature = "backtrace")]
+        let backtrace = if blevel <= severity as u8 {
+            Backtrace::capture()
+        } else {
+            Backtrace::disabled()
         };
 
         #[cfg(not(feature = "backtrace"))]
@@ -371,146 +376,149 @@ impl Drop for ZlimError {
 // Backtrace
 
 #[cfg(feature = "backtrace")]
-const FILTER_MESSAGE: &str = "NOTE: Some \"noisy\" backtrace lines have been filtered out. Run with `ZLIM_BACKTRACE=full` for a verbose backtrace.";
+mod backtrace_impls {
+    use super::{BoxedError, InnerError, MASKS, Severity, ZlimError};
+    use core::sync::atomic::{AtomicU8, Ordering};
+    use core::{marker::PhantomData, ptr::NonNull};
+    use std::backtrace::{Backtrace, BacktraceStatus};
+    use zlim_utils::debug::DebugLocation;
 
-#[cfg(feature = "backtrace")]
-const NOISE_CONTENTS: &[&str] = &[
-    "std::backtrace_rs::backtrace::",
-    "std::backtrace::Backtrace::",
-    "std::panicking::catch_unwind",
-    "std::panic::catch_unwind",
-    "std::thread::local::LocalKey",
-    "core::panic::unwind_safe",
-    "core::ops::function::",
-    "zlim_core::job::into_job::",
-    "zlim_core::system::function::",
-    "zlim_core::schedule::executor::",
-    "zlim_core::error::zlim_error::ZlimError::new_boxed",
-    "zlim_task::platform::",
-    "futures_lite::future::",
-    "async_task::raw::",
-    "async_task::runnable::Runnable",
-];
+    const FILTER_MESSAGE: &str = "NOTE: Some \"noisy\" backtrace lines have been filtered out. \
+        Run with `ZLIM_BACKTRACE=full` for a verbose backtrace.";
 
-#[cfg(feature = "backtrace")]
-const STOP_SIGNALS: &[&str] = &["std::sys::backtrace::__rust_begin_short_backtrace"];
+    const NOISE_CONTENTS: &[&str] = &[
+        "std::backtrace_rs::backtrace::",
+        "std::backtrace::Backtrace::",
+        "std::panicking::catch_unwind",
+        "std::panic::catch_unwind",
+        "std::thread::local::LocalKey",
+        "core::panic::unwind_safe",
+        "core::ops::function::",
+        "zlim_core::job::into_job::",
+        "zlim_core::system::function::",
+        "zlim_core::schedule::executor::",
+        "zlim_core::error::zlim_error::ZlimError::new_boxed",
+        "zlim_task::platform::",
+        "futures_lite::future::",
+        "async_task::raw::",
+        "async_task::runnable::Runnable",
+    ];
 
-#[cfg(feature = "backtrace")]
-impl ZlimError {
-    fn format_backtrace(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        use std::backtrace::BacktraceStatus;
+    const STOP_SIGNALS: &[&str] = &["std::sys::backtrace::__rust_begin_short_backtrace"];
 
-        let backtrace = unsafe { &(*self.get_ptr()).backtrace };
+    static BACKTRACE_LEVEL: AtomicU8 = AtomicU8::new(Severity::Error as u8);
 
-        if !matches!(backtrace.status(), BacktraceStatus::Captured) {
-            return Ok(());
+    #[inline]
+    pub(super) fn get_level() -> Severity {
+        const IGNORE: u8 = Severity::Ignore as u8;
+        const DEBUG: u8 = Severity::Debug as u8;
+        const INFO: u8 = Severity::Info as u8;
+        const WARNING: u8 = Severity::Warning as u8;
+        const ERROR: u8 = Severity::Error as u8;
+        const PANIC: u8 = Severity::Panic as u8;
+
+        match BACKTRACE_LEVEL.load(Ordering::Relaxed) {
+            IGNORE => Severity::Ignore,
+            DEBUG => Severity::Debug,
+            INFO => Severity::Info,
+            WARNING => Severity::Warning,
+            ERROR => Severity::Error,
+            PANIC => Severity::Panic,
+            _ => Severity::Panic,
         }
+    }
 
-        f.write_str("\n\nstack backtrace:\n")?;
+    #[inline]
+    pub(super) fn set_level(severity: Severity) {
+        BACKTRACE_LEVEL.store(severity as u8, Ordering::Relaxed);
+    }
 
-        // `std::env::var` will panic in Wasm.
-        #[cfg(not(target_family = "wasm"))]
-        static FULL_BACKTRACE: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
-            std::env::var("ZLIM_BACKTRACE").is_ok_and(|val| val == "full")
-        });
+    impl ZlimError {
+        pub(super) fn format_backtrace(
+            &self,
+            f: &mut core::fmt::Formatter<'_>,
+        ) -> core::fmt::Result {
+            let backtrace = unsafe { &(*self.get_ptr()).backtrace };
 
-        #[cfg(not(target_family = "wasm"))]
-        if *FULL_BACKTRACE {
-            return Display::fmt(backtrace, f);
-        }
-
-        let backtrace_str = backtrace.to_string();
-        let mut skip_next_location_line = false;
-
-        for line in backtrace_str.split('\n') {
-            if skip_next_location_line {
-                if line.starts_with("             at") {
-                    continue;
-                }
-                skip_next_location_line = false;
+            if !matches!(backtrace.status(), BacktraceStatus::Captured) {
+                return Ok(());
             }
 
-            // Separate the beginning part, for example:
-            // "  5: zlim_core::error::zlim_error::ZlimError::panic"
-            //     ↑
-            if let Some(index) = line.find(": ") {
-                let pattern = line[(index + 2)..].trim_start();
+            f.write_str("\n\nstack backtrace:\n")?;
 
-                if NOISE_CONTENTS.iter().any(|&x| pattern.starts_with(x)) {
-                    skip_next_location_line = true;
-                    continue;
-                }
+            // `std::env::var` will panic in Wasm.
+            #[cfg(not(target_family = "wasm"))]
+            static FULL_BACKTRACE: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+                std::env::var("ZLIM_BACKTRACE").is_ok_and(|val| val == "full")
+            });
 
-                if STOP_SIGNALS.iter().any(|&x| pattern.starts_with(x)) {
-                    break;
-                }
+            #[cfg(not(target_family = "wasm"))]
+            if *FULL_BACKTRACE {
+                return core::fmt::Display::fmt(backtrace, f);
             }
 
-            f.write_str(line)?;
-            f.write_str("\n")?;
+            let backtrace_str = backtrace.to_string();
+            let mut skip_next_location_line = false;
+
+            for line in backtrace_str.split('\n') {
+                if skip_next_location_line {
+                    if line.starts_with("             at") {
+                        continue;
+                    }
+                    skip_next_location_line = false;
+                }
+
+                // Separate the beginning part, for example:
+                // "  5: zlim_core::error::zlim_error::ZlimError::panic"
+                //     ↑
+                if let Some(index) = line.find(": ") {
+                    let pattern = line[(index + 2)..].trim_start();
+
+                    if NOISE_CONTENTS.iter().any(|&x| pattern.starts_with(x)) {
+                        skip_next_location_line = true;
+                        continue;
+                    }
+
+                    if STOP_SIGNALS.iter().any(|&x| pattern.starts_with(x)) {
+                        break;
+                    }
+                }
+
+                f.write_str(line)?;
+                f.write_str("\n")?;
+            }
+
+            f.write_str(FILTER_MESSAGE)?;
+            f.write_str("\n\n")
         }
 
-        f.write_str(FILTER_MESSAGE)?;
-        f.write_str("\n\n")
+        #[inline(never)]
+        pub(super) fn new_with_backtrace_boxed(
+            severity: Severity,
+            content: BoxedError,
+            backtrace: Backtrace,
+            location: DebugLocation,
+        ) -> Self {
+            let ptr: *mut InnerError = Box::leak(Box::new(InnerError {
+                content,
+                location,
+                backtrace,
+            }));
+
+            debug_assert!(
+                (ptr as usize & MASKS) == 0,
+                "InnerError should be align of `8`"
+            );
+
+            unsafe {
+                let p: *mut () = (ptr as *mut ()).byte_add(severity as usize);
+                Self(NonNull::new_unchecked(p), PhantomData)
+            }
+        }
     }
 }
 
 impl ZlimError {
-    /// Returns `true` if a backtrace has been captured for this error.
-    #[inline(always)]
-    #[cfg(not(feature = "backtrace"))]
-    pub fn backtrace_captured(&self) -> bool {
-        false
-    }
-
-    /// Returns `true` if a backtrace has been captured for this error.
-    #[cfg(feature = "backtrace")]
-    pub fn backtrace_captured(&self) -> bool {
-        let inner = unsafe { &*self.get_ptr() };
-        matches!(
-            inner.backtrace.status(),
-            std::backtrace::BacktraceStatus::Captured
-        )
-    }
-}
-
-impl ZlimError {
-    #[cfg(feature = "backtrace")]
-    pub(crate) fn take_backtrace(&mut self) -> Backtrace {
-        let inner = unsafe { &mut *self.get_ptr() };
-        core::mem::replace(&mut inner.backtrace, Backtrace::disabled())
-    }
-
-    #[cfg(not(feature = "backtrace"))]
-    pub(crate) const fn take_backtrace(&mut self) -> Backtrace {
-        Backtrace::disabled()
-    }
-
-    #[inline(never)]
-    #[cfg(feature = "backtrace")]
-    fn new_with_backtrace_boxed(
-        severity: Severity,
-        content: BoxedError,
-        backtrace: Backtrace,
-        location: DebugLocation,
-    ) -> Self {
-        let ptr: *mut InnerError = Box::leak(Box::new(InnerError {
-            content,
-            location,
-            backtrace,
-        }));
-
-        debug_assert!(
-            (ptr as usize & MASKS) == 0,
-            "InnerError should be align of `8`"
-        );
-
-        unsafe {
-            let p: *mut () = (ptr as *mut ()).byte_add(severity as usize);
-            Self(NonNull::new_unchecked(p), PhantomData)
-        }
-    }
-
     /// Constructs a new [`ZlimError`] with the given [`Severity`].
     ///
     /// Like [`ZlimError::new`], but if the `backtrace` cargo feature is enabled
@@ -534,6 +542,57 @@ impl ZlimError {
 
         #[cfg(not(feature = "backtrace"))]
         return Self::new_boxed(severity, content.into(), DebugLocation::caller());
+    }
+
+    /// Returns `true` if a backtrace was captured for this error.
+    ///
+    /// When the `backtrace` feature is disabled, this always returns `false`.
+    #[cfg_attr(not(feature = "backtrace"), inline(always))]
+    pub fn backtrace_captured(&self) -> bool {
+        #[cfg(not(feature = "backtrace"))]
+        return false;
+
+        #[cfg(feature = "backtrace")]
+        let inner = unsafe { &*self.get_ptr() };
+
+        #[cfg(feature = "backtrace")]
+        return matches!(
+            inner.backtrace.status(),
+            std::backtrace::BacktraceStatus::Captured
+        );
+    }
+
+    /// Takes the [`Backtrace`] out of this error, leaving a disabled one in its place.
+    ///
+    /// When the `backtrace` feature is disabled, this always returns [`Backtrace::disabled`]
+    /// and does not modify the error.
+    #[cfg_attr(not(feature = "backtrace"), inline(always))]
+    pub fn take_backtrace(&mut self) -> Backtrace {
+        #[cfg(not(feature = "backtrace"))]
+        return Backtrace::disabled();
+
+        #[cfg(feature = "backtrace")]
+        let inner = unsafe { &mut *self.get_ptr() };
+
+        #[cfg(feature = "backtrace")]
+        return core::mem::replace(&mut inner.backtrace, Backtrace::disabled());
+    }
+
+    /// Sets the global backtrace capture level from the given [`Severity`].
+    ///
+    /// A backtrace is captured only when the severity of the error being
+    /// constructed is **greater than or equal to** this level. For example,
+    /// with a level of [`Severity::Error`], backtraces are captured for
+    /// `Error` and `Panic`, but not for `Warning` and below.
+    ///
+    /// The default level is [`Severity::Error`].
+    ///
+    /// When the `backtrace` feature is disabled, this is a no-op.
+    #[cfg_attr(not(feature = "backtrace"), inline(always))]
+    pub fn set_backtrace_threshold(severity: Severity) {
+        let _severity = severity;
+        #[cfg(feature = "backtrace")]
+        backtrace_impls::set_level(_severity);
     }
 }
 

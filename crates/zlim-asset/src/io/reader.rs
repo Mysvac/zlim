@@ -7,8 +7,8 @@
 //!   `Vec<u8>`" fast path. [`VecReader`] and [`SliceReader`] are ready-made implementations
 //!   over memory that complete without an async state machine.
 //!
-//! - [`AssetReader`] is a *source*: it maps asset paths onto byte streams, meta sidecars and
-//!   directory listings. It is written with RPITIT (`-> impl Future<…> + Send`), which is
+//! - [`AssetReader`] is a *source*: it maps asset paths onto byte streams, meta sidecars,
+//!   directory listings and existence checks. It is written with RPITIT (`-> impl Future<…> + Send`), which is
 //!   cheap for implementors but **not object safe**, so [`ErasedAssetReader`] is the boxed
 //!   mirror the asset server stores sources as; it is implemented automatically for every
 //!   `AssetReader`.
@@ -67,7 +67,7 @@ pub enum AssetReaderError {
     NotFound(PathBuf),
     /// The underlying IO operation failed.
     #[error("Encountered an I/O error while loading asset: {_0}")]
-    Io(std::io::Error),
+    Io(std::io::Error), // Do not use Arc, optimize performance
     /// The remote source answered with an unexpected HTTP status.
     #[error("Encountered HTTP status {_0:?} when loading asset")]
     HttpError(u16),
@@ -103,9 +103,28 @@ impl PartialEq for AssetReaderError {
 
 impl From<std::io::Error> for AssetReaderError {
     /// Wraps an IO error as [`AssetReaderError::Io`].
+    #[cold]
     #[inline]
     fn from(value: std::io::Error) -> Self {
         Self::Io(value)
+    }
+}
+
+impl AssetReaderError {
+    /// Return `true` if the error is `not found`.
+    ///
+    /// Strictly speaking, this is not precise.
+    #[inline]
+    pub fn is_not_found(&self) -> bool {
+        match self {
+            Self::NotFound(_) => true,
+            Self::Io(e) => e.kind() == std::io::ErrorKind::NotFound,
+            Self::HttpError(404) => true,
+            // Some web servers / CDN, return 403 when a requested file isn't present.
+            // TODO: remove handling of 403 as not found when it's easier to configure
+            Self::HttpError(403) => true,
+            _ => false,
+        }
     }
 }
 
@@ -278,8 +297,9 @@ pub trait AssetReader: Sized + Sync + Send + 'static {
     /// Returns a future for the stream of directory entry paths at the provided path.
     ///
     /// Entries are relative to the source root and non-recursive: one directory level,
-    /// with sub-directories reported as entries. `.meta` sidecars and hidden files are
-    /// filtered out by the storage implementations, and the ordering is unspecified.
+    /// with sub-directories reported as entries. The storage implementations filter out
+    /// `.meta` sidecars, and the filesystem sources also drop hidden files; the ordering
+    /// is unspecified.
     ///
     /// # Examples
     ///
@@ -310,8 +330,26 @@ pub trait AssetReader: Sized + Sync + Send + 'static {
 
     /// Returns a future for whether the provided path points to a directory.
     ///
-    /// The built-in sources report a path that does not exist as `false`, and an unreadable
-    /// path as an error.
+    /// Only a directory is `true`, and a path that is certainly something else — a file — is `false`;
+    /// a path whose kind cannot be told at all (unreadable) is an error instead of a guess. The wasm
+    /// `fetch` source cannot answer the question at all — it has no directory listing — so it reports
+    /// `false` for every path and logs that it does.
+    ///
+    /// A missing path has no single answer across sources: the filesystem source reports
+    /// [`AssetReaderError::NotFound`] — the same thing Bevy's `FileAssetReader` does — while the
+    /// in-memory source reports `false`.
+    ///
+    /// An empty path is the special case the answers above do not settle: it names no directory —
+    /// not even the source root — so in theory it is `false` rather than
+    /// [`AssetReaderError::NotFound`]. The built-in in-memory and filesystem sources instead resolve
+    /// it against their root, and the importer relies on that (it walks the source side starting from
+    /// an empty path), so a caller must not depend on either answer for one.
+    ///
+    /// The "missing" half of that leans on [`AssetReaderError::is_not_found`], which is a coarse
+    /// test: on the filesystem it is whatever [`std::io::Error::kind`] reports, and on the web it is
+    /// an HTTP status code (the wasm reader treats `403` next to `404` as "not found", because some
+    /// servers answer a missing file that way). A caller that has to be exact about *why* a path
+    /// could not be read should match the error itself rather than ask `is_not_found`.
     fn is_directory<'a>(
         &'a self,
         path: &'a Path,
@@ -328,7 +366,7 @@ pub trait AssetReader: Sized + Sync + Send + 'static {
         async {
             let mut data_reader = self.read(path).await?;
             let mut data_bytes = Vec::new();
-            data_reader.read_all_bytes(&mut data_bytes).await?; // AsyncReadExt
+            data_reader.read_all_bytes(&mut data_bytes).await?;
             Ok(data_bytes)
         }
     }
@@ -343,7 +381,7 @@ pub trait AssetReader: Sized + Sync + Send + 'static {
         async {
             let mut meta_reader = self.read_meta(path).await?;
             let mut meta_bytes = Vec::new();
-            meta_reader.read_all_bytes(&mut meta_bytes).await?; // AsyncReadExt
+            meta_reader.read_all_bytes(&mut meta_bytes).await?;
             Ok(meta_bytes)
         }
     }
@@ -436,8 +474,8 @@ impl<T: AssetReader> ErasedAssetReader for T {
 /// An [`AsyncRead`] implementation capable of reading a [`Vec<u8>`].
 ///
 /// The reader owns the bytes, tracks how far it has been read, and is seekable, so
-/// it is the natural return type for sources that materialize an asset (in-memory
-/// source, wasm `fetch`, Android `AAssets`). Both [`Reader::read_all_bytes`] and
+/// it is the natural return type for sources that materialize an asset (the wasm
+/// `fetch` source, Android `AAssets`). Both [`Reader::read_all_bytes`] and
 /// [`AsyncRead::poll_read`] run straight on the byte slice — no async state machine,
 /// no copy beyond the destination.
 ///
@@ -525,9 +563,10 @@ impl Reader for VecReader {
 /// An [`AsyncRead`] implementation capable of reading a `&[u8]`.
 ///
 /// Like [`VecReader`], but borrowing instead of owning: this is what
-/// [`ReadAllFuture::slice_read`] is built for, and what `MemoryAssetReader`
-/// and `EmbeddedAssetRegistry` hand out. The reader is [`AsyncSeek`] as well,
-/// so loaders can rewind and parse a payload twice.
+/// [`ReadAllFuture::slice_read`] is built for, and it is the reader for bytes that are
+/// already borrowed as a `&[u8]` — the importer hashes a source asset's bytes through
+/// one. The reader is [`AsyncSeek`] as well, so loaders can rewind and parse a payload
+/// twice.
 ///
 /// # Examples
 ///

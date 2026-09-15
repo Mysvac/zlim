@@ -521,7 +521,7 @@ impl Resources {
                 let database = ResourceDB::of::<R>();
                 let cell = ResourceCell::new(database);
                 let ucell = UnsafeCell::new(cell);
-                let reference = unsafe { Global::alloc_unchecked(ucell) };
+                let reference = Global::alloc_static(ucell);
                 entry.insert(reference)
             }
         }

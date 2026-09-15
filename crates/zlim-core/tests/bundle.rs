@@ -93,6 +93,8 @@ struct DataOnlyBundle {
     health: Health,
 }
 
+/// A data bundle has to satisfy two separate claims at once: it must report no
+/// post-spawn effect, and it must implement the `DataBundle` marker trait.
 #[test]
 fn data_bundle_consts() {
     const { assert!(!<DataOnlyBundle as BundleTrait>::NEED_APPLY_EFFECT) };
@@ -196,6 +198,9 @@ struct NestedBundle {
     health: Health,
 }
 
+/// A field that is itself a bundle is flattened into the outer one, so the
+/// entity receives the inner bundle's components directly, with no trace of the
+/// nesting left behind.
 #[test]
 fn nested_bundle_flattens_fields() {
     let mut world = World::alloc();
@@ -236,6 +241,9 @@ fn generic_bundle_consts() {
     const { assert!(!<GenericDataBundle<Health> as BundleTrait>::NEED_APPLY_EFFECT) };
 }
 
+/// The type parameter is filled with a tuple of components, so the derived
+/// implementation has to forward to the tuple's own bundle implementation
+/// rather than treating the value as a single component.
 #[test]
 fn generic_bundle_spawns() {
     let mut world = World::alloc();
@@ -306,6 +314,10 @@ fn effect_bundle_needs_apply_effect() {
     const { assert!(<EffectBundle as BundleTrait>::NEED_APPLY_EFFECT) };
 }
 
+/// `apply_effect` is a bundle's only chance to run post-spawn logic, so the
+/// derived implementation has to call it once per effectful field, in field
+/// declaration order. The effects here record their ids into `EffectLog`, which
+/// makes that order observable from the outside.
 #[test]
 fn effect_bundle_applies_effects_in_field_order() {
     let mut world = World::alloc();
@@ -320,9 +332,13 @@ fn effect_bundle_applies_effects_in_field_order() {
     );
 
     assert!(entity.is_spawned());
+    // Both effects ran, and `first` ran before `second`.
     assert_eq!(world.resource::<EffectLog>().0, vec![1, 2]);
 }
 
+/// A nested effect bundle is not applied as one unit: the inner bundle's
+/// effects run before the outer bundle's own trailing fields, so the log
+/// follows declaration order depth first.
 #[test]
 fn nested_effect_bundle_forwards_effects() {
     let mut world = World::alloc();
@@ -345,6 +361,9 @@ fn nested_effect_bundle_forwards_effects() {
 // -----------------------------------------------------------------------------
 // Inserting derived bundles into existing entities
 
+/// Inserting a bundle into a live entity has to overwrite the components the
+/// entity already carries and add the ones it lacks, rather than failing or
+/// leaving duplicates behind.
 #[test]
 fn insert_derived_bundle_overwrites_components() {
     let mut world = World::alloc();

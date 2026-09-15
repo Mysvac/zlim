@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize, de::Visitor};
+use serde::de::Visitor;
+use serde::{Deserialize, Serialize};
 
 // -----------------------------------------------------------------------------
 // FormatVersion
@@ -15,10 +16,11 @@ pub enum FormatVersion {
 // -----------------------------------------------------------------------------
 // FormatVersionMinimal
 
-/// A minimal counterpart to [`FormatVersion`] that exists to speed up
-/// deserialization in cases where the whole `AssetMeta` isn't necessary.
+/// A minimal counterpart to `AssetMeta` that exists to speed up
+/// deserialization in cases where only the format version is needed.
 #[derive(Deserialize)]
 pub struct FormatVersionMinimal {
+    /// The `.meta` format version the file was written with.
     #[serde(default)]
     pub format_version: FormatVersion,
 }
@@ -48,6 +50,8 @@ impl<'de> Deserialize<'de> for FormatVersion {
     }
 }
 
+/// The visitor that turns the version string into a [`FormatVersion`], rejecting
+/// every string this crate does not write.
 struct VersionVisitor;
 
 impl Visitor<'_> for VersionVisitor {

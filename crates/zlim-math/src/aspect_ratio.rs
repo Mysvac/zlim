@@ -178,6 +178,8 @@ mod tests {
         );
     }
 
+    /// Checks that the landscape/portrait/square predicates agree with each other for ratios on
+    /// either side of square, and that `inverse` reports the flipped classification.
     #[test]
     fn accessors() {
         let landscape = AspectRatio::try_new(2.0, 1.0).unwrap();

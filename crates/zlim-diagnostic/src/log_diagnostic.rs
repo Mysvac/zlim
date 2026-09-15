@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use zlim_app::{App, MainSchedulePlugin, Plugin, PostUpdate};
+use zlim_app::{App, MainSchedulePlugin, Plugin, PluginExt, PostUpdate};
 use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
 use zlim_core::job_fn;
@@ -190,6 +190,9 @@ impl Plugin for LogDiagnosticsPlugin {
     fn build(&mut self, app: &mut App) {
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
+            zlim_log::info!(
+                "`DiagnosticsPlugin` was added as a dependency af `LogDiagnosticsPlugin`"
+            );
         }
         MainSchedulePlugin::apply_before::<Self>(app);
     }
@@ -204,7 +207,6 @@ impl Plugin for LogDiagnosticsPlugin {
             filter: self.filter.take(),
         });
 
-        let schedule = world.schedule_entry(PostUpdate);
-        schedule.insert::<LogDiagnostics>(());
+        world.insert_job::<LogDiagnostics>(PostUpdate, ());
     }
 }

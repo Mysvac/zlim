@@ -43,28 +43,16 @@ pub fn make_absolute_path(path: &Path) -> Result<PathBuf, std::io::Error> {
     // resolve the path. This also means that paths that no longer exist can still become absolute
     // (e.g., a file that was renamed will have the "old" path no longer exist).
     let absolute = std::path::absolute(path)?;
-    let size_hint = absolute.as_os_str().len();
-    let mut result_path = PathBuf::with_capacity(size_hint);
-    for elt in absolute.iter() {
-        if elt == "." {
-            // Skip
-        } else if elt == ".." {
-            if result_path.file_name().is_some() {
-                assert!(result_path.pop());
-            } else {
-                result_path.push(elt);
-            }
-        } else {
-            result_path.push(elt);
-        }
-    }
-    Ok(result_path)
+    Ok(crate::utils::normalize_path(&absolute))
 }
 
 // -----------------------------------------------------------------------------
 // build_debouncer
 
 /// Builds a recursive debouncer on `root`, forwarding normalized events to `notifier`.
+///
+/// A relative `root` is resolved against [`crate::io::file::base_path`], while an absolute one
+/// is used as is (joining an absolute path replaces the base).
 #[rustfmt::skip]
 pub fn build_debouncer(
     root: PathBuf,
@@ -73,7 +61,7 @@ pub fn build_debouncer(
 ) -> Result<Debouncer<RecommendedWatcher, RecommendedCache>, notify::Error> {
     let root = crate::io::file::base_path().join(root);
 
-    let event_handler = move |result: DebounceEventResult| -> () {
+    let event_handler = move |result: DebounceEventResult| {
         let events = match result {
             Ok(events) => events,
             Err(errors) => {

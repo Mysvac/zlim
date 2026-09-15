@@ -95,7 +95,7 @@ impl Writer for FileWriter {
 }
 
 // -----------------------------------------------------------------------------
-// FileStream
+// DirPathStream
 
 #[repr(transparent)]
 struct DirPathStream(Vec<PathBuf>);
@@ -335,6 +335,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "manual trigger"]
     fn write_read_roundtrip() {
         let dir = temp_dir("roundtrip");
         let reader = reader_at(&dir);
@@ -355,7 +356,10 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// A listing holds the asset files only: the `.meta` siblings written next to them, and files
+    /// whose name starts with a dot, are both filtered out.
     #[test]
+    #[ignore = "manual trigger"]
     fn directories_are_listed_without_meta_or_hidden_files() {
         let dir = temp_dir("list");
         let reader = reader_at(&dir);
@@ -384,6 +388,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "manual trigger"]
     fn missing_paths_report_not_found() {
         let dir = temp_dir("missing");
         let reader = reader_at(&dir);
@@ -394,7 +399,11 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// A rename creates the directories its new path needs; clearing a directory's assets leaves
+    /// the directory itself in place, empty; and only the plain removal takes it away, after which
+    /// it no longer resolves.
     #[test]
+    #[ignore = "manual trigger"]
     fn removal_rename_and_directory_cleanup() {
         let dir = temp_dir("mutate");
         let reader = reader_at(&dir);

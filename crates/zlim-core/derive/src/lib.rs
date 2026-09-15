@@ -31,6 +31,7 @@ mod utils;
 /// |-----------------------------------|------------------------------------------------|
 /// | Always                            | `core::error::Error`                           |
 /// | `#[error("...")]`                 | `core::fmt::Display`                           |
+/// | `#[error(transparent)]`           | `core::fmt::Display` (delegates to the single field) |
 /// | `#[zlim_error(info/warning/…)]`   | `From<Self> for ZlimError` (implies `Into<ZlimError>`) |
 ///
 /// # `#[error(…)]`
@@ -48,6 +49,34 @@ mod utils;
 /// #[derive(Error)]
 /// #[error("limit {_0} exceeded (max {_1})")]
 /// struct LimitError2(i32, i32);
+/// ```
+///
+/// # `#[error(transparent)]`
+///
+/// Delegates `Display` to the wrapped error instead of formatting a template,
+/// which is both cheaper (no formatting machinery, no intermediate allocation)
+/// and lossless.
+///
+/// It is only valid where there is exactly one tuple field to delegate to:
+///
+/// - a single-field tuple struct, or
+/// - a single-field tuple enum variant.
+///
+/// Using it anywhere else — a named/unit struct, a multi-field tuple, an enum
+/// type itself, or a non-tuple variant — is a compile-time error.
+///
+/// ```ignore
+/// #[derive(Error)]
+/// #[error(transparent)]
+/// struct IoError(std::io::Error);
+///
+/// #[derive(Error)]
+/// enum AppError {
+///     #[error(transparent)]
+///     Io(std::io::Error),
+///     #[error("bad config: {_0}")]
+///     Config(String),
+/// }
 /// ```
 ///
 /// # Enums — defaults and overrides

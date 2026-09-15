@@ -23,7 +23,7 @@ use zlim_transform::{GlobalTransform, Transform, TransformPlugin};
 
 let mut app = App::new();
 app.add_plugins(TransformPlugin::default());
-app.build(); // executes the plugins (build → apply → cleanup)
+app.build(); // executes the plugins (build → apply → finish → cleanup)
 
 // Build the hierarchy: root -> child
 let world = app.main_world_mut();

@@ -44,8 +44,8 @@ use crate::ident::AssetId;
 /// Change ticks of the assets of type `A`, keyed by [`AssetId`].
 ///
 /// The table is filled by the `asset_events` job and consumed by [`AssetChanged`].
-/// `last_change` caches the newest tick in the table, so the filter can reject a whole table in
-/// one comparison before looking up the individual ids.
+/// `last_change` records the tick of the most recent insertion, so the filter can reject a whole
+/// table in one comparison before looking up the individual ids.
 #[derive(TypePath, Resource)]
 pub(crate) struct AssetChanges<A: Asset> {
     changed: HashMap<AssetId<A>, Tick>,
@@ -61,8 +61,8 @@ impl<A: Asset> AssetChanges<A> {
 
     /// Forgets the change tick of `asset_id`.
     ///
-    /// A removal is not a change: dropping the entry only means that the filter stops matching
-    /// the asset, it does not make other assets of the same type match.
+    /// Dropping an entry is not a change: a `Removed` or `Unused` event only stops the filter
+    /// from matching the asset, it does not make other assets of the same type match.
     pub(crate) fn remove(&mut self, asset_id: &AssetId<A>) {
         self.changed.remove(asset_id);
     }
@@ -80,6 +80,9 @@ impl<A: Asset> Default for AssetChanges<A> {
 // -----------------------------------------------------------------------------
 // ClampAssetChangesTick
 
+/// Clamps every recorded change tick — including `last_change` — against the `now` of each
+/// [`ClampTickSignal`], so that the ticks kept in an `AssetChanges` table cannot grow without
+/// bound.
 #[job_fn(type = ClampAssetChangesTick<A: Asset>)]
 fn clamp_asset_changes<A: Asset>(
     mut changes: If<ResMut<AssetChanges<A>>>,
@@ -100,9 +103,9 @@ fn clamp_asset_changes<A: Asset>(
 /// `A` that changed since the previous run of the query.
 ///
 /// The filter mirrors [`Changed`], except that the ticks live in the `AssetChanges<A>` resource
-/// instead of in the component column: an asset is considered changed as soon as an `Added`,
-/// `Modified` or `FullyLoaded` event was drained for it since the last run. A removal only drops
-/// the entry, so it does not by itself make the filter match.
+/// instead of in the component column: an asset is considered changed as soon as an `Added` or
+/// `Modified` event was drained for it since the last run. A `Removed` or `Unused` event only
+/// drops the entry, so it does not by itself make the filter match.
 ///
 /// [`Changed`]: zlim_core::query::Changed
 /// [`AssetComponent`]: crate::asset::AssetComponent
@@ -114,6 +117,7 @@ pub struct AssetChanged<A: AssetComponent>(PhantomData<A>);
 mod seal {
     use core::cell::UnsafeCell;
     use core::ptr::NonNull;
+
     use zlim_core::component::ComponentId;
     use zlim_core::resource::ResourceCell;
     use zlim_core::table::Column;
@@ -147,7 +151,7 @@ mod seal {
     unsafe impl Send for AssetChangedState {}
 }
 
-use seal::{AssetChangedState, AssetChangedView};
+use crate::change::seal::{AssetChangedState, AssetChangedView};
 
 unsafe impl<A: AssetComponent> QueryFilter for AssetChanged<A> {
     type State = AssetChangedState;
@@ -272,7 +276,7 @@ unsafe impl<A: AssetComponent> QueryFilter for AssetChanged<A> {
 }
 
 // -----------------------------------------------------------------------------
-// tests
+// Tests
 
 #[cfg(test)]
 mod tests {
@@ -315,6 +319,8 @@ mod tests {
         world.query::<(), AssetChanged<TestHandle>>().iter().count()
     }
 
+    /// A recorded change only matches in the frame that recorded it: once the trackers are cleared
+    /// the same record no longer satisfies the filter.
     #[test]
     fn matches_only_inside_the_query_window() {
         let (mut world, id) = world_with_handle();
@@ -327,6 +333,8 @@ mod tests {
         assert_eq!(count(&world), 0);
     }
 
+    /// The window is strictly after the baseline, so a change stamped with the tick a system would
+    /// have seen last frame is already stale, while one from the current run still matches.
     #[test]
     fn ignores_ticks_at_or_before_the_baseline() {
         let (mut world, id) = world_with_handle();

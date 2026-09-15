@@ -3,7 +3,6 @@
 use core::fmt::{Debug, Formatter};
 use std::sync::{PoisonError, RwLock};
 
-use zlim_log as log;
 use zlim_utils::debug::DebugLocation;
 use zlim_utils::ext::CachePadded;
 use zlim_utils::hash::HashMap;
@@ -96,18 +95,22 @@ impl JobDB {
         #[cold]
         #[inline(never)]
         fn collect_internal() {
+            #[cfg(any(debug_assertions, feature = "debug"))]
             let start = zlim_os::time::Instant::now();
-            log::debug!("Collecting JobDB registrations...");
 
             for reg in zlim_reg::iter::<__JobReg__>() {
                 (reg.0)();
             }
 
-            let len = REGISTRY
-                .read()
-                .unwrap_or_else(PoisonError::into_inner)
-                .len();
-            log::debug!("JobDB({len}) collection finished in {:?}", start.elapsed());
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            zlim_log::debug!(
+                "JobDB({}) collection finished in {:?}",
+                REGISTRY
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .len(),
+                start.elapsed(),
+            );
         }
 
         static ONCE: std::sync::Once = std::sync::Once::new();
@@ -134,7 +137,7 @@ impl JobDB {
             }
             ::core::hint::cold_path();
 
-            log::warn! {
+            zlim_log::warn! {
                 "duplicated job name `{}`, first location is `{}`, second location is `{}`",
                 db.name, x.location, db.location,
             }

@@ -1,15 +1,16 @@
-//! Asset loading, caching and lifecycle management for the zlim engine.
+#![doc = include_str!("../README.md")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 // -----------------------------------------------------------------------------
 // Compile Config
 
+/// Compilation configurations.
 pub mod cfg {
     zlim_cfg::define_alias! {
         #[cfg(all(
-            feature = "notify",
+            feature = "watch",
             any(target_os = "windows", target_os = "linux", target_os = "macos"),
-        ))] => notify
+        ))] => watch
     }
 }
 
@@ -29,6 +30,7 @@ pub use zlim_asset_derive as derive;
 // -----------------------------------------------------------------------------
 // 3rd
 
+pub use futures_lite::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 pub use uuid;
 
 // -----------------------------------------------------------------------------
@@ -37,31 +39,24 @@ pub use uuid;
 pub mod asset;
 pub mod assets;
 pub mod change;
+pub mod error;
 pub mod event;
 pub mod handle;
 pub mod ident;
 pub mod io;
+pub mod loaded;
 pub mod loader;
 pub mod meta;
 pub mod path;
+pub mod plugin;
 pub mod processor;
 pub mod render;
 pub mod saver;
 pub mod server;
 pub mod source;
+pub mod transaction;
 pub mod transformer;
 pub mod utils;
-
-// -----------------------------------------------------------------------------
-// Exports
-
-// ↓ Waiting for all content completed.
-// pub use crate::asset::{Asset, VisitAssetDependencies};
-// pub use crate::assets::Assets;
-// pub use crate::event::AssetEvent;
-// pub use crate::handle::{ErasedHandle, Handle};
-// pub use crate::ident::{AssetId, ErasedAssetId};
-// pub use crate::path::AssetPath;
 
 /// The most commonly used asset items.
 pub mod prelude {

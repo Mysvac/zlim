@@ -292,12 +292,17 @@ mod tests {
         assert_eq!(s.len(), 10);
     }
 
+    /// Concat treats its inputs as opaque bytes, so a multi-byte code point is
+    /// copied whole rather than counted as a single character, and the result
+    /// stays valid UTF-8.
     #[test]
     fn unicode_characters() {
         let s = concat(&["ASCII", " 世界 ", "🌟", " 123"]);
         assert_eq!(s, "ASCII 世界 🌟 123");
     }
 
+    /// Concat pre-computes the total length, so nothing may be truncated or
+    /// lost once the destination buffer is handed out, even for 3000 bytes.
     #[test]
     fn long_strings() {
         let long = "a".repeat(1000);
@@ -315,6 +320,8 @@ mod tests {
         assert!(s.capacity() >= expected_len);
     }
 
+    /// Guards against an accidental quadratic reallocation loop: each of the
+    /// 10000 one-byte parts must land in the buffer exactly once.
     #[test]
     fn many_small_strings() {
         let parts: Vec<&str> = (0..10000).map(|_| "a").collect();

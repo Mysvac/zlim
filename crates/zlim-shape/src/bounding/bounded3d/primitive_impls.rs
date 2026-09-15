@@ -570,6 +570,10 @@ mod tests {
         assert_eq!(bounding_sphere.radius(), 1.2884705);
     }
 
+    /// Here the bottom radius is large compared to the height, so the circumsphere of the frustum
+    /// would have its center outside the shape. The bounding sphere falls back to the sphere with
+    /// the longest side as its diameter, which is why the center sits half a unit below the
+    /// translated origin and the radius equals the bottom radius.
     #[test]
     fn wide_conical_frustum() {
         let conical_frustum = ConicalFrustum {
@@ -610,6 +614,10 @@ mod tests {
         assert_eq!(bounding_sphere.radius(), 1.5);
     }
 
+    /// Covers the three degenerate triangles that enclose no area: all vertices at one point, two
+    /// vertices sharing a position, and three collinear vertices. The bounds still describe the
+    /// points that are there rather than a triangle, so all three cases read as the segment the
+    /// vertices span, with its midpoint as the center and half the segment as the sphere radius.
     #[test]
     fn triangle3d() {
         let zero_degenerate_triangle = Triangle3d::new(Vec3::ZERO, Vec3::ZERO, Vec3::ZERO);

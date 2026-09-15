@@ -252,6 +252,11 @@ mod tests {
         drop(m.lock());
     }
 
+    /// Contention test: twice as many threads as the loop count `K`, each incrementing the shared
+    /// counter `J` times while holding the lock. Every thread reports through a channel, so the
+    /// main thread only reads the total after all of them have finished, and that total is exact —
+    /// a lost update would show up directly in it, which is what makes this a mutual-exclusion test
+    /// rather than a smoke test.
     #[test]
     fn lots_and_lots() {
         const J: u32 = 1000;
@@ -259,12 +264,14 @@ mod tests {
 
         let m = Arc::new(SpinLock::new(0));
 
+        // Each thread runs the same critical section, so the expected total is known in advance.
         fn inc(m: &SpinLock<u32>) {
             for _ in 0..J {
                 *m.lock() += 1;
             }
         }
 
+        // Completion is signalled through a channel; the main thread waits for all `2 * K` threads.
         let (tx, rx) = channel();
         for _ in 0..K {
             let tx2 = tx.clone();
@@ -294,6 +301,8 @@ mod tests {
         *m.try_lock().unwrap() = ();
     }
 
+    /// `into_inner` moves the value out of the lock, so ownership — and with it the destructor —
+    /// belongs to the binding that receives it rather than to the lock guard.
     #[test]
     fn test_into_inner_drop() {
         struct Foo(Arc<AtomicUsize>);
@@ -372,11 +381,16 @@ mod tests {
         }
     }
 
+    /// A guard dropped while a thread unwinds still has to release the lock, otherwise the next
+    /// attempt to take it would block forever. The three rounds are the point: each one panics with
+    /// the guard alive, the panic is caught, and locking again has to succeed immediately, which
+    /// shows the lock is left usable rather than merely unlocked once.
     #[cfg(panic = "unwind")] // Requires unwinding support.
     #[test]
     fn test_panics() {
         use helper::test_unwind_panic;
 
+        // One lock reused across all three rounds.
         let spin = SpinLock::new(42);
 
         let catch_unwind_result1 = test_unwind_panic(|| {
@@ -401,6 +415,10 @@ mod tests {
         assert!(catch_unwind_result3.is_err());
     }
 
+    /// Taking the lock from a destructor that runs during unwinding is the case under test: the
+    /// spawned thread panics while it still owns a value whose destructor locks the shared mutex,
+    /// and that increment has to survive. Nothing holds the lock at the moment of the panic, so
+    /// this is about the lock staying usable while a stack is torn down, not about poisoning.
     #[cfg(panic = "unwind")] // Requires unwinding support.
     #[test]
     fn test_mutex_arc_access_in_unwind() {
@@ -419,10 +437,12 @@ mod tests {
                 }
             }
             let _u = Unwinder { i: arc2 };
+            // Unwinding drops `_u`, and that destructor takes the lock to increment the value.
             panic!();
         });
 
         let lock = arc.lock();
+        // Initial value plus the increment performed while the stack was unwinding.
         assert_eq!(*lock, 2);
     }
 }

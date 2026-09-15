@@ -793,6 +793,9 @@ mod tests {
         assert_matches!(a.interpolate_stable(&b, 0.75), [0.75, 0.25]);
     }
 
+    /// The fallible slice form has to produce the same results as the static-array form for each
+    /// fraction. The in-place variant is then called three times in a row, so every call but the
+    /// first interpolates from what the previous call left in `a`, not from the original value.
     #[test]
     fn interpolate_dynamic_arrays() {
         let mut a = vec![0.0, 1.0];
@@ -810,6 +813,9 @@ mod tests {
         assert_eq!(a, vec![0.90625, 0.09375]);
     }
 
+    /// A length mismatch is rejected by both the copying and the in-place variant. The nested case
+    /// reports the same error wrapped in the outer variant, so a caller can tell at which level of
+    /// the structure the lengths disagreed.
     #[test]
     fn interpolate_dynamic_arrays_different_lengths() {
         let mut a = vec![0.0, 1.0];

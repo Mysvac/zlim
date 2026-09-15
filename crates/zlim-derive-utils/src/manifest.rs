@@ -268,6 +268,10 @@ impl Manifest {
 mod tests {
     use super::*;
 
+    /// Parses a manifest fragment that mixes plain and inline-table entries
+    /// across its dependency tables, then pins down the two lookup helpers:
+    /// `contains` only sees normal dependencies while `dev_contains` also sees
+    /// dev-dependencies, and neither mistakes a version string for a name.
     #[test]
     fn deserialize() {
         let toml = r#"

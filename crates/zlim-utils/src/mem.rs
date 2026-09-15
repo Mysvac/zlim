@@ -7,18 +7,31 @@
 
 use core::alloc::Layout;
 use core::cell::Cell;
+use core::fmt::Debug;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::ptr::{self, NonNull};
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 use std::alloc as malloc;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, PoisonError};
 
 use crate::ext::CachePadded;
 
 // -----------------------------------------------------------------------------
 // Block
 
-const ALIGN: usize = align_of::<usize>();
-const SIZE1: usize = size_of::<usize>();
+const ALIGN: usize = const {
+    let align_u = align_of::<usize>();
+    let align_a = align_of::<AtomicUsize>();
+    if align_u < align_a { align_a } else { align_u }
+};
+
+const SIZE1: usize = const {
+    let size_u = size_of::<usize>();
+    let size_a = size_of::<AtomicUsize>().next_power_of_two();
+    if size_u < size_a { size_a } else { size_u }
+};
+
 const SIZE2: usize = SIZE1 * 2;
 const SIZE3: usize = SIZE1 * 3;
 
@@ -27,9 +40,10 @@ const SIZE3: usize = SIZE1 * 3;
 /// ```text
 /// ┌────────────────┬───────────────┬───────────────┬─────────────────┐
 /// │ block_len      │ prev_ptr      │ span          │ user_data       │
-/// │ (usize)        │ (usize)       │ (usize)       │ (need bytes)    │
+/// │ (usize)        │ (usize)       │(usize)        │ (need bytes)    │
 /// └────────────────┴───────────────┴───────────────┴─────────────────┘
 /// │<─── SIZE1 ────>│<─── SIZE1 ───>│<─── SIZE1 ───>│<──── need ─────>│
+/// |<─ 0B           |<─ SIZE1       |<- SIZE2       |<- SIZE3         |
 /// │<─────────────────────── block_len (aligned) ────────────────────>│
 /// ```
 ///
@@ -48,11 +62,13 @@ impl Block {
     /// Due to the storage of inline pointers, the actual
     /// allocated memory is slightly larger than the given value.
     ///
+    /// if `ATOMIC` is `true`, the span info will be `AtomicUsize`.
+    ///
     /// # Safety
     /// - `prev` must be a valid pointer to the previous block or null.
     /// - `need` must be less than or equal to `isize::MAX`.
     #[must_use]
-    unsafe fn alloc(need: usize, prev: *mut usize) -> Self {
+    unsafe fn alloc<const ATOMIC: bool>(need: usize, prev: *mut usize) -> Self {
         // Why `SIZE3 + ALIGN - 1`?
         // Because in addition to `need` bytes of user data, we need:
         //   - 1 `usize` to store `block_len`
@@ -84,8 +100,13 @@ impl Block {
             let span: NonNull<usize> = ptr.byte_add(SIZE2);
             // free points to the first available bit
             let free: NonNull<usize> = ptr.byte_add(SIZE3);
-            // span
-            span.write(free.as_ptr() as *mut u8 as usize);
+            if ATOMIC {
+                let span: NonNull<AtomicUsize> = span.cast();
+                span.write(AtomicUsize::new(free.as_ptr() as *mut u8 as usize));
+            } else {
+                // span
+                span.write(free.as_ptr() as *mut u8 as usize);
+            }
         }
 
         Self { pointer: ptr }
@@ -115,6 +136,7 @@ impl Block {
     ///
     /// # Safety
     /// - `self` must be a valid block that has not been deallocated yet.
+    /// - `self` must be created by `Block::alloc::<false>`.
     unsafe fn try_insert(self, layout: Layout) -> Option<NonNull<u8>> {
         let head: usize = self.pointer.as_ptr() as usize;
         let size: usize = unsafe { self.pointer.read() };
@@ -127,14 +149,51 @@ impl Block {
         let aligned_span = (span + align_mask) & !align_mask;
         let new_span = aligned_span.saturating_add(layout.size());
 
-        if new_span <= tail {
-            unsafe {
-                span_ptr.write(new_span);
-                // ↓ Faster than `NonNull::new(aligned_span as *mut u8)`
-                Some(NonNull::new_unchecked(aligned_span as *mut u8))
+        if new_span > tail {
+            return None;
+        }
+
+        unsafe {
+            span_ptr.write(new_span);
+            Some(NonNull::new_unchecked(aligned_span as *mut u8))
+        }
+    }
+
+    /// Attempts to allocate `layout` bytes from this block's free space.
+    ///
+    /// # Safety
+    /// - `self` must be a valid block that has not been deallocated yet.
+    /// - `self` must be created by `Block::alloc::<true>`.
+    #[inline]
+    unsafe fn try_insert_atomic(self, layout: Layout) -> Option<NonNull<u8>> {
+        let head: usize = self.pointer.as_ptr() as usize;
+        let size: usize = unsafe { self.pointer.read() };
+        let tail: usize = head + size;
+
+        let span_ptr: *mut usize = unsafe { self.pointer.as_ptr().byte_add(SIZE2) };
+        let span_ptr: &AtomicUsize = unsafe { &*(span_ptr as *mut AtomicUsize) };
+
+        let align_mask = layout.align() - 1;
+
+        let mut span: usize = span_ptr.load(Acquire);
+
+        loop {
+            // Align the current span to the layout's alignment requirement.
+            let aligned_span = (span + align_mask) & !align_mask;
+            let new_span = aligned_span.saturating_add(layout.size());
+
+            if new_span > tail {
+                return None;
             }
-        } else {
-            None
+
+            match span_ptr.compare_exchange(span, new_span, AcqRel, Acquire) {
+                Ok(_) => unsafe {
+                    return Some(NonNull::new_unchecked(aligned_span as *mut u8));
+                },
+                Err(modified) => {
+                    span = modified;
+                }
+            }
         }
     }
 
@@ -169,13 +228,6 @@ struct PagePool {
     size: Cell<usize>,
     tail: Cell<*mut usize>,
 }
-
-// SAFETY: !Sync, but Send.
-unsafe impl Send for PagePool {}
-
-impl UnwindSafe for PagePool {}
-
-impl RefUnwindSafe for PagePool {}
 
 impl Drop for PagePool {
     fn drop(&mut self) {
@@ -215,83 +267,13 @@ impl PagePool {
     fn alloc(&self, layout: Layout) -> NonNull<u8> {
         let Some(block) = Block::from_raw(self.tail.get()) else {
             core::hint::cold_path();
-            return self.alloc_layout_slow(layout);
+            return self.alloc_slow(layout);
         };
 
         unsafe {
             block
                 .try_insert(layout)
-                .unwrap_or_else(|| self.alloc_layout_slow(layout))
-        }
-    }
-
-    /// Allocates a string slice by copying its contents into the pool.
-    ///
-    /// Returns a reference to the copied string. The input must be
-    /// valid UTF-8.
-    #[inline]
-    fn alloc_str(&self, s: &str) -> &str {
-        let bytes = self.alloc_slice(s.as_bytes());
-
-        unsafe {
-            // SAFETY: The input is valid UTF-8, and we're copying it verbatim
-            core::str::from_utf8_unchecked(bytes)
-        }
-    }
-
-    /// Allocates a slice by copying its contents into the pool.
-    ///
-    /// Returns a mutable reference to the copied slice. The slice elements
-    /// must be `Copy`.
-    ///
-    /// This is safe because `T` implements `Copy` and does not require `Drop`.
-    #[inline]
-    fn alloc_slice<T: Copy>(&self, slice: &[T]) -> &mut [T] {
-        let layout = Layout::for_value(slice);
-        let ptr = self.alloc(layout).cast::<T>();
-
-        unsafe {
-            // Copy the slice contents
-            ptr::copy_nonoverlapping(slice.as_ptr(), ptr.as_ptr(), slice.len());
-            core::slice::from_raw_parts_mut(ptr.as_ptr(), slice.len())
-        }
-    }
-
-    /// Allocates a value of type `T` in the pool and returns a mutable reference.
-    ///
-    /// The value is moved into the pool's memory. The returned reference is valid
-    /// until the pool is cleared or destroyed.
-    ///
-    /// This is safe because `T` implements `Copy` and does not require `Drop`.
-    #[inline]
-    fn alloc_value<T: Copy>(&self, val: T) -> &mut T {
-        let layout = Layout::new::<T>();
-        let ptr = self.alloc(layout).cast::<T>();
-
-        unsafe {
-            ptr::write(ptr.as_ptr(), val);
-            &mut *ptr.as_ptr()
-        }
-    }
-
-    /// Allocates a value of type `T` without requiring `Copy`.
-    ///
-    /// Unlike [`alloc_value`](Self::alloc_value), this method accepts any
-    /// `T`. The value is moved into pool-owned memory and **never dropped**
-    /// by the pool.
-    ///
-    /// # Safety
-    ///
-    /// If `T` implements [`Drop`], the caller **must** manually run the
-    /// destructor before the pool is destroyed.
-    #[inline]
-    pub unsafe fn alloc_unchecked<T>(&self, val: T) -> &mut T {
-        let layout = Layout::new::<T>();
-        let ptr = self.alloc(layout).cast::<T>();
-
-        unsafe {
-            ptr::write(ptr.as_ptr(), val);
-            &mut *ptr.as_ptr()
+                .unwrap_or_else(|| self.alloc_slow(layout))
         }
     }
 
@@ -305,7 +287,7 @@ impl PagePool {
     /// next power of two and aligned to `usize`. After allocation, the
     /// internal size counter grows by 1.5× for the next page.
     #[inline(never)]
-    fn alloc_layout_slow(&self, layout: Layout) -> NonNull<u8> {
+    fn alloc_slow(&self, layout: Layout) -> NonNull<u8> {
         let need = layout.size() + layout.align().max(ALIGN);
         let unaligned = self.size.get().max(need);
 
@@ -315,7 +297,7 @@ impl PagePool {
 
         unsafe {
             let prev = self.tail.get();
-            let block = Block::alloc(page_size, prev);
+            let block = Block::alloc::<false>(page_size, prev);
             self.tail.set(block.pointer.as_ptr());
             self.size.update(|x| x + (x >> 1));
 
@@ -372,6 +354,11 @@ impl PagePool {
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct Bump(PagePool);
+
+unsafe impl Send for Bump {}
+
+impl UnwindSafe for Bump {}
+impl RefUnwindSafe for Bump {}
 
 impl Default for Bump {
     /// Creates an empty pool without any pages allocated; the first
@@ -439,7 +426,12 @@ impl Bump {
     /// assert_ne!(s.as_ptr(), "Hello, world!".as_ptr());
     /// ```
     pub fn alloc_str<'a>(&'a self, s: &str) -> &'a str {
-        self.0.alloc_str(s)
+        let bytes = self.alloc_slice(s.as_bytes());
+
+        unsafe {
+            // SAFETY: The input is valid UTF-8, and we're copying it verbatim
+            core::str::from_utf8_unchecked(bytes)
+        }
     }
 
     /// Allocates a value of type `T` in the pool and returns a mutable reference.
@@ -466,7 +458,13 @@ impl Bump {
     /// assert_eq!(*v2, [1, 2, 3, 4]);
     /// ```
     pub fn alloc_value<T: Copy>(&self, v: T) -> &mut T {
-        self.0.alloc_value(v)
+        let layout = Layout::new::<T>();
+        let ptr = self.alloc(layout).cast::<T>();
+
+        unsafe {
+            ptr::write(ptr.as_ptr(), v);
+            &mut *ptr.as_ptr()
+        }
     }
 
     /// Allocates a slice by copying its contents into the pool.
@@ -491,14 +489,20 @@ impl Bump {
     /// assert_ne!(slice.as_ptr(), original.as_ptr());
     /// ```
     pub fn alloc_slice<'a, T: Copy>(&'a self, s: &[T]) -> &'a mut [T] {
-        self.0.alloc_slice(s)
+        let layout = Layout::for_value(s);
+        let ptr = self.alloc(layout).cast::<T>();
+
+        unsafe {
+            // Copy the slice contents
+            ptr::copy_nonoverlapping(s.as_ptr(), ptr.as_ptr(), s.len());
+            core::slice::from_raw_parts_mut(ptr.as_ptr(), s.len())
+        }
     }
 
     /// Allocates a value of type `T` without requiring `Copy`.
     ///
-    /// Unlike [`alloc_value`](Self::alloc_value), this method accepts any `T`.
-    /// The value is moved into pool-owned memory and never dropped by the
-    /// pool.
+    /// Unlike [`alloc_value`], this method accepts any `T`. The value
+    /// is moved into pool-owned memory and never dropped by the pool.
     ///
     /// # Safety
     ///
@@ -526,16 +530,22 @@ impl Bump {
     /// // let s = unsafe { pool.alloc_unchecked(String::from("hi")) };
     /// // unsafe { core::ptr::drop_in_place(s); }
     /// ```
+    ///
     /// ['drop`]: Drop::drop
+    /// [`alloc_value`]: Self::alloc_value
     pub unsafe fn alloc_unchecked<T>(&self, v: T) -> &mut T {
-        // SAFETY: delegated to the pool's `alloc_unchecked`; the caller is
-        // responsible for running `Drop` on the returned value.
-        unsafe { self.0.alloc_unchecked(v) }
+        let layout = Layout::new::<T>();
+        let ptr = self.alloc(layout).cast::<T>();
+
+        unsafe {
+            ptr::write(ptr.as_ptr(), v);
+            &mut *ptr.as_ptr()
+        }
     }
 }
 
 // -----------------------------------------------------------------------------
-// STATIC_POOL
+// AtomicPool
 
 cfg_select! {
     target_family = "wasm" => {
@@ -586,43 +596,69 @@ cfg_select! {
     }
 }
 
-struct Pool(PagePool);
+struct AtomicPool {
+    tail: AtomicUsize,  //
+    size: Mutex<usize>, // size + lock
+}
 
-static POOL: CachePadded<Mutex<Pool>> =
-    CachePadded::new(Mutex::new(Pool(PagePool::base(CHUNK_SIZE))));
+static POOL: CachePadded<AtomicPool> = CachePadded::new(AtomicPool {
+    tail: AtomicUsize::new(0),
+    size: Mutex::new(CHUNK_SIZE),
+});
 
-/// A global, shared memory pool for static data.
+// No need to impl `Drop`.
+//
+// Static items do not call drop at the end of the program.
+//
+// https://doc.rust-lang.org/reference/items/static-items.html
+
+// -----------------------------------------------------------------------------
+// GlobalPool
+
+/// A process-wide, thread-safe memory pool for `'static` data.
 ///
-/// `Global` is a **mutex-protected** pool that is shared across all threads.
-/// It starts with a large page size to efficiently manage long-lived
-/// static data, growing by 1.5× as needed.
+/// `Global` is a zero-sized type used as a namespace; it cannot be
+/// instantiated. All state lives in a private `static` pool, so every
+/// operation is an associated function (`Global::alloc`, ...).
 ///
-/// This pool is never deallocated, and all allocations live for the entire
-/// program duration.
+/// # Thread Safety
+///
+/// The fast path is lock-free: it performs a CAS on an atomic span
+/// pointer stored in the current tail page. Only the slow path — when
+/// a new page must be allocated — takes a mutex, and that mutex only
+/// guards the page-size counter. `tail` itself is an `AtomicUsize`.
+///
+/// # Lifetime & Deallocation
+///
+/// All memory allocated from `Global` lives until the process exits.
+/// Pages are never freed, and destructors for non-`Copy` values are
+/// never run. This is intentional: `Global` is meant for long-lived,
+/// process-wide data.
 ///
 /// # When to Use
 ///
-/// This is suitable when:
-///
-/// - **Memory is constrained**: You cannot afford per-thread pools
-/// - **Low-frequency allocation**: Data is allocated rarely (e.g., at startup)
-/// - **Shared data**: Multiple threads need access to the same pool
+/// - **Shared data**: multiple threads allocate into the same pool
+/// - **Process-lifetime data**: values that must outlive any thread
+/// - **Memory-constrained startup**: avoid per-thread pools
 ///
 /// For temporary, short-lived data, use [`Bump`] instead.
 ///
-/// # Drop Behavior
+/// # Allocation API
 ///
-/// When the pool is dropped, all allocated pages are deallocated.
-/// However, the pool does **not** call `drop` on the allocated data.
+/// - [`alloc`] returns a pointer to **uninitialized** memory with the
+///   given layout. The caller is responsible for writing a value into
+///   it before reading.
 ///
-/// Use [`alloc_value`] / [`alloc_slice`] / [`alloc_str`] for `Copy` types
-/// (they are safe). Use [`alloc_unchecked`] for non-`Copy` types — in that
-/// case the caller is responsible for running destructors.
+/// - [`alloc_str`] / [`alloc_slice`] copy the values into the pool
+///   and return a `'static` reference.
 ///
-/// [`alloc_value`]: Self::alloc_value
-/// [`alloc_slice`]: Self::alloc_slice
-/// [`alloc_str`]: Self::alloc_str
-/// [`alloc_unchecked`]: Self::alloc_unchecked
+/// - [`alloc_value`] move (ptr::write) a value into the pool and return
+///   a `'static` reference. It requires `Copy` payloads, so no destructor
+///   ever needs to run.
+///
+/// - [`alloc_static`] accepts any `T`, including types with `Drop`.
+///   The value is moved into the pool; its destructor is never run (deliberate
+///   leak).
 ///
 /// # Example
 ///
@@ -632,44 +668,142 @@ static POOL: CachePadded<Mutex<Pool>> =
 ///
 /// let mut names: BTreeSet<&'static str> = BTreeSet::new();
 ///
-/// // Allocate a global configuration string
 /// let config = Global::alloc_str("App config");
 /// assert_eq!(config, "App config");
 ///
-/// // Use memory pools to store data.
-/// // Use other structures to store references.
 /// names.insert(config);
 /// ```
-#[derive(Debug)]
+///
+/// [`alloc`]: Self::alloc
+/// [`alloc_value`]: Self::alloc_value
+/// [`alloc_slice`]: Self::alloc_slice
+/// [`alloc_str`]: Self::alloc_str
+/// [`alloc_static`]: Self::alloc_static
 #[repr(transparent)]
 pub struct Global(());
 
+impl Debug for Global {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("Global(..)")
+    }
+}
+
 impl Global {
-    /// Locks the global pool and returns a guard.
-    #[inline(always)]
-    fn lock() -> MutexGuard<'static, Pool> {
-        POOL.lock().unwrap_or_else(PoisonError::into_inner)
+    /// Allocates a new page from the system allocator.
+    ///
+    /// This is the slow path that is called when:
+    /// 1. The pool is empty (no pages allocated yet), or
+    /// 2. The current page does not have enough free space.
+    ///
+    /// The page is sized to `max(current_size, need)`, rounded up to the
+    /// next power of two and aligned to `usize`. After allocation, the
+    /// internal size counter grows by 1.5× for the next page.
+    #[cold]
+    #[inline(never)]
+    fn alloc_layout_slow(layout: Layout) -> NonNull<u8> {
+        let pool: &AtomicPool = &POOL;
+
+        let mut guard = pool.size.lock().unwrap_or_else(PoisonError::into_inner);
+
+        let prev = pool.tail.load(Acquire) as *mut usize;
+        let may_block = Block::from_raw(prev);
+
+        if let Some(prev_block) = may_block
+            && let Some(p) = unsafe { prev_block.try_insert_atomic(layout) }
+        {
+            return p;
+        }
+
+        let need = layout.size() + layout.align().max(ALIGN);
+
+        let unaligned = (*guard).max(need);
+        *guard = (*guard) + ((*guard) >> 1);
+
+        // Ensure that page_size if aligned.
+        const MASK: usize = ALIGN - 1;
+        let page_size = (MASK + unaligned) & !MASK;
+
+        unsafe {
+            let block = Block::alloc::<true>(page_size, prev);
+            let ptr = block.try_insert_atomic(layout).expect("enough space");
+            // `insert` before `store`, avoid competition and ensure success.
+            let new_ptr: *mut usize = block.pointer.as_ptr();
+            pool.tail.store(new_ptr as usize, Release);
+            ptr
+        }
     }
 
-    /// Allocates memory with the given layout.
+    #[inline(always)]
+    fn alloc_inner(layout: Layout) -> NonNull<u8> {
+        let pool: &AtomicPool = &POOL;
+        let tail = pool.tail.load(Acquire) as *mut usize;
+        let Some(block) = Block::from_raw(tail) else {
+            // `alloc_layout_slow` already marked `#[coold]`
+            return Global::alloc_layout_slow(layout);
+        };
+
+        unsafe {
+            block.try_insert_atomic(layout).unwrap_or_else(|| {
+                // `alloc_layout_slow` already marked `#[coold]`
+                Global::alloc_layout_slow(layout)
+            })
+        }
+    }
+}
+
+impl Global {
+    /// Allocates memory with the given layout from the global pool.
     ///
-    /// See [`Bump::alloc`] for details.
+    /// The returned pointer is aligned according to `layout.align()` and
+    /// points to uninitialized memory. The caller is responsible for
+    /// initializing it before reading.
+    ///
+    /// # Lifetime
+    ///
+    /// The returned memory lives for the entire duration of the program.
+    /// `Global` pages are never deallocated until process exit.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zlim_utils::mem::Global;
+    /// use core::alloc::Layout;
+    ///
+    /// let layout = Layout::new::<u32>();
+    /// let ptr = Global::alloc(layout).cast::<u32>();
+    ///
+    /// unsafe {
+    ///     ptr.as_ptr().write(42);
+    ///     assert_eq!(*ptr.as_ptr(), 42);
+    /// }
+    /// ```
     #[inline(never)]
     pub fn alloc(layout: Layout) -> NonNull<u8> {
-        Self::lock().0.alloc(layout)
+        Global::alloc_inner(layout)
     }
 
-    /// Allocates a string slice by copying its contents.
+    /// Allocates a string slice by copying its contents into the global pool.
     ///
-    /// The returned string has a `'static` lifetime.
+    /// The input must be valid UTF-8. The bytes are copied verbatim, and
+    /// the returned reference points into pool-owned memory.
     ///
-    /// See [`Bump::alloc_str`] for details.
+    /// # Lifetime
+    ///
+    /// The returned `&'static str` is valid for the entire duration of the
+    /// program.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zlim_utils::mem::Global;
+    ///
+    /// let s: &'static str = Global::alloc_str("hello");
+    /// assert_eq!(s, "hello");
+    /// ```
     #[inline(never)]
     pub fn alloc_str(s: &str) -> &'static str {
         let layout = Layout::for_value(s.as_bytes());
-        let guard = Self::lock();
-        let ptr = guard.0.alloc(layout).cast::<u8>();
-        ::core::mem::drop(guard);
+        let ptr = Global::alloc_inner(layout).cast::<u8>();
 
         unsafe {
             let len = s.len();
@@ -681,17 +815,31 @@ impl Global {
         }
     }
 
-    /// Allocates a slice by copying its contents.
+    /// Allocates a slice by copying its contents into the global pool.
     ///
-    /// The returned slice has a `'static` lifetime.
+    /// The elements must be `Copy`; they are bitwise-copied into pool-owned
+    /// memory. The returned slice has the same length as the input.
     ///
-    /// See [`Bump::alloc_slice`] for details.
-    #[inline(never)]
+    /// # Lifetime
+    ///
+    /// The returned `&'static mut [T]` is valid for the entire duration of
+    /// the program.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zlim_utils::mem::Global;
+    ///
+    /// let original = [1_i32, 2, 3, 4];
+    /// let slice: &'static mut [i32] = Global::alloc_slice(&original);
+    ///
+    /// assert_eq!(*slice, original);
+    /// assert_ne!(slice.as_ptr(), original.as_ptr());
+    /// ```
+    #[inline]
     pub fn alloc_slice<T: Copy>(s: &[T]) -> &'static mut [T] {
         let layout = Layout::for_value(s);
-        let guard = Self::lock();
-        let ptr = guard.0.alloc(layout).cast::<T>();
-        ::core::mem::drop(guard);
+        let ptr = Global::alloc(layout).cast::<T>();
 
         unsafe {
             // Copy the slice contents
@@ -700,17 +848,31 @@ impl Global {
         }
     }
 
-    /// Allocates a value of type `T` in the pool.
+    /// Allocates a value of type `T` in the global pool.
     ///
-    /// The returned reference has a `'static` lifetime.
+    /// `T` must be `Copy`, so the value is moved into pool-owned memory
+    /// without needing to run a destructor.
     ///
-    /// See [`Bump::alloc_value`] for details.
-    #[inline(never)]
+    /// # Lifetime
+    ///
+    /// The returned `&'static mut T` is valid for the entire duration of
+    /// the program.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zlim_utils::mem::Global;
+    ///
+    /// let v1 = Global::alloc_value(123);
+    /// let v2 = Global::alloc_value([1, 2, 3, 4]);
+    ///
+    /// assert_eq!(*v1, 123);
+    /// assert_eq!(*v2, [1, 2, 3, 4]);
+    /// ```
+    #[inline]
     pub fn alloc_value<T: Copy>(v: T) -> &'static mut T {
         let layout = Layout::new::<T>();
-        let guard = Self::lock();
-        let ptr = guard.0.alloc(layout).cast::<T>();
-        ::core::mem::drop(guard);
+        let ptr = Global::alloc(layout).cast::<T>();
 
         unsafe {
             ptr::write(ptr.as_ptr(), v);
@@ -718,23 +880,38 @@ impl Global {
         }
     }
 
-    /// Allocates a value of type `T` without requiring `Copy`.
+    /// Allocates a value of type `T` in the global pool.
     ///
-    /// The returned reference has a `'static` lifetime.
+    /// Unlike [`Global::alloc_value`], this method accepts any, `T`
+    /// including types that implement [`Drop`]. The value is moved
+    /// into pool-owned memory; the pool never runs its destructor.
     ///
-    /// # Safety
+    /// # Lifetime
     ///
-    /// If `T` implements [`Drop`], the caller **must** manually run the
-    /// destructor. The pool itself will never call [`drop`] on the allocated
-    /// value.
+    /// The returned `&'static mut T` is valid for the entire duration of
+    /// the program.
     ///
-    /// [`drop`]: Drop::drop
-    #[inline(never)]
-    pub unsafe fn alloc_unchecked<T>(v: T) -> &'static mut T {
+    /// # Leak Warning
+    ///
+    /// If `T` implements [`Drop`], its destructor is **never** called,
+    /// because `Global` pages are not deallocated until process exit.
+    ///
+    /// This is a deliberate memory leak; prefer [`Global::alloc_value`]
+    /// when `T: Copy`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zlim_utils::mem::Global;
+    ///
+    /// let v: &'static mut u32 = Global::alloc_static(123_u32);
+    ///
+    /// assert_eq!(*v, 123_u32);
+    /// ```
+    #[inline]
+    pub fn alloc_static<T: 'static>(v: T) -> &'static mut T {
         let layout = Layout::new::<T>();
-        let guard = Self::lock();
-        let ptr = guard.0.alloc(layout).cast::<T>();
-        ::core::mem::drop(guard);
+        let ptr = Global::alloc(layout).cast::<T>();
 
         unsafe {
             ptr::write(ptr.as_ptr(), v);

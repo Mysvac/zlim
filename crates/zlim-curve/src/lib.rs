@@ -804,6 +804,9 @@ mod tests {
         assert!(curve.sample(2.0).is_none());
     }
 
+    /// Covers function-backed curves over both an unbounded domain and a one-sided
+    /// finite one, including the unchecked sample path, which is allowed to produce
+    /// nonsense such as `NaN` outside the domain while the checked path reports `None`.
     #[test]
     fn function_curves() {
         let curve = FunctionCurve::new(Interval::EVERYWHERE, |t| t * t);
@@ -831,6 +834,10 @@ mod tests {
             });
     }
 
+    /// Pins down the stepped easing function at every stair boundary. With four steps
+    /// jumping at the end, the value is held flat across each quarter of the domain and
+    /// only rises when the boundary itself is reached, so each edge is sampled from both
+    /// sides.
     #[test]
     fn easing_curves_step() {
         let start = Vec2::ZERO;
@@ -875,6 +882,9 @@ mod tests {
         clippy::neg_multiply,
         reason = "Clippy doesn't like this, but it's correct"
     )]
+    /// Checks that mapping a curve applies the map to every sample while leaving the
+    /// domain untouched, using both a scalar map and one that turns the parameter into a
+    /// rotation.
     #[test]
     fn mapping() {
         let curve = FunctionCurve::new(Interval::EVERYWHERE, |t| t * 3.0 + 1.0);
@@ -893,6 +903,9 @@ mod tests {
         assert_eq!(mapped_curve.domain(), Interval::UNIT);
     }
 
+    /// Reversing a curve keeps its domain but evaluates the original from the end
+    /// backwards, so out-of-range times still report `None` while in-range times map onto
+    /// their mirror image.
     #[test]
     fn reverse() {
         let curve = FunctionCurve::new(Interval::new(0.0, 1.0).unwrap(), |t| t * 3.0 + 1.0);
@@ -912,14 +925,19 @@ mod tests {
         assert_eq!(rev_curve.sample(1.1), None);
     }
 
+    /// Exercises the repeating adaptor. Within each repetition the samples are those of
+    /// the original curve, the seam itself takes the original curve's end value instead
+    /// of restarting, and sampling past a finite repetition count reports `None`.
     #[test]
     fn repeat() {
         let curve = FunctionCurve::new(Interval::new(0.0, 1.0).unwrap(), |t| t * 3.0 + 1.0);
+        // One repetition covers the original domain plus one further copy of it.
         let repeat_curve = curve.by_ref().repeat(1).unwrap();
         assert_eq!(repeat_curve.sample(-0.1), None);
         assert_eq!(repeat_curve.sample(0.0), Some(0.0 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(0.5), Some(0.5 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(0.99), Some(0.99 * 3.0 + 1.0));
+        // The seam takes the original end value rather than jumping back to the start.
         assert_eq!(repeat_curve.sample(1.0), Some(1.0 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(1.01), Some(0.01 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(1.5), Some(0.5 * 3.0 + 1.0));
@@ -927,12 +945,14 @@ mod tests {
         assert_eq!(repeat_curve.sample(2.0), Some(1.0 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(2.01), None);
 
+        // Three repetitions tile the domain from 0.0 through 4.0.
         let repeat_curve = curve.by_ref().repeat(3).unwrap();
         assert_eq!(repeat_curve.sample(2.0), Some(1.0 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(3.0), Some(1.0 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(4.0), Some(1.0 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(5.0), None);
 
+        // The unbounded variant keeps the same pattern past the last finite copy.
         let repeat_curve = curve.by_ref().forever().unwrap();
         assert_eq!(repeat_curve.sample(-1.0), Some(1.0 * 3.0 + 1.0));
         assert_eq!(repeat_curve.sample(2.0), Some(1.0 * 3.0 + 1.0));
@@ -941,6 +961,11 @@ mod tests {
         assert_eq!(repeat_curve.sample(5.0), Some(1.0 * 3.0 + 1.0));
     }
 
+    /// Exercises the ping-pong adaptor, which plays the curve forwards and then
+    /// backwards without a jump at the turning point. The second half of the domain must
+    /// mirror the first, so a time past the midpoint reproduces the original value at the
+    /// matching time before it, both for a curve starting at the origin and for a domain
+    /// that is symmetric about it.
     #[test]
     fn ping_pong() {
         let curve = FunctionCurve::new(Interval::new(0.0, 1.0).unwrap(), |t| t * 3.0 + 1.0);
@@ -949,6 +974,7 @@ mod tests {
         assert_eq!(ping_pong_curve.sample(0.0), Some(0.0 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(0.5), Some(0.5 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(1.0), Some(1.0 * 3.0 + 1.0));
+        // Past the midpoint the curve runs backwards, so 1.5 mirrors 0.5.
         assert_eq!(ping_pong_curve.sample(1.5), Some(0.5 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(2.0), Some(0.0 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(2.1), None);
@@ -959,11 +985,16 @@ mod tests {
         assert_eq!(ping_pong_curve.sample(-2.0), Some(-2.0 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(-0.5), Some(-0.5 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(2.0), Some(2.0 * 3.0 + 1.0));
+        // The mirrored half walks the original domain in reverse, ending back at -2.0.
         assert_eq!(ping_pong_curve.sample(4.5), Some(-0.5 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(6.0), Some(-2.0 * 3.0 + 1.0));
         assert_eq!(ping_pong_curve.sample(6.1), None);
     }
 
+    /// Chaining with continuation glues the second curve to the end of the first by
+    /// translating it so that its first sample lines up with where the first curve ended,
+    /// leaving no jump at the seam. The second stretch of the domain therefore reproduces
+    /// the second curve with that offset added.
     #[test]
     fn continue_chain() {
         let first = FunctionCurve::new(Interval::new(0.0, 1.0).unwrap(), |t| t * 3.0 + 1.0);
@@ -978,6 +1009,9 @@ mod tests {
         assert_eq!(c0_chain_curve.sample(2.1), None);
     }
 
+    /// Reparametrizing swaps out the parameter domain and evaluates the original curve at
+    /// the mapped time. The first case pairs `log2` with `exp2` so that the composite is
+    /// the identity, and the second applies a plain shift that has no inverse.
     #[test]
     fn reparameterization() {
         let curve = FunctionCurve::new(interval(1.0, f32::INFINITY).unwrap(), ops::log2);
@@ -1019,6 +1053,10 @@ mod tests {
         assert_abs_diff_eq!(second_reparam.sample_unchecked(1.0), 2.0);
     }
 
+    /// Checks that a curve resampled onto an even grid stays close to the original at the
+    /// grid points, and that asking for zero segments is rejected rather than producing a
+    /// degenerate curve. The work is then repeated for a curve that runs over one period
+    /// of a cosine.
     #[test]
     fn resampling() {
         let curve = FunctionCurve::new(interval(1.0, 4.0).unwrap(), ops::log2);
@@ -1053,6 +1091,10 @@ mod tests {
         }
     }
 
+    /// Checks the unevenly resampled curve, which is expected to hit the original exactly
+    /// at the times it was given, including when those times are spread exponentially and
+    /// the domain runs to infinity on one side. Providing fewer than two sample points is
+    /// an error rather than a degenerate curve.
     #[test]
     fn uneven_resampling() {
         let curve = FunctionCurve::new(interval(0.0, f32::INFINITY).unwrap(), ops::exp);
@@ -1086,6 +1128,10 @@ mod tests {
         assert_abs_diff_eq!(resampled_curve.domain().end(), 512.0);
     }
 
+    /// Covers the three bulk sampling iterators over the same list of times: the
+    /// unchecked variant on an unbounded curve, the checked variant that yields `None`
+    /// outside the domain, and the clamped variant that pins out-of-domain times to the
+    /// nearest endpoint.
     #[test]
     fn sample_iterators() {
         let times = [-0.5, 0.0, 0.5, 1.0, 1.5];

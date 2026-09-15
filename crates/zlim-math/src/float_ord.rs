@@ -125,6 +125,9 @@ mod tests {
         assert_eq!(ZERO.cmp(&ONE), Ordering::Less);
     }
 
+    /// Every comparison operator is exercised against `NaN`, zero and one in both operand orders.
+    /// `PartialOrd` is written by hand here rather than derived, so each operator has to stay
+    /// consistent with the total order from `cmp`, where `NaN` sorts below every number.
     #[test]
     #[expect(
         clippy::nonminimal_bool,
@@ -132,6 +135,8 @@ mod tests {
         and in the process requires some non-simplified boolean expressions."
     )]
     fn float_ord_cmp_operators() {
+        // `NaN` sorts below every number, so the strict operators must agree with `cmp` for all
+        // three combinations of `NaN` and a real value.
         assert!(!(NAN < NAN));
         assert!(NAN < ZERO);
         assert!(!(ZERO < NAN));
@@ -146,6 +151,8 @@ mod tests {
         assert!(!(ZERO > ONE));
         assert!(ONE > ZERO);
 
+        // `le` is the primitive the other three are defined through, and it has to treat two `NaN`s
+        // as equal for the ordering to be total.
         assert!(NAN <= NAN);
         assert!(NAN <= ZERO);
         assert!(!(ZERO <= NAN));
@@ -161,6 +168,8 @@ mod tests {
         assert!(ONE >= ZERO);
     }
 
+    /// Equal values must hash equally, and this wrapper deliberately collapses the representations
+    /// that compare equal: the two signed zeroes, and every possible `NaN` bit pattern.
     #[test]
     fn float_ord_hash() {
         let hash = |num| {
@@ -169,9 +178,12 @@ mod tests {
             h.finish()
         };
 
+        // The bit patterns differ, so only the `Hash` implementation can make these two keys agree.
         assert_ne!((-0.0f32).to_bits(), 0.0f32.to_bits());
         assert_eq!(hash(-0.0), hash(0.0));
 
+        // Likewise for two distinct payloads, which have to be usable as the same map key because
+        // they compare equal.
         let nan_1 = f32::from_bits(0b0111_1111_1000_0000_0000_0000_0000_0001);
         assert!(nan_1.is_nan());
         let nan_2 = f32::from_bits(0b0111_1111_1000_0000_0000_0000_0000_0010);

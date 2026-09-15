@@ -12,8 +12,13 @@ exclude = ["tests", "README.zh.md"]
 # Enables strict validation and extra assertions.
 debug = []
 
+# The remote (`http` / `https`) asset sources of `WebAssetPlugin`.
+http = ["blocking", "ureq"]
+https = ["blocking", "ureq", "ureq/rustls", "ureq/platform-verifier"]
+web_asset_cache = []
+
 # Enables filesystem watching (hot reloading), built on `notify-debouncer-full`.
-notify = ["dep:notify-debouncer-full"]
+watch = ["dep:notify-debouncer-full"]
 
 [dependencies]
 
@@ -43,12 +48,15 @@ futures-lite = { version = "2.6", default-features = false, features = ["std"] }
 uuid = { version = "1.26", default-features = false, features = ["serde"] }
 bitflags = { version = "2.13", default-features = false, features = ["serde"] }
 blake3 = { version = "1.8", default-features = false }
-
-[target.'cfg(not(any(target_os = "windows", target_arch = "wasm32")))'.dependencies]
-async-lock = { version = "3.4", default-features = false }
+async-broadcast = { version = "0.7", default-features = false }
+async-lock = { version = "3.4", default-features = false, features = ["std"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 async-fs = "2.2"
+# updating ureq: while `ureq` is semver stable, it depends on `rustls` which is not,
+# meaning unlikely but possible breaking changes on minor releases.
+ureq = { version = "3", optional = true, default-features = false }
+blocking = { version = "1.7", optional = true }
 
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 notify-debouncer-full = { version = "0.7.0", optional = true, default-features = false }
@@ -56,7 +64,7 @@ notify-debouncer-full = { version = "0.7.0", optional = true, default-features =
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = { version = "0.2", default-features = false, features = ["std"] }
 js-sys = { version = "0.3", default-features = false, features = ["std"] }
-web-sys = { version = "0.3", default-features = false, features = ["std", "Window", "Response", "WorkerGlobalScope"] }
+web-sys = { version = "0.3", default-features = false, features = ["std", "Response", "Window", "WorkerGlobalScope"] }
 wasm-bindgen-futures = { version = "0.4", default-features = false, features = ["std"] }
 
 [lints]

@@ -16,6 +16,8 @@ pub enum PluginsState {
     Built,
     /// All added plugins have been built and applied.
     Ready,
+    /// `finish` has been executed for all plugins.
+    Finish,
     /// `cleanup` has been executed for all plugins.
     Cleaned,
 }
@@ -41,14 +43,17 @@ pub enum DuplicateStrategy {
 ///
 /// Plugins are **lazy**: [`App::add_plugins`] only stores the plugin  —
 /// nothing runs until [`App::build`] (called automatically by [`App::run`])
-/// executes every plugin through its three lifecycle stages:
+/// executes every plugin through its four lifecycle stages:
 ///
 /// 1. [`build`](Self::build) — inspect the app, add dependency plugins and
 ///    adjust the plugin execution order.
-/// 2. [`apply`](Self::apply) — apply the plugin, in installation order
+/// 2. [`apply`](Self::apply) — apply the plugin in **dependency order**
 ///    (dependencies first); main-app plugins run before every sub-app's.
-/// 3. [`cleanup`](Self::cleanup) — tear down temporary resources after all
-///    plugins have been applied.
+/// 3. [`finish`](Self::finish) — runs after **every** plugin has been
+///    applied, in installation order; for work that needs the fully applied
+///    app (validation, final registries, …).
+/// 4. [`cleanup`](Self::cleanup) — tear down temporary resources; afterwards
+///    the plugin objects are removed from the app.
 ///
 /// The plugin itself must be `Send + Sync` (the app may be moved to the main
 /// thread before initialization).
@@ -69,15 +74,29 @@ pub trait Plugin: Any + Send + Sync + 'static {
 
     /// Applies the plugin to the app.
     ///
-    /// Called once per plugin, in installation order (dependencies first)
+    /// Called once per plugin, in **dependency order** (dependencies first)
     /// — main-app plugins before every sub-app's plugins.
     ///
     /// At this stage, the plugin list has stabilized and new additions are prohibited.
     fn apply(&mut self, app: &mut App);
 
-    /// Runs after every plugin has been applied.
+    /// Runs after **every** plugin has been applied.
     ///
-    /// Useful for tearing down temporary resources before the app schedules execute.
+    /// Plugins are visited in **installation order** here (unlike
+    /// [`apply`](Self::apply), which runs in dependency order), so this is
+    /// the place for work that depends on other plugins having finished
+    /// their `apply` — reading or validating what they registered, building
+    /// final lookup tables, and so on.
+    ///
+    /// At this stage, the plugin list has stabilized and new additions are prohibited.
+    fn finish(&mut self, _app: &mut App) {
+        // do nothing
+    }
+
+    /// Runs after every plugin has been finished.
+    ///
+    /// Useful for tearing down temporary resources before the app schedules
+    /// execute. Plugins are visited in installation order.
     ///
     /// At this stage, the plugin list has stabilized and new additions are prohibited.
     fn cleanup(&mut self, _app: &mut App) {
@@ -108,10 +127,41 @@ impl dyn Plugin {
 }
 
 // -----------------------------------------------------------------------------
+// PluginExt
+
+/// Ordering helpers for plugins that are optional peers of each other.
+///
+/// Each helper only inserts an order constraint when **both** plugins are
+/// present, so a plugin can declare "run before/after `Other`" without
+/// requiring `Other` to be added at all.
+///
+/// The constraint affects the [`apply`](Plugin::apply) order (the dependency
+/// graph built during [`build`](Plugin::build)).
+pub trait PluginExt: Plugin + Sized {
+    /// Ensures that `AssetPlugin` is applied before the plugin `Other`.
+    #[inline]
+    fn apply_before<Other: Plugin>(app: &mut App) {
+        if app.contains_plugin::<Self>() && app.contains_plugin::<Other>() {
+            app.add_plugin_order::<Self, Other>();
+        }
+    }
+
+    /// Ensures that `AssetPlugin` is applied after the plugin `Other`.
+    #[inline]
+    fn apply_after<Other: Plugin>(app: &mut App) {
+        if app.contains_plugin::<Self>() && app.contains_plugin::<Other>() {
+            app.add_plugin_order::<Other, Self>();
+        }
+    }
+}
+
+impl<T: Plugin + Sized> PluginExt for T {}
+
+// -----------------------------------------------------------------------------
 // PlaceholderPlugin
 
 /// An internal sentinel used while swapping plugin objects in and out of the
-/// app during `build` / `apply` / `cleanup`.
+/// app during `build` / `apply` / `finish` / `cleanup`.
 ///
 /// It is never meant to be added by users; its
 /// [`duplicate_strategy`](Self::duplicate_strategy) is
@@ -130,6 +180,11 @@ impl Plugin for PlaceholderPlugin {
 // -----------------------------------------------------------------------------
 // PluginGroup
 
+/// A reusable bundle of [`Plugin`]s.
+///
+/// Adding a group with [`App::add_plugins`] is equivalent to adding each
+/// plugin it [`unpack`](Self::unpack)s, in order; the group itself is never
+/// stored in the app.
 pub trait PluginGroup: Sized {
     /// Returns the plugins of this group.
     fn unpack(self) -> Vec<Box<dyn Plugin>>;

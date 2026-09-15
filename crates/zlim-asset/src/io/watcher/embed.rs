@@ -9,7 +9,7 @@ use std::sync::{Arc, PoisonError, RwLock};
 use notify_debouncer_full::notify::RecommendedWatcher;
 use notify_debouncer_full::{Debouncer, RecommendedCache, notify};
 use zlim_utils::hash::HashMap;
-use zlim_utils::mpsc::Sender;
+use zlim_utils::mpmc::Sender;
 
 use super::AssetWatcher;
 use super::notifier::build_debouncer;
@@ -37,7 +37,7 @@ impl EventNotifier for EmbeddedNotifier {
         let root = &self.root;
 
         let Ok(relative_path) = absolute_path.strip_prefix(root) else {
-            strip_prefix_faild(absolute_path, root);
+            strip_prefix_failed(absolute_path, root);
             return None;
         };
 
@@ -85,7 +85,7 @@ impl EventNotifier for EmbeddedNotifier {
 
 #[cold]
 #[inline(never)]
-fn strip_prefix_faild<'a>(absolute_path: &'a Path, root: &'a Path) -> Option<&'a Path> {
+fn strip_prefix_failed<'a>(absolute_path: &'a Path, root: &'a Path) -> Option<&'a Path> {
     // Should not happen.
     zlim_log::error!(
         "EmbeddedNotifier::parse() failed to strip prefix: absolute_path={}, root={}.",
@@ -104,7 +104,11 @@ pub struct EmbeddedWatcher {
 }
 
 impl EmbeddedWatcher {
-    /// Creates a watcher on the workspace root, refreshing `dir` from `root_paths`.
+    /// Creates a watcher on the asset base path ([`crate::io::file::base_path`]), refreshing
+    /// `dir` from `root_paths`.
+    ///
+    /// Events are debounced by `debounce_wait_time`. Returns `None` when the watcher cannot be
+    /// created — the reason is logged, and embedded assets then have no hot-reload.
     pub fn build(
         dir: Dir,
         root_paths: Arc<RwLock<HashMap<Box<Path>, PathBuf>>>,

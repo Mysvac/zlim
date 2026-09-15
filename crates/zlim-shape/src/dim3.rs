@@ -1511,6 +1511,10 @@ mod tests {
     use super::*;
     use approx::assert_relative_eq;
 
+    /// Covers building a unit direction: a scaled vector is accepted and
+    /// normalized, while a zero, infinite or `NaN` vector reports its own error
+    /// variant. It also checks the length returned alongside the direction and
+    /// that directions rotate like the vectors they wrap.
     #[test]
     fn direction_creation() {
         assert_eq!(Dir3::new(Vec3::X * 12.5), Ok(Dir3::X));
@@ -1564,6 +1568,12 @@ mod tests {
         );
     }
 
+    /// Checks one exact projection first, then sweeps a handful of query points
+    /// over an ordinary, a zero-length, a diagonal and a nearly vertical segment.
+    /// The sweep does not compare coordinates but asserts invariants a correct
+    /// projection must satisfy: the result is never farther than either endpoint or
+    /// the segment centre, and projecting a point already on the segment leaves it
+    /// in place.
     #[test]
     fn segment_closest_point() {
         assert_eq!(
@@ -1629,6 +1639,10 @@ mod tests {
         assert_eq!(translation, Vec3::Z * 0.33333334, "incorrect translation");
     }
 
+    /// Covers the infinite plane built from three points: the signed distance and
+    /// the projection for a point inside the plane and for points on either side
+    /// of it, and then the plane-local isometries, which must map a triangle into
+    /// the plane and back without changing its area.
     #[test]
     fn infinite_plane_math() {
         let (plane, origin) = InfinitePlane3d::from_points(Vec3::X, Vec3::Z, Vec3::NEG_X);
@@ -1671,6 +1685,7 @@ mod tests {
             "incorrect point"
         );
 
+        // Triangle area, used as the shape invariant of the plane-local mapping.
         let area_f = |[a, b, c]: [Vec3; 3]| (a - b).cross(a - c).length() * 0.5;
         let (proj, inj) = plane.isometries_xy(origin);
 
@@ -1680,6 +1695,7 @@ mod tests {
         let triangle_proj = triangle.map(|vec3| proj * vec3);
         assert_relative_eq!(area_f(triangle_proj), 0.5);
 
+        // Mapping the flattened triangle back out of the plane must preserve its area too.
         let triangle_proj_inj = triangle_proj.map(|vec3| inj * vec3);
         assert_relative_eq!(area_f(triangle_proj_inj), 0.5);
     }
@@ -1773,6 +1789,10 @@ mod tests {
         assert_eq!(frustum.volume(), 65.97345, "incorrect volume");
     }
 
+    /// Checks the torus metrics together with the radius classification: an
+    /// ordinary ring, a horn once the hole closes, a spindle when the tube grows
+    /// past the centre, and an invalid torus once the tube radius comes out
+    /// non-positive.
     #[test]
     fn torus_math() {
         let torus = Torus {
@@ -1801,6 +1821,10 @@ mod tests {
         assert_relative_eq!(torus.volume(), 4.97428, epsilon = 0.00001);
     }
 
+    /// Checks area, volume, signed volume and centroid for a tetrahedron with
+    /// explicit vertices and for the default one, whose first three vertices are
+    /// wound so that their normal points away from the fourth, which makes the
+    /// signed volume negative.
     #[test]
     fn tetrahedron_math() {
         let tetrahedron = Tetrahedron {
@@ -1834,6 +1858,9 @@ mod tests {
         assert_relative_eq!(Tetrahedron::default().centroid(), Vec3::ZERO);
     }
 
+    /// Extrudes three different 2D base shapes and checks the resulting surface
+    /// area and volume, including the annular base whose inner perimeter adds a
+    /// second wall.
     #[test]
     fn extrusion_math() {
         let circle = Circle::new(0.75);
@@ -1852,6 +1879,11 @@ mod tests {
         assert_eq!(regular_prism.volume(), 49.392204, "incorrect volume");
     }
 
+    /// Covers a triangle in four stages: the default triangle, including what
+    /// reversing it does; a right, an obtuse and an acute triangle for the
+    /// circumcenter and the angle classification; an arbitrary triangle; and the
+    /// three ways a triangle can be degenerate, with all vertices equal, two of
+    /// them shared, or all three collinear.
     #[test]
     fn triangle_math() {
         // Default triangle tests

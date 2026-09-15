@@ -178,6 +178,9 @@ mod tests {
     use crate::Hsla;
     use crate::tests::assert_approx_eq;
 
+    /// Checks hue rotation at its boundaries: a half turn reaches the same color
+    /// from either direction, a full turn is a no-op, and the rotated hue is
+    /// normalized back into the 0..360 range rather than going negative.
     #[test]
     fn test_rotate_hue() {
         let hsla = Hsla::hsl(180.0, 1.0, 0.5);
@@ -190,6 +193,9 @@ mod tests {
         assert_eq!(hsla.rotate_hue(-360.0), hsla);
     }
 
+    /// Exercises the hue interpolation helper in both argument orders and across
+    /// the seam at 0 degrees. Interpolating 10 to 350 has to take the short way
+    /// around the wheel and produce 5, 0 and 355 instead of sweeping through 180.
     #[test]
     fn test_hue_wrap() {
         assert_approx_eq!(lerp_hue(10., 20., 0.25), 12.5, 0.001);
@@ -217,6 +223,9 @@ mod tests {
         assert_eq!(Col::gray(1.), Col::WHITE);
     }
 
+    /// Runs the black and white endpoint check for every color space that
+    /// implements the gray conversion, so a space whose implementation drifts
+    /// away from the trait's promise is caught here.
     #[test]
     fn test_gray() {
         verify_gray::<Hsla>();

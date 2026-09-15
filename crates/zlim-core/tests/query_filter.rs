@@ -23,6 +23,9 @@ struct Health(u32);
 // -----------------------------------------------------------------------------
 // And / Or composition
 
+/// `And` only holds when every member filter matches, so the first query keeps
+/// the two entities that carry both `A` and `B`, while the second keeps the two
+/// that carry `A` without `C`.
 #[test]
 fn and_combines_archetype_filters() {
     let mut world = World::alloc();
@@ -45,6 +48,9 @@ fn and_combines_archetype_filters() {
     );
 }
 
+/// `Or` accepts an entity as soon as one of its members matches, so the entity
+/// carrying neither `A` nor `B` is left out and only the other two healths are
+/// summed.
 #[test]
 fn or_combines_archetype_filters() {
     let mut world = World::alloc();
@@ -64,6 +70,10 @@ fn or_combines_archetype_filters() {
 // -----------------------------------------------------------------------------
 // Tick-based filters
 
+/// `Changed` has to compare each component's change tick against the system's
+/// run window rather than against the archetype, so the test moves the
+/// tracking baseline past the spawns, mutates a single entity, and expects
+/// exactly that entity to match.
 #[test]
 fn changed_filter_matches_only_modified() {
     let mut world = World::alloc();
@@ -85,6 +95,9 @@ fn changed_filter_matches_only_modified() {
     assert_eq!(world.invoke_once(system, ()).unwrap(), 1);
 }
 
+/// `Added` reports components written after the tracking baseline, so an
+/// entity spawned before the baseline moves is invisible to it while one
+/// spawned afterwards matches.
 #[test]
 fn added_filter_matches_only_new_spawns() {
     let mut world = World::alloc();
@@ -102,6 +115,9 @@ fn added_filter_matches_only_new_spawns() {
 // -----------------------------------------------------------------------------
 // Composed tick filters (entity-level filtering path)
 
+/// A tick filter cannot be answered table by table, so combining one with an
+/// archetype filter inside `And` has to fall back to per-entity filtering:
+/// both entities carry `A`, but only the modified one is reported.
 #[test]
 fn and_with_tick_filter_filters_per_entity() {
     let mut world = World::alloc();
@@ -129,6 +145,9 @@ fn and_with_tick_filter_filters_per_entity() {
 // -----------------------------------------------------------------------------
 // Slice iteration over archetype filters
 
+/// Slice iteration is only valid when the whole filter can be decided per
+/// table, so an archetype-only `And` is accepted and yields one health slice
+/// per matched table; only the entity carrying both components contributes.
 #[test]
 fn iter_slice_accepts_and_archetype_filter() {
     let mut world = World::alloc();
@@ -150,6 +169,9 @@ fn iter_slice_accepts_and_archetype_filter() {
     assert_eq!(total, 10);
 }
 
+/// Mutable slice iteration over an archetype `Or` bumps every matched health by
+/// a hundred; the entity carrying neither component keeps its value, which the
+/// final total checks.
 #[test]
 fn iter_slice_mut_accepts_or_archetype_filter() {
     let mut world = World::alloc();
@@ -168,12 +190,15 @@ fn iter_slice_mut_accepts_or_archetype_filter() {
     world.invoke_once(system, ()).unwrap();
 
     let total: u32 = world.query::<&Health, ()>().iter().map(|h| h.0).sum();
+    // Only the entities with `A` or `B` were visited, so the third keeps 30.
     assert_eq!(total, 10 + 100 + 20 + 100 + 30);
 }
 
 // -----------------------------------------------------------------------------
 // QueryState incremental updates
 
+/// A query state is only valid for the tables it has seen, so registering a new
+/// archetype invalidates it until an update folds that table in.
 #[test]
 fn query_state_tracks_new_tables() {
     let mut world = World::alloc();

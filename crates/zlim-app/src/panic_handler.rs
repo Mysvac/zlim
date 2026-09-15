@@ -26,7 +26,7 @@ fn set_hook() {
         target_family = "wasm" => {
             std::panic::set_hook(Box::new(wasm_impls::hook));
         },
-        feature = "trace" => {
+        feature = "trace_error" => {
             let default_hook = std::panic::take_hook();
             #[expect(clippy::print_stderr, reason = "panic output")]
             std::panic::set_hook(Box::new(move |info| {
@@ -39,7 +39,7 @@ fn set_hook() {
                     default_hook(info);
                 }
 
-                #[cfg(feature = "trace")]
+                #[cfg(feature = "trace_error")]
                 std::eprintln!("\nspan trace:\n{}", tracing_error::SpanTrace::capture());
             }));
         },
@@ -82,7 +82,7 @@ mod wasm_impls {
     pub(super) fn hook(info: &PanicHookInfo<'_>) {
         let mut msg = info.to_string();
 
-        #[cfg(feature = "trace")]
+        #[cfg(feature = "trace_error")]
         {
             msg.push_str("\n\nTrace:\n\n");
             msg.push_str(&tracing_error::SpanTrace::capture().to_string());

@@ -1431,6 +1431,8 @@ mod tests {
         assert!(1.0 - TOLERANCE != 1.0);
     };
 
+    /// Every monotonic ease function must start at zero and finish at one, within the
+    /// shared tolerance, whatever the shape of its curve in between.
     #[test]
     fn ease_functions_zero_to_one() {
         for ef in MONOTONIC_IN_OUT_INOUT.iter().flatten() {
@@ -1448,10 +1450,16 @@ mod tests {
         }
     }
 
+    /// Checks the in-out variants against their one-sided counterparts at the sample
+    /// deciles on either side of the midpoint. Convexity puts the in-out value below the
+    /// input in the lower half and above it in the upper half, and each half of the in-out
+    /// curve is a rescaled copy of the matching one-sided function.
     #[test]
     fn ease_function_inout_deciles() {
         // convexity gives the comparisons against the input built-in tolerances
         for [ef_in, ef_out, ef_inout] in MONOTONIC_IN_OUT_INOUT {
+            // Below the midpoint the in-out curve is the `in` curve at twice the time,
+            // halved.
             for x in [0.1, 0.2, 0.3, 0.4] {
                 let y = ef_inout.eval(x);
                 assert!(y < x, "EaseFunction.{ef_inout:?}({x:?}) was {y:?}");
@@ -1464,6 +1472,7 @@ mod tests {
                 );
             }
 
+            // Above the midpoint it is the `out` curve rescaled into the upper half.
             for x in [0.6, 0.7, 0.8, 0.9] {
                 let y = ef_inout.eval(x);
                 assert!(y > x, "EaseFunction.{ef_inout:?}({x:?}) was {y:?}");
@@ -1478,6 +1487,8 @@ mod tests {
         }
     }
 
+    /// At the midpoint each one-sided function must sit past the middle on its own side,
+    /// while the symmetric in-out variant passes through the middle itself.
     #[test]
     fn ease_function_midpoints() {
         for [ef_in, ef_out, ef_inout] in MONOTONIC_IN_OUT_INOUT {
@@ -1501,6 +1512,10 @@ mod tests {
         }
     }
 
+    /// Interpolating between two rotations must turn at a constant rate about a fixed
+    /// axis. The curve spans a quarter turn about Z, so samples at the quarter points are
+    /// expected to be rotations about Z through a quarter, a half and three quarters of
+    /// the total angle.
     #[test]
     fn ease_quats() {
         let quat_start = Quat::from_axis_angle(Vec3::Z, 0.0);
@@ -1535,6 +1550,9 @@ mod tests {
         );
     }
 
+    /// Interpolating between two 2D isometries moves the translation and the rotation
+    /// linearly, and the curve remains usable outside the unit interval, where it keeps
+    /// extending at the same rate rather than stopping at the endpoints.
     #[test]
     fn ease_isometries_2d() {
         let angle = 90.0;
@@ -1551,6 +1569,9 @@ mod tests {
         });
     }
 
+    /// The same behaviour as for the 2D case, checked in three dimensions: translation and
+    /// rotation both advance in proportion to the parameter, including outside the unit
+    /// interval.
     #[test]
     fn ease_isometries_3d() {
         let angle = 90.0_f32.to_radians();
@@ -1567,6 +1588,9 @@ mod tests {
         });
     }
 
+    /// Checks the step function with the jump at the start of each step, so the value is
+    /// already one step ahead at the leading edge of the domain and every boundary belongs
+    /// to the step it opens.
     #[test]
     fn jump_at_start() {
         let jump_at = JumpAt::Start;
@@ -1588,6 +1612,10 @@ mod tests {
         });
     }
 
+    /// Checks the step function with the jump at the end of each step, so a step holds its
+    /// value from its leading edge and only rises when the next boundary arrives. Each
+    /// boundary is probed from both sides, and the final level is reached exactly at the
+    /// end of the domain.
     #[test]
     fn jump_at_end() {
         let jump_at = JumpAt::End;
@@ -1610,11 +1638,16 @@ mod tests {
         });
     }
 
+    /// Checks the step function with no jump at either end: the value climbs at every step
+    /// boundary, but the levels are spread a quarter apart rather than a fifth, so the top
+    /// level is already in effect for the last fifth of the domain.
     #[test]
     fn jump_at_none() {
         let jump_at = JumpAt::None;
         let num_steps = 5;
 
+        // Because the curve neither jumps early nor late, the first level covers a whole
+        // step and the last level is reached before the end rather than at it.
         [
             (0.0, 0.0),
             (0.199, 0.0),
@@ -1634,11 +1667,16 @@ mod tests {
         });
     }
 
+    /// Checks the step function with both an early and a late jump, so the value already
+    /// starts one level up and each step advances by a fifth rather than a quarter. The
+    /// curve only reaches one at the very end of the domain.
     #[test]
     fn jump_at_both() {
         let jump_at = JumpAt::Both;
         let num_steps = 4;
 
+        // The early jump raises every level by one, so the four steps take the first four
+        // fifths and the closing jump supplies the last one.
         [
             (0.0, 0.2),
             (0.249, 0.2),

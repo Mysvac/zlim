@@ -1658,6 +1658,10 @@ mod tests {
     use super::*;
     use crate::world::World;
 
+    /// Walks the children of a root through both the owned view and the borrowed
+    /// view, checking that they agree on the child count, on ordered access by index
+    /// and on out-of-range access, that the returned ids follow insertion order, and
+    /// that a child still points back at the root.
     #[test]
     fn hierarchy_child_access() {
         let mut world = World::alloc();
@@ -1689,6 +1693,9 @@ mod tests {
         assert_eq!(owned.children().unwrap().len(), 3); // view reborrow ended
     }
 
+    /// Checks that the child list is purely insertion ordered rather than a stable
+    /// property of an entity: moving a child away and back re-appends it, so the
+    /// order changes, and detaching a child simply drops it from the list.
     #[test]
     fn hierarchy_reparent_keeps_insertion_order() {
         let mut world = World::alloc();

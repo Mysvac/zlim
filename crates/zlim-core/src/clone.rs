@@ -1172,6 +1172,9 @@ mod tests {
         assert_eq!(dst.get::<Name>(), Some(&alice));
     }
 
+    /// Checks that a batch clone yields one new entity per source in the same order
+    /// as the input, and that each copy carries the component values of its own
+    /// source rather than those of a neighbour.
     #[test]
     fn spawn_clone_batch_preserves_order() {
         let mut world = World::alloc();
@@ -1194,6 +1197,10 @@ mod tests {
         }
     }
 
+    /// Checks that cloning does not leak: both the original entity and its copy have
+    /// to be freed when the world is dropped.  Drops are tracked with an atomic
+    /// counter, and the clone is deliberately bound to `_dst` so that it stays alive
+    /// until then instead of being freed as a temporary.
     #[test]
     fn dropping_world_drops_cloned_entities() {
         define_tracker!(CLONE_DROP, TrackedDrop);
@@ -1203,8 +1210,10 @@ mod tests {
         CLONE_DROP.store(0, Ordering::SeqCst);
         let mut src = world.spawn(TrackedDrop, None);
         let _dst = src.clone(false).unwrap();
+        // Nothing may be freed while the world still owns the components.
         assert_eq!(CLONE_DROP.load(Ordering::SeqCst), 0usize);
         ::core::mem::drop(world);
+        // Dropping the world frees the source and its clone.
         assert_eq!(CLONE_DROP.load(Ordering::SeqCst), 2usize);
     }
 }

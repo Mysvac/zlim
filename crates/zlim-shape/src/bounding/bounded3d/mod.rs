@@ -349,6 +349,9 @@ mod aabb3d_tests {
         assert!(a.contains(&b));
     }
 
+    /// Combining two boxes that each stick out on a different side yields one box covering both,
+    /// and the result must contain the operands while neither operand contains it. The expected
+    /// bounds are the component-wise minimum and maximum.
     #[test]
     fn merge() {
         let a = Aabb3d {
@@ -420,6 +423,9 @@ mod aabb3d_tests {
         assert_relative_eq!(rotated.max, a.max);
     }
 
+    /// Transforming rotates first and translates afterwards, so a cube of half-size 2 rotated by 45
+    /// degrees about Z grows to `2 * sqrt(2)` in X and Y while Z is untouched, and the translation
+    /// then shifts the resulting box.
     #[test]
     fn transform() {
         let a = Aabb3d {
@@ -455,6 +461,8 @@ mod aabb3d_tests {
         );
     }
 
+    /// Covers the distinct relationships two boxes can have: identical boxes, a box overlapping a
+    /// corner, a box overlapping the opposite corner, and a box separated on one axis only.
     #[test]
     fn intersect_aabb() {
         let aabb = Aabb3d {
@@ -476,6 +484,8 @@ mod aabb3d_tests {
         }));
     }
 
+    /// Checks a sphere inscribed in the box, spheres overlapping its two opposite corners, and a
+    /// sphere pushed further along the diagonal until it no longer intersects.
     #[test]
     fn intersect_bounding_sphere() {
         let aabb = Aabb3d {
@@ -776,6 +786,9 @@ mod bounding_sphere_tests {
         assert!(scaled.contains(&a));
     }
 
+    /// Rotation moves the center around the origin while leaving the radius alone, as a sphere is
+    /// symmetric; the translation is then applied on top of the rotated center, and the unchanged
+    /// radius is asserted too.
     #[test]
     fn transform() {
         let a = BoundingSphere::new(Vec3::ONE, 5.0);
@@ -804,6 +817,8 @@ mod bounding_sphere_tests {
         );
     }
 
+    /// Covers one case of each kind of overlap two spheres can have: identical spheres, and spheres
+    /// that overlap from opposite sides, plus a pair that stays just out of reach.
     #[test]
     fn intersect_bounding_sphere() {
         let sphere = BoundingSphere::new(Vec3::ZERO, 1.0);

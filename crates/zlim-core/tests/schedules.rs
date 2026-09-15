@@ -28,6 +28,8 @@ fn inc_counter(mut counter: ResMut<Counter>) {
 // -----------------------------------------------------------------------------
 // Insert & lookup
 
+/// The collection is keyed by label: inserting an existing label replaces the
+/// schedule and hands the old one back, and removing it clears the entry.
 #[test]
 fn insert_get_remove() {
     let mut schedules = Schedules::default();
@@ -52,6 +54,8 @@ fn insert_get_remove() {
     assert!(schedules.remove(Update).is_none());
 }
 
+/// A schedule stored in the collection can be built up in place through
+/// mutable access, so callers do not have to take it out and put it back.
 #[test]
 fn get_mut_allows_in_place_building() {
     JobDB::collect();
@@ -69,6 +73,9 @@ fn get_mut_allows_in_place_building() {
 // -----------------------------------------------------------------------------
 // Entry & add_schedule
 
+/// An entry lookup creates a schedule on demand, so the first call for a
+/// missing label inserts one and later calls hand back the same schedule,
+/// while `add_schedule` stores a fully built one.
 #[test]
 fn entry_and_add_schedule() {
     let mut schedules = Schedules::default();
@@ -113,6 +120,9 @@ fn derefs_to_map() {
 // -----------------------------------------------------------------------------
 // Execution
 
+/// Running a schedule through the world drives its jobs against the world's own
+/// resources, and running it twice accumulates their effects rather than
+/// starting over.
 #[test]
 fn world_run_schedule_executes_jobs() {
     JobDB::collect();
@@ -133,6 +143,9 @@ fn world_run_schedule_executes_jobs() {
 // -----------------------------------------------------------------------------
 // World integration
 
+/// The schedules collection lives inside the world: a schedule inserted through
+/// mutable access is reachable through the shared accessor and runs against the
+/// world's resources until it is removed again.
 #[test]
 fn world_owns_schedules() {
     JobDB::collect();

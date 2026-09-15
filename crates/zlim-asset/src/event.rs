@@ -1,4 +1,10 @@
-//! Asset lifecycle events.
+//! Define basic asset events.
+//!
+//! The lifecycle of the stored assets ([`AssetEvent`]).
+//!
+//! The source-side changes a watcher reports ([`AssetSourceEvent`]).
+//!
+//! The events emitted for a failed load ([`AssetLoadFailedEvent`] and its erased counterpart).
 
 use core::fmt::{Debug, Formatter};
 use std::path::PathBuf;
@@ -7,7 +13,9 @@ use zlim_core::derive::Message;
 use zlim_path::TypePath;
 
 use crate::asset::Asset;
-use crate::ident::AssetId;
+use crate::error::AssetLoadError;
+use crate::ident::{AssetId, ErasedAssetId};
+use crate::path::AssetPath;
 
 // -----------------------------------------------------------------------------
 // AssetSourceEvent
@@ -16,9 +24,7 @@ use crate::ident::AssetId;
 /// An "asset source change event" that occurs whenever asset (or asset metadata)
 /// is created/added/removed.
 ///
-/// Emitted by [watcher] when `notify` cargo feature is enabled (if possible).
-///
-/// The internal [`PathBuf`] is un-nomalized, may contains `\` seperator on windows.
+/// Emitted by [watcher] when the `watch` cargo feature is enabled (if possible).
 ///
 /// [watcher]: crate::io::watcher
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,7 +64,7 @@ pub enum AssetSourceEvent {
         path: PathBuf,
         /// This field is only relevant if `path` is determined to be an asset path (and therefore not a folder).
         ///
-        /// - If this field is `true`, then this event corresponds to a meta removal (not an asset removal) .
+        /// - If this field is `true`, then this event corresponds to a meta removal (not an asset removal).
         /// - If `false`, then this event corresponds to an asset removal (not a meta removal).
         is_meta: bool,
     },
@@ -70,13 +76,14 @@ pub enum AssetSourceEvent {
 
 /// Lifecycle events of the assets of type `A`.
 ///
-/// Events are not written to the ECS immediately: [`Assets<A>`] pushes them
-/// into its `queued_events` while assets are added, modified or removed, and
-/// the `asset_events` job flushes that queue into a [`MessageQueue`] once per
-/// frame (registered by the asset plugin).
+/// Most events are not written to the ECS immediately: [`Assets<A>`] pushes `Added`, `Modified`,
+/// `Removed` and `Unused` into its `queued_events`, and the `asset_events` job flushes that queue
+/// into a [`MessageQueue`] once per frame (registered by the asset plugin).
+/// [`AssetEvent::FullyLoaded`] is the exception: the server writes it to the message queue
+/// directly, as soon as the asset and all of its dependencies have finished loading.
 ///
-/// Consumers therefore read them with [`MessageReader`] and see at most one
-/// `Added` before the matching `Modified`/`Removed` pairs.
+/// Consumers therefore read them with [`MessageReader`] and observe them in queue order: for a
+/// given id, an `Added` is written before the first `Modified` or `Removed` that follows it.
 ///
 /// [`Assets<A>`]: crate::assets::Assets
 /// [`MessageQueue`]: zlim_core::message::MessageQueue
@@ -124,26 +131,31 @@ impl<A: Asset> AssetEvent<A> {
     }
 
     /// Returns `true` if this is an [`Added`](Self::Added) event for `asset_id`.
+    #[inline]
     pub fn is_added(&self, asset_id: impl Into<AssetId<A>>) -> bool {
         matches!(self, Self::Added { id } if *id == asset_id.into())
     }
 
     /// Returns `true` if this is a [`Modified`](Self::Modified) event for `asset_id`.
+    #[inline]
     pub fn is_modified(&self, asset_id: impl Into<AssetId<A>>) -> bool {
         matches!(self, Self::Modified { id } if *id == asset_id.into())
     }
 
     /// Returns `true` if this is a [`Removed`](Self::Removed) event for `asset_id`.
+    #[inline]
     pub fn is_removed(&self, asset_id: impl Into<AssetId<A>>) -> bool {
         matches!(self, Self::Removed { id } if *id == asset_id.into())
     }
 
     /// Returns `true` if this is an [`Unused`](Self::Unused) event for `asset_id`.
+    #[inline]
     pub fn is_unused(&self, asset_id: impl Into<AssetId<A>>) -> bool {
         matches!(self, Self::Unused { id } if *id == asset_id.into())
     }
 
     /// Returns `true` if this is a [`FullyLoaded`](Self::FullyLoaded) event for `asset_id`.
+    #[inline]
     pub fn is_fully_loaded(&self, asset_id: impl Into<AssetId<A>>) -> bool {
         matches!(self, Self::FullyLoaded { id } if *id == asset_id.into())
     }
@@ -189,6 +201,62 @@ impl<A: Asset> PartialEq for AssetEvent<A> {
 impl<A: Asset> Eq for AssetEvent<A> {}
 
 // -----------------------------------------------------------------------------
+// ErasedAssetLoadFailedEvent
+
+/// An untyped version of [`AssetLoadFailedEvent`].
+#[derive(TypePath, Message, Clone, Debug)]
+pub struct ErasedAssetLoadFailedEvent {
+    /// The stable identifier of the asset that failed to load.
+    pub id: ErasedAssetId,
+    /// The asset path that was attempted.
+    pub path: AssetPath<'static>,
+    /// Why the asset failed to load.
+    pub error: AssetLoadError,
+}
+
+// -----------------------------------------------------------------------------
+// AssetLoadFailedEvent
+
+/// Emitted when an asset of type `A` fails to load.
+#[derive(TypePath, Message, Debug)]
+pub struct AssetLoadFailedEvent<A: Asset> {
+    /// The stable identifier of the asset that failed to load.
+    pub id: AssetId<A>,
+    /// The asset path that was attempted.
+    pub path: AssetPath<'static>,
+    /// Why the asset failed to load.
+    pub error: AssetLoadError,
+}
+
+impl<A: Asset> AssetLoadFailedEvent<A> {
+    /// Converts this to an "erased" asset error event that stores the type information.
+    pub fn erased(&self) -> ErasedAssetLoadFailedEvent {
+        ErasedAssetLoadFailedEvent {
+            id: self.id.erased(),
+            path: self.path.clone(),
+            error: self.error.clone(),
+        }
+    }
+}
+
+// `A` may not support `Clone`, so a manual impl is needed.
+impl<A: Asset> Clone for AssetLoadFailedEvent<A> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            path: self.path.clone(),
+            error: self.error.clone(),
+        }
+    }
+}
+
+impl<A: Asset> From<&AssetLoadFailedEvent<A>> for ErasedAssetLoadFailedEvent {
+    fn from(value: &AssetLoadFailedEvent<A>) -> Self {
+        value.erased()
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]
@@ -202,7 +270,7 @@ mod tests {
     struct TestAsset;
 
     impl VisitAssetDependencies for TestAsset {
-        fn visit_dependencies(&self, _visit: &mut dyn FnMut(crate::ident::ErasedAssetId)) {}
+        fn visit_dependencies(&self, _visit: &mut dyn FnMut(ErasedAssetId)) {}
     }
 
     impl Asset for TestAsset {}
@@ -214,6 +282,8 @@ mod tests {
         })
     }
 
+    /// Every predicate fires for its own variant and for nothing else, and each event still names
+    /// the id it was built with.
     #[test]
     fn predicates_match_their_own_variant() {
         let id = index_id(1);
@@ -255,6 +325,8 @@ mod tests {
         );
     }
 
+    /// A default `AssetId` is the uuid-backed form rather than an index, so the event reports that
+    /// uuid back through `id().uuid()`.
     #[test]
     fn uuid_events_carry_the_uuid_id() {
         let id: AssetId<TestAsset> = AssetId::default();

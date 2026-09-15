@@ -85,7 +85,8 @@ mod normal_impls {
     const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
 
     use atomic_waker::AtomicWaker;
-    use zlim_app::{App, First, MainSchedulePlugin, Plugin, Startup, Update};
+    use zlim_app::{App, First, MainSchedulePlugin};
+    use zlim_app::{Plugin, PluginExt, Startup, Update};
     use zlim_core::borrow::{Res, ResMut};
     use zlim_core::command::Commands;
     use zlim_core::system::If;
@@ -287,6 +288,9 @@ mod normal_impls {
         fn build(&mut self, app: &mut App) {
             if !app.contains_plugin::<DiagnosticsPlugin>() {
                 app.add_plugins(DiagnosticsPlugin);
+                zlim_log::info!(
+                    "`DiagnosticsPlugin` was added as a dependency af `SystemInfoDiagnosticsPlugin`"
+                );
             }
             MainSchedulePlugin::apply_before::<Self>(app);
         }

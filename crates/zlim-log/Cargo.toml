@@ -17,14 +17,19 @@ default_log_level = [
 ]
 
 debug = []
-trace = ["dep:tracing-error"]
 
-# Log based performance analysis.
-# - wasm target is not supported.
-
+trace_error = ["dep:tracing-error"]
 trace_tracy = ["dep:tracing-tracy"]
-trace_memory = ["dep:tracy-client"]
 trace_chrome = ["dep:tracing-chrome"]
+
+tracy_memory = ["trace_tracy", "dep:tracy-client"]
+tracy_system = ["tracing-tracy/system-tracing", "tracy-client/system-tracing"]
+tracy_sampling = ["tracing-tracy/sampling", "tracy-client/sampling"]
+tracy_broadcast = ["tracing-tracy/broadcast", "tracy-client/broadcast"]
+tracy_only_localhost = ["tracing-tracy/only-localhost", "tracy-client/only-localhost"]
+tracy_context_switch = ["tracing-tracy/context-switch-tracing", "tracy-client/context-switch-tracing"]
+tracy_callstack_inlines = ["tracing-tracy/callstack-inlines", "tracy-client/callstack-inlines"]
+tracy_demangle = ["tracing-tracy/demangle", "tracy-client/demangle"]
 
 [dependencies]
 
@@ -34,7 +39,7 @@ tracing-log = { version = "0.2.0" }
 
 # tracing core
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-tracing-subscriber = { version = "0.3.23", features = ["registry", "env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["registry"] }
 
 # feature: trace
 tracing-error = { version = "0.2.1", optional = true }
@@ -42,13 +47,13 @@ tracing-error = { version = "0.2.1", optional = true }
 # feature: trace_tracy
 # Tracy dependency compatibility table:
 # https://github.com/nagisa/rust_tracy_client
-tracing-tracy = { version = "0.11.4", optional = true }
+tracing-tracy = { version = "0.12", default-features = false, optional = true, features = ["enable", "ondemand"] }
 
 # feature: trace_chrome
 tracing-chrome = { version = "0.7.2", optional = true }
 
-# feature: trace_memory
-tracy-client = { version = "0.18.4", optional = true }
+# feature: tracy_memory
+tracy-client = { version = "0.19", default-features = false, optional = true, features = ["enable", "ondemand"] }
 
 # Platform Adapters:
 

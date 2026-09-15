@@ -1,6 +1,6 @@
 //! Implementation of the `#[derive(Error)]` proc-macro.
 
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields, Ident};
 
@@ -53,14 +53,43 @@ pub fn expand(input: &DeriveInput) -> TokenStream {
 // -----------------------------------------------------------------------------
 // Attribute parsing
 
-/// Extract `#[error("format string")]` or `#[error("fmt", extra...)]`.
-fn find_error_attr(attrs: &[syn::Attribute]) -> Result<Option<TokenStream>, syn::Error> {
+/// The parsed content of an `#[error(...)]` attribute.
+enum ErrorAttr {
+    /// `#[error("...")]` — a `format!`-style template, optionally followed by
+    /// extra arguments.
+    Format(TokenStream),
+    /// `#[error(transparent)]` — forward `Display` to the single field.
+    Transparent,
+}
+
+/// Extract `#[error("format string")]`, `#[error("fmt", extra...)]` or
+/// `#[error(transparent)]`.
+fn find_error_attr(attrs: &[syn::Attribute]) -> Result<Option<ErrorAttr>, syn::Error> {
     for attr in attrs {
         if attr.path().is_ident("error") {
-            return attr.parse_args::<TokenStream>().map(Some);
+            let tokens: TokenStream = attr.parse_args()?;
+
+            // `transparent` is a bare identifier; a format template always
+            // starts with a string literal, so the two forms cannot collide.
+            if is_bare_ident(&tokens, "transparent") {
+                return Ok(Some(ErrorAttr::Transparent));
+            }
+
+            return Ok(Some(ErrorAttr::Format(tokens)));
         }
     }
     Ok(None)
+}
+
+/// Returns `true` when `tokens` consists of exactly one identifier equal to
+/// `expected`.
+fn is_bare_ident(tokens: &TokenStream, expected: &str) -> bool {
+    let mut iter = tokens.clone().into_iter();
+
+    match (iter.next(), iter.next()) {
+        (Some(TokenTree::Ident(ident)), None) => ident == expected,
+        _ => false,
+    }
 }
 
 /// Parse `#[zlim_error(severity)]`.  Returns an error for invalid severity
@@ -72,10 +101,9 @@ fn parse_zlim_error_attr(attrs: &[syn::Attribute]) -> Result<Option<Ident>, syn:
     for attr in attrs {
         if attr.path().is_ident("zlim_error") {
             let severity: Ident = attr.parse_args().map_err(|_| {
-                syn::Error::new_spanned(
-                    attr,
-                    "expected `#[zlim_error(ignore | debug | info | warning | error | panic)]`",
-                )
+                const E: &str =
+                    "expected `#[zlim_error(ignore | debug | info | warning | error | panic)]`";
+                syn::Error::new_spanned(attr, E)
             })?;
 
             let s = severity.to_string();
@@ -104,84 +132,102 @@ fn parse_zlim_error_attr(attrs: &[syn::Attribute]) -> Result<Option<Ident>, syn:
 /// optional).
 fn gen_display(
     input: &DeriveInput,
-    type_error: &Option<TokenStream>,
+    type_error: &Option<ErrorAttr>,
 ) -> Result<TokenStream, syn::Error> {
+    const E: &str = "Error derive does not support unions";
     match &input.data {
         Data::Struct(data) => match type_error {
-            Some(tokens) => Ok(gen_struct_display(input, data, tokens)),
+            Some(attr) => gen_struct_display(input, data, attr),
             None => Ok(TokenStream::new()),
         },
         Data::Enum(data) => gen_enum_display(input, data, type_error),
-        Data::Union(_) => Err(syn::Error::new_spanned(
-            input,
-            "Error derive does not support unions",
-        )),
+        Data::Union(_) => Err(syn::Error::new_spanned(input, E)),
     }
 }
 
+/// Generates the `Display` impl of a struct (or of a newtype used as the
+/// error type itself).
 fn gen_struct_display(
     input: &DeriveInput,
     data: &syn::DataStruct,
-    tokens: &TokenStream,
-) -> TokenStream {
+    attr: &ErrorAttr,
+) -> Result<TokenStream, syn::Error> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let fields = &data.fields;
 
-    let body = match fields {
-        Fields::Named(fields) if fields.named.is_empty() => {
-            quote! { ::core::write!(__f__, #tokens) }
-        }
-        Fields::Named(fields) => {
-            let idents = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
-            quote! {
-                // // use `#[automatically_derived]` instead.
-                // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                // #[allow(unused, reason = "not all fields may appear in the format string")]
-                let Self { #(#idents),* } = self;
-                ::core::write!(__f__, #tokens)
+    let body = match attr {
+        ErrorAttr::Transparent => {
+            if !is_single_tuple_field(&data.fields) {
+                const E: &str = "#[error(transparent)]` is only valid on a single-field tuple.";
+                return Err(syn::Error::new_spanned(input, E));
             }
+
+            // Forward straight to the inner value's `Display`: no formatting
+            // machinery and no intermediate allocation.
+            quote! { ::core::fmt::Display::fmt(&self.0, __f__) }
         }
-        Fields::Unnamed(fields) => {
-            let n = fields.unnamed.len();
-            let pats = (0..n).map(|i| format_ident!("_{i}"));
-            quote! {
-                // // use `#[automatically_derived]` instead.
-                // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                // #[allow(unused, reason = "not all fields may appear in the format string")]
-                let Self(#(#pats),*) = self;
-                ::core::write!(__f__, #tokens)
+        ErrorAttr::Format(tokens) => match &data.fields {
+            Fields::Named(fields) if fields.named.is_empty() => {
+                quote! { ::core::write!(__f__, #tokens) }
             }
-        }
-        Fields::Unit => {
-            quote! { ::core::write!(__f__, #tokens) }
-        }
+            Fields::Named(fields) => {
+                let idents = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
+                quote! {
+                    // // use `#[automatically_derived]` instead.
+                    // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                    // #[allow(unused, reason = "not all fields may appear in the format string")]
+                    let Self { #(#idents),* } = self;
+                    ::core::write!(__f__, #tokens)
+                }
+            }
+            Fields::Unnamed(fields) => {
+                let n = fields.unnamed.len();
+                let pats = (0..n).map(|i| format_ident!("_{i}"));
+                quote! {
+                    // // use `#[automatically_derived]` instead.
+                    // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                    // #[allow(unused, reason = "not all fields may appear in the format string")]
+                    let Self(#(#pats),*) = self;
+                    ::core::write!(__f__, #tokens)
+                }
+            }
+            Fields::Unit => {
+                quote! { ::core::write!(__f__, #tokens) }
+            }
+        },
     };
 
-    quote! {
+    Ok(quote! {
         #[automatically_derived]
         impl #impl_generics ::core::fmt::Display for #name #ty_generics #where_clause {
             fn fmt(&self, __f__: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 #body
             }
         }
-    }
+    })
 }
 
 fn gen_enum_display(
     input: &DeriveInput,
     data: &syn::DataEnum,
-    default_tokens: &Option<TokenStream>,
+    default_attr: &Option<ErrorAttr>,
 ) -> Result<TokenStream, syn::Error> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
+    // `transparent` needs exactly one field to delegate to, which an enum
+    // itself never has.
+    if matches!(default_attr, Some(ErrorAttr::Transparent)) {
+        const E: &str = "`#[error(transparent)]` cannot be applied to an enum; place it on a single-field tuple variant instead";
+        return Err(syn::Error::new_spanned(input, E));
+    }
+
     let mut specific_arms = Vec::new();
-    let has_default = default_tokens.is_some();
+    let has_default = default_attr.is_some();
 
     for v in &data.variants {
         let vname = &v.ident;
-        let Some(tokens) = find_error_attr(&v.attrs)? else {
+        let Some(attr) = find_error_attr(&v.attrs)? else {
             if has_default {
                 continue;
             } else {
@@ -192,42 +238,58 @@ fn gen_enum_display(
             }
         };
 
-        match &v.fields {
-            Fields::Named(fields) if fields.named.is_empty() => {
-                specific_arms.push(quote! { #name::#vname {} => ::core::write!(__f__, #tokens) });
+        let arm = match &attr {
+            ErrorAttr::Format(tokens) => match &v.fields {
+                Fields::Named(fields) if fields.named.is_empty() => {
+                    quote! { #name::#vname {} => ::core::write!(__f__, #tokens) }
+                }
+                Fields::Named(fields) => {
+                    let idents = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
+                    quote! {
+                        // // use `#[automatically_derived]` instead.
+                        // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                        // #[allow(unused, reason = "not all fields may appear in the format string")]
+                        #name::#vname { #(#idents),* } => ::core::write!(__f__, #tokens)
+                    }
+                }
+                Fields::Unnamed(fields) => {
+                    let n = fields.unnamed.len();
+                    let pats = (0..n).map(|i| format_ident!("_{i}"));
+                    quote! {
+                        // // use `#[automatically_derived]` instead.
+                        // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
+                        // #[allow(unused, reason = "not all fields may appear in the format string")]
+                        #name::#vname(#(#pats),*) => ::core::write!(__f__, #tokens)
+                    }
+                }
+                Fields::Unit => {
+                    quote! { #name::#vname => ::core::write!(__f__, #tokens) }
+                }
+            },
+            ErrorAttr::Transparent => {
+                if !is_single_tuple_field(&v.fields) {
+                    const E: &str =
+                        "`#[error(transparent)]` is only valid on a single-field tuple variant";
+                    return Err(syn::Error::new_spanned(v, E));
+                }
+
+                // Forward straight to the inner value's `Display`.
+                quote! { #name::#vname(__inner__) => ::core::fmt::Display::fmt(__inner__, __f__) }
             }
-            Fields::Named(fields) => {
-                let idents = fields.named.iter().map(|f| f.ident.as_ref().unwrap());
-                specific_arms.push(quote! {
-                    // // use `#[automatically_derived]` instead.
-                    // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                    // #[allow(unused, reason = "not all fields may appear in the format string")]
-                    #name::#vname { #(#idents),* } => ::core::write!(__f__, #tokens)
-                });
-            }
-            Fields::Unnamed(fields) => {
-                let n = fields.unnamed.len();
-                let pats = (0..n).map(|i| format_ident!("_{i}"));
-                specific_arms.push(quote! {
-                    // // use `#[automatically_derived]` instead.
-                    // #[expect(clippy::allow_attributes, reason = "allow unused destructure bindings")]
-                    // #[allow(unused, reason = "not all fields may appear in the format string")]
-                    #name::#vname(#(#pats),*) => ::core::write!(__f__, #tokens)
-                });
-            }
-            Fields::Unit => {
-                specific_arms.push(quote! { #name::#vname => ::core::write!(__f__, #tokens) });
-            }
-        }
+        };
+
+        specific_arms.push(arm);
     }
 
     if !has_default && specific_arms.is_empty() {
         return Ok(TokenStream::new());
     }
 
-    let fallback = match default_tokens {
-        Some(tokens) => quote! { _ => ::core::write!(__f__, #tokens) },
-        None => TokenStream::new(),
+    let fallback = match default_attr {
+        Some(ErrorAttr::Format(tokens)) => quote! { _ => ::core::write!(__f__, #tokens) },
+        // `Transparent` is rejected above; `None` means every variant has its
+        // own arm.
+        _ => TokenStream::new(),
     };
 
     Ok(quote! {
@@ -241,6 +303,12 @@ fn gen_enum_display(
             }
         }
     })
+}
+
+/// Returns `true` for a single-field tuple (`(T,)`), the only shape
+/// `#[error(transparent)]` accepts.
+fn is_single_tuple_field(fields: &Fields) -> bool {
+    matches!(fields, Fields::Unnamed(fields) if fields.unnamed.len() == 1)
 }
 
 // -----------------------------------------------------------------------------

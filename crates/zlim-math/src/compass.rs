@@ -317,6 +317,8 @@ mod test_compass_quadrant {
     use super::CompassQuadrant;
     use crate::{Dir2, Vec2};
 
+    /// The four axes sit at the center of the four slices, so each one maps to the quadrant of the
+    /// same name.
     #[test]
     fn test_cardinal_directions() {
         let tests = [
@@ -343,6 +345,8 @@ mod test_compass_quadrant {
         }
     }
 
+    /// North owns the 90° wedge centered on the +Y axis, so the two samples straddling that axis
+    /// still map to north.
     #[test]
     fn test_north_pie_slice() {
         let tests = [
@@ -361,6 +365,8 @@ mod test_compass_quadrant {
         }
     }
 
+    /// East owns the 90° wedge centered on the +X axis, so the two samples straddling that axis
+    /// still map to east.
     #[test]
     fn test_east_pie_slice() {
         let tests = [
@@ -379,6 +385,8 @@ mod test_compass_quadrant {
         }
     }
 
+    /// South owns the 90° wedge centered on the -Y axis, so the two samples straddling that axis
+    /// still map to south.
     #[test]
     fn test_south_pie_slice() {
         let tests = [
@@ -397,6 +405,8 @@ mod test_compass_quadrant {
         }
     }
 
+    /// West owns the 90° wedge centered on the -X axis, so the two samples straddling that axis
+    /// still map to west.
     #[test]
     fn test_west_pie_slice() {
         let tests = [
@@ -444,6 +454,8 @@ mod test_compass_octant {
     use super::CompassOctant;
     use crate::{Dir2, Vec2};
 
+    /// The four axes and the four diagonals are the centers of the eight slices, so each direction
+    /// maps to the octant of the same name.
     #[test]
     fn test_cardinal_directions() {
         let tests = [
@@ -483,6 +495,8 @@ mod test_compass_octant {
         }
     }
 
+    /// North owns the 45° wedge centered on the +Y axis, so samples on either side of that
+    /// axis still map to it.
     #[test]
     fn test_north_pie_slice() {
         let tests = [
@@ -501,6 +515,8 @@ mod test_compass_octant {
         }
     }
 
+    /// NorthEast owns the 45° wedge centered on the north-east diagonal, so samples leaning to
+    /// either side of that diagonal still map to it.
     #[test]
     fn test_north_east_pie_slice() {
         let tests = [
@@ -519,6 +535,8 @@ mod test_compass_octant {
         }
     }
 
+    /// East owns the 45° wedge centered on the +X axis, so samples on either side of that
+    /// axis still map to it.
     #[test]
     fn test_east_pie_slice() {
         let tests = [
@@ -534,6 +552,8 @@ mod test_compass_octant {
         }
     }
 
+    /// SouthEast owns the 45° wedge centered on the south-east diagonal, so samples leaning to
+    /// either side of that diagonal still map to it.
     #[test]
     fn test_south_east_pie_slice() {
         let tests = [
@@ -552,6 +572,8 @@ mod test_compass_octant {
         }
     }
 
+    /// South owns the 45° wedge centered on the -Y axis, so samples on either side of that
+    /// axis still map to it.
     #[test]
     fn test_south_pie_slice() {
         let tests = [
@@ -570,6 +592,8 @@ mod test_compass_octant {
         }
     }
 
+    /// SouthWest owns the 45° wedge centered on the south-west diagonal, so samples leaning to
+    /// either side of that diagonal still map to it.
     #[test]
     fn test_south_west_pie_slice() {
         let tests = [
@@ -588,6 +612,8 @@ mod test_compass_octant {
         }
     }
 
+    /// West owns the 45° wedge centered on the -X axis, so samples on either side of that
+    /// axis still map to it.
     #[test]
     fn test_west_pie_slice() {
         let tests = [
@@ -606,6 +632,8 @@ mod test_compass_octant {
         }
     }
 
+    /// NorthWest owns the 45° wedge centered on the north-west diagonal, so samples leaning to
+    /// either side of that diagonal still map to it.
     #[test]
     fn test_north_west_pie_slice() {
         let tests = [

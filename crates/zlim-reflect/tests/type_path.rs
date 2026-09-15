@@ -53,6 +53,8 @@ fn non_generic_default_path() {
     }
 }
 
+/// A custom path is split at its final segment: everything before it becomes the module, and the
+/// module's first segment is the crate — with a two-segment path both of them end up the same.
 #[test]
 fn non_generic_custom_path() {
     assert_path! {
@@ -86,6 +88,9 @@ fn non_generic_single_segment() {
     }
 }
 
+/// A generic container composes its path from its argument's path, so `type_path` embeds the
+/// argument's full path while `type_name` only splices in its short name. The same expectations
+/// hold whether that argument's path is custom or a single segment.
 #[test]
 fn generic_type_path() {
     assert_path! {
@@ -107,6 +112,9 @@ fn generic_type_path() {
     }
 }
 
+/// The `#[type_path]` attribute on a generic container overrides the container's own path only:
+/// `type_path` still embeds the argument's custom path in full, while `IDENT`, `CRATE` and
+/// `MODULE` all describe the outer type alone.
 #[test]
 fn generic_custom_path() {
     assert_path! {

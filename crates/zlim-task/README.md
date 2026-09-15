@@ -251,6 +251,17 @@ async executors to avoid deadlock.
 The thread is parked via `futures_lite::future::block_on` by default, or
 `async_io::block_on` when the `async_io` feature is enabled.
 
+If your async task contains (dependency) work for a `TaskPool`, use the `block_on`
+provided by this crate rather than a lower-level one such as `futures_lite`'s.
+
+A lower-level `block_on` simply parks the current thread once the target task returns `Pending`,
+even though the local queue may still hold runnable tasks. In the particular case where the input
+task depends on the `TaskPool`, this can leave every worker thread parked on the user's task with
+nobody left to drive the pool's tasks.
+
+This crate's `block_on`, by contrast, keeps processing the local queue while the target task is
+`Pending`.
+
 ## invoke_on_main
 
 Sends a single closure to the main thread for execution and blocks until

@@ -4,7 +4,8 @@
 //!
 //! - [`Writer`] is a *byte stream*: `futures_lite`'s `AsyncWrite` plus
 //!   [`Writer::write_all_bytes`], the "hand over the whole payload at once" fast path.
-//!   `Vec<u8>` implements it, which is what savers and tests write into.
+//!   Savers write through the [`Writer`] a source hands them; a `Vec<u8>` is only an
+//!   `AsyncWrite` sink, which tests write into with [`WriteAllFuture::async_write`].
 //! - [`AssetWriter`] is a *source*: it creates those streams for asset paths and also owns the
 //!   directory operations (create/remove/rename/clear). It is written with RPITIT
 //!   (`-> impl Future<…> + Send`) and therefore **not object safe**; [`ErasedAssetWriter`] is
@@ -54,15 +55,15 @@ pub enum AssetWriterError {
     /// The requested path does not exist.
     #[error("Path not found: {}", _0.display())]
     NotFound(PathBuf),
-    /// The filename is invalid or missing.
-    #[error("Filename is invalid or missing: {}", _0.display())]
+    /// The filename is invalid, as same as `std::io::ErrorKind::InvalidFilename`.
+    #[error("Filename is invalid: {}", _0.display())]
     InvalidFilename(PathBuf),
     /// The directory was expected to be empty.
     #[error("Expected an empty directory, but it's not empty: {}", _0.display())]
     DirectoryNotEmpty(PathBuf),
     /// The underlying IO operation failed.
     #[error("Encountered an I/O error while writing asset: {_0}")]
-    Io(std::io::Error),
+    Io(std::io::Error), // Do not use Arc, optimize performance
 }
 
 impl Clone for AssetWriterError {
@@ -97,9 +98,24 @@ impl PartialEq for AssetWriterError {
 
 impl From<std::io::Error> for AssetWriterError {
     /// Wraps an IO error as [`AssetWriterError::Io`].
+    #[cold]
     #[inline]
     fn from(value: std::io::Error) -> Self {
         Self::Io(value)
+    }
+}
+
+impl AssetWriterError {
+    /// Return `true` if the error is `not found`.
+    ///
+    /// Strictly speaking, this is not precise.
+    #[inline]
+    pub fn is_not_find(&self) -> bool {
+        match self {
+            Self::NotFound(_) => true,
+            Self::Io(error) => error.kind() == std::io::ErrorKind::NotFound,
+            _ => false,
+        }
     }
 }
 
@@ -124,8 +140,7 @@ pub use futures_lite::io::AsyncWrite;
 /// # use futures_lite::future::block_on;
 /// # use futures_lite::io::AsyncWriteExt;
 /// # use std::path::Path;
-/// # use zlim_asset::io::AssetWriter;
-/// # use zlim_asset::io::Writer;
+/// # use zlim_asset::io::{AssetWriter, Writer};
 /// use zlim_asset::io::memory::MemoryAssetWriter;
 ///
 /// let source = MemoryAssetWriter::default();
@@ -186,7 +201,7 @@ impl Writer for Box<dyn Writer + '_> {
 /// - Sources add their own layout: the filesystem source appends `.meta` for metadata, the
 ///   in-memory source keeps a separate metadata map.
 /// - Removals other than [`remove_empty_directory`] are recursive, and removing something
-///   that does not exist is a [`NotFound`] error (except for metadata, see [`remove_meta`]).
+///   that does not exist is a [`NotFound`] error.
 ///
 /// The trait is not object safe; the type-erased [`ErasedAssetWriter`] is created
 /// automatically for any `AssetWriter`.
@@ -194,7 +209,6 @@ impl Writer for Box<dyn Writer + '_> {
 /// [`write_bytes`]: Self::write_bytes
 /// [`write_meta_bytes`]: Self::write_meta_bytes
 /// [`remove_empty_directory`]: Self::remove_empty_directory
-/// [`remove_meta`]: Self::remove_meta
 /// [`NotFound`]: AssetWriterError::NotFound
 /// [`AssetReader`]: crate::io::AssetReader
 /// [`default_writer`]: crate::source::AssetSource::default_writer
@@ -205,8 +219,7 @@ impl Writer for Box<dyn Writer + '_> {
 /// # use futures_lite::future::block_on;
 /// # use futures_lite::io::AsyncWriteExt;
 /// # use std::path::Path;
-/// # use zlim_asset::io::AssetWriter;
-/// # use zlim_asset::io::Writer;
+/// # use zlim_asset::io::{AssetWriter, Writer};
 /// use zlim_asset::io::memory::MemoryAssetWriter;
 ///
 /// let writer = MemoryAssetWriter::default();

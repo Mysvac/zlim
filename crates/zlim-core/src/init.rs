@@ -18,7 +18,9 @@ fn init_internal() {
     #[cfg(feature = "trace")]
     let _span = zlim_log::info_span!("core init").entered();
 
-    zlim_log::debug!("Engine CoreInit Start...");
+    // Ensure the `GlobalPool` is already allocated,
+    // to avoid triggering the lock on multi-threaded tasks.
+    zlim_utils::mem::Global::alloc_str("core");
 
     zlim_task::cfg::single_thread! {
         ResourceDB::collect();
@@ -37,7 +39,7 @@ fn init_internal() {
         JobGroup::collect();
     }
 
-    zlim_log::debug!("Engine CoreInit Completed: {:?}", start.elapsed());
+    zlim_log::debug!("Engine CoreInit finished: {:?}", start.elapsed());
 }
 
 /// Runs all initialization functions exactly once.
@@ -53,7 +55,7 @@ pub fn core_init() {
 mod tests {
 
     #[test]
-    #[ignore = "manually trigger"]
+    #[ignore = "manual trigger"]
     fn init_time() {
         zlim_log::LogConfig::default().apply();
         zlim_task::TaskPoolConfigs::default().apply();

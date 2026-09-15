@@ -125,6 +125,9 @@ mod tests {
     use crate::path::TypePath;
     use core::any::TypeId;
 
+    /// Covers `str` alongside the `&'static str` reference that the reflection
+    /// database actually stores, whose name is `&str` and whose `IDENT` drops
+    /// the referent to `&_`.
     #[test]
     fn str_path() {
         assert_eq!(<str>::type_path(), "str");

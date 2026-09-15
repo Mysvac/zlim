@@ -454,6 +454,10 @@ mod tests {
         assert_eq!(a, b);
     }
 
+    /// Covers scaling to a target luminance outside the SDR range. A mid gray
+    /// raised to 2.0 has to become an HDR color, an already-HDR color keeps its
+    /// chromaticity while scaling, and a saturated color is pushed past 1.0 rather
+    /// than clipped, so that the requested luminance is still reached exactly.
     #[test]
     fn with_luminance_scales_unclamped() {
         use crate::tests::assert_approx_eq;

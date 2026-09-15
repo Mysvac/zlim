@@ -547,6 +547,9 @@ mod tests {
     use crate::db::TypeDB;
     use core::any::TypeId;
 
+    /// Every scalar this module reflects — the integer and float primitives plus
+    /// `bool` and `char` — can be looked up both by `TypeId` and by its type
+    /// path once the database has been collected.
     #[test]
     fn registered() {
         TypeDB::collect();

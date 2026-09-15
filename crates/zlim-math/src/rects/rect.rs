@@ -428,6 +428,9 @@ mod tests {
 
     use super::*;
 
+    /// Building a rectangle from its center and size has to produce normalized corners, and the
+    /// accessors are checked against those corners, including points on its edges, which
+    /// `contains` counts as inside.
     #[test]
     fn well_formed() {
         let r = Rect::from_center_size(Vec2::new(3., -5.), Vec2::new(8., 11.));
@@ -565,6 +568,8 @@ mod tests {
         assert_eq!(n.max.y, 0.6);
     }
 
+    /// Narrowing to the integer rectangles truncates the corners towards zero, and on the way to
+    /// the unsigned one the negative component clamps to zero instead.
     #[test]
     fn rect_conversions() {
         let r = Rect::new(0.2, -1.4, 5.8, 3.2);

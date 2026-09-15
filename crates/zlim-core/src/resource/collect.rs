@@ -1,7 +1,6 @@
 //! Bulk (CTOR-driven) resource registration.
 
 use std::sync::PoisonError;
-use zlim_log as log;
 
 use super::db::{ID_REGISTRY, PATH_REGISTRY, ResourceDB, TYPE_REGISTRY};
 use super::resource::Resource;
@@ -51,8 +50,8 @@ impl ResourceDB {
             use __internal__::__ResourceReg__ as Reg;
             const PRE: usize = 100;
 
+            #[cfg(any(debug_assertions, feature = "debug"))]
             let start = zlim_os::time::Instant::now();
-            log::debug!("Collecting ResourceDB registrations...");
 
             {
                 // pre-reserve, for better register speed.
@@ -92,9 +91,10 @@ impl ResourceDB {
                 len
             };
 
-            log::debug!(
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            zlim_log::debug!(
                 "ResourceDB({len}) collection finished in {:?}",
-                start.elapsed()
+                start.elapsed(),
             );
         }
 

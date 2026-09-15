@@ -24,22 +24,23 @@ debug = [
     "zlim-asset/debug",
 ]
 
-trace = [
-    "zlim-log/trace",
-    "zlim-core/trace",
-    "zlim-app/trace",
-]
-
 backtrace = [
     "zlim-core/backtrace",
     "zlim-app/backtrace",
 ]
 
+trace = [
+    "zlim-core/trace",
+    "zlim-app/trace",
+]
+
+trace_error = ["zlim-log/trace_error", "trace"]
+
 trace_tracy = ["zlim-log/trace_tracy", "trace"]
 
-trace_memory = ["zlim-log/trace_memory"]
-
 trace_chrome = ["zlim-log/trace_chrome", "trace"]
+
+tracy_memory = ["zlim-log/tracy_memory"]
 
 libm = ["zlim-math/libm"]
 
@@ -49,11 +50,15 @@ approx = ["zlim-math/approx"]
 
 async-io = ["zlim-task/async-io"]
 
-notify = ["zlim-asset/notify"]
+watch = ["zlim-asset/watch"]
 
-zlim-sysinfo = ["dep:zlim-sysinfo"]
+http = ["zlim-asset/http"]
+https = ["zlim-asset/https"]
+web_asset_cache = ["zlim-asset/web_asset_cache"]
 
 zlim-sample = ["dep:zlim-sample"]
+
+zlim-sysinfo = ["dep:zlim-sysinfo"]
 
 [dependencies]
 

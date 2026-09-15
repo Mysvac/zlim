@@ -1127,6 +1127,11 @@ mod tests {
         assert!(FreeBuffer::chunck_capacity(3) == 2048);
     }
 
+    /// Checks that the allocator never hands out the same id twice.  A thousand ids
+    /// are allocated at once, half of them are freed, then the rest, and finally a
+    /// mix of batch, plain and mutable allocation refills the pool; after both rounds
+    /// the ids are sorted and deduplicated, so a repeated id would shrink the list
+    /// and fail the length comparison.
     #[test]
     fn uniqueness() {
         let mut entities = Vec::with_capacity(2000);
@@ -1154,6 +1159,10 @@ mod tests {
         assert_eq!(pre_len, entities.len(), "fail 2");
     }
 
+    /// Checks that freed ids are recycled instead of the index space growing without
+    /// bound.  Each round allocates the same number of entities, frees all of them
+    /// again and starts over, so the highest index has to stay bounded no matter how
+    /// many rounds have already run.
     #[test]
     fn recyclable() {
         let mut entities = Vec::with_capacity(550);

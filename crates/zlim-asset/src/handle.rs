@@ -39,6 +39,7 @@ impl Drop for StrongHandle {
     fn drop(&mut self) {
         self.drop_sender.push(DropEvent {
             index: self.index,
+            type_id: self.type_id,
             asset_server_managed: self.asset_server_managed,
         });
     }
@@ -52,6 +53,7 @@ impl Drop for StrongHandle {
 pub(crate) struct DropEvent {
     /// The slot index of the dropped handle.
     pub(crate) index: AssetIndex,
+    pub(crate) type_id: TypeId,
     /// Whether the slot was managed by the asset server.
     pub(crate) asset_server_managed: bool,
 }
@@ -87,13 +89,25 @@ impl AssetHandleProvider {
         }
     }
 
+    /// The [`Asset`] type this provider allocates handles for.
+    #[inline]
+    pub(crate) fn type_id(&self) -> TypeId {
+        self.type_id
+    }
+
+    /// Pops one pending drop event, if any.
     #[inline]
     pub(crate) fn try_recv(&self) -> Option<DropEvent> {
         self.drop_events.pop()
     }
 
+    /// Returns `true` while a [`StrongHandle`] drop event is waiting to be processed.
+    #[inline]
+    pub(crate) fn has_drop_event(&self) -> bool {
+        !self.drop_events.is_empty()
+    }
+
     /// Allocates a new strong handle (a fresh slot plus its [`StrongHandle`]) for the server.
-    #[expect(unused, reason = "todo")]
     pub(crate) fn alloc_handle(
         &self,
         path: Option<AssetPath<'static>>,
@@ -445,13 +459,13 @@ impl ErasedHandle {
 
     /// Types this handle back, returning an error when the asset type does not match.
     #[inline]
-    pub fn try_with_type<A: Asset>(self) -> Result<Handle<A>, AssetHandleTypedError> {
+    pub fn try_with_type<A: Asset>(self) -> Result<Handle<A>, AssetHandleTypeError> {
         let actual = self.type_id();
         let expect = TypeId::of::<A>();
 
         if actual != expect {
             ::core::hint::cold_path();
-            return Err(AssetHandleTypedError {
+            return Err(AssetHandleTypeError {
                 type_name: core::any::type_name::<A>(),
                 expect,
                 actual,
@@ -532,7 +546,7 @@ impl<A: Asset> From<&mut Handle<A>> for ErasedHandle {
 }
 
 impl<A: Asset> TryFrom<ErasedHandle> for Handle<A> {
-    type Error = AssetHandleTypedError;
+    type Error = AssetHandleTypeError;
 
     #[inline]
     fn try_from(value: ErasedHandle) -> Result<Self, Self::Error> {
@@ -557,13 +571,67 @@ impl<A: Asset> PartialEq<Handle<A>> for ErasedHandle {
     }
 }
 
+impl<A: Asset> PartialOrd<ErasedHandle> for Handle<A> {
+    #[inline]
+    fn partial_cmp(&self, other: &ErasedHandle) -> Option<core::cmp::Ordering> {
+        if TypeId::of::<A>() != other.type_id() {
+            None
+        } else {
+            self.id().partial_cmp(&other.id())
+        }
+    }
+}
+
+impl<A: Asset> PartialOrd<Handle<A>> for ErasedHandle {
+    #[inline]
+    fn partial_cmp(&self, other: &Handle<A>) -> Option<core::cmp::Ordering> {
+        Some(other.partial_cmp(self)?.reverse())
+    }
+}
+
+impl From<&ErasedHandle> for ErasedAssetId {
+    #[inline]
+    fn from(value: &ErasedHandle) -> Self {
+        value.id()
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TypedAssetIndex
+
+use crate::ident::{TypedAssetIndex, UuidNotSupportedError};
+
+impl<A: Asset> TryFrom<&Handle<A>> for TypedAssetIndex {
+    type Error = UuidNotSupportedError;
+
+    #[inline]
+    fn try_from(handle: &Handle<A>) -> Result<Self, Self::Error> {
+        match handle {
+            Handle::Strong(handle) => Ok(Self::new(handle.index, handle.type_id)),
+            Handle::Uuid(uuid, _) => Err(UuidNotSupportedError(*uuid)),
+        }
+    }
+}
+
+impl TryFrom<&ErasedHandle> for TypedAssetIndex {
+    type Error = UuidNotSupportedError;
+
+    #[inline]
+    fn try_from(handle: &ErasedHandle) -> Result<Self, Self::Error> {
+        match handle {
+            ErasedHandle::Strong(handle) => Ok(Self::new(handle.index, handle.type_id)),
+            ErasedHandle::Uuid { uuid, .. } => Err(UuidNotSupportedError(*uuid)),
+        }
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Errors
 
 /// Returned when an [`ErasedHandle`] is typed back as the wrong asset type.
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone)]
 #[error("ErasedHandle({actual:?}) cannot be converted into Handle<{type_name}>({expect:?})")]
-pub struct AssetHandleTypedError {
+pub struct AssetHandleTypeError {
     /// The (debug) type name we tried to convert to.
     type_name: &'static str,
     /// The type id we tried to convert to.
@@ -572,7 +640,7 @@ pub struct AssetHandleTypedError {
     actual: TypeId,
 }
 
-impl AssetHandleTypedError {
+impl AssetHandleTypeError {
     /// The expected asset type.
     #[inline]
     pub const fn expected(&self) -> TypeId {

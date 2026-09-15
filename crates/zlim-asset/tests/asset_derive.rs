@@ -61,6 +61,10 @@ fn derive_asset_implements_both_traits() {
     assert_visit::<DependencyRef>();
 }
 
+/// Checks the order the derive promises: the marked fields are visited in
+/// declaration order, with the option, the nested visitor and the handle list
+/// contributing what they hold. The unmarked fields are neither visited nor
+/// altered.
 #[test]
 fn visits_marked_fields_in_declaration_order() {
     let value = Named {
@@ -81,6 +85,8 @@ fn visits_marked_fields_in_declaration_order() {
     );
 }
 
+/// A unit struct has nothing to visit at all, and in a tuple struct only the
+/// marked positions are, so the plain fields beside them stay ordinary data.
 #[test]
 fn visits_nothing_without_marked_fields() {
     #[derive(TypePath, Asset)]
@@ -96,6 +102,9 @@ fn visits_nothing_without_marked_fields() {
     assert_eq!(visited(&tuple), vec![dep(6)]);
 }
 
+/// Every variant shape goes through the same visitor: the variants that mark no
+/// field contribute nothing, and a tuple variant visits only its marked positions,
+/// in order, wherever they sit in the tuple.
 #[test]
 fn enums_visit_only_the_matched_variant() {
     #[derive(TypePath, Asset)]
@@ -123,6 +132,9 @@ fn enums_visit_only_the_matched_variant() {
     assert_eq!(visited(&value), vec![dep(8), dep(9)]);
 }
 
+/// An absent optional field contributes nothing, while a present one and a
+/// container are descended into, so a dependency held inside a container is
+/// reported exactly like a direct one.
 #[test]
 fn options_and_containers_are_visited_recursively() {
     #[derive(TypePath, Asset)]
@@ -144,6 +156,8 @@ fn options_and_containers_are_visited_recursively() {
     assert_eq!(visited(&value), vec![dep(10), dep(11)]);
 }
 
+/// The derived visitor forwards to its type parameter instead of stopping at the
+/// wrapper, so whatever the inner type reports reaches the caller.
 #[test]
 fn generic_types_forward_to_the_type_parameter() {
     // The macro adds no bounds, so a generic wrapper writes them on the type itself.

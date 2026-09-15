@@ -403,6 +403,9 @@ mod tests {
         r.run();
     }
 
+    /// Walks the queue through one use of every operation: the owner pops the
+    /// most recently pushed task while a stealer takes the oldest, and both
+    /// empty-state reads report `None` once the queue is drained.
     #[test]
     fn smoke() {
         let d = LocalDeque::new();
@@ -482,6 +485,12 @@ mod tests {
         }
     }
 
+    /// Cross-checks the deque against `std::collections::VecDeque` as an
+    /// oracle: a scripted mix of pushes, owner pops and steals drives both
+    /// containers, and after every step the two must hand out the same task.
+    ///
+    /// `COUNT` is lowered under miri so the stress run stays affordable, and
+    /// the final pass verifies that every pushed task ran exactly once.
     #[test]
     #[expect(clippy::print_stderr, reason = "diagnostics for failed stress runs")]
     fn model_stress() {
@@ -551,6 +560,12 @@ mod tests {
         assert_eq!(bad, 0, "{bad} tasks lost or duplicated");
     }
 
+    /// Concurrent stress test: one owner thread pushes tasks and occasionally
+    /// pops its own while two stealers drain the front, all inside a single
+    /// scope. Every pushed task must run exactly once — none lost, none run
+    /// twice — and the deque must end up empty.
+    ///
+    /// `COUNT` shrinks under miri so the run stays affordable.
     #[test]
     fn owner_steal_exactly_once() {
         // One owner pushes and occasionally pops; two stealers steal. Every

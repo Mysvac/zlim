@@ -28,13 +28,11 @@ pub use embedded::EMBEDDED;
 pub use reader::*;
 pub use writer::*;
 
-// HTTP(S) readers (currently the wasm `fetch` one) live in `io::http`.
-pub mod http;
+pub use crate::utils::PathStream;
 
-// Platform specific readers (currently the Android `AAssets` one) live in `io::platform`.
+// Platform specific readers (the Android `AAssets` reader and the wasm `fetch` one) live in
+// `io::platform`.
 pub mod platform;
 
 #[cfg(not(target_family = "wasm"))]
 pub mod file;
-
-// TODO(asset_processor): `gated.rs` (`ProcessorGatedReader`) lands with the processor (M4).

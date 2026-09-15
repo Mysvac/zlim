@@ -175,8 +175,6 @@ impl TaskPoolConfigs {
 
         let total_threads = total_threads.clamp(self.min_total_threads, self.max_total_threads);
 
-        zlim_log::info!("Assigning {total_threads} cores to default task pools");
-
         let mut remaining_threads = total_threads;
 
         {
@@ -201,10 +199,7 @@ impl TaskPoolConfigs {
                 builder.build()
             });
 
-            if success {
-                // If there are too many threads, it will be clamped to a maximum value.
-                zlim_log::info!("IO TaskPool Threads: {io_threads}"); // so this is inaccurate
-            } else {
+            if !success {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
                     "Static TaskPool already initialized before `TaskPoolConfigs::apply`."
@@ -234,9 +229,7 @@ impl TaskPoolConfigs {
                 builder.build()
             });
 
-            if success {
-                zlim_log::info!("Async TaskPool Threads: {async_threads}"); // inaccurate
-            } else {
+            if !success {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
                     "Static TaskPool already initialized before `TaskPoolConfigs::apply`."
@@ -244,7 +237,6 @@ impl TaskPoolConfigs {
                 return;
             }
         }
-
         {
             // Determine the number of main-pool threads we will use
             let main_threads = self
@@ -266,15 +258,24 @@ impl TaskPoolConfigs {
                 builder.build()
             });
 
-            if success {
-                zlim_log::info!("Main TaskPool Threads: {main_threads}"); // inaccurate
-            } else {
+            if !success {
                 ::core::hint::cold_path();
                 zlim_log::warn!(
                     "Static TaskPool already initialized before `TaskPoolConfigs::apply`."
                 );
+                return;
             }
         }
+
+        zlim_log::info!(
+            "Global TaskPools initialized: \n\
+            - Main Threads:  {} \n\
+            - Io Threads:    {} \n\
+            - Async Threads: {} ",
+            MainTaskPool::get().thread_count(),
+            IoTaskPool::get().thread_count(),
+            AsyncTaskPool::get().thread_count(),
+        );
     }
 
     /// Initializes the global task pools if it's uninitialized.

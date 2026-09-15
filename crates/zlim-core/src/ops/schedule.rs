@@ -1,4 +1,5 @@
-use crate::schedule::{MissingSchedule, Schedule, ScheduleLabel};
+use crate::job::JobLabel;
+use crate::schedule::{MissingSchedule, Schedule, ScheduleLabel, ScheduleStage};
 use crate::world::{World, WorldCell};
 
 impl World {
@@ -23,6 +24,17 @@ impl World {
     /// Initializes a new empty schedule if it doesn't exist.
     pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
         self.schedules.entry(label.intern())
+    }
+
+    /// Inserts a standalone job from a [`JobLabel`] into the given [`Schedule`].
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn insert_job<J: JobLabel>(
+        &mut self,
+        label: impl ScheduleLabel,
+        stage: impl ScheduleStage,
+    ) {
+        self.schedules.entry(label.intern()).insert::<J>(stage);
     }
 }
 

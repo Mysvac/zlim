@@ -164,7 +164,7 @@ pub use fake_main::designate_main_thread;
 fn main_pool_default() -> TaskPool {
     let available: usize = zlim_os::thread::available_parallelism().get();
     let threads: usize = (available >> 1).clamp(1, 15);
-    zlim_log::info!("Main TaskPool Threads: {threads}");
+    zlim_log::debug!("Main TaskPool Threads: {threads}");
     TaskPoolBuilder::new().thread_name("MainTaskPool").thread_count(threads).build()
 }
 
@@ -176,7 +176,7 @@ fn main_pool_default() -> TaskPool {
 fn async_pool_default() -> TaskPool {
     let available: usize = zlim_os::thread::available_parallelism().get();
     let threads: usize = (available >> 2).clamp(1, 7);
-    zlim_log::info!("Async TaskPool Threads: {threads}");
+    zlim_log::debug!("Async TaskPool Threads: {threads}");
     TaskPoolBuilder::new().thread_name("AsyncTaskPool").thread_count(threads).build()
 }
 
@@ -188,7 +188,7 @@ fn async_pool_default() -> TaskPool {
 fn io_pool_default() -> TaskPool {
     let available: usize = zlim_os::thread::available_parallelism().get();
     let threads: usize = (available >> 2).clamp(1, 7);
-    zlim_log::info!("IO TaskPool Threads: {threads}");
+    zlim_log::debug!("IO TaskPool Threads: {threads}");
     TaskPoolBuilder::new().thread_name("IoTaskPool").thread_count(threads).build()
 }
 

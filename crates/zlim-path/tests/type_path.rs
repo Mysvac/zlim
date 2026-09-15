@@ -64,6 +64,9 @@ fn non_generic_default_path() {
     }
 }
 
+/// An explicit `#[type_path = "..."]` is adopted verbatim and the module is the
+/// path with its last segment removed, so a two-segment path leaves crate and
+/// module identical.
 #[test]
 fn non_generic_custom_path() {
     assert_path! {
@@ -85,6 +88,8 @@ fn non_generic_custom_path() {
     }
 }
 
+/// A path made of a single segment has no crate or module to report, so those
+/// two associated constants are `None` while the name fields still hold the path.
 #[test]
 fn non_generic_single_segment() {
     assert_path! {
@@ -97,6 +102,8 @@ fn non_generic_single_segment() {
     }
 }
 
+/// Generic arguments are recursed into, and each one contributes its full path
+/// to `type_path` but only its short name to `type_name`.
 #[test]
 fn generic_type_path() {
     assert_path! {
@@ -118,6 +125,8 @@ fn generic_type_path() {
     }
 }
 
+/// The same recursion applies under a custom `#[type_path]`, so the outer type
+/// takes the written path while the generic argument keeps its own.
 #[test]
 fn generic_custom_path() {
     assert_path! {
@@ -139,6 +148,8 @@ fn generic_custom_path() {
     }
 }
 
+/// A const generic argument is rendered with its value rather than erased, so
+/// the same type at another length would be a distinct path.
 #[test]
 fn with_const_generic() {
     assert_path! {
@@ -151,6 +162,8 @@ fn with_const_generic() {
     }
 }
 
+/// Lifetimes never show up in the generated strings, so a type that is only
+/// usable at `'static` still reads as a plain path with no parameter.
 #[test]
 fn with_lifetime() {
     assert_path! {

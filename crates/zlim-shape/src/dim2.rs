@@ -2093,6 +2093,9 @@ mod arc_tests {
         }
     }
 
+    /// Covers a zero-length arc: both endpoints and the midpoint sit at the top of
+    /// the circle, so the arc length, the chord and both areas vanish, while the
+    /// apothem stays at the radius and the sector perimeter is just the two radii.
     #[test]
     fn zero_angle() {
         let tests = ArcTestCase {
@@ -2122,6 +2125,9 @@ mod arc_tests {
         tests.check_segment(CircularSegment::new(1.0, 0.0));
     }
 
+    /// Covers a zero-radius arc: every point collapses to the origin and all
+    /// lengths and areas are zero, but the half angle and the full angle are
+    /// still reported as requested.
     #[test]
     fn zero_radius() {
         let tests = ArcTestCase {
@@ -2151,6 +2157,9 @@ mod arc_tests {
         tests.check_segment(CircularSegment::new(0.0, FRAC_PI_4));
     }
 
+    /// A quarter turn built from the number of turns, with the endpoints sitting
+    /// 45 degrees either side of the top of the circle; the expected chord,
+    /// apothem and half chord are all multiples of the square root of one half.
     #[test]
     fn quarter_circle() {
         let sqrt_half: f32 = ops::sqrt(0.5);
@@ -2181,6 +2190,9 @@ mod arc_tests {
         tests.check_segment(CircularSegment::from_turns(1.0, 0.25));
     }
 
+    /// A half turn is the boundary case where the arc is counted as both minor
+    /// and major; the chord is a diameter through the centre, which drops the
+    /// apothem to zero and makes the segment half of the disc.
     #[test]
     fn half_circle() {
         let tests = ArcTestCase {
@@ -2210,6 +2222,9 @@ mod arc_tests {
         tests.check_segment(CircularSegment::from_radians(1.0, PI));
     }
 
+    /// Covers a full turn: the two endpoints meet on the negative y axis, the arc
+    /// is major but not minor, and the segment closes into the whole disc, so it
+    /// matches the area and perimeter of the sector.
     #[test]
     fn full_circle() {
         let tests = ArcTestCase {
@@ -2289,6 +2304,9 @@ mod tests {
         );
     }
 
+    /// Checks that query points outside the rhombus are pulled onto its boundary,
+    /// and that a rhombus with zero half-diagonals collapses every query point to
+    /// the origin.
     #[test]
     fn rhombus_closest_point() {
         let rhombus = Rhombus::new(2.0, 1.0);
@@ -2308,6 +2326,12 @@ mod tests {
         assert_eq!(rhombus.closest_point(Vec2::new(-0.55, 0.35)), Vec2::ZERO);
     }
 
+    /// Checks one exact projection first, then sweeps a handful of query points
+    /// over an ordinary, a zero-length, a diagonal and a nearly vertical segment.
+    /// The sweep does not compare coordinates but asserts invariants a correct
+    /// projection must satisfy: the result is never farther than either endpoint or
+    /// the segment centre, and projecting a point already on the segment leaves it
+    /// in place.
     #[test]
     fn segment_closest_point() {
         assert_eq!(
@@ -2383,6 +2407,9 @@ mod tests {
         assert_eq!(annulus.perimeter(), 37.699112, "incorrect perimeter");
     }
 
+    /// Covers the rhombus metrics for an ordinary rhombus and for the degenerate
+    /// zero-size one, and checks that the constructor from a side length and the
+    /// one from the inradius agree on the same half-diagonals.
     #[test]
     fn rhombus_math() {
         let rhombus = Rhombus::new(3.0, 4.0);
@@ -2419,6 +2446,8 @@ mod tests {
         assert_eq!(circle.eccentricity(), 0., "incorrect circle eccentricity");
     }
 
+    /// Checks the perimeter estimate for a circle, for an extremely eccentric
+    /// ellipse that is close to a line segment, and for two ordinary ellipses.
     #[test]
     fn ellipse_perimeter() {
         let circle = Ellipse::new(1., 1.);
@@ -2434,6 +2463,9 @@ mod tests {
         assert_relative_eq!(ellipse.perimeter(), 25.526999);
     }
 
+    /// Checks the area and perimeter of an ordinary triangle, the degeneracy test
+    /// for three collinear points, and the acute/obtuse classification of a tall
+    /// and a flat triangle.
     #[test]
     fn triangle_math() {
         let triangle = Triangle2d::new(
@@ -2459,6 +2491,9 @@ mod tests {
         assert!(obtuse_triangle.is_obtuse());
     }
 
+    /// Covers the three winding orders: clockwise, counter-clockwise (including
+    /// that reversing the clockwise triangle yields exactly the counter-clockwise
+    /// one), and invalid for a triangle whose vertices are collinear.
     #[test]
     fn triangle_winding_order() {
         let mut cw_triangle = Triangle2d::new(

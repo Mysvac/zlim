@@ -411,6 +411,9 @@ mod test {
         assert_eq!(time.elapsed_secs_wrapped_f64(), 0.0);
     }
 
+    /// Advances the clock by three deltas in turn: `delta` always reports the step
+    /// just applied while `elapsed` keeps accumulating, and a zero-length step leaves
+    /// the total untouched.
     #[test]
     fn test_advance_by() {
         let mut time: Time = Time::default();
@@ -443,6 +446,9 @@ mod test {
         assert_eq!(time.elapsed_secs_f64(), 0.75);
     }
 
+    /// Moves the clock to absolute instants: the reported delta is the difference
+    /// from the previous total rather than the new one, and advancing to an instant
+    /// that has already been reached is a no-op.
     #[test]
     fn test_advance_to() {
         let mut time: Time = Time::default();
@@ -485,6 +491,9 @@ mod test {
         time.advance_to(Duration::from_millis(250));
     }
 
+    /// Checks that wrapped time stays inside the configured period: with a three
+    /// second period, three two-second advances leave 2 s, 1 s and then zero, and a
+    /// step that overshoots the period by 250 ms wraps around to that remainder.
     #[test]
     fn test_wrapping() {
         let mut time: Time = Time::default();
@@ -515,6 +524,10 @@ mod test {
         assert_eq!(time.elapsed_secs_wrapped_f64(), 0.25);
     }
 
+    /// Checks what happens when the wrap period changes while the clock is already
+    /// running: the previously wrapped value is left stale until the next advance,
+    /// and the wrap is then recomputed from the full elapsed total modulo the new
+    /// period, so it deliberately does not continue from the old wrapped value.
     #[test]
     fn test_wrapping_change() {
         let mut time: Time = Time::default();
@@ -528,10 +541,12 @@ mod test {
 
         time.set_wrap_period(Duration::from_secs(2));
 
+        // The wrapped value is stale until the clock advances again.
         assert_eq!(time.elapsed_wrapped(), Duration::from_secs(3));
         assert_eq!(time.elapsed_secs_wrapped(), 3.0);
         assert_eq!(time.elapsed_secs_wrapped_f64(), 3.0);
 
+        // Even a zero-length advance is enough to recompute the wrapped value.
         time.advance_by(Duration::ZERO);
 
         // Time will wrap to modulo duration from full `elapsed()`, not to what

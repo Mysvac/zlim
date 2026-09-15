@@ -73,6 +73,7 @@ zlim (root facade crate, src/lib.rs)
     ├── zlim-os         (platform abstraction layer, crates/zlim-os/)
     ├── zlim-utils      (foundational utilities, crates/zlim-utils/)
     ├── zlim-log        (tracing-based logging, crates/zlim-log/)
+    ├── zlim-path       (stable type path, crates/zlim-path/)
     ├── zlim-task       (async task pool, crates/zlim-task/)
     ├── zlim-reflect    (reflection system, crates/zlim-reflect/)
     ├── zlim-math       (math library on glam, crates/zlim-math/)
@@ -84,11 +85,14 @@ zlim (root facade crate, src/lib.rs)
     ├── zlim-app        (app & plugin framework, crates/zlim-app/)
     ├── zlim-transform  (transform propagation, crates/zlim-transform/)
     ├── zlim-diagnostic (diagnostics store & plugins, crates/zlim-diagnostic/)
-    └── zlim-sysinfo    (host system info, crates/zlim-sysinfo/)
+    ├── zlim-sysinfo    (host system info, crates/zlim-sysinfo/)
+    └── zlim-asset      (asset system, crates/zlim-asset/)
 
 Auxiliary:
 ├── zlim-derive-utils (proc-macro utilities, crates/zlim-derive-utils/)
 ├── zlim-dylib (dynamic linking optimization, crates/zlim-dylib/)
+    — enabled only with `feature = "dylib"`.
+├── zlim-sysinfo-dylib (sysinfo isolation layer, crates/zlim-sysinfo/dylib/)
     — enabled only with `feature = "dylib"`.
 ```
 
@@ -125,6 +129,12 @@ Auxiliary:
 - **`zlim-log`**
   - **Purpose**: tracing-based logging: `LogConfig`, subscriber setup, `log` bridge.
   - **Dependencies**: tracing, tracing-subscriber, tracing-error, tracing-log.
+
+- **`zlim-path`**
+  - **Purpose**: stable type paths: the `TypePath` trait, `#[derive(TypePath)]`, the `concat` helper
+    and `PathCell`. Types are named by their type path and their short type name, which is what the
+    registries and the `.meta` format identify them by, instead of `std::any::type_name`.
+  - **Dependencies**: `zlim-utils`, `zlim-path-derive`, optional glam, optional uuid.
 
 - **`zlim-task`**
   - **Purpose**: async task pool: work-stealing thread pool, Scope, global singleton pool.
@@ -174,6 +184,16 @@ Auxiliary:
   - **Purpose**: host system info (`SystemInfo` resource, `SystemInfoDiagnosticsPlugin` via `sysinfo`); enabled with `zlim-internal`'s `zlim_sysinfo` / `zlim`'s `sysinfo` feature.
   - **Dependencies**: `zlim-app`, `zlim-core`, `zlim-diagnostic`, `zlim-reflect`, `zlim-task`, `zlim-log`, `zlim-os`, `zlim-utils`, sysinfo, atomic-waker.
 
+- **`zlim-asset`**
+  - **Purpose**: the asset system: typed handles and the events they emit, sources (unprocessed,
+    processed, and the importer that turns one into the other), the loader / processor / saver /
+    transformer pipelines with their registries, the `.meta` format, and the plugin that wires all of
+    it into an app.
+  - **Dependencies**: `zlim-asset-derive`, `zlim-cfg`, `zlim-ptr`, `zlim-reg`, `zlim-os`, `zlim-log`,
+    `zlim-utils`, `zlim-path`, `zlim-task`, `zlim-core`, `zlim-app`, `zlim-diagnostic`, serde, ron,
+    blake3, uuid, bitflags, futures-lite, async-broadcast, async-lock, atomicow, and the optional
+    `ureq` (`http` / `https`) and `notify-debouncer-full` (`watch`).
+
 - **`zlim-sysinfo-dylib`**
   - **Purpose**: dynamic-library isolation layer embedding `sysinfo`; keeps `sysinfo` objects out of the engine cdylib (Windows LNK1189). Depends on no zlim workspace crate. Enabled with `feature = "dylib"`.
   - **Dependencies**: sysinfo.
@@ -205,6 +225,13 @@ Auxiliary:
 - `zlim-reflect/derive`
   - `#[derive(TypePath)]` macro
   - `#[derive(Reflect)]` macro
+
+- `zlim-path/derive`
+  - `#[derive(TypePath)]` macro
+
+- `zlim-asset/derive`
+  - `#[derive(Asset)]` macro
+  - `#[derive(VisitAssetDependencies)]` macro
 
 - `zlim-app/derive`
   - `#[derive(AppLabel)]` macro

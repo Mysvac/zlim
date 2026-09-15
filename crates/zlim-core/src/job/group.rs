@@ -648,8 +648,8 @@ impl JobGroup {
         #[cold]
         #[inline(never)]
         fn collect_internal() {
+            #[cfg(any(debug_assertions, feature = "debug"))]
             let start = zlim_os::time::Instant::now();
-            log::debug!("Collecting JobGroup registrations...");
 
             zlim_task::cfg::single_thread! {
                 zlim_reg::iter::<__JobGroupReg__>().for_each(|f|(f.0)());
@@ -661,7 +661,15 @@ impl JobGroup {
                 });
             }
 
-            log::debug!("JobGroup collection finished in {:?}", start.elapsed());
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            log::debug!(
+                "JobGroup({}) collection finished in {:?}",
+                REGISTRY
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .len(),
+                start.elapsed(),
+            );
         }
 
         static ONCE: std::sync::Once = std::sync::Once::new();

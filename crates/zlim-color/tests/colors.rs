@@ -404,6 +404,11 @@ const TEST_COLORS: &[TestColor] = &[
 // -----------------------------------------------------------------------------
 // Round-trip tests
 
+/// Round-trips every table entry through `Hsla`, checking first that the
+/// reconstructed sRGB color matches and then comparing each HSL channel.
+/// `white_minus_epsilon` is handled separately: at lightness 1.0 saturation has
+/// no visible effect, and this implementation derives 1.0 where the table entry
+/// says 0.75.
 #[test]
 fn hsla_roundtrip() {
     for color in TEST_COLORS.iter() {
@@ -469,6 +474,11 @@ fn hwba_roundtrip() {
     }
 }
 
+/// Round-trips every table entry through `Laba` by way of `Srgba`, comparing the
+/// reconstructed sRGB color as well as lightness and alpha for all entries. The
+/// `a` comparison is skipped for almost-black samples and the `b` comparison
+/// additionally for almost-neutral ones, where neither channel carries any
+/// signal, and the surviving `b` check uses a wide tolerance of 1.7.
 #[test]
 fn laba_roundtrip_srgba() {
     for color in TEST_COLORS.iter() {
@@ -497,6 +507,10 @@ fn laba_roundtrip_srgba() {
     }
 }
 
+/// The same round trip as the sRGB variant, but converting through `LinearRgba`
+/// instead of `Srgba` and comparing against the table's linear values. The `a`
+/// and `b` comparisons keep the same gating, so near-black and near-neutral
+/// entries only have their lightness and alpha checked.
 #[test]
 fn laba_roundtrip_linear() {
     for color in TEST_COLORS.iter() {
@@ -525,6 +539,11 @@ fn laba_roundtrip_linear() {
     }
 }
 
+/// Round-trips every table entry through `Lcha` by way of `Srgba`. Lightness is
+/// compared for every entry, chroma only where the sample is not almost black,
+/// and hue only where lightness and chroma are both large enough for the angle to
+/// carry information; hue is the most sensitive channel of the round trip, so it
+/// gets a wide tolerance.
 #[test]
 fn lcha_roundtrip_srgba() {
     for color in TEST_COLORS.iter() {
@@ -553,6 +572,9 @@ fn lcha_roundtrip_srgba() {
     }
 }
 
+/// The same round trip as the sRGB variant, but converting through `LinearRgba`
+/// instead of `Srgba`. The chroma and hue comparisons keep the same gating, so
+/// only entries that are bright and colorful enough have all channels checked.
 #[test]
 fn lcha_roundtrip_linear() {
     for color in TEST_COLORS.iter() {
@@ -744,6 +766,11 @@ fn hsla_to_from_linear() {
     assert_approx_eq!(hsla.alpha, hsla2.alpha, 0.001);
 }
 
+/// Exercises hue interpolation across the seam at 0 degrees. Interpolating from
+/// 10 to 350 has to take the short way around the wheel and pass through 5 and 0
+/// rather than sweeping the long way; the same pairs are then mixed in the
+/// opposite order, where the short arc runs backwards. The first two blocks are
+/// the ordinary, non-wrapping case.
 #[test]
 fn hsla_mix_wrap() {
     let hsla0 = Hsla::new(10., 0.5, 0.5, 1.0);
@@ -753,10 +780,13 @@ fn hsla_mix_wrap() {
     assert_approx_eq!(hsla0.mix(&hsla1, 0.5).hue, 15., 0.001);
     assert_approx_eq!(hsla0.mix(&hsla1, 0.75).hue, 17.5, 0.001);
 
+    // Mixing in the opposite direction walks the same short arc backwards.
     assert_approx_eq!(hsla1.mix(&hsla0, 0.25).hue, 17.5, 0.001);
     assert_approx_eq!(hsla1.mix(&hsla0, 0.5).hue, 15., 0.001);
     assert_approx_eq!(hsla1.mix(&hsla0, 0.75).hue, 12.5, 0.001);
 
+    // 10 and 350 lie on either side of the seam, so the short arc between them
+    // runs through 0 instead of through 180.
     assert_approx_eq!(hsla0.mix(&hsla2, 0.25).hue, 5., 0.001);
     assert_approx_eq!(hsla0.mix(&hsla2, 0.5).hue, 0., 0.001);
     assert_approx_eq!(hsla0.mix(&hsla2, 0.75).hue, 355., 0.001);
@@ -766,6 +796,10 @@ fn hsla_mix_wrap() {
     assert_approx_eq!(hsla2.mix(&hsla0, 0.75).hue, 5., 0.001);
 }
 
+/// Checks the golden-ratio hue sequence that gives consecutive entity indices
+/// well-spread colors: every index advances the hue by the same fraction of the
+/// wheel, so the closer two indices are, the further apart their hues end up.
+/// The first five hues of the sequence are pinned here.
 #[test]
 fn hsla_from_index() {
     let references = [
@@ -805,6 +839,10 @@ fn hwba_to_from_srgba() {
     assert_approx_eq!(hwba.alpha, hwba2.alpha, 0.001);
 }
 
+/// Regression test for chroma clamping in the Lab-to-LCh conversion. The input
+/// sits outside the sRGB gamut, so its chroma must survive as a value above 1.9
+/// instead of being clipped, and the conversion back to Lab must recover
+/// lightness, `a` and `b`.
 #[test]
 fn lcha_wide_gamut_chroma_preserved() {
     let laba = Laba::new(0.8, 1.5, -1.2, 1.0);
@@ -861,6 +899,11 @@ fn oklcha_to_from_linear() {
     assert_approx_eq!(oklcha.alpha, oklcha2.alpha, 0.001);
 }
 
+/// Covers the degenerate Oklab inputs where Okhsl has no hue or saturation to
+/// report: the ends of the lightness range, where the color is black or white
+/// whatever `a` and `b` say, and the neutral axis, where `a` and `b` are zero.
+/// Each of them must come out with zero hue and zero saturation, and converting
+/// back must preserve the lightness and alpha.
 #[test]
 fn okhsla_from_to_oklaba() {
     // Test `oklab_l == 0.0`
@@ -928,6 +971,10 @@ fn okhsla_to_from_linear() {
     assert_approx_eq!(okhsla.alpha, okhsla2.alpha, 0.001);
 }
 
+/// The Okhsv counterpart of the Okhsl degeneracy test: black, white and the
+/// neutral axis have no hue or saturation, so the conversion must report zero for
+/// both and let the value channel carry the lightness. The return trip has to
+/// keep `a`, `b` and alpha.
 #[test]
 fn okhsva_from_oklaba() {
     // Test `oklab_l == 0.0`
@@ -995,6 +1042,11 @@ fn okhsva_to_from_linear() {
     assert_approx_eq!(okhsva.alpha, okhsva2.alpha, 0.001);
 }
 
+/// Converts a set of Okhsv corners into Okhwb and back. Achromatic inputs turn
+/// their saturation into whiteness or blackness while keeping the hue, the fully
+/// saturated corner has neither, and a zero value is pure black no matter what the
+/// saturation was. The return trip must reproduce hue, value and alpha, though
+/// black has no saturation left to recover.
 #[test]
 fn okhwba_from_okhsva() {
     // Test `saturation == 0.0`
@@ -1054,6 +1106,10 @@ fn okhwba_from_okhsva() {
     assert_approx_eq!(okhsva.alpha, okhsva2.alpha, 0.001);
 }
 
+/// The Okhwb counterpart of the other degeneracy tests: the ends of the Oklab
+/// lightness range become pure blackness and whiteness, and a neutral input is
+/// split between them according to its lightness. Converting back must recover
+/// lightness, `a`, `b` and alpha.
 #[test]
 fn okhwba_from_oklaba() {
     // Test `oklab_l == 0.0`

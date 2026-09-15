@@ -193,6 +193,10 @@ job! {
     strict: false,
 }
 
+/// `strict` only selects which wrapper the macro generates; it must not leak
+/// into the registered name or the shape of the database. All four markers are
+/// constructed and initialised here to show that both modes end up with a
+/// runnable job and both get registered.
 #[test]
 fn job_strict_parameter() {
     assert_eq!(StrictJob::name(), "test::strict_job");
@@ -251,6 +255,11 @@ job! {
     run_if: [condition_a, condition_b],
 }
 
+/// `run_if` is stored as a slice of condition constructors, and the generated
+/// condition jobs carry names that encode where they came from: the job's own
+/// name, the slot within the list, and the condition function. One expression
+/// and a list of two are checked so both forms are shown to flatten the same
+/// way.
 #[test]
 fn job_run_if_single_and_list() {
     // A single `run_if` expression becomes a one-element slice; the
@@ -260,6 +269,7 @@ fn job_run_if_single_and_list() {
 
     let cond = (db.run_if[0])("group");
     assert_eq!(cond.id().group(), "group");
+    // The name records the source job, the slot index and the condition.
     assert_eq!(cond.id().name(), "test::run_if_job#run_if<0>#condition_a");
 
     // A list keeps the order
@@ -339,6 +349,10 @@ job_group! {
     relaxed_order: [["label_b", GroupLabelA]],
 }
 
+/// The generated group layout is exactly what the executor consumes, so this
+/// test pins every field: the begin and end markers folded into `jobs`, the
+/// offset that shifts user entries past them, and the derived ordering edges.
+/// The macro input is deliberately small so the expected vectors stay readable.
 #[test]
 fn job_group_non_generic() {
     assert_eq!(ExampleGroup::name(), "test::example_group");
@@ -389,15 +403,20 @@ job_group! {
     jobs: [GroupLabelA],
 }
 
+/// A generic group produces the same layout as a non-generic one: the markers
+/// precede the user jobs and the implied ordering edges are added. This group
+/// declares no condition, so there is no condition slot and no condition edge.
 #[test]
 fn job_group_generic() {
     assert_eq!(GenericGroup::<u32>::name(), "test::generic_group<u32>");
 
     let group = GenericGroup::<u32>::group();
+    // The two markers plus the single user job.
     assert_eq!(group.jobs.len(), 3);
     assert_eq!(group.jobs[0].name(), "zlim_core::GroupBegin");
     assert_eq!(group.jobs[1].name(), "zlim_core::GroupEnd");
     assert_eq!(group.jobs[2].name(), "test::group_label_a");
+    // Without a condition only the implicit marker edges remain.
     assert_eq!(group.condition, None);
     assert_eq!(group.order, &[(0, 1), (0, 2)]);
     assert_eq!(group.weak_order, &[]);

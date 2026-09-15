@@ -255,6 +255,10 @@ mod tests {
     use super::*;
     use crate::time::Real;
 
+    /// Drives a virtual clock by hand from real-clock deltas: the first real update
+    /// only establishes the baseline, later ones advance virtual time, a relative
+    /// speed of 2.0 scales the next advance up, and pausing freezes elapsed time
+    /// while the effective speed drops to zero until the clock is unpaused.
     #[test]
     fn virtual_time_scales_and_pauses() {
         let mut real = Time::<Real>::default();
@@ -291,6 +295,9 @@ mod tests {
         assert!(!virt.is_paused());
     }
 
+    /// Feeds a capped virtual clock a real delta far larger than the cap and expects
+    /// the advance to be limited to the cap instead of jumping ahead by the full
+    /// amount.
     #[test]
     fn virtual_time_clamps_large_deltas() {
         let mut virt = Time::<Virtual>::from_max_delta(Duration::from_millis(50));

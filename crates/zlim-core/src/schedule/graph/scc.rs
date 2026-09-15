@@ -310,6 +310,8 @@ mod tests {
         Node { idx: x, tag: 0 }
     }
 
+    /// Checks that a plain three-node cycle collapses into a single strongly
+    /// connected component that covers the whole graph.
     #[test]
     fn a_b_c_a() {
         let mut graph = DiGraph::with_capacity(3, 3);
@@ -323,6 +325,11 @@ mod tests {
         assert_eq!(tarjan.next_scc(), None);
     }
 
+    /// Builds a graph whose cycles fall into three separate regions — two cycles
+    /// sharing a node between them, an independent pair, and a node that only points
+    /// into the first region — and checks that the iterator groups the nodes into
+    /// exactly those components.  Both the grouping and the order the components come
+    /// back in are asserted, so a change to the traversal order shows up here.
     #[test]
     fn multi_region() {
         let mut graph = DiGraph::default();

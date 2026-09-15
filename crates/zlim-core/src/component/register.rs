@@ -162,7 +162,7 @@ fn register_impl<C: Component>(
     let mut id_guard = ID_REGISTRY.write().unwrap_or_else(PoisonError::into_inner);
 
     db.id = ComponentId::without_provenance(id_guard.len());
-    let db: &'static ComponentDB = unsafe { Global::alloc_unchecked(db) };
+    let db: &'static ComponentDB = Global::alloc_static(db);
 
     type_guard.insert(type_id, db);
     id_guard.push(db);

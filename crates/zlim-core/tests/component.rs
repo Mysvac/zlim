@@ -45,6 +45,9 @@ struct HookedComp {
     _x: f32,
 }
 
+/// The `on_add` attribute has to store the hook function itself in the generated
+/// const, not merely some non-`None` placeholder. The cast erases the function
+/// pointer's type so the stored hook and the original function can be compared.
 #[test]
 fn component_hook_const_is_set() {
     assert!(HookedComp::ON_ADD.is_some());
@@ -70,6 +73,10 @@ fn component_with_entities_requires_remap() {
     const { assert!(!WithEntities::NO_ENTITY) };
 }
 
+/// Fields marked with the `entities` attribute hold ids that have to go through
+/// the world's mapper, for example when an entity is cloned. The mapper here
+/// answers every lookup with the same replacement, so the test only has to show
+/// that the field went through it at all.
 #[test]
 fn component_with_entities_map_entities() {
     const OLD: EntityId = EntityId::new(1, NonZeroU32::new(1).unwrap());
@@ -79,6 +86,8 @@ fn component_with_entities_map_entities() {
 
     impl EntityMapper for TestMapper {
         fn get_mapped(&mut self, _source: EntityId) -> EntityId {
+            // The source is deliberately ignored: getting `REPLACED` out at all
+            // is the evidence that the remapping step ran.
             REPLACED
         }
 
@@ -90,6 +99,7 @@ fn component_with_entities_map_entities() {
         _value: 123456,
     };
     comp.map_entities(&mut TestMapper);
+    // The id was rewritten in place.
     assert_eq!(comp.targets.as_slice(), &[REPLACED]);
 }
 
@@ -115,12 +125,17 @@ fn component_with_custom_map_entities_requires_remap() {
     const { assert!(!CustomMapped::NO_ENTITY) };
 }
 
+/// A `map_entities` attribute replaces the generated remapping wholesale, so
+/// the test checks that the user function runs exactly once, that it rewrites
+/// the entity id, and that it leaves the other fields alone. The mapper shifts
+/// every id by one so the rewrite is distinguishable from the original.
 #[test]
 fn component_with_custom_map_entities_is_called() {
     struct ShiftMapper;
 
     impl EntityMapper for ShiftMapper {
         fn get_mapped(&mut self, source: EntityId) -> EntityId {
+            // A deterministic shift keeps the expected value easy to write down.
             EntityId::from_bits(source.to_bits().wrapping_add(1)).unwrap()
         }
 
@@ -137,6 +152,7 @@ fn component_with_custom_map_entities_is_called() {
 
     comp.map_entities(&mut ShiftMapper);
 
+    // The hook ran once, and only the id field was rewritten.
     assert_eq!(comp.calls, 1);
     assert_eq!(comp.value, 2026);
 
@@ -180,6 +196,9 @@ struct NoSerde(u32);
 #[component(serialize)]
 struct SerdeComp(u32);
 
+/// Serialization support is opt-in, so a component that never asks for it must
+/// register with empty serializer slots and a false associated constant, while
+/// still being usable as an ordinary component.
 #[test]
 fn non_serializable_component_registers_without_serializer() {
     let db = ComponentDB::of::<NoSerde>();
@@ -197,6 +216,8 @@ fn non_serializable_component_registers_without_serializer() {
     assert_eq!(probe.0, 7);
 }
 
+/// The `serialize` attribute is the other half of the opt-in: it has to fill
+/// both registry slots and flip the associated constant that callers test.
 #[test]
 fn serializable_component_registers_with_serializer() {
     let db = ComponentDB::of::<SerdeComp>();

@@ -309,17 +309,23 @@ impl<T> Future for Recv<'_, T> {
                 return Poll::Ready(inner.queue.pop().ok_or(RecvError));
             }
 
-            if let Some(listener) = &mut this.listener {
-                match Pin::new(listener).poll(cx) {
+            if let Some(mut listener) = this.listener.take() {
+                match Pin::new(&mut listener).poll(cx) {
+                    Poll::Pending => {
+                        this.listener = Some(listener);
+                        return Poll::Pending;
+                    }
+                    // A listener that has finished must not be polled again — `event-listener`
+                    // panics on exactly that — so the spent one is dropped here and the next wait
+                    // starts from a fresh one. Going back to the queue first is what makes that
+                    // safe: whatever the notification announced is already there, so nothing can
+                    // be lost in between.
                     Poll::Ready(()) => continue,
-                    Poll::Pending => return Poll::Pending,
                 }
-            } else {
-                // Create listener on first poll.
-                core::hint::cold_path();
-                this.listener = Some(inner.event.listen());
-                // Check message queue again.
             }
+
+            // Create listener if it's not exists.
+            this.listener = Some(inner.event.listen());
         }
     }
 }
@@ -364,6 +370,8 @@ mod tests {
         assert_eq!(rx.try_recv(), None);
     }
 
+    /// A cloned sender keeps the channel alive after the original handle is gone: reception only
+    /// fails once every sender has been dropped.
     #[test]
     fn sender_clone_keeps_channel_open() {
         let (tx, mut rx) = channel::<i32>();
@@ -417,6 +425,10 @@ mod tests {
         assert_eq!(tx.send(1), Err(1));
     }
 
+    /// The value is sent from a second thread and awaited on this one, so the test covers the
+    /// hand-off between threads rather than a queue that is already filled. There is no timeout to
+    /// fall back on, which means a lost notification would hang the test instead of failing an
+    /// assertion.
     #[test]
     fn recv_wakes_on_send() {
         let (tx, mut rx) = channel::<i32>();
@@ -428,6 +440,8 @@ mod tests {
         assert_eq!(block_on(rx.recv()), Ok(42));
     }
 
+    /// Closure has to reach a receiver just like a message does: dropping the only sender on
+    /// another thread must make the receive report `RecvError` instead of waiting forever.
     #[test]
     fn recv_wakes_on_sender_drop() {
         let (tx, mut rx) = channel::<i32>();
@@ -437,6 +451,11 @@ mod tests {
         assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
+    /// Stresses the channel from several threads at once: every spawned sender pushes the same
+    /// `0..COUNT` range and the single receiver drains until the channel reports closure on its
+    /// own. Only the aggregate is asserted, never the order — the count proves that nothing was
+    /// lost or duplicated, and the sum proves that the payloads came through intact. `COUNT` is
+    /// scaled down under Miri so the interpreter finishes in reasonable time.
     #[test]
     fn concurrent_senders() {
         #[cfg(miri)]
@@ -463,11 +482,13 @@ mod tests {
 
         let mut total = 0;
         let mut count = 0;
+        // Receiving stops by itself once the last sender is gone.
         while let Ok(v) = block_on(rx.recv()) {
             total += v;
             count += 1;
         }
 
+        // Every value arrived exactly once, so the sum is the series each sender contributed.
         assert_eq!(count, COUNT * THREADS);
         assert_eq!(total, THREADS * COUNT * (COUNT - 1) / 2);
     }

@@ -1,41 +1,32 @@
-use core::error::Error;
-use ron::de::SpannedError;
 use zlim_core::error::Error;
 
-/// An error that occurs while deserializing `AssetMeta`.
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
-pub enum DeserializeMetaError {
-    #[error("Failed to deserialize asset meta: {_0}")]
-    Normal(String),
-    #[error("Failed to deserialize minimal asset config: {_0}")]
-    AssetConfig(String),
-    #[error("Failed to deserialize minimal process info: {_0}")]
-    ProcessInfo(String),
+// -----------------------------------------------------------------------------
+// MetaParseError
+
+/// An error that occurs while deserializing an asset's `.meta` data.
+#[derive(Error, Debug, Clone)]
+#[repr(transparent)]
+#[error("failed to deserialize asset meta: `{_0}`")]
+pub struct MetaParseError(ron::de::SpannedError);
+
+impl From<ron::de::SpannedError> for MetaParseError {
+    #[cold]
+    fn from(value: ron::de::SpannedError) -> Self {
+        Self(value)
+    }
 }
 
-impl From<SpannedError> for DeserializeMetaError {
-    #[inline]
-    fn from(value: SpannedError) -> Self {
-        Self::Normal(value.to_string())
-    }
+// -----------------------------------------------------------------------------
+// AssetMetaParseError
+
+/// The `.meta` of the asset at `path` could not be deserialized.
+#[derive(Error, Debug, Clone)]
+#[error("failed to deserialize asset meta for `{path}`: {}", error.0)]
+pub struct AssetMetaParseError {
+    /// The path of the asset whose `.meta` could not be deserialized.
+    pub path: Box<str>, // reduce the struct size of errors.
+    /// The deserialization error itself.
+    pub error: MetaParseError,
 }
 
-impl DeserializeMetaError {
-    /// Create a [`DeserializeMetaError::Normal`] from given error.
-    #[cold]
-    pub fn normal(err: impl Error) -> Self {
-        Self::Normal(err.to_string())
-    }
-
-    /// Create a [`DeserializeMetaError::AssetConfig`] from given error.
-    #[cold]
-    pub fn asset_config(err: impl Error) -> Self {
-        Self::AssetConfig(err.to_string())
-    }
-
-    /// Create a [`DeserializeMetaError::ProcessInfo`] from given error.
-    #[cold]
-    pub fn process_info(err: impl Error) -> Self {
-        Self::ProcessInfo(err.to_string())
-    }
-}
+// -----------------------------------------------------------------------------

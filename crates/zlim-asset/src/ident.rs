@@ -1,3 +1,5 @@
+//! Provides asset index implementation.
+
 use core::any::TypeId;
 use core::fmt::{Debug, Display, Formatter};
 use core::hash::Hash;
@@ -25,13 +27,16 @@ use crate::asset::Asset;
 /// [`AssetSource`]: crate::source::AssetSource
 #[derive(Default, Clone, Debug, Eq)]
 pub enum AssetSourceId {
+    /// The unnamed primary source, which is the one an asset path without a `source://` names.
     #[default]
     Default,
+    /// A named secondary source, registered with the asset server under this name.
     Name(SmolStr),
 }
 
 impl AssetSourceId {
-    /// Creates a new [`AssetSourceId`]
+    /// Creates a new [`AssetSourceId`]: `None` becomes [`AssetSourceId::Default`], `Some(name)`
+    /// becomes [`AssetSourceId::Name`].
     pub fn new(source: Option<impl Into<SmolStr>>) -> AssetSourceId {
         match source {
             Some(source) => AssetSourceId::Name(source.into()),
@@ -76,8 +81,8 @@ impl From<&AssetSourceId> for AssetSourceId {
     }
 }
 
-// This is only implemented for static lifetimes to ensure `Path::clone`
-// does not allocate by ensuring that this is stored as a `CowArc::Static`.
+// This is only implemented for `&'static str` because that is the input `SmolStr::new` takes:
+// it is the constructor that never allocates, so a static source name is the cheap case.
 impl From<&'static str> for AssetSourceId {
     #[inline]
     fn from(value: &'static str) -> Self {
@@ -119,6 +124,22 @@ impl From<Option<SmolStr>> for AssetSourceId {
             None => AssetSourceId::Default,
             Some(v) => AssetSourceId::Name(v),
         }
+    }
+}
+
+impl From<AssetSourceId> for Option<SmolStr> {
+    fn from(value: AssetSourceId) -> Self {
+        match value {
+            AssetSourceId::Default => None,
+            AssetSourceId::Name(smol_str) => Some(smol_str),
+        }
+    }
+}
+
+impl From<()> for AssetSourceId {
+    #[inline]
+    fn from(_: ()) -> Self {
+        AssetSourceId::Default
     }
 }
 
@@ -206,9 +227,13 @@ impl Display for AssetIndex {
 
 /// Lock-free allocator for [`AssetIndex`] values.
 pub(crate) struct AssetIndexAllocator {
+    /// The next fresh slot to hand out; also the high-water mark `AssetTable::flush` grows
+    /// `storage` to.
     pub next_index: AtomicU32,
+    /// Slots returned by `recycle`, waiting for `reserve` to pick one up and bump its generation.
     pub recycled_queue: SegQueue<AssetIndex>,
-    // See `AssetTable::flush`
+    /// Slots `reserve` bumped, waiting for `AssetTable::flush` to install them at the new
+    /// generation. See `AssetTable::flush`.
     pub recycled: SegQueue<AssetIndex>,
 }
 
@@ -221,7 +246,7 @@ impl Debug for AssetIndexAllocator {
 }
 
 impl AssetIndexAllocator {
-    /// Highest usable slot position; keeps `index` within `i32::MAX` so that packed bit
+    /// Highest usable slot position; `reserve` panics instead of handing out a slot beyond it.
     pub(crate) const MAX_ASSET_INDEX: u32 = i32::MAX as u32;
 
     /// Creates an empty allocator.
@@ -269,10 +294,13 @@ impl AssetIndexAllocator {
 // -----------------------------------------------------------------------------
 // AssetId
 
-/// A unique runtime-only identifier for an [`Asset`].
+/// An identifier for an [`Asset`]: either a runtime slot index or a stable UUID.
 ///
 /// This is cheap to [`Copy`]/[`Clone`] and is not directly tied to the lifetime
 /// of the Asset. This means it _can_ point to an [`Asset`] that no longer exists.
+///
+/// Only [`AssetId::Index`] is runtime-local; [`AssetId::Uuid`] is the form to use for a value that
+/// crosses a process boundary.
 ///
 /// For an identifier tied to the lifetime of an asset, see [`Handle`].
 ///
@@ -700,14 +728,12 @@ impl<A: Asset> PartialOrd<ErasedAssetId> for AssetId<A> {
             return None;
         }
         match (self, other) {
-            (AssetId::Index { index: i1, .. }, ErasedAssetId::Index { index: i2, .. }) => {
+            (Self::Index { index: i1, .. }, ErasedAssetId::Index { index: i2, .. }) => {
                 Some(i1.cmp(i2))
             }
-            (AssetId::Uuid { uuid: u1 }, ErasedAssetId::Uuid { uuid: u2, .. }) => Some(u1.cmp(u2)),
-            (AssetId::Index { .. }, ErasedAssetId::Uuid { .. }) => Some(core::cmp::Ordering::Less),
-            (AssetId::Uuid { .. }, ErasedAssetId::Index { .. }) => {
-                Some(core::cmp::Ordering::Greater)
-            }
+            (Self::Uuid { uuid: u1 }, ErasedAssetId::Uuid { uuid: u2, .. }) => Some(u1.cmp(u2)),
+            (Self::Index { .. }, ErasedAssetId::Uuid { .. }) => Some(core::cmp::Ordering::Less),
+            (Self::Uuid { .. }, ErasedAssetId::Index { .. }) => Some(core::cmp::Ordering::Greater),
         }
     }
 }
@@ -720,15 +746,66 @@ impl<A: Asset> PartialOrd<AssetId<A>> for ErasedAssetId {
 }
 
 // -----------------------------------------------------------------------------
+// TypedAssetIndex
+
+/// An asset index bundled with its (dynamic) type.
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub struct TypedAssetIndex {
+    /// The concrete asset type.
+    pub type_id: TypeId,
+    /// The generation-aware slot index.
+    pub index: AssetIndex,
+}
+
+impl TypedAssetIndex {
+    /// Creates a typed index from the slot position and the asset type it belongs to — in that
+    /// order, which is the reverse of the field order.
+    #[inline(always)]
+    pub const fn new(index: AssetIndex, type_id: TypeId) -> Self {
+        Self { index, type_id }
+    }
+}
+
+impl Display for TypedAssetIndex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TypedAssetIndex")
+            .field("index", &self.index)
+            .field("type_id", &self.type_id)
+            .finish()
+    }
+}
+
+impl From<TypedAssetIndex> for ErasedAssetId {
+    fn from(value: TypedAssetIndex) -> Self {
+        Self::Index {
+            type_id: value.type_id,
+            index: value.index,
+        }
+    }
+}
+
+impl TryFrom<ErasedAssetId> for TypedAssetIndex {
+    type Error = UuidNotSupportedError;
+
+    #[inline]
+    fn try_from(asset_id: ErasedAssetId) -> Result<Self, Self::Error> {
+        match asset_id {
+            ErasedAssetId::Index { type_id, index } => Ok(Self { index, type_id }),
+            ErasedAssetId::Uuid { uuid, .. } => Err(UuidNotSupportedError(uuid)),
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Errors
 
-/// Returned when a UUID id (or handle) is used where a managed slot index is required.
-#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
-#[error("UUID assets are not supported in this operation: {_0}")]
-pub struct UuidNotSupportedError(pub Uuid);
+/// Returned when a UUID asset id is used where an index-backed id is required.
+#[derive(Error, Debug, Clone)]
+#[error("Attempted to create a TypedAssetIndex from a Uuid({_0})")]
+pub struct UuidNotSupportedError(pub(crate) Uuid);
 
 /// Returned when an [`ErasedAssetId`] is typed back as the wrong asset type.
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone)]
 #[error("ErasedAssetId({actual:?}) cannot be converted into AssetId<{type_name}>({expect:?})")]
 pub struct AssetIdTypeError {
     /// The (debug) type name we tried to convert to.

@@ -39,6 +39,7 @@ pub use zlim_sysinfo as sysinfo;
 /// Macros
 pub mod derive {
     pub use zlim_app::derive::*;
+    pub use zlim_asset::derive::*;
     pub use zlim_core::derive::*;
     pub use zlim_path::derive::*;
 }

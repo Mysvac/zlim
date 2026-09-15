@@ -887,6 +887,11 @@ mod tests {
         assert_eq!(DROPS.load(Ordering::SeqCst), 4);
     }
 
+    /// Forces the internal range to wrap before checking the drop path: once the pops have shrunk
+    /// the deque, the following push advances `tail` to the last slot and wraps it to zero, so the
+    /// write cursor ends up behind the front of the queue. Dropping the deque has to cope with that
+    /// split bookkeeping and still visit each live element exactly once, neither leaking a tracker
+    /// nor dropping one twice.
     #[test]
     fn drop_wrapped() {
         define_tracker!(DROPS, Tracker);
@@ -911,9 +916,12 @@ mod tests {
             assert_eq!(deque.len(), 3);
         }
 
+        // The two trackers popped above, plus the three still live when the deque is dropped.
         assert_eq!(DROPS.load(Ordering::SeqCst), 5);
     }
 
+    /// `clear` drops the elements it removes while leaving the deque itself alive, and releasing
+    /// the deque afterwards must not drop those same elements a second time.
     #[test]
     fn drop_clear_pop() {
         define_tracker!(DROPS, Tracker);
@@ -954,6 +962,9 @@ mod tests {
         assert_eq!(deque.back(), Some(&20));
     }
 
+    /// Indexed access goes through a translation from logical position to ring slot, which the
+    /// second half of the test exercises after the front was popped and the buffer wrapped, so the
+    /// slot order no longer matches the element order.
     #[test]
     fn get_and_get_mut() {
         let mut deque: ArrayDeque<i32, 5> = ArrayDeque::new();
@@ -995,6 +1006,10 @@ mod tests {
         assert_eq!(iter.next().map(|x| *x), None);
     }
 
+    /// Iteration has to follow the logical order of the queue rather than the layout of the slots:
+    /// one front pop followed by a push leaves the write cursor wrapped around to the start of the
+    /// buffer, so the walk has to begin where the oldest element ended up instead of at the first
+    /// slot.
     #[test]
     fn iter_wrap_order() {
         let mut deque: ArrayDeque<i32, 4> = ArrayDeque::new();

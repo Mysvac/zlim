@@ -21,6 +21,8 @@ mod tests {
     use crate::dynamic::{DynamicEnum, DynamicTuple, DynamicVariant};
     use crate::ops::Enum;
 
+    /// A hand-built `Some` variant is accepted by `from_reflect`, and its tuple
+    /// payload becomes the contained value.
     #[test]
     fn dynamic_enum_to_option_some() {
         let mut t = DynamicTuple::new();
@@ -32,6 +34,8 @@ mod tests {
         assert_eq!(*opt, Some(42));
     }
 
+    /// The unit variant converts back as well, even though there is no payload
+    /// to copy over.
     #[test]
     fn dynamic_enum_to_option_none() {
         let dyn_e = DynamicEnum::new(0, "None", DynamicVariant::Unit);
@@ -41,6 +45,8 @@ mod tests {
         assert_eq!(*opt, None);
     }
 
+    /// The reverse direction, turning a concrete `Some` into a `DynamicEnum`
+    /// that keeps the variant name and exposes the payload as field 0.
     #[test]
     fn option_to_dynamic_enum_some() {
         let val: Option<i32> = Some(99);
@@ -53,6 +59,8 @@ mod tests {
         assert_eq!(*f, 99);
     }
 
+    /// `None` becomes a unit variant, so the dynamic form reports no fields at
+    /// all.
     #[test]
     fn option_to_dynamic_enum_none() {
         let val: Option<i32> = None;
@@ -63,6 +71,8 @@ mod tests {
         assert_eq!(dyn_e.field_len(), 0);
     }
 
+    /// Chains both directions, so a value that goes through the dynamic form has
+    /// to come back equal to the original.
     #[test]
     fn option_roundtrip_via_dynamic() {
         let original: Option<i32> = Some(42);

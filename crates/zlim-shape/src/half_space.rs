@@ -107,6 +107,12 @@ mod half_space_tests {
 
     use super::HalfSpace;
 
+    /// Solves the intersection of three bisecting planes and then walks the
+    /// configurations where no single point exists: parallel or repeated planes, and a
+    /// half-space whose plane equation is not well defined.
+    ///
+    /// The half-spaces are built directly from their `normal_d` vector so the raw
+    /// plane equation stays under the test's control.
     #[test]
     fn intersection_point() {
         // Intersection of shifted xy, xz, and yz planes

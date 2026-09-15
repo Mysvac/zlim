@@ -38,6 +38,9 @@ struct GenericRes<T: Send + Sync + 'static> {
 #[resource(serialize)]
 struct SerializeRes(u32);
 
+/// The serialization flag on the resource attribute has to reach both the
+/// registry entry and the type-level constant, while an unmarked resource
+/// stays non-serializable.
 #[test]
 fn derive_serialize_flag() {
     let db = ResourceDB::of::<SerializeRes>();
@@ -113,6 +116,9 @@ fn drop_resource() {
 // World resource API tests — Change detection
 // -----------------------------------------------------------------------------
 
+/// A shared resource reference reports a fresh insert as both added and
+/// changed, and once the baseline moves past it the same resource looks
+/// untouched.
 #[test]
 fn resource_ref_change_detection() {
     let mut world = World::alloc();
@@ -129,6 +135,9 @@ fn resource_ref_change_detection() {
     assert!(!r2.is_changed());
 }
 
+/// A mutable resource guard reports the insert as added and changed, and after
+/// the baseline moves on only a write marks it changed again: reading the value
+/// through the guard must not, which is what the middle block pins down.
 #[test]
 fn resource_mut_change_detection() {
     let mut world = World::alloc();
@@ -146,12 +155,14 @@ fn resource_mut_change_detection() {
     let mut r = world.resource_mut::<Health>();
     assert!(!r.is_changed());
     assert!(!r.is_added());
+    // Reading through the guard leaves both flags alone.
     let x: u32 = (*r).value;
     assert_eq!(x, 111);
 
     assert!(!r.is_changed());
     assert!(!r.is_added());
 
+    // A write through the guard marks the resource changed, but not added.
     r.value = 2233;
     assert!(r.is_changed());
     assert!(!r.is_added());
@@ -175,6 +186,8 @@ fn non_send_insert_and_get() {
     });
 }
 
+/// Non-send resources can be removed with the value handed back, or dropped in
+/// place; the second half checks that dropping really clears the slot.
 #[test]
 fn non_send_remove_and_drop() {
     let mut world = World::alloc();
@@ -197,6 +210,9 @@ fn non_send_remove_and_drop() {
     assert!(!world.with_non_send(|w| w.contains_non_send::<Score>()));
 }
 
+/// The non-send counterpart of the shared reference checks: a freshly inserted
+/// non-send resource is reported as added and changed, and reading it back has
+/// to go through the non-send world.
 #[test]
 fn non_send_ref_change_detection() {
     let mut world = World::alloc();
@@ -230,11 +246,16 @@ fn non_send_mut_change_detection() {
 // World resource API tests — Send / NonSend shared slot
 // -----------------------------------------------------------------------------
 
+/// The send and non-send views address the same per-type storage slot, so a
+/// resource inserted through the plain API is visible to the non-send
+/// accessors, and an insert through the non-send world overwrites what the
+/// plain getter returns.
 #[test]
 fn send_and_non_send_share_slot() {
     let mut world = World::alloc();
 
     world.insert_resource(Health { value: 10 });
+    // The plain insert is already visible through the non-send view.
     world.with_non_send(|w| {
         assert_eq!(w.get_non_send::<Health>(), Some(&Health { value: 10 }));
     });
@@ -242,6 +263,7 @@ fn send_and_non_send_share_slot() {
     world.with_non_send_mut(|w| {
         w.insert_non_send(Health { value: 20 });
     });
+    // ...and the non-send insert is visible through the plain getter.
     assert_eq!(world.get_resource::<Health>(), Some(&Health { value: 20 }));
 }
 

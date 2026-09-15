@@ -1282,6 +1282,10 @@ mod tests {
         assert_eq!(Dir2::new_and_length(Vec2::X * 6.5), Ok((Dir2::X, 6.5)));
     }
 
+    /// The interpolation follows the arc between the two directions, so the halfway point of
+    /// the quarter turn from `X` to `Y` is the 45° diagonal, while a third of the way back
+    /// from `Y` towards `X` and two thirds of the way forward from `X` both land on the 60°
+    /// direction.
     #[test]
     fn dir2_slerp() {
         assert_relative_eq!(
@@ -1300,6 +1304,9 @@ mod tests {
         );
     }
 
+    /// Each of the six rotation helpers is checked at 45°, 90° or 135°, covering both the
+    /// direction-to-direction and the direction-to-axis forms, which also pins down that all of
+    /// them measure the rotation counterclockwise.
     #[test]
     fn dir2_to_rotation2d() {
         assert_relative_eq!(Dir2::EAST.rotation_to(Dir2::NORTH_EAST), Rot2::FRAC_PI_4);
@@ -1378,6 +1385,9 @@ mod tests {
         );
     }
 
+    /// The interpolation follows the arc rather than a straight line between the two vectors, so a
+    /// third of the way from `X` towards `Z` lands 30° from `X`, and the last sample walks the arc
+    /// backwards from `Z` to `Y`.
     #[test]
     fn dir3_slerp() {
         assert_relative_eq!(
@@ -1449,6 +1459,9 @@ mod tests {
         );
     }
 
+    /// The interpolation follows the arc rather than a straight line between the two vectors, so a
+    /// third of the way from `X` towards `Z` lands 30° from `X`, and the last sample walks the arc
+    /// backwards from `Z` to `Y`.
     #[test]
     fn dir3a_slerp() {
         assert_relative_eq!(

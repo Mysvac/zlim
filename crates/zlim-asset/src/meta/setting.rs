@@ -1,9 +1,15 @@
 use core::any::Any;
 
+// -----------------------------------------------------------------------------
+// Settings
+
 /// Settings used by the asset system.
 pub trait Settings: Any + Send + Sync {}
 
 impl<T: Send + Sync + Any> Settings for T {}
+
+// -----------------------------------------------------------------------------
+// dyn Settings
 
 impl dyn Settings {
     /// Returns true if the inner type is the same as `T`.
@@ -16,8 +22,10 @@ impl dyn Settings {
     #[inline]
     pub fn downcast<T: Any>(self: Box<Self>) -> Result<Box<T>, Box<Self>> {
         if (&*self as &dyn Any).is::<T>() {
-            // TODO: `unwrap_unchecked` or `downcast_unchecked` if necessary
-            Ok(<Box<dyn Any>>::downcast::<T>(self).unwrap())
+            #[expect(unsafe_code, reason = "already checked above")]
+            unsafe {
+                Ok(<Box<dyn Any>>::downcast::<T>(self).unwrap_unchecked())
+            }
         } else {
             Err(self)
         }

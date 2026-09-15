@@ -86,6 +86,13 @@ mod tests {
         assert!(TypeDB::get_by_type(TypeId::of::<Duration>()).is_some());
     }
 
+    /// Pins the textual round-trip of `Duration` through `Opaque`: every case is
+    /// stringified and parsed back, and the two have to agree within a relative
+    /// tolerance rather than exactly, because the text is re-read as an `f64`.
+    ///
+    /// The cases span the magnitudes the text form can render, from a single
+    /// nanosecond up to a year's worth of seconds, including fractional seconds
+    /// and values that render in a coarser unit.
     #[test]
     fn test_duration_roundtrip() {
         let test_cases = vec![
@@ -132,6 +139,7 @@ mod tests {
         ];
 
         for (i, original) in test_cases.iter().enumerate() {
+            // Render the duration and parse that text back into a fresh value.
             let s = Opaque::stringify(original);
 
             let mut parsed = Duration::default();

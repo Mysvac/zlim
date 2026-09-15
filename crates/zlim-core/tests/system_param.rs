@@ -59,6 +59,9 @@ fn score_system(mut param: ScoreParam) -> u32 {
     param.score.0 + *param.local
 }
 
+/// Runs a derived parameter that mixes resources with a `Local`: the local
+/// counter has to survive between invocations of the cached system instance,
+/// while `Score` is only read and `Delta` accumulates whatever the local added.
 #[test]
 fn score_param_runs_end_to_end() {
     let mut world = World::alloc();
@@ -99,6 +102,9 @@ fn commands_system(mut param: CommandsParam) {
     param.commands.insert_resource(Score(99));
 }
 
+/// The derived flag marks the parameter as deferred, and the commands it
+/// queues have to be flushed by the invocation, which is what makes the
+/// inserted resource observable afterwards.
 #[test]
 fn commands_param_applies_deferred_commands() {
     let mut world = World::alloc();
@@ -190,6 +196,9 @@ fn non_send_world_ref_system(param: NonSendWorldRefParam) -> u32 {
         .get()
 }
 
+/// A shared borrow of the non-send world is flagged as non-send but not
+/// exclusive, and reads the counter that was placed into that world by the
+/// test beforehand.
 #[test]
 fn non_send_world_ref_param_runs() {
     let mut world = World::alloc();
@@ -230,6 +239,9 @@ fn non_send_world_mut_system(param: NonSendWorldMutParam) {
         .set(7);
 }
 
+/// A mutable borrow of the non-send world is flagged as both non-send and
+/// exclusive; the system inserts then overwrites a counter, and the final value
+/// is observed through the non-send accessors.
 #[test]
 fn non_send_world_mut_param_runs() {
     let mut world = World::alloc();
@@ -257,6 +269,9 @@ fn tick_system(param: TickParam) -> (u32, u32) {
     (param.ticks.last_run.get(), param.ticks.this_run.get())
 }
 
+/// Pins down the tick window a `SystemTick` parameter observes: `last_run` is
+/// taken from the world's change-detection baseline, which `invoke` does not
+/// advance on its own, so the window only moves once that baseline is advanced.
 #[test]
 fn tick_param_tracks_runs() {
     let mut world = World::alloc();
@@ -340,6 +355,8 @@ struct GenericParam<'w, 's, T: ResourceTrait + Sync> {
     _marker: PhantomData<&'s ()>,
 }
 
+/// Compile-time proof that a generic derived parameter still flattens its
+/// `Item` to the parameter type itself, with the type argument substituted.
 #[test]
 fn generic_param_item_type_matches() {
     fn same_type<'w, 's>(
@@ -422,6 +439,8 @@ fn access_of<P: SystemParamTrait>(world: &World) -> AccessTable {
     table
 }
 
+/// Access tables of two parameters that write different resources do not
+/// conflict, so the scheduler is free to run their systems in parallel.
 #[test]
 fn disjoint_params_are_parallelizable() {
     let mut world = World::alloc();
@@ -452,6 +471,9 @@ struct DoubleMutParam<'w, 's> {
     _marker: PhantomData<&'s ()>,
 }
 
+/// Two fields of one parameter asking to write the same resource is a conflict,
+/// so registration reports failure; the duplicate access is still merged into
+/// the table rather than dropped, which keeps the table consistent.
 #[test]
 fn field_conflict_is_reported_but_merged() {
     let mut world = World::alloc();
@@ -460,6 +482,7 @@ fn field_conflict_is_reported_but_merged() {
     let state = <DoubleMutParam as SystemParamTrait>::init_state(&world);
     let mut table = AccessTable::new();
 
+    // The second write of `Score` is the one that conflicts.
     assert!(!<DoubleMutParam as SystemParamTrait>::register_access(
         &state, &mut table, true,
     ));

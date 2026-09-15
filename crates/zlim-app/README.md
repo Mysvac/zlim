@@ -29,7 +29,8 @@ app.insert_sub_app(Render, render_sub_app);
 ## App run flow
 
 1. **Apply plugins**: `App::run` first calls `App::build` (skipped if it was
-   already called). All added plugins run in `build → apply → cleanup` order.
+   already called). All added plugins run in
+   `build → apply → finish → cleanup` order.
 2. **Start the runner**: once built, `App` drives the frame loop with the
    runner set via `set_runner` (or the default runner), then returns
    `AppExit`.
@@ -83,23 +84,24 @@ Plugins let you add functionality to an `App` in a modular way.
 Plugins are **lazy**: `add_plugins` only stores them and does nothing until
 `App::build` (or `App::run`) runs.
 
-Plugins have three stages:
+Plugins have four stages:
 
 | Stage | When and why |
 |---|---|
 | `build` | Initialize the plugin itself; add **dependency plugins** to the app; set the `apply` order of plugins (dependency graph). Plugins may still be added in this stage. |
 | `apply` | The plugin list is now **immutable** (no more additions). Usually where plugin logic runs and the world is modified (registering systems/resources/messages, …). The execution order is the topological order of the dependency graph built in `build` (cycles panic). |
+| `finish` | Runs after **every** plugin has been applied, in **installation order**. Use it for work that needs the fully applied app: reading or validating what other plugins registered, building final lookup tables, and so on. |
 | `cleanup` | Clean up the plugin's own data. **After `cleanup` finishes, all plugins are removed**, so game logic added by a plugin must not rely on the plugin object itself remaining alive. |
 
-`apply` is required; `build` and `cleanup` have default no-op
+`apply` is required; `build`, `finish` and `cleanup` have default no-op
 implementations.
 
 ## Log configuration
 
 Logging configuration is **independent** of the plugin system: `LogConfig`
 (from `zlim-log`) does not implement the `Plugin` trait and is not part of
-the plugin lifecycle (`build`/`apply`/`cleanup`). Initialize the logger
-directly on the `App`:
+the plugin lifecycle (`build`/`apply`/`finish`/`cleanup`). Initialize the
+logger directly on the `App`:
 
 - `App::init_logger()` — initializes the global logger with the default
   configuration.

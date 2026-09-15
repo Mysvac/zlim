@@ -39,15 +39,13 @@ impl TimeCache {
         let state = UnsafeCell::new(ResourceCell::new(<TimeState>::REGISTER()));
         let snapshot = UnsafeCell::new(ResourceCell::new(<TimeSnapshot>::REGISTER()));
         let _ = DelayedCommandQueues::REGISTER();
-        unsafe {
-            Self {
-                time: Global::alloc_unchecked(time),
-                real: Global::alloc_unchecked(real),
-                virt: Global::alloc_unchecked(virt),
-                fixed: Global::alloc_unchecked(fixed),
-                state: Global::alloc_unchecked(state),
-                snapshot: Global::alloc_unchecked(snapshot),
-            }
+        Self {
+            time: Global::alloc_static(time),
+            real: Global::alloc_static(real),
+            virt: Global::alloc_static(virt),
+            fixed: Global::alloc_static(fixed),
+            state: Global::alloc_static(state),
+            snapshot: Global::alloc_static(snapshot),
         }
     }
 

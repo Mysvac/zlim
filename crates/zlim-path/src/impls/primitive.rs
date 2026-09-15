@@ -235,6 +235,9 @@ mod tests {
         }
     }
 
+    /// The one-element and mixed-arity cases pin down the placeholder `IDENT`
+    /// form: element types become `_`, and the trailing comma of a one-tuple
+    /// survives in `type_path` while `IDENT` stays `(_,)`.
     #[test]
     fn tuple_path() {
         assert_path! {

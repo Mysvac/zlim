@@ -1,4 +1,5 @@
-//! The [`Asset`] contract and dependency enumeration.
+//! The [`Asset`] contract, dependency enumeration, and the [`AssetComponent`] handle-to-id
+//! protocol that change tracking is built on.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -33,13 +34,20 @@ pub trait VisitAssetDependencies {
 }
 
 // -----------------------------------------------------------------------------
-// placeholder
+// () — placeholder asset
 
+/// `()` is the placeholder [`Asset`]: it stands in for "no particular asset type",
+/// which is what lets a bare [`AssetId`] of `()` be written where an asset type is
+/// required but no asset is meant.
 impl Asset for () {}
 
+// A `()` carries no asset ids, so there is nothing to visit:
+// reaching the visitor means the caller built a dependency graph for the placeholder.
+// `unreachable!()` reports that instead of silently visiting nothing.
 impl VisitAssetDependencies for () {
+    #[cold]
     fn visit_dependencies(&self, _visit: &mut dyn FnMut(ErasedAssetId)) {
-        unreachable!()
+        unreachable!("`()` is a placeholder, should not be used to visit asset deps")
     }
 }
 
@@ -84,6 +92,14 @@ impl<V: VisitAssetDependencies> VisitAssetDependencies for Box<V> {
 }
 
 impl<V: VisitAssetDependencies, const N: usize> VisitAssetDependencies for [V; N] {
+    fn visit_dependencies(&self, visit: &mut dyn FnMut(ErasedAssetId)) {
+        for dependency in self {
+            dependency.visit_dependencies(visit);
+        }
+    }
+}
+
+impl<V: VisitAssetDependencies> VisitAssetDependencies for [V] {
     fn visit_dependencies(&self, visit: &mut dyn FnMut(ErasedAssetId)) {
         for dependency in self {
             dependency.visit_dependencies(visit);

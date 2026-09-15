@@ -22,7 +22,7 @@ use zlim_transform::{GlobalTransform, Transform, TransformPlugin};
 
 let mut app = App::new();
 app.add_plugins(TransformPlugin::default());
-app.build(); // 执行插件（build → apply → cleanup）
+app.build(); // 执行插件（build → apply → finish → cleanup）
 
 // 构造层级：root -> child
 let world = app.main_world_mut();

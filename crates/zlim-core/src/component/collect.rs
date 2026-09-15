@@ -26,8 +26,8 @@ impl ComponentDB {
             use __internal__::__ComponentReg__ as Reg;
             const PRE: usize = 100;
 
+            #[cfg(any(debug_assertions, feature = "debug"))]
             let start = zlim_os::time::Instant::now();
-            zlim_log::debug!("Collecting ComponentDB registrations...");
 
             {
                 // pre-reserve, for better register speed.
@@ -67,6 +67,7 @@ impl ComponentDB {
                 len
             };
 
+            #[cfg(any(debug_assertions, feature = "debug"))]
             zlim_log::debug!(
                 "ComponentDB({len}) collection finished in {:?}",
                 start.elapsed()

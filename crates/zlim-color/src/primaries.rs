@@ -179,6 +179,9 @@ mod tests {
         assert_mat3_approx_eq(m, expected, 1e-4);
     }
 
+    /// Converts between every ordered pair of the supported primary sets and
+    /// checks that the two matrices cancel out to the identity. Covering all pairs
+    /// catches a transposed or mis-scaled matrix that a single pair could hide.
     #[test]
     fn rgb_to_rgb_round_trip_is_identity() {
         let sets = [
@@ -195,6 +198,9 @@ mod tests {
         }
     }
 
+    /// The RGB white vector of each primary set has to convert to that set's own
+    /// white point in XYZ, which is the normalization the matrix is built around;
+    /// a mismatch here means the white point or the scaling is wrong.
     #[test]
     fn white_maps_to_white_point() {
         for primaries in [

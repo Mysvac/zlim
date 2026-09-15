@@ -188,7 +188,7 @@ fn async_read_internal<R: AsyncRead + Unpin>(
         if guard.len == guard.buf.len() {
             guard.buf.reserve(32);
             let capacity = guard.buf.capacity();
-            // Faster then `resize(capacity, 0)`, no need to reset memory.
+            // Faster than `resize(capacity, 0)`, no need to reset memory.
             unsafe { guard.buf.set_len(capacity) };
         }
 
@@ -321,7 +321,8 @@ impl WriteAllFuture<'_> {
 
     /// Appends `input` to a `Vec<u8>`, completing on the first poll.
     ///
-    /// This is the fast path behind `Writer for Vec<u8>` (used by savers and tests).
+    /// This is the fast path behind `DataWriter`, the in-memory writer in
+    /// [`crate::io::memory`] that savers and tests write through.
     ///
     /// # Examples
     ///
@@ -359,9 +360,10 @@ fn async_write_internal<W: AsyncWrite + Unpin>(
 
         let n = ready!(writer.poll_write(cx, buffer))?;
 
-        // Take the buffer first so that a panic in `split_at` (only possible on a broken
-        // `AsyncWrite` implementation returning a too-large `n`) leaves it empty rather
-        // than pointing at freed/partially-written data.
+        // `core::mem::take` detaches the buffer from `*buffer`, so that the `rest` handed
+        // back by `split_at_checked` does not borrow it while it is reassigned below. A
+        // too-large `n` — a broken `AsyncWrite` implementation — leaves the buffer empty
+        // and is reported as `InvalidData`.
         let taken = core::mem::take(buffer);
         let Some((_, rest)) = taken.split_at_checked(n) else {
             ::core::hint::cold_path();

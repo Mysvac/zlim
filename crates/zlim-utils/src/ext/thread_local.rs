@@ -670,6 +670,9 @@ mod tests {
         Arc::new(move || count.fetch_add(1, Relaxed))
     }
 
+    /// Within a single thread the value is created on first use and cached from then on — the
+    /// counter behind the factory is what proves the closure runs only once — until `clear` drops
+    /// the entry and the slot reads as empty again.
     #[test]
     fn same_thread() {
         let create = make_create();
@@ -685,6 +688,10 @@ mod tests {
         assert_eq!(None, tls.get());
     }
 
+    /// Each thread gets a slot of its own: the child starts out empty even though the parent has
+    /// already stored a value, and its first `get_or` runs the factory again and observes the
+    /// counter's second value. Nothing the child does may disturb the parent's slot, so the parent
+    /// checks its own value once more after the join.
     #[test]
     fn different_thread() {
         let create = make_create();
@@ -696,6 +703,7 @@ mod tests {
         let tls2 = tls.clone();
         let create2 = create.clone();
         thread::spawn(move || {
+            // The child starts out with no value of its own, unlike the parent.
             assert_eq!(None, tls2.get());
             assert_eq!(1, *tls2.get_or(|| create2()));
             assert_eq!(Some(&1), tls2.get());
@@ -703,10 +711,16 @@ mod tests {
         .join()
         .unwrap();
 
+        // The parent still owns its own slot, untouched by the child.
         assert_eq!(Some(&0), tls.get());
         assert_eq!(0, *tls.get_or(|| create()));
     }
 
+    /// Iteration reaches into the slots of every thread that stored a value, not just the current
+    /// one, so three nested threads each register a boxed integer first and the parent then drains
+    /// all three through `iter`, `iter_mut` and `into_iter`. The order between threads is
+    /// unspecified and depends on the slot allocator, hence the sort, while the set of values is
+    /// exact and identical for all three walks.
     #[test]
     fn iter() {
         let tls = Arc::new(ThreadLocal::new());
@@ -726,8 +740,11 @@ mod tests {
         .join()
         .unwrap();
 
+        // Every other thread has finished and dropped its clone, so the `Arc` can be unwrapped for
+        // the consuming iterator below.
         let mut tls = Arc::try_unwrap(tls).unwrap();
 
+        // Slot order is not the order in which the values were created, so compare as a set.
         let mut v = tls.iter().map(|x| **x).collect::<Vec<i32>>();
         v.sort_unstable();
         assert_eq!(vec![1, 2, 3], v);
@@ -741,6 +758,8 @@ mod tests {
         assert_eq!(vec![1, 2, 3], v);
     }
 
+    /// Values belong to the container rather than to the thread that created them, so dropping the
+    /// container is what runs their destructors, and it runs each of them once.
     #[test]
     fn test_drop() {
         let local = ThreadLocal::new();
@@ -758,6 +777,10 @@ mod tests {
         assert_eq!(dropped.load(Relaxed), 1);
     }
 
+    /// The container is `Sync` as long as its payload can move between threads, even when the
+    /// payload is not `Sync` itself: a value is only ever reachable from the thread whose slot
+    /// holds it, so sharing the container cannot expose one value to two threads at once. The
+    /// `RefCell` case is the one that would fail to compile if that were not the rule.
     #[test]
     fn is_sync() {
         fn foo<T: Sync>() {}

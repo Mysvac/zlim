@@ -29,6 +29,9 @@ mod tests {
     use crate::path::TypePath;
     use std::borrow::Cow;
 
+    /// The impl accepts unsized borrowed types, so both a `str` and a `[u8]`
+    /// are covered: the inner type contributes its full path to `type_path`
+    /// and only its short name to `type_name`.
     #[test]
     #[rustfmt::skip]
     fn cow() {

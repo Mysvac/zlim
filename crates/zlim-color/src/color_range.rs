@@ -26,6 +26,10 @@ mod tests {
     use crate::palettes::basic;
     use crate::{LinearRgba, Srgba};
 
+    /// Checks that a range interpolates linearly between its two colors and
+    /// clamps outside the unit interval, so factors below 0 and above 1 return the
+    /// endpoints instead of extrapolating. Both an sRGB range and a linear-space
+    /// range are covered, since either can implement the trait.
     #[test]
     fn test_color_range() {
         let range = basic::RED..basic::BLUE;

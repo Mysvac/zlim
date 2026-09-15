@@ -9,7 +9,9 @@ exclude = ["README.zh.md"]
 
 [features]
 
-trace = ["zlim-core/trace", "zlim-log/trace", "dep:tracing-error"]
+trace = ["zlim-core/trace"]
+
+trace_error = ["zlim-log/trace_error", "dep:tracing-error"]
 
 backtrace = ["zlim-core/backtrace"]
 

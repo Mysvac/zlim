@@ -460,6 +460,11 @@ mod tests {
         assert_eq!(bounding_circle.radius(), 1.0);
     }
 
+    /// Arcs and their circular segments share the same bounding volumes, so a single table of cases
+    /// drives both: for every input the AABB and bounding circle of the arc are compared with the
+    /// expected values, and the segment taken from the same arc must produce the same results. The
+    /// cases vary the covered fraction and the radius, and combine them with translations and
+    /// rotations.
     #[test]
     // Arcs and circular segments have the same bounding shapes so they share test cases.
     fn arc_and_segment() {
@@ -613,6 +618,12 @@ mod tests {
         }
     }
 
+    /// A sector is the arc plus the two radii down to the center, so its bounding shapes also
+    /// have to cover that apex. That makes the expected values less obvious: for the narrower
+    /// arcs the bounding circle is the circumcircle of the apex and the two endpoints, once the
+    /// apex angle turns obtuse it is the circle on the chord as diameter, and a major arc simply
+    /// uses the arc's own circle. The cases cover minor and major arcs, radius scaling,
+    /// translation and rotation.
     #[test]
     fn circular_sector() {
         struct TestCase {
@@ -919,6 +930,9 @@ mod tests {
         assert_eq!(bounding_circle.radius(), radius);
     }
 
+    /// The triangle is placed so that it is obtuse, which makes the minimal bounding circle the one
+    /// with the longest side as its diameter rather than the circumcircle. The expected center is
+    /// therefore the midpoint of that side, translated by the isometry.
     #[test]
     fn obtuse_triangle() {
         let obtuse_triangle = Triangle2d::new(

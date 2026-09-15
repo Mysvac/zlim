@@ -4,11 +4,13 @@ use core::fmt::{Debug, Formatter};
 use std::collections::BTreeSet;
 
 use zlim_core::error::ErrorHandler;
+use zlim_core::job::JobLabel;
 use zlim_core::message::Message;
 use zlim_core::resource::Resource;
 use zlim_core::schedule::InternedScheduleLabel;
 use zlim_core::schedule::Schedule;
 use zlim_core::schedule::ScheduleLabel;
+use zlim_core::schedule::ScheduleStage;
 use zlim_core::world::FromWorld;
 use zlim_core::world::World;
 use zlim_log::LogConfig;
@@ -44,7 +46,7 @@ pub type ExtractFn = Box<dyn FnMut(&mut World, &mut World) + Send>;
 ///
 /// Functionality is added as [`Plugin`]s: they are stored lazily by
 /// [`App::add_plugins`] and take effect during [`App::build`], which runs
-/// every plugin in dependency order (`build` → `apply` → `cleanup`).
+/// every plugin through `build` → `apply` → `finish` → `cleanup`.
 ///
 /// Once built, [`App::run`] hands the app to a runner ([`App::set_runner`];
 /// the default runs a single frame).
@@ -93,7 +95,7 @@ pub type ExtractFn = Box<dyn FnMut(&mut World, &mut World) + Send>;
 ///
 /// 2. **build** — [`App::build`] (called automatically by [`App::run`])
 ///    initializes logging and the task pools, then executes every plugin in
-///    dependency order (`build` → `apply` → `cleanup`).
+///    dependency order (`build` → `apply` → `finish` → `cleanup`).
 ///
 /// 3. **run** — [`App::run`] hands the built app to the runner, which
 ///    drives [`App::update`] until an [`AppExit`] is raised.
@@ -197,7 +199,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panics if called after the app has entered the `Building` stage.
+    /// May panic if called after the app has entered the `Adding` stage.
     pub fn init_logger(&mut self) -> &mut Self {
         debug_assert_eq!(
             self.main.plugins_state,
@@ -231,7 +233,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panics if called after the app has entered the `Building` stage.
+    /// May panic if called after the app has entered the `Adding` stage.
     #[inline]
     pub fn with_logger(&mut self, config: LogConfig) -> &mut Self {
         debug_assert_eq!(
@@ -261,7 +263,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panics if called after the app has entered the `Building` stage.
+    /// May panic if called after the app has entered the `Adding` stage.
     pub fn init_task_pool(&mut self) -> &mut Self {
         debug_assert_eq!(
             self.main.plugins_state,
@@ -290,7 +292,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panics if called after the app has entered the `Building` stage.
+    /// May panic if called after the app has entered the `Adding` stage.
     #[inline]
     pub fn with_task_pool(&mut self, mut configs: TaskPoolConfigs) -> &mut Self {
         debug_assert_eq!(
@@ -575,7 +577,42 @@ impl App {
         self.main.plugins_state = PluginsState::Ready;
     }
 
-    fn clean_plugins(&mut self) {
+    fn finish_plugins(&mut self) {
+        #[cfg(feature = "trace")]
+        let _finish_span = zlim_log::info_span!("finish plugins").entered();
+
+        let mut index = 0usize;
+        while index < self.main.plugins.len() {
+            let mut plugin: Box<dyn Plugin> = Box::new(PlaceholderPlugin);
+
+            core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
+
+            #[cfg(feature = "trace")]
+            let _span = zlim_log::info_span!("plugin finish", plugin = plugin.name()).entered();
+
+            plugin.finish(self);
+
+            if self.main.plugins[index].is::<PlaceholderPlugin>() {
+                core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
+                index += 1;
+                continue;
+            }
+
+            ::core::hint::cold_path();
+
+            if self.main.plugins[index].id() != plugin.id() {
+                ::core::hint::cold_path();
+                let x = plugin.name();
+                let y = self.main.plugins[index].name();
+                panic!("The plugin `{x}` has been replaced with a different type `{y}`.");
+            }
+            // else: There are duplicate plugins inserted, and the old plugins have been replaced.
+            index += 1;
+        }
+        self.main.plugins_state = PluginsState::Finish;
+    }
+
+    fn cleanup_plugins(&mut self) {
         #[cfg(feature = "trace")]
         let _clean_span = zlim_log::info_span!("cleanup plugins").entered();
 
@@ -627,8 +664,11 @@ impl App {
 
 impl App {
     /// Builds the app: initializes logging and the task pools, then executes
-    /// every plugin in dependency order (`build` → `apply` → `cleanup`) for
-    /// the main sub-app and each sub-app.
+    /// every plugin through `build` → `apply` → `finish` → `cleanup` for the
+    /// main sub-app and each sub-app.
+    ///
+    /// `apply` runs in dependency order (dependencies first); `finish` and
+    /// `cleanup` run in installation order.
     ///
     /// Idempotent: once `cleanup` has run for all plugins (state
     /// [`PluginsState::Cleaned`]) subsequent calls return immediately.
@@ -638,7 +678,8 @@ impl App {
         match self.main.plugins_state {
             PluginsState::Adding => (),
             PluginsState::Built => panic!("find a nested App::build in `Apply` stage"),
-            PluginsState::Ready => panic!("find a nested App::build in `Clean` stage"),
+            PluginsState::Ready => panic!("find a nested App::build in `Finish` stage"),
+            PluginsState::Finish => panic!("find a nested App::build in `Cleanup` stage"),
             PluginsState::Cleaned => return self,
         }
 
@@ -648,7 +689,6 @@ impl App {
         TaskPoolConfigs::default().try_apply();
 
         // Collect all types of information:
-        // - Reflect Registry (TypeDB)
         // - ECS ComponentDB
         // - ECS ResourceDB
         // - ECS Job Registry
@@ -657,7 +697,8 @@ impl App {
 
         self.build_plugins();
         self.apply_plugins();
-        self.clean_plugins();
+        self.finish_plugins();
+        self.cleanup_plugins();
         self.build_sub_plugins();
         self
     }
@@ -677,7 +718,7 @@ impl SubApp {
         let id = TypeId::of::<T>();
         match self.plugins_state {
             PluginsState::Adding | PluginsState::Built => self.plugin_graph.contains_key(&id),
-            PluginsState::Ready | PluginsState::Cleaned => {
+            PluginsState::Ready | PluginsState::Finish | PluginsState::Cleaned => {
                 self.plugin_names.iter().find(|(x, _)| *x == id).is_some()
             }
         }
@@ -1280,6 +1321,7 @@ impl SubApp {
     /// Returns a mutable reference to the schedule with the given label.
     ///
     /// Initializes a new empty schedule if it doesn't exist.
+    #[doc(alias = "get_or_init_schedule")]
     pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
         self.world_mut().schedule_entry(label.intern())
     }
@@ -1294,8 +1336,27 @@ impl SubApp {
     ///
     /// See [`World::register_message`] for details.
     #[doc(alias = "init_message")]
+    #[doc(alias = "register_message")]
     pub fn add_message<T: Message>(&mut self) -> &mut Self {
         self.world_mut().register_message::<T>();
+        self
+    }
+
+    /// Inserts a standalone job from a `JobLabel` into the given Schedule and Stage.
+    ///
+    /// If the Schedule does not exist, it will be automatically created.
+    ///
+    /// For complex requirements such as ordering or group, use [`schedule_entry`] instead.
+    ///
+    /// [`schedule_entry`]: Self::schedule_entry
+    #[track_caller]
+    #[doc(alias = "insert_job")]
+    pub fn add_job<J: JobLabel>(
+        &mut self,
+        schedule: impl ScheduleLabel,
+        stage: impl ScheduleStage,
+    ) -> &mut Self {
+        self.world_mut().insert_job::<J>(schedule.intern(), stage);
         self
     }
 }
@@ -1304,6 +1365,7 @@ impl App {
     /// Returns a mutable reference to the schedule with the given label.
     ///
     /// Initializes a new empty schedule if it doesn't exist.
+    #[doc(alias = "get_or_init_schedule")]
     pub fn schedule_entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
         self.main_world_mut().schedule_entry(label.intern())
     }
@@ -1318,8 +1380,28 @@ impl App {
     ///
     /// See [`World::register_message`] for details.
     #[doc(alias = "init_message")]
+    #[doc(alias = "register_message")]
     pub fn add_message<T: Message>(&mut self) -> &mut Self {
         self.main_world_mut().register_message::<T>();
+        self
+    }
+
+    /// Inserts a standalone job from a `JobLabel` into the given Schedule and Stage.
+    ///
+    /// If the Schedule does not exist, it will be automatically created.
+    ///
+    /// For complex requirements such as ordering or group, use [`schedule_entry`] instead.
+    ///
+    /// [`schedule_entry`]: Self::schedule_entry
+    #[track_caller]
+    #[doc(alias = "insert_job")]
+    pub fn add_job<J: JobLabel>(
+        &mut self,
+        schedule: impl ScheduleLabel,
+        stage: impl ScheduleStage,
+    ) -> &mut Self {
+        self.main_world_mut()
+            .insert_job::<J>(schedule.intern(), stage);
         self
     }
 }

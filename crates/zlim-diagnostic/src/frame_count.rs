@@ -5,7 +5,7 @@
 //! frame in the `Last` stage.  [`FrameCountDiagnosticsPlugin`] additionally
 //! samples the `frame_count`, `frame_time`, and `fps` diagnostics.
 
-use zlim_app::{App, Last, MainSchedulePlugin, Plugin, Update};
+use zlim_app::{App, Last, MainSchedulePlugin, Plugin, PluginExt, Update};
 use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
 use zlim_core::job_fn;
@@ -77,7 +77,7 @@ impl Plugin for FrameCountPlugin {
         let world = app.main_world_mut();
 
         world.init_resource::<FrameCount>();
-        world.schedule_entry(Last).insert::<UpdateFrameCount>(());
+        world.insert_job::<UpdateFrameCount>(Last, ());
     }
 }
 
@@ -151,9 +151,15 @@ impl Plugin for FrameCountDiagnosticsPlugin {
     fn build(&mut self, app: &mut App) {
         if !app.contains_plugin::<FrameCountPlugin>() {
             app.add_plugins(FrameCountPlugin);
+            zlim_log::info!(
+                "`FrameCountPlugin` was added as a dependency af `FrameCountDiagnosticsPlugin`"
+            );
         }
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
+            zlim_log::info!(
+                "`DiagnosticsPlugin` was added as a dependency af `FrameCountDiagnosticsPlugin`"
+            );
         }
 
         MainSchedulePlugin::apply_before::<Self>(app);
@@ -176,8 +182,7 @@ impl Plugin for FrameCountDiagnosticsPlugin {
         // An average frame count would be nonsensical,
         // so we set the max history length to zero and disable smoothing.
         .register_diagnostic(Diagnostic::new(Self::FRAME_COUNT).with_smoothing_factor(0.0))
-        .schedule_entry(Update)
-        .insert::<UpdateFrameCountDiagnostics>(());
+        .add_job::<UpdateFrameCountDiagnostics>(Update, ());
     }
 }
 

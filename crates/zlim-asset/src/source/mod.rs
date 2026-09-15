@@ -1,9 +1,6 @@
-//! Asset source registry, builders, events and the errors they report.
+//! Asset sources, the builders and the app-wide source collections.
 
-mod error;
 mod sources;
 
-pub use error::{MissingAssetSource, MissingAssetWriter};
-pub use error::{MissingProcessedAssetReader, MissingProcessedAssetWriter};
 pub use sources::{AssetSource, AssetSourceBuilder};
 pub use sources::{AssetSourceBuilders, AssetSources};

@@ -5,8 +5,8 @@ use zlim_core::job_fn;
 use zlim_core::message::MessageWriter;
 use zlim_utils::sync::SpinLock;
 
-use crate::MainSchedulePlugin;
 use crate::{App, AppExit, Plugin, Update};
+use crate::{MainSchedulePlugin, PluginExt};
 
 /// Graceful shutdown plugin for terminal signal handling (Ctrl+C).
 ///
@@ -97,8 +97,7 @@ impl Plugin for ShutdownPlugin {
             Err(err) => zlim_log::warn!("Failed to set `Ctrl+C` handler: {err}"),
         }
 
-        let world = app.main_world_mut();
-        world.schedule_entry(Update).insert::<HandleExitSignal>(());
+        app.add_job::<HandleExitSignal>(Update, ());
     }
 }
 

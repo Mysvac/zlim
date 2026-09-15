@@ -239,11 +239,16 @@ mod tests {
     use approx::{AbsDiffEq, assert_abs_diff_eq};
     use zlim_math::ops;
 
+    /// Enumerates what interval construction accepts and rejects. A start must be
+    /// strictly less than the end, but either endpoint may be infinite as long as that
+    /// ordering holds; reversed, zero-length, NaN-valued and otherwise misordered
+    /// endpoints are all errors.
     #[test]
     fn make_intervals() {
         let ivl = Interval::new(2.0, -1.0);
         assert!(ivl.is_err());
 
+        // Negative zero compares equal to zero, so this interval is empty as well.
         let ivl = Interval::new(-0.0, 0.0);
         assert!(ivl.is_err());
 
@@ -290,6 +295,9 @@ mod tests {
         assert_eq!(ivl.length(), f32::INFINITY);
     }
 
+    /// Checks intersection across overlapping, merely touching and unbounded inputs.
+    /// Overlapping intervals produce the shared sub-interval, while intervals that only
+    /// touch at a single point count as disjoint because the result would be empty.
     #[test]
     fn intersections() {
         let ivl1 = interval(-1.0, 1.0).unwrap();
@@ -362,6 +370,9 @@ mod tests {
         assert!(!interval(f32::NEG_INFINITY, 5.0).unwrap().is_bounded());
     }
 
+    /// Checks the affine map from one interval onto another. The map must send the source
+    /// endpoints to the target endpoints and interpolate between them, and must be
+    /// refused when either interval is unbounded.
     #[test]
     fn linear_maps() {
         let ivl1 = interval(-3.0, 5.0).unwrap();
@@ -380,6 +391,10 @@ mod tests {
         assert!(ivl1.linear_map_to(ivl2).is_err());
     }
 
+    /// Checks the count and spacing of the points produced by `spaced_points`. A single
+    /// requested point is the start of the interval, two points are its endpoints, and
+    /// larger counts divide the interval into equal steps that include both endpoints. An
+    /// unbounded interval cannot be spaced out at all.
     #[test]
     fn spaced_points() {
         let ivl = interval(0.0, 50.0).unwrap();

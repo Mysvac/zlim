@@ -419,6 +419,10 @@ mod tests {
     use super::{is_polygon_simple, segments_intersect};
     use zlim_math::Vec2;
 
+    /// Collects the ways a polygon can fail to be simple — an edge punching
+    /// through another, a vertex or an edge touching a non-adjacent edge,
+    /// collinear or repeated vertices, and a repeated edge — and expects the
+    /// simplicity test to reject every one of them.
     #[test]
     fn complex_polygon() {
         // A square with one side punching through the opposite side.
@@ -467,6 +471,9 @@ mod tests {
         assert!(is_polygon_simple(&verts));
     }
 
+    /// Checks self-tangency that is exactly representable in `f32`: `B` lies on the
+    /// edge from `D` to `E`, which the vertex labels mark, and the polygon must be
+    /// rejected even though the touching point needs no rounding.
     #[test]
     fn floating_point_precision() {
         let verts = [
@@ -655,11 +662,16 @@ mod tests {
         }
     }
 
+    /// Runs the brute-force comparison over 200k small polygons drawn from the
+    /// tight integer grid where coincident vertices and touching edges show up
+    /// often.
     #[test]
     fn fuzz_against_bruteforce() {
         fuzz_against_bruteforce_impl(200_000, 4, 8, -2, 3, 1);
     }
 
+    /// The same comparison over larger polygons of up to 12 vertices spread
+    /// across a wider coordinate range, so the sweep holds more edges at once.
     #[test]
     fn fuzz_against_bruteforce_wide() {
         fuzz_against_bruteforce_impl(100_000, 4, 12, -10, 10, 1);

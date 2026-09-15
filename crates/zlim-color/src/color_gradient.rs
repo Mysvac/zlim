@@ -77,8 +77,13 @@ mod tests {
     use crate::palettes::basic;
     use zlim_curve::{Curve, CurveExt};
 
+    /// Builds a curve from three palette colors and compares samples against
+    /// hand-written midpoints, both for the curve itself and for a mapped,
+    /// brighter variant. Samples are taken at, between and just outside the
+    /// endpoints; a factor outside the domain has no value at all.
     #[test]
     fn test_color_curve() {
+        // A curve needs at least two colors to have a domain.
         let broken = ColorCurve::new([basic::RED]);
         assert!(broken.is_err());
 
@@ -89,6 +94,8 @@ mod tests {
 
         let brighter_curve = curve.map(|c: Srgba| c.mix(&basic::WHITE, 0.5));
 
+        // Sample the mapped curve both inside and outside its domain; only the
+        // samples that fall inside it have an expected value.
         [
             (-0.1, None),
             (0.0, Some([1.0, 0.5, 0.5, 1.0])),

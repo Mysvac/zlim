@@ -1,6 +1,7 @@
 //! The [`TransformPlugin`] registering transform propagation.
 
-use zlim_app::{App, MainSchedulePlugin, Plugin, PostStartup, PostUpdate};
+use zlim_app::{App, MainSchedulePlugin, Plugin};
+use zlim_app::{PluginExt, PostStartup, PostUpdate};
 use zlim_core::job::{JobId, JobLabel};
 use zlim_core::schedule::ScheduleLabel;
 use zlim_core::world::World;

@@ -350,6 +350,9 @@ fn dynamic_list_drain_all() {
 // DynamicMap
 // -----------------------------------------------------------------------------
 
+/// Dynamic maps are keyed by reflected values rather than by Rust types, so a lookup has to build
+/// a temporary key and compare it as a trait object; stored values come back as trait objects too,
+/// which the test downcasts to the types they were inserted with.
 #[test]
 fn dynamic_map_insert_and_lookup() {
     let mut map = DynamicMap::new();
@@ -516,6 +519,8 @@ fn dynamic_enum_struct_variant() {
     assert!(e.field("nonexistent").is_none());
 }
 
+/// `reset` swaps the whole variant in place, so the name, the index and the payload all change
+/// together — here from a unit variant to a struct variant holding one field.
 #[test]
 fn dynamic_enum_reset_variant() {
     let mut e = DynamicEnum::new(0, "A", DynamicVariant::Unit);

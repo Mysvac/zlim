@@ -69,6 +69,10 @@ fn query_iter_mut_modifies() {
     assert_eq!(world.entity(a).get::<Pos>().unwrap().x, 101.0);
 }
 
+/// Exercises the per-entity accessors a query offers alongside iteration:
+/// `get` has to return the component of the entity that was asked for, and
+/// `contains` answers membership in the query's match set — both entities
+/// carry `Pos`, so both are reported as contained.
 #[test]
 fn query_get_and_contains() {
     let mut world = World::alloc();
@@ -91,6 +95,9 @@ fn query_get_and_contains() {
     );
 }
 
+/// Covers the cardinality rules of a `Single` parameter: exactly one match
+/// yields the item, while several matches and no match at all both fail
+/// parameter construction instead of picking one arbitrarily.
 #[test]
 fn query_single_param() {
     let mut world = World::alloc();

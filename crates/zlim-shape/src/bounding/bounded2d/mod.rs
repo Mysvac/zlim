@@ -398,6 +398,9 @@ mod aabb2d_tests {
         assert_relative_eq!(rotated.max, a.max);
     }
 
+    /// Transforming rotates first and translates afterwards, so a square of half-size 2 rotated by
+    /// 45 degrees grows to a half-size of `2 * sqrt(2)` on both axes, and only then gets moved to
+    /// the requested position. The expected bounds are that rectangle.
     #[test]
     fn transform() {
         let a = Aabb2d {
@@ -430,6 +433,8 @@ mod aabb2d_tests {
         );
     }
 
+    /// Covers the distinct relationships two boxes can have: identical boxes, a box overlapping a
+    /// corner, a box overlapping the opposite corner, and a box separated on one axis only.
     #[test]
     fn intersect_aabb() {
         let aabb = Aabb2d {
@@ -723,6 +728,9 @@ mod bounding_circle_tests {
         assert!(scaled.contains(&a));
     }
 
+    /// Rotation moves the center around the origin while leaving the radius alone, as a circle is
+    /// symmetric; the translation is then applied on top of the rotated center, and the unchanged
+    /// radius is asserted too.
     #[test]
     fn transform() {
         let a = BoundingCircle::new(Vec2::ONE, 5.0);
@@ -748,6 +756,8 @@ mod bounding_circle_tests {
         );
     }
 
+    /// Covers one case of each kind of overlap two circles can have: identical circles, and circles
+    /// that overlap from opposite sides, plus a pair that stays just out of reach.
     #[test]
     fn intersect_bounding_circle() {
         let circle = BoundingCircle::new(Vec2::ZERO, 1.0);

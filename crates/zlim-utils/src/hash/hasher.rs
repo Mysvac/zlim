@@ -264,6 +264,11 @@ mod tests {
     use core::any::TypeId;
     use core::hash::{Hash, Hasher};
 
+    /// Hashing a `TypeId` has to take the specialized integer path rather than the generic
+    /// byte-wise one: the no-op hashers only produce meaningful results when values reach them as
+    /// plain integers. The local hasher below stores `write_u64` and panics on `write`, so this
+    /// passes exactly when the standard library calls the former; there is deliberately no
+    /// assertion — the absence of the panic is the result.
     #[test]
     fn noop_typeid_hash() {
         struct TestNoopHasher(u64);

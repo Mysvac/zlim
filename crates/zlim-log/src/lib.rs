@@ -2,8 +2,9 @@
 
 use core::fmt::{Debug, Formatter};
 
+use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::Layered;
-use tracing_subscriber::{EnvFilter, Layer, Registry};
+use tracing_subscriber::{Layer, Registry};
 
 // -----------------------------------------------------------------------------
 // Modules
@@ -17,12 +18,17 @@ mod chrome_layer;
 mod macros;
 
 // -----------------------------------------------------------------------------
-// trace_memory
+// tracy_memory
 
-#[cfg(feature = "trace_memory")]
+#[cfg(feature = "tracy_memory")]
+use tracy_client::ProfiledAllocator as TracyAllocator;
+
+#[cfg(feature = "tracy_memory")]
 #[global_allocator]
-static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
-    tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
+static GLOBAL: TracyAllocator<std::alloc::System> = TracyAllocator::new(std::alloc::System, 100);
+
+#[cfg(feature = "tracy_demangle")]
+tracy_client::register_demangler!();
 
 // -----------------------------------------------------------------------------
 // Re-exoprt
@@ -43,13 +49,13 @@ pub use tracing_subscriber;
 
 type CustomSubscriber = Layered<Option<BoxedLayer>, Registry>;
 
-type FilteredSubscriber = Layered<EnvFilter, CustomSubscriber>;
+type FilteredSubscriber = Layered<Targets, CustomSubscriber>;
 
-#[cfg(feature = "trace")]
+#[cfg(feature = "trace_error")]
 type PreFormatSubscriber =
     Layered<tracing_error::ErrorLayer<FilteredSubscriber>, FilteredSubscriber>;
 
-#[cfg(not(feature = "trace"))]
+#[cfg(not(feature = "trace_error"))]
 type PreFormatSubscriber = FilteredSubscriber;
 
 pub type BoxedLayer = Box<dyn Layer<Registry> + Send + Sync + 'static>;
@@ -58,14 +64,29 @@ pub type BoxedFmtLayer = Box<dyn Layer<PreFormatSubscriber> + Send + Sync + 'sta
 // -----------------------------------------------------------------------------
 // DEFAULT_FILTER
 
-/// The default [`LogConfig`] [`EnvFilter`].
+/// The default [`LogConfig`] filter.
 pub const DEFAULT_FILTER: &str = concat!("wgpu=warn,", "naga=warn,",);
 
 // -----------------------------------------------------------------------------
 // LogConfig
 
+/// Configuration for the global `tracing` subscriber and `log` bridge.
+///
+/// A `LogConfig` bundles a [`Targets`]-based filter, a default level, and
+/// optional extra layers (custom user layer, custom formatting layer, and
+/// Tracy streaming). Calling [`LogConfig::apply`] consumes the config and
+/// installs a global subscriber built from it.
+///
+/// ```rust, no_run
+/// # use zlim_log::LogConfig;
+/// LogConfig::default().apply();
+/// ```
+///
+/// See [crate level documentation] for details.
+///
+/// [crate level documentation]: crate
 pub struct LogConfig {
-    /// Filters logs using the [`EnvFilter`] format
+    /// Filters logs using the [`Targets`] format.
     pub filter: String,
 
     /// Filters out logs that are "less than" the given level.
@@ -114,32 +135,50 @@ impl Default for LogConfig {
 // LogConfig apply
 
 impl LogConfig {
-    fn build_filter_layer(&self) -> EnvFilter {
-        use tracing_subscriber::filter::Directive;
-
+    fn build_filter_layer(&self) -> Targets {
         // We must manually parse and add the directives individually
         // because `EnvFilter` has no helper methods for adding multiple directives at once.
-        let env_filters: String = std::env::var(EnvFilter::DEFAULT_ENV).unwrap_or_default();
+        #[cfg(not(target_family = "wasm"))]
+        let env_filters: String = std::env::var("RUST_LOG").unwrap_or_default();
 
-        // Start with the default filters, then add the env filters afterwards,
-        // so that the env filters can be used to selectively override the default filters
-        let default_string = format!("{},{}", self.level, self.filter);
-        let mut filters = EnvFilter::builder().parse_lossy(default_string.as_str());
+        #[cfg(target_family = "wasm")]
+        let env_filters: String = String::from("");
 
-        for x in env_filters.split(',').filter(|s| !s.is_empty()) {
-            #[expect(clippy::allow_attributes, reason = "unexpected in wasm")]
-            #[allow(clippy::print_stderr, reason = "logger is not ready yet")]
-            match x.parse::<Directive>() {
-                Ok(d) => filters = filters.add_directive(d),
-                Err(e) => {
-                    ::core::hint::cold_path();
-                    // wasm cannot see this warning
-                    std::eprintln!("LogConfig failed to parse filter from env: {e}");
-                }
+        let mut targets = Targets::new().with_default(self.level);
+
+        let filters = env_filters + "," + &self.filter;
+
+        #[expect(clippy::allow_attributes, reason = "unexpected in wasm")]
+        #[allow(clippy::print_stderr, reason = "logger is not ready yet")]
+        for x in filters.split(',') {
+            let x = x.trim_ascii();
+            if x.is_empty() {
+                continue;
+            }
+
+            if let Some((name, level)) = x.split_once('=')
+                && !name.trim_ascii_end().is_empty()
+                && let Ok(l) = level.trim_ascii_start().parse::<Level>()
+            {
+                targets = targets.with_target(name.trim_ascii_end(), l);
+            } else if x.parse::<Level>().is_ok() {
+                ::core::hint::cold_path();
+                std::eprintln!(
+                    "LogConfig's filter or `RUST_LOG` env contains a bare level segment `{x}`, \
+                    which was ignored because LogConfig already sets a `level` field."
+                );
+                continue; // ignored
+            } else {
+                ::core::hint::cold_path();
+                std::eprintln!(
+                    "LogConfig failed to parse env segment `{x}`: expected either a bare level \
+                    (e.g. `info`) or a `target=level` pair (e.g. `my_crate=warn`), where the \
+                    level is one of: off, error, warn, info, debug, trace."
+                );
             }
         }
 
-        filters
+        targets
     }
 
     pub fn apply(self) {
@@ -149,11 +188,11 @@ impl LogConfig {
 
         let subscriber: Registry = Registry::default();
 
-        let env_filter: EnvFilter = self.build_filter_layer();
+        let targets: Targets = self.build_filter_layer();
         let subscriber: CustomSubscriber = subscriber.with(self.custom_layer);
-        let subscriber: FilteredSubscriber = subscriber.with(env_filter);
+        let subscriber: FilteredSubscriber = subscriber.with(targets);
 
-        #[cfg(feature = "trace")]
+        #[cfg(feature = "trace_error")]
         let subscriber = subscriber.with(tracing_error::ErrorLayer::default());
 
         cfg_select! {
@@ -188,12 +227,13 @@ impl LogConfig {
                     Box::new(layer.with_writer(std::io::stderr))
                 });
 
-                // zlim_render logs a `tracy.frame_mark` event every frame
-                // at Level::INFO. Formatted logs should omit it.
+                // `zlim_render` logs a `tracy.frame_mark` event every frame at
+                // Level::INFO for `tracing-tracy`. Formatted logs should omit it.
                 #[cfg(feature = "trace_tracy")]
                 let skip_frame_mark = |meta: &tracing::Metadata<'_>| {
-                    meta.fields().field("tracy.frame_mark").is_none()
+                    meta.is_span() || meta.fields().field("tracy.frame_mark").is_none()
                 };
+
                 #[cfg(feature = "trace_tracy")]
                 let format_layer = format_layer.with_filter(tracing_subscriber::filter::FilterFn::new(skip_frame_mark));
                 let subscriber = subscriber.with(format_layer);
@@ -210,7 +250,19 @@ impl LogConfig {
             }
         }
 
-        let logger_success = LogTracer::init().is_ok();
+        let level_filter = match self.level {
+            Level::TRACE => ::tracing_log::log::LevelFilter::Trace,
+            Level::DEBUG => ::tracing_log::log::LevelFilter::Debug,
+            Level::INFO => ::tracing_log::log::LevelFilter::Info,
+            Level::WARN => ::tracing_log::log::LevelFilter::Warn,
+            Level::ERROR => ::tracing_log::log::LevelFilter::Error,
+        };
+
+        let logger_success = LogTracer::builder()
+            .with_max_level(level_filter)
+            .init()
+            .is_ok();
+
         let subscriber_success = set_global_default(subscriber).is_ok();
 
         if format_layer_ignored {
@@ -227,14 +279,22 @@ impl LogConfig {
 
         #[cfg(feature = "trace_tracy")]
         if self.enable_tracy && enable_tracy_ignored {
-            tracing::info!("`enable_tracy` is ignored due to the unsupported platform.");
+            tracing::warn!(
+                "`LogConfig::enable_tracy` is ignored on this platform, but the Tracy client \
+                may still be active. If Tracy is not working as expected, consider disabling \
+                the `trace_tracy` feature."
+            );
         } else if self.enable_tracy {
             tracing::warn!(
-                "Tracing with Tracy is active, memory consumption will grow until a client is connected."
+                "Tracing with Tracy is active. Memory consumption will grow once a \
+                collector connects; if `tracy_broadcast` is enabled, the program may \
+                already be broadcasting."
             );
         } else {
-            tracing::info!(
-                "`trace_tracy` feature is enabled but `LogConfig::enable_tracy` is `false`, skipped."
+            tracing::warn!(
+                "`LogConfig::enable_tracy` is `false`, but the Tracy client is still linked \
+                and active because the `trace_tracy` feature is enabled. This is likely not \
+                what you intended; disable the `trace_tracy` feature to opt out."
             );
         }
 
@@ -250,5 +310,60 @@ impl LogConfig {
                 "Could not set global logger and tracing subscriber as they are already set. Consider disabling LogConfig."
             ),
         }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Tests
+
+#[cfg(test)]
+mod tests {
+    use super::LogConfig;
+    use core::time::Duration;
+    use std::time::Instant;
+
+    /// Number of independent single-shot samples.
+    const SAMPLES: usize = 20;
+
+    /// Measures a single `tracing::debug!` call.
+    fn time_one_log() -> Duration {
+        let start = Instant::now();
+        tracing::info!("benchmark log");
+        start.elapsed()
+    }
+
+    /// Measures a single span enter/exit pair.
+    fn time_one_span() -> Duration {
+        let start = Instant::now();
+        let span = tracing::info_span!("benchmark_span");
+        span.in_scope(|| core::hint::black_box(()));
+        start.elapsed()
+    }
+
+    /// Runs `f` `SAMPLES` times and returns the median duration.
+    fn median_of(mut samples: Vec<Duration>) -> Duration {
+        samples.sort_unstable();
+        samples[samples.len() / 2]
+    }
+
+    #[test]
+    #[ignore = "manual trigger"]
+    #[expect(clippy::print_stdout, reason = "test result display")]
+    fn measure_span_and_log() {
+        LogConfig::default().apply();
+
+        // Warm up: initialize the subscriber and thread-local caches.
+        let _ = time_one_log();
+        let _ = time_one_span();
+
+        let log_samples: Vec<_> = (0..SAMPLES).map(|_| time_one_log()).collect();
+        let span_samples: Vec<_> = (0..SAMPLES).map(|_| time_one_span()).collect();
+
+        let log_median = median_of(log_samples);
+        let span_median = median_of(span_samples);
+
+        println!("samples: {SAMPLES}");
+        println!("log  median: {log_median:?}");
+        println!("span median: {span_median:?}");
     }
 }

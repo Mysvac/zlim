@@ -185,6 +185,11 @@ mod tests {
     #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
     struct Baz(String);
 
+    /// Despawns an entity in each shape the API supports — a single component, a
+    /// bundle, the same component listed twice in one bundle, and a hierarchy — and
+    /// counts component drops to check that every instance is freed exactly once.
+    /// The hierarchy case despawns the root only and expects the whole subtree,
+    /// children included, to go with it.
     #[test]
     fn drop_entity() {
         static DROP_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -231,6 +236,9 @@ mod tests {
         assert_eq!(DROP_COUNTER.load(Ordering::SeqCst), 4);
     }
 
+    /// Checks that dropping a world frees every component it still owns, whether it
+    /// arrived on its own or as part of a bundle: a hundred entity pairs are spawned
+    /// and the world is dropped, so two hundred drops are expected.
     #[test]
     fn drop_world() {
         static DROP_COUNTER: AtomicUsize = AtomicUsize::new(0);

@@ -26,8 +26,8 @@ LogConfig::default().apply();
 
 ### Content Filter
 
-Uses the `EnvFilter` syntax (the same as `RUST_LOG`), controlling which logs
-are emitted by **target + level**. For example:
+Uses the `Targets` syntax, controlling which logs are emitted by
+**target + level**. For example:
 
 ```rust
 use zlim_log::LogConfig;
@@ -38,10 +38,16 @@ let config = LogConfig {
 };
 ```
 
+Allows spaces, e.g. `"wgpu= warn ,naga =warn"`; leading and trailing whitespace
+is properly trimmed.
+
 When unset, the default filter is used; see the internal code for details.
 
 `LogConfig`'s internal `filter` is merged with the `RUST_LOG` environment
 variable.
+
+We use the simpler `Targets` filter rather than the more powerful `EnvFilter`
+in order to optimize logging performance as much as possible.
 
 ### Log Level
 
@@ -100,7 +106,7 @@ See the Feature section below for details.
   `LogConfig`'s `enable_tracy` field is `true`, events are streamed to
   Tracy.
 
-- `trace_memory`: Enables `tracy-client` to support Tracy memory profiling.
+- `tracy_memory`: Enables `tracy-client` to support Tracy memory profiling.
 
 - `trace_chrome`: Enables `tracing-chrome`, exporting the Chrome tracing
   format (JSON); use the `TRACE_CHROME` environment variable to specify the

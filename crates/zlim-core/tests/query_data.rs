@@ -73,6 +73,9 @@ fn sum_readonly(query: Query<ReadPlayer>) -> u32 {
     via_copy + via_query
 }
 
+/// A read-only derived data type has to match the components it names, and
+/// because it is read-only the same query parameter can be iterated more than
+/// once.
 #[test]
 fn derived_readonly_iterates() {
     let mut world = World::alloc();
@@ -109,6 +112,10 @@ fn read_companion(query: Query<Player>) -> (u32, u32) {
     (via_ro, names)
 }
 
+/// A mutable derived type has to write its changes back to the world, and the
+/// companion read-only struct generated for it has to see those same changes:
+/// the first system bumps every score by ten, and the second reads the new
+/// totals back through the read-only view.
 #[test]
 fn derived_mut_modifies_and_readonly_view() {
     let mut world = World::alloc();
@@ -122,6 +129,9 @@ fn derived_mut_modifies_and_readonly_view() {
 // -----------------------------------------------------------------------------
 // Tuple & unit derives
 
+/// Tuple and unit derived types are driven through their own shapes: the pair
+/// form reads its members by position, while the unit form carries no
+/// components and matches every spawned entity.
 #[test]
 fn derived_tuple_and_unit() {
     let mut world = World::alloc();
@@ -223,6 +233,11 @@ fn read_slice_through_readonly(query: Query<Player>) -> (u32, u32) {
     (scores, names)
 }
 
+/// Slice iteration over derived data is reached through the generated slice
+/// companions: a generic read-only slice, a concrete read-only slice, a mutable
+/// slice that bumps whole score columns, and the read-only slice view of that
+/// mutable data, which has to observe the bumps.  Name lengths are summed
+/// alongside the scores, so a slice that fetched the wrong column is caught.
 #[test]
 fn derived_query_slice() {
     let mut world = World::alloc();
@@ -239,6 +254,7 @@ fn derived_query_slice() {
     // mutable slice + readonly view of it
     // scores 1+2+3 + 300, plus name lengths 1+1+1.
     assert_eq!(world.invoke_once(bump_slice_mut, ()).unwrap(), 309);
+    // The read-only view sees the bumped scores, plus the same name lengths.
     assert_eq!(
         world.invoke_once(read_slice_through_readonly, ()).unwrap(),
         (306, 3)

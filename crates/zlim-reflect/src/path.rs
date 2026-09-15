@@ -354,6 +354,8 @@ mod tests {
         assert_eq!(s.len(), 10);
     }
 
+    /// A part may span several bytes, so this pins that the byte-wise copy used
+    /// under the hood keeps multi-byte sequences intact.
     #[test]
     fn unicode_characters() {
         let s = concat(&["ASCII", " 世界 ", "🌟", " 123"]);
@@ -368,6 +370,8 @@ mod tests {
         assert_eq!(s, long.clone() + &long + &long);
     }
 
+    /// The buffer is reserved from the summed lengths up front, so the result
+    /// must already have room for all of it and never need to grow.
     #[test]
     fn capacity_exact() {
         let parts = ["hello", " ", "world"];

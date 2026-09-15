@@ -699,6 +699,10 @@ mod tests {
         assert_eq!(q.len(), 0);
     }
 
+    /// The queue is unbounded here, so the producer never blocks and the consumer simply spins on
+    /// the empty case until each item shows up. The consumer asserts that the values arrive in push
+    /// order and that nothing is left behind once it has taken all of them. `COUNT` is scaled down
+    /// under Miri so the interpreter finishes in reasonable time.
     #[test]
     fn spsc() {
         #[cfg(miri)]
@@ -728,6 +732,10 @@ mod tests {
         });
     }
 
+    /// The concurrent case for an unbounded queue: every producer pushes the same `0..COUNT` range
+    /// and the consumers tally the hits per value, which has to come out at exactly one per
+    /// producer. Ordering is not asserted, since the queue only promises not to lose or duplicate
+    /// an item while it is being handed between threads.
     #[test]
     fn mpmc() {
         #[cfg(miri)]
@@ -737,6 +745,7 @@ mod tests {
         const THREADS: usize = 4;
 
         let q = SegQueue::<usize>::default();
+        // One counter per value; receiving a value more or fewer than `THREADS` times is a failure.
         let v = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
         scope(|scope| {

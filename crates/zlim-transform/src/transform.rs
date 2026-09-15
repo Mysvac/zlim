@@ -1012,6 +1012,10 @@ mod test {
         left.0.abs_diff_eq(right.compute_affine(), 0.01)
     }
 
+    /// Reparenting to the very same transform must be the identity: the test
+    /// composes `t1` onto a translated, rotated and scaled `t2`, reparents the
+    /// result back to `t2` and expects `t1` to be recovered, even though the two
+    /// transforms carry non-trivial translation and rotation.
     #[test]
     fn reparented_to_transform_identity() {
         fn reparent_to_same(t1: GlobalTransform, t2: GlobalTransform) -> Transform {
@@ -1035,6 +1039,9 @@ mod test {
             retransformed,
         );
     }
+    /// Covers the round trip that reparenting exists for: the local transform
+    /// returned for the new parent must satisfy `t2 * X == t1`, so composing
+    /// it with that parent lands back on the original global transform.
     #[test]
     fn reparented_usecase() {
         let t1 = GlobalTransform::from(Transform {

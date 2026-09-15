@@ -224,6 +224,8 @@ mod tests {
         graph
     }
 
+    /// Checks that a small branching DAG is ordered with every node ahead of the
+    /// nodes it points to.
     #[test]
     fn simple_dag() {
         // 1 → 2 → 3
@@ -234,6 +236,8 @@ mod tests {
         assert_eq!(result, [node(1), node(2), node(4), node(3)]);
     }
 
+    /// Checks that a node pointing at itself is reported as a loop naming that node,
+    /// rather than being accepted as a valid ordering.
     #[test]
     fn detects_self_loop() {
         let mut graph = build_graph(&[(1, 2)]);
@@ -246,6 +250,8 @@ mod tests {
         }
     }
 
+    /// Checks that a two-node cycle is reported as a single cycle holding both of
+    /// its nodes.
     #[test]
     fn detects_simple_cycle() {
         let graph = build_graph(&[(1, 2), (2, 1)]);

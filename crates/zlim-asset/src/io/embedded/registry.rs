@@ -8,8 +8,9 @@ use zlim_path::derive::TypePath;
 use super::EMBEDDED;
 use crate::io::ErasedAssetReader;
 use crate::io::memory::{Data, Dir, MemoryAssetReader, Value};
+use crate::source::{AssetSourceBuilder, AssetSourceBuilders};
 
-crate::cfg::notify! {
+crate::cfg::watch! {
     use std::path::PathBuf;
     use std::sync::{Arc, PoisonError, RwLock};
     use zlim_utils::hash::HashMap;
@@ -18,7 +19,7 @@ crate::cfg::notify! {
 // -----------------------------------------------------------------------------
 // EmbeddedAssetRegistry
 
-crate::cfg::notify! {
+crate::cfg::watch! {
     if {
         #[derive(TypePath, Resource, Default)]
         pub struct EmbeddedAssetRegistry {
@@ -26,7 +27,6 @@ crate::cfg::notify! {
             root_paths: Arc<RwLock<HashMap<Box<Path>, PathBuf>>>,
         }
     } else {
-
         #[derive(TypePath, Resource, Default)]
         pub struct EmbeddedAssetRegistry {
             dir: Dir,
@@ -36,7 +36,7 @@ crate::cfg::notify! {
 
 impl EmbeddedAssetRegistry {
     fn insert_asset_internal(&self, _full_path: &Path, asset_path: &Path, value: Value) {
-        crate::cfg::notify! {
+        crate::cfg::watch! {
             self.root_paths
                 .write()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -47,7 +47,7 @@ impl EmbeddedAssetRegistry {
     }
 
     fn insert_meta_internal(&self, _full_path: &Path, asset_path: &Path, value: Value) {
-        crate::cfg::notify! {
+        crate::cfg::watch! {
             self.root_paths
                 .write()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -59,11 +59,11 @@ impl EmbeddedAssetRegistry {
 
     /// Inserts new asset with `full_path`, `asset_path` and `value`.
     ///
-    /// The full path as [`file!`] would return for that file, if it was capable of
-    /// running in a non-rust file. `asset_path` is the path that will be used to
-    /// identify the asset in the `embedded` [`AssetSource`]. `value` is the bytes
-    /// that will be returned for the asset. This can be _either_ a `&'static [u8]`
-    /// , a `Vec<u8>` or a `Arc<[u8]>`.
+    /// `full_path` is the path [`file!`] would return in the source file that registers the
+    /// asset. `asset_path` is the path that will be used to identify the asset in the
+    /// `embedded` [`AssetSource`]. `value` is the bytes that will be returned for the asset:
+    /// _either_ a `&'static [u8]`, a `&'static [u8; N]`, a `&'static str`, a `Vec<u8>` or an
+    /// `Arc<[u8]>`.
     ///
     /// [`AssetSource`]: crate::source::AssetSource
     pub fn insert_asset(&self, full_path: &Path, asset_path: &Path, value: impl Into<Value>) {
@@ -72,11 +72,11 @@ impl EmbeddedAssetRegistry {
 
     /// Inserts new asset metadata with `full_path`, `asset_path` and `value`.
     ///
-    /// The full path as [`file!`] would return for that file, if it was capable of
-    /// running in a non-rust file. `asset_path` is the path that will be used to
-    /// identify the asset in the `embedded` [`AssetSource`]. `value` is the bytes
-    /// that will be returned for the asset. This can be _either_ a `&'static [u8]`
-    /// , a `Vec<u8>` or a `Arc<[u8]>`.
+    /// `full_path` is the path [`file!`] would return in the source file that registers the
+    /// metadata. `asset_path` is the path that will be used to identify the asset in the
+    /// `embedded` [`AssetSource`]. `value` is the bytes that will be returned for the
+    /// metadata: _either_ a `&'static [u8]`, a `&'static [u8; N]`, a `&'static str`, a
+    /// `Vec<u8>` or an `Arc<[u8]>`.
     ///
     /// [`AssetSource`]: crate::source::AssetSource
     pub fn insert_meta(&self, full_path: &Path, asset_path: &Path, value: impl Into<Value>) {
@@ -85,11 +85,12 @@ impl EmbeddedAssetRegistry {
 
     /// Removes an asset stored using `full_path`.
     ///
-    /// The full path as [`file!`] would return for that file, if it was capable of
-    /// running in a non-rust file. If no asset is stored with at `full_path` its a
-    /// no-op. It returning `Option` contains the originally stored `Data` or `None`.
+    /// `full_path` is the path [`file!`] would return in the source file that registers the
+    /// asset. The entry is removed from the in-memory tree by that same path, so the stored
+    /// [`Data`] is only returned when the asset was inserted with an `asset_path` equal to
+    /// `full_path`; otherwise this returns `None`.
     pub fn remove_asset(&self, full_path: &Path) -> Option<Data> {
-        crate::cfg::notify! {
+        crate::cfg::watch! {
             self.root_paths
                 .write()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -103,12 +104,10 @@ impl EmbeddedAssetRegistry {
 // -----------------------------------------------------------------------------
 // register_source
 
-use crate::source::{AssetSourceBuilder, AssetSourceBuilders};
-
 impl EmbeddedAssetRegistry {
     /// Registers the [`EMBEDDED`] [`AssetSource`] to the given [`AssetSourceBuilders`].
     ///
-    /// This is called by `AssetPlugin` (still pending); calling it twice replaces the source.
+    /// This is called by `AssetPlugin`, calling it twice replaces the source.
     ///
     /// [`AssetSource`]: crate::source::AssetSource
     #[rustfmt::skip]
@@ -126,7 +125,7 @@ impl EmbeddedAssetRegistry {
         // Note that we only add a processed watch warning because we don't want to warn
         // noisily about embedded watching (which is niche) when users enable file watching.
 
-        let source = crate::cfg::notify! {
+        let source = crate::cfg::watch! {
             if {{
                 use crate::io::watcher::EmbeddedWatcher;
                 use core::time::Duration;
@@ -154,7 +153,7 @@ impl EmbeddedAssetRegistry {
             }} else {{
                 AssetSourceBuilder::new(reader_builder)
                     .with_processed_reader(p_reader_builder)
-                    .with_processed_watch_warning("Consider enabling the `notify` cargo feature.")
+                    .with_processed_watch_warning("Consider enabling the `watch` cargo feature.")
             }}
         };
 
@@ -183,6 +182,9 @@ mod tests {
         })
     }
 
+    /// The registered `embedded` source serves what the registry holds, and its processed reader
+    /// answers with the same bytes: an embedded asset is already in its final form, so there is
+    /// nothing left to import.
     #[test]
     fn registered_source_reads_inserted_bytes() {
         let registry = EmbeddedAssetRegistry::default();

@@ -48,14 +48,11 @@ zlim-internal = { path = "./crates/zlim-internal", default-features = false }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 zlim-dylib = { path = "./crates/zlim-dylib", default-features = false, optional = true }
 
-[dev-dependencies]
-zlim-internal = { path = "./crates/zlim-internal", default-features = false, features = ["debug", "notify"] }
-
 [features]
 
 # ----------------------------------------------------------
 
-default = []
+default = ["default_platform", "default_log_level"]
 
 # ----------------------------------------------------------
 # Basic
@@ -78,13 +75,16 @@ single_thread = ["zlim-internal/single_thread"]
 # Eliminate many third-party crates' logs during compilation to optimize performance.
 default_log_level = ["zlim-internal/default_log_level"]
 
+# Enable the default platform-related features.
+default_platform = ["http", "https"]
+
 # ----------------------------------------------------------
 # combination
 
 # COLLECTION: Enable this feature to improve the development experience.
 # - This feature provides better debugging information.
 # - This feature should not be enabled for published apps!
-dev = ["debug", "trace", "backtrace", "notify"]
+dev = ["debug", "trace", "backtrace", "watch", "web_asset_cache"]
 
 # COLLECTION: Enable editor related dependencies.
 # - Enable editor-specific dependencies.
@@ -110,14 +110,25 @@ zlim-sysinfo = ["zlim-internal/zlim-sysinfo"]
 # ----------------------------------------------------------
 # others
 
+# Improve debug information, increase debug-assertions.
+# - The checks are also enabled when `debug_assertions` is on,
+#   even if this feature is not set.
+debug = ["zlim-internal/debug"]
+
 # Improve panic backtrace, filter noisy rows.
 backtrace = ["zlim-internal/backtrace"]
 
-# Improve debug information, increase debug-assertions.
-debug = ["zlim-internal/debug"]
+# Tracing support, enable tracing span.
+# - Inserts spans into jobs and other hot paths when enabled.
+# - Required by upper-level features such as `trace_error`.
+# - Has runtime overhead; intended for debugging.
+# - This feature should not be enabled for published apps!
+trace = ["zlim-internal/trace"]
 
 # Tracing support, improves panic information.
-trace = ["zlim-internal/trace"]
+# - Uses the `tracing-error` crate to show the logical call path in panics.
+# - This feature should not be enabled for published apps!
+trace_error = ["zlim-internal/trace_error", "trace"]
 
 # Tracing support, exposing a port for Tracy.
 # - This feature cannot be used in wasm target.
@@ -127,7 +138,7 @@ trace_tracy = ["zlim-internal/trace_tracy", "trace"]
 # Tracing support, with memory profiling, exposing a port for Tracy.
 # - This feature cannot be used in wasm target.
 # - This feature should not be enabled for published apps!
-trace_memory = ["zlim-internal/trace_memory"]
+tracy_memory = ["zlim-internal/tracy_memory"]
 
 # Tracing support, saving a file in Chrome Tracing format.
 # - This feature cannot be used in wasm target.
@@ -139,16 +150,30 @@ trace_chrome = ["zlim-internal/trace_chrome", "trace"]
 # - Not effective in single-thread mode or wasm target.
 async-io = ["zlim-internal/async-io"]
 
-# Enable file system notify for Asset hot-reloading.
-# - Not effective in wasm target or other unsupport platforms.
+# Enable file system watch for Asset hot-reloading.
+# - Only effective on Windows, macOS and Linux.
+# - Ignored in other unsupport platform.
 # - This feature should not be enabled for published apps!
-notify = ["zlim-internal/notify"]
+watch = ["zlim-internal/watch"]
+
+# Add an `http` source to `WebAssetPlugin`.
+# - Effective on both native and wasm targets.
+http = ["zlim-internal/http"]
+
+# Add an `https` source to `WebAssetPlugin`.
+# - Effective on both native and wasm targets.
+https = ["zlim-internal/https"]
+
+# Enable the web asset cache (in `web_asset_cache` dir).
+# - Not effective in wasm target. (ignored)
+# - This feature should not be enabled for published apps!
+web_asset_cache = ["zlim-internal/web_asset_cache"]
 
 # ----------------------------------------------------------
 
 [package.metadata.docs.rs]
 
-no-default-features = true
+no-default-features = false
 
 features = [
     "dev",

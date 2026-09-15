@@ -747,6 +747,8 @@ mod tests {
         assert_eq!(DROPS.load(Ordering::SeqCst), BLOCK_SIZE * 2 + 5);
     }
 
+    /// A popped element leaves the list's ownership: it is dropped by whoever holds the returned
+    /// value, and only the elements still inside the list are dropped with it.
     #[test]
     fn drop_pop() {
         define_tracker!(DROPS, Tracker);
@@ -766,6 +768,8 @@ mod tests {
         assert_eq!(DROPS.load(Ordering::SeqCst), 3);
     }
 
+    /// `clear` drops everything it removes, and releasing the emptied list afterwards must not
+    /// drop those elements again.
     #[test]
     fn drop_clear() {
         define_tracker!(DROPS, Tracker);
@@ -785,6 +789,10 @@ mod tests {
         assert_eq!(DROPS.load(Ordering::SeqCst), BLOCK_SIZE + 3);
     }
 
+    /// A block that has been fully drained is retired into the idle pool instead of being freed or
+    /// dropped, so it must not contribute to the drop count later: the only elements still owed a
+    /// destructor are the ones left in the queue when the list itself is destroyed, giving exactly
+    /// one drop per element overall.
     #[test]
     fn drop_with_idle_blocks() {
         define_tracker!(DROPS, Tracker);
@@ -828,6 +836,9 @@ mod tests {
         assert_eq!(q.front(), Some(&2));
     }
 
+    /// Iteration has to keep insertion order across block boundaries for both the shared and the
+    /// mutable walk, and the mutation done through `iter_mut` has to be visible to the borrow that
+    /// collects the list afterwards.
     #[test]
     fn iter_and_iter_mut_order() {
         let mut q = BlockList::new();

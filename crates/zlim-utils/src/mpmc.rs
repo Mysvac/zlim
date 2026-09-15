@@ -327,17 +327,23 @@ impl<T> Future for Recv<'_, T> {
                 return Poll::Ready(inner.queue.pop().ok_or(RecvError));
             }
 
-            if let Some(listener) = &mut this.listener {
-                match Pin::new(listener).poll(cx) {
+            if let Some(mut listener) = this.listener.take() {
+                match Pin::new(&mut listener).poll(cx) {
+                    Poll::Pending => {
+                        this.listener = Some(listener);
+                        return Poll::Pending;
+                    }
+                    // A listener that has finished must not be polled again — `event-listener`
+                    // panics on exactly that — so the spent one is dropped here and the next wait
+                    // starts from a fresh one. Going back to the queue first is what makes that
+                    // safe: whatever the notification announced is already there, so nothing can
+                    // be lost in between.
                     Poll::Ready(()) => continue,
-                    Poll::Pending => return Poll::Pending,
                 }
-            } else {
-                // Create listener on first poll.
-                core::hint::cold_path();
-                this.listener = Some(inner.event.listen());
-                // Check message queue again.
             }
+
+            // Create listener if it's not exists.
+            this.listener = Some(inner.event.listen());
         }
     }
 }
@@ -384,6 +390,8 @@ mod tests {
         assert_eq!(rx.try_recv(), None);
     }
 
+    /// A cloned sender keeps the channel alive after the original handle is gone: reception only
+    /// fails once every sender has been dropped.
     #[test]
     fn sender_clone_keeps_channel_open() {
         let (tx, mut rx) = channel::<i32>();
@@ -402,6 +410,9 @@ mod tests {
         assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
+    /// Cloning a receiver yields an independent handle on the same queue: the pending messages are
+    /// shared out between the two, each one going to exactly one of them, and both end up seeing
+    /// the close.
     #[test]
     fn multiple_receivers() {
         let (tx, mut rx1) = channel::<i32>();
@@ -446,6 +457,10 @@ mod tests {
         assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
+    /// The value is sent from a second thread and awaited on this one, so the test covers the
+    /// hand-off between threads rather than a queue that is already filled. There is no timeout to
+    /// fall back on, which means a lost notification would hang the test instead of failing an
+    /// assertion.
     #[test]
     fn recv_wakes_on_send() {
         let (tx, mut rx) = channel::<i32>();
@@ -457,6 +472,8 @@ mod tests {
         assert_eq!(block_on(rx.recv()), Ok(42));
     }
 
+    /// Closure has to reach a receiver just like a message does: dropping the only sender on
+    /// another thread must make the receive report `RecvError` instead of waiting forever.
     #[test]
     fn recv_wakes_on_sender_drop() {
         let (tx, mut rx) = channel::<i32>();
@@ -466,6 +483,11 @@ mod tests {
         assert_eq!(block_on(rx.recv()), Err(RecvError));
     }
 
+    /// Stresses the channel from several threads at once: every spawned sender pushes the same
+    /// `0..COUNT` range and the single receiver drains until the channel reports closure on its
+    /// own. Only the aggregate is asserted, never the order — the count proves that nothing was
+    /// lost or duplicated, and the sum proves that the payloads came through intact. `COUNT` is
+    /// scaled down under Miri so the interpreter finishes in reasonable time.
     #[test]
     fn concurrent_senders() {
         #[cfg(miri)]
@@ -492,15 +514,22 @@ mod tests {
 
         let mut total = 0;
         let mut count = 0;
+        // Receiving stops by itself once the last sender is gone.
         while let Ok(v) = block_on(rx.recv()) {
             total += v;
             count += 1;
         }
 
+        // Every value arrived exactly once, so the sum is the series each sender contributed.
         assert_eq!(count, COUNT * THREADS);
         assert_eq!(total, THREADS * COUNT * (COUNT - 1) / 2);
     }
 
+    /// The mirror image of the sender stress test: the queue is filled and closed up front and is
+    /// then drained by several receiver threads at once, each item going to whichever thread gets
+    /// to it first. A counter per value records the deliveries, and every counter has to end at
+    /// exactly one, so a message can be neither handed out twice nor dropped. `COUNT` is scaled
+    /// down under Miri as elsewhere.
     #[test]
     fn concurrent_receivers() {
         #[cfg(miri)]
@@ -511,11 +540,13 @@ mod tests {
 
         let (tx, rx) = channel::<usize>();
 
+        // Fill before any receiver starts, so the drain is a pure concurrency test.
         for i in 0..COUNT {
             tx.send(i).unwrap();
         }
         drop(tx);
 
+        // One counter per value, bumped by whichever thread receives that value.
         let seen = (0..COUNT).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
 
         scope(|scope| {
@@ -530,6 +561,7 @@ mod tests {
             }
         });
 
+        // Every value must have been delivered exactly once across all threads.
         for c in &seen {
             assert_eq!(c.load(Ordering::SeqCst), 1);
         }

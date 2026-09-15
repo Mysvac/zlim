@@ -317,9 +317,10 @@ impl World {
 impl World {
     /// Returns a copy of the current error handler.
     ///
-    /// The error handler is invoked when the world encounters a non-fatal
-    /// error during an operation (e.g., a missing component during
-    /// despawn).
+    /// The error handler is invoked when the job or command return a
+    /// [`ZlimError`].
+    ///
+    /// [`ZlimError`]: crate::error::ZlimError
     #[inline(always)]
     pub fn error_handler(&self) -> ErrorHandler {
         self.error_handler.unwrap_or(default_error_handler)

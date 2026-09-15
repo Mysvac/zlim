@@ -200,12 +200,7 @@ impl TypeDB {
                     return entry.get();
                 }
                 Entry::Vacant(entry) => {
-                    // SAFETY: TypeDB is intentionally leaked — it serves as
-                    // a global data store for the lifetime of the process.
-                    // The `into_func` map internally requires `Drop`, but
-                    // the OS reclaims all memory at process exit.
-                    #[expect(unsafe_code, reason = "TypeDB is !Copy")]
-                    let db: &'static TypeDB = unsafe { Global::alloc_unchecked(tdb) };
+                    let db: &'static TypeDB = Global::alloc_static(tdb);
                     entry.insert(db);
                     db
                 }

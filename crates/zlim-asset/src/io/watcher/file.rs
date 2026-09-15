@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use notify_debouncer_full::notify::RecommendedWatcher;
 use notify_debouncer_full::{Debouncer, RecommendedCache};
-use zlim_utils::mpsc::Sender;
+use zlim_utils::mpmc::Sender;
 
 use super::AssetWatcher;
 use super::notifier::{EventNotifier, EventPath};
@@ -30,7 +30,7 @@ impl EventNotifier for FileEventNotifier {
         let root = &self.root;
 
         let Ok(relative_path) = absolute_path.strip_prefix(root) else {
-            strip_prefix_faild(absolute_path, root);
+            strip_prefix_failed(absolute_path, root);
             return None;
         };
 
@@ -58,7 +58,7 @@ impl EventNotifier for FileEventNotifier {
 
 #[cold]
 #[inline(never)]
-fn strip_prefix_faild(absolute_path: &Path, root: &Path) {
+fn strip_prefix_failed(absolute_path: &Path, root: &Path) {
     // Should not happen.
     zlim_log::error!(
         "FileEventNotifier::parse() failed to strip prefix: absolute_path={}, root={}",
@@ -77,6 +77,9 @@ pub struct FileWatcher {
 
 impl FileWatcher {
     /// Creates a watcher on `path`, emitting into `sender`.
+    ///
+    /// Events are debounced by `debounce_wait_time`. Returns `None` when the watcher cannot be
+    /// created — the reason is logged, and file assets then have no hot-reload.
     pub fn build(
         path: PathBuf,
         sender: Sender<AssetSourceEvent>,

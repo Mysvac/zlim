@@ -6,15 +6,17 @@ use std::sync::Arc;
 use zlim_core::derive::Resource;
 use zlim_path::derive::TypePath;
 use zlim_utils::hash::HashMap;
-use zlim_utils::mpsc::{self, Receiver, Sender};
+use zlim_utils::mpmc::{self, Receiver, Sender};
 use zlim_utils::str::SmolStr;
 
-use super::{MissingAssetSource, MissingAssetWriter};
-use super::{MissingProcessedAssetReader, MissingProcessedAssetWriter};
+use crate::error::{MissingAssetSource, MissingAssetWriter};
+use crate::error::{MissingProcessedAssetReader, MissingProcessedAssetWriter};
 use crate::event::AssetSourceEvent;
 use crate::ident::AssetSourceId;
 use crate::io::watcher::AssetWatcher;
 use crate::io::{ErasedAssetReader, ErasedAssetWriter};
+use crate::processor::ProcessingState;
+use crate::processor::ProcessorGatedReader;
 
 // -----------------------------------------------------------------------------
 // AssetSourceBuilder & AssetSource
@@ -65,20 +67,28 @@ pub struct AssetSourceBuilder {
 /// [`AssetWriter`]: crate::io::AssetWriter
 pub struct AssetSource {
     id: AssetSourceId,
+
     reader: Box<dyn ErasedAssetReader>,
     writer: Option<Box<dyn ErasedAssetWriter>>,
     watcher: Option<Box<dyn AssetWatcher>>,
+
     processed_reader: Option<Arc<dyn ErasedAssetReader>>,
     processed_writer: Option<Box<dyn ErasedAssetWriter>>,
     processed_watcher: Option<Box<dyn AssetWatcher>>,
+
     event_receiver: Option<Receiver<AssetSourceEvent>>,
     processed_event_receiver: Option<Receiver<AssetSourceEvent>>,
-    // TODO(asset_processor): add `ungated_processed_reader` together with
-    // `gate_on_processor` when `ProcessorGatedReader` lands (M4).
+
+    /// The processed reader as it was built, before [`gate_on_processor`]
+    /// wrapped it: the importer has to read the processed side *through*
+    /// its own run without waiting for that run to finish.
+    ///
+    /// [`gate_on_processor`]: Self::gate_on_processor
+    ungated_processed_reader: Option<Arc<dyn ErasedAssetReader>>,
 }
 
 // -----------------------------------------------------------------------------
-// AssetSourceBuilder Implementation
+// AssetSourceBuilder & AssetSource Implementation
 
 impl AssetSourceBuilder {
     /// Creates a new builder, starting with the provided reader.
@@ -104,6 +114,13 @@ impl AssetSourceBuilder {
     /// - If `watch_processed` is true, the processed source will watch for changes.
     ///
     /// Note that the default watcher needs the `notify` feature.
+    ///
+    /// This is normally called by [`AssetPlugin`], not by users. When `watch` is true, the
+    /// builder may attach an event queue to the source. If nothing consumes the events from
+    /// that queue, it can grow without bound, so calling this directly with watching enabled
+    /// is not recommended unless you also drain the queue.
+    ///
+    /// [`AssetPlugin`]: crate::plugin::AssetPlugin
     pub fn build(&mut self, id: AssetSourceId, watch: bool, watch_processed: bool) -> AssetSource {
         let reader = self.reader.as_mut()();
         let writer = self.writer.as_mut().and_then(|w| w());
@@ -111,10 +128,11 @@ impl AssetSourceBuilder {
         let processed_writer = self.processed_writer.as_mut().and_then(|w| w());
 
         let mut source = AssetSource {
-            id: id.clone(), // already interned by AssetSourcesBuilder::build
+            id: id.clone(), // already interned by AssetSourceBuilders::build_sources
             reader,
             writer,
             processed_reader,
+            ungated_processed_reader: None,
             processed_writer,
             watcher: None,
             event_receiver: None,
@@ -123,20 +141,24 @@ impl AssetSourceBuilder {
         };
 
         if watch {
-            let (sender, receiver) = mpsc::channel();
+            let (sender, receiver) = mpmc::channel();
             if let Some(w) = self.watcher.as_mut().and_then(|w| w(sender)) {
                 source.watcher = Some(w);
                 source.event_receiver = Some(receiver);
+                zlim_log::debug!("{id} has an AssetWatcher configured; watching the changes.");
             } else if let Some(warning) = self.watch_warning {
                 zlim_log::warn!("{id} does not have an AssetWatcher configured. {warning}");
             }
         }
 
         if watch_processed {
-            let (sender, receiver) = mpsc::channel();
+            let (sender, receiver) = mpmc::channel();
             if let Some(w) = self.processed_watcher.as_mut().and_then(|w| w(sender)) {
                 source.processed_watcher = Some(w);
                 source.processed_event_receiver = Some(receiver);
+                zlim_log::debug!(
+                    "{id} has an processed AssetWatcher configured; watching the changes."
+                );
             } else if let Some(warning) = self.processed_watch_warning {
                 zlim_log::warn!(
                     "{id} does not have a processed AssetWatcher configured. {warning}"
@@ -213,18 +235,16 @@ impl AssetSourceBuilder {
         self
     }
 
-    /// Enables a warning for the unprocessed source watcher.
-    ///
-    /// which will print when watching is enabled and the unprocessed source doesn't have a watcher.
+    /// Enables a warning for the unprocessed source watcher, which prints when watching is
+    /// enabled and the unprocessed source has no watcher.
     #[inline]
     pub fn with_watch_warning(mut self, warning: &'static str) -> Self {
         self.watch_warning = Some(warning);
         self
     }
 
-    /// Enables a warning for the processed source watcher.
-    ///
-    /// which will print when watching is enabled and the processed source doesn't have a watcher.
+    /// Enables a warning for the processed source watcher, which prints when watching is
+    /// enabled and the processed source has no watcher.
     #[inline]
     pub fn with_processed_watch_warning(mut self, warning: &'static str) -> Self {
         self.processed_watch_warning = Some(warning);
@@ -234,12 +254,8 @@ impl AssetSourceBuilder {
     /// Returns a builder containing the "platform default source" for the given `path` and
     /// `processed_path`.
     ///
-    /// For most platforms, this will use [`FileAssetReader`] / [`FileAssetWriter`],
-    /// but some platforms (such as Android and Wasm) have their own default readers / writers /
-    /// watchers.
-    ///
-    /// [`FileAssetReader`]: crate::io::file::FileAssetReader
-    /// [`FileAssetWriter`]: crate::io::file::FileAssetWriter
+    /// For most platforms, this will use `FileAssetReader` / `FileAssetWriter`, but some platforms
+    /// (such as Android and Wasm) have their own default readers / writers / watchers.
     pub fn platform_default(path: &str, processed_path: Option<&str>) -> Self {
         const D: Duration = Duration::from_millis(300); // debounce wait time
 
@@ -267,13 +283,13 @@ impl AssetSource {
         self.id.clone()
     }
 
-    /// Return's this source's unprocessed [`ErasedAssetReader`].
+    /// Returns this source's unprocessed [`ErasedAssetReader`].
     #[inline]
     pub fn reader(&self) -> &dyn ErasedAssetReader {
         &*self.reader
     }
 
-    /// Return's this source's unprocessed [`ErasedAssetWriter`], if it exists.
+    /// Returns this source's unprocessed [`ErasedAssetWriter`], if it exists.
     #[inline]
     pub fn writer(&self) -> Result<&dyn ErasedAssetWriter, MissingAssetWriter> {
         self.writer
@@ -281,7 +297,7 @@ impl AssetSource {
             .ok_or_else(|| MissingAssetWriter(self.id.clone()))
     }
 
-    /// Return's this source's processed [`ErasedAssetReader`], if it exists.
+    /// Returns this source's processed [`ErasedAssetReader`], if it exists.
     #[inline]
     pub fn processed_reader(&self) -> Result<&dyn ErasedAssetReader, MissingProcessedAssetReader> {
         self.processed_reader
@@ -289,7 +305,7 @@ impl AssetSource {
             .ok_or_else(|| MissingProcessedAssetReader(self.id.clone()))
     }
 
-    /// Return's this source's processed [`ErasedAssetWriter`], if it exists.
+    /// Returns this source's processed [`ErasedAssetWriter`], if it exists.
     #[inline]
     pub fn processed_writer(&self) -> Result<&dyn ErasedAssetWriter, MissingProcessedAssetWriter> {
         self.processed_writer
@@ -297,26 +313,26 @@ impl AssetSource {
             .ok_or_else(|| MissingProcessedAssetWriter(self.id.clone()))
     }
 
-    /// Return's this source's unprocessed watcher, if the source is currently watching.
+    /// Returns this source's unprocessed watcher, if the source is currently watching.
     #[inline]
     pub fn watcher(&self) -> Option<&dyn AssetWatcher> {
         self.watcher.as_deref()
     }
 
-    /// Return's this source's processed watcher, if the source is currently watching.
+    /// Returns this source's processed watcher, if the source is currently watching.
     #[inline]
     pub fn processed_watcher(&self) -> Option<&dyn AssetWatcher> {
         self.processed_watcher.as_deref()
     }
 
-    /// Return's this source's unprocessed event receiver,
+    /// Returns this source's unprocessed event receiver,
     /// if the source is currently watching for changes.
     #[inline]
     pub fn event_receiver(&self) -> Option<&Receiver<AssetSourceEvent>> {
         self.event_receiver.as_ref()
     }
 
-    /// Return's this source's processed event receiver,
+    /// Returns this source's processed event receiver,
     /// if the source is currently watching for changes.
     #[inline]
     pub fn processed_event_receiver(&self) -> Option<&Receiver<AssetSourceEvent>> {
@@ -332,7 +348,7 @@ impl AssetSource {
     /// Returns a builder function for this platform's default [`ErasedAssetReader`].
     ///
     /// - `path` is the relative path to the asset root.
-    /// - `processed` control whether the data has been processed.
+    /// - `processed` controls whether the data has been processed.
     pub fn default_reader(
         path: String,
         processed: bool,
@@ -359,7 +375,7 @@ impl AssetSource {
     /// Returns a builder function for this platform's default [`ErasedAssetWriter`].
     ///
     /// - `path` is the relative path to the asset root.
-    /// - `processed` control whether the data has been processed.
+    /// - `processed` controls whether the data has been processed.
     pub fn default_writer(
         path: String,
         processed: bool,
@@ -381,7 +397,7 @@ impl AssetSource {
     /// Returns a builder function for this platform's default [`AssetWatcher`].
     ///
     /// - `path` is the relative path to the asset root.
-    /// - `processed` control whether the data has been processed.
+    /// - `processed` controls whether the data has been processed.
     pub fn default_watcher(
         path: String,
         processed: bool,
@@ -391,7 +407,7 @@ impl AssetSource {
         let _processed = processed;
         let _debounce_wait_time = debounce_wait_time;
         move |_sender: Sender<AssetSourceEvent>| {
-            crate::cfg::notify! {
+            crate::cfg::watch! {
                 if {
                     let path = crate::io::file::base_path().join(_path.clone());
                     if path.exists() {
@@ -409,16 +425,48 @@ impl AssetSource {
 
     /// Returns a default watch warning message for this platform.
     pub fn default_watch_warning() -> &'static str {
-        if crate::cfg::notify!() {
+        if crate::cfg::watch!() {
             return "Consider adding an \"assets\" directory.";
         }
 
         cfg_select! {
             target_family = "wasm" => "Web does not currently support watching assets.",
             target_os = "android" => "Android does not currently support watching assets.",
-            feature = "notify" => "The current platform does not currently support watching assets.",
-            _ => "Consider enabling the `notify` feature.",
+            feature = "watch" => "The current platform does not currently support watching assets.",
+            _ => "Consider enabling the `watch` feature.",
         }
+    }
+
+    /// Gates this source's processed reader on `state`, so a read waits for the importer.
+    ///
+    /// Does nothing for a source without a processed reader: there is nothing being written.
+    pub(crate) fn gate_on_processor(&mut self, state: &Arc<ProcessingState>) {
+        let Some(reader) = self.processed_reader.take() else {
+            return;
+        };
+
+        self.ungated_processed_reader = Some(reader.clone());
+
+        self.processed_reader = Some(Arc::new(ProcessorGatedReader::new(
+            self.id.clone(),
+            reader,
+            state.clone(),
+        )));
+    }
+
+    /// Returns this source's processed reader as it was built, without the processor gate.
+    ///
+    /// This is what the importer reads its own bookkeeping through (the `ProcessedInfo` of each
+    /// processed `.meta`, which is how it decides what is out of date): those reads are not asset
+    /// loads, so waiting for the gate — which is what tells an *asset* read to wait — is both
+    /// unnecessary and, while the answer is still being built, impossible.
+    #[inline]
+    pub(crate) fn ungated_processed_reader(&self) -> Option<&dyn ErasedAssetReader> {
+        // A source that was never gated has only the one processed reader, which is then its own
+        // ungated reader.
+        self.ungated_processed_reader
+            .as_deref()
+            .or(self.processed_reader.as_deref())
     }
 }
 
@@ -429,13 +477,11 @@ const MISSING_DEFAULT_SOURCE: &str =
     "A default AssetSource is required. Add one to `AssetSourceBuilders`";
 
 // -----------------------------------------------------------------------------
-// AssetSources
+// AssetSourceBuilders
 
-/// A [`Resource`] that hold (repeatable) functions capable of producing
-/// new [`AssetReader`] and [`AssetWriter`] instances for a given asset source.
+/// A [`Resource`] that holds the [`AssetSourceBuilder`]s the asset sources are built from.
 ///
-/// [`AssetReader`]: crate::io::AssetReader
-/// [`AssetWriter`]: crate::io::AssetWriter
+/// [`Resource`]: trait@zlim_core::resource::Resource
 #[derive(TypePath, Resource, Default)]
 pub struct AssetSourceBuilders {
     sources: HashMap<SmolStr, AssetSourceBuilder>,
@@ -447,6 +493,12 @@ impl AssetSourceBuilders {
     pub fn insert(&mut self, id: impl Into<AssetSourceId>, source: AssetSourceBuilder) {
         match id.into() {
             AssetSourceId::Default => {
+                if self.default.is_some() {
+                    zlim_log::warn!(
+                        "`AssetSourceBuilder`'s default source builder \
+                        was overwritten. This is likely unintended."
+                    );
+                }
                 self.default = Some(source);
             }
             AssetSourceId::Name(name) => {
@@ -474,7 +526,11 @@ impl AssetSourceBuilders {
     /// - If `watch` is true, the unprocessed sources will watch for changes.
     /// - If `watch_processed` is true, the processed sources will watch for changes.
     ///
-    /// Note that the default watcher needs to enable the `notify` cargo feature.
+    /// Note that the default watcher needs the `notify` feature.
+    ///
+    /// # Panics
+    ///
+    /// Panics when no default source has been inserted: a default source is required.
     pub fn build_sources(&mut self, watch: bool, watch_processed: bool) -> AssetSources {
         let mut sources: HashMap<&'static str, AssetSource> = HashMap::new();
 
@@ -506,7 +562,15 @@ pub struct AssetSources {
 }
 
 impl AssetSources {
-    /// Gets the [`AssetSource`] with the given `id`, if it exists.
+    /// Gates the processed reader of every source on `state`: a read of the processed side
+    /// waits until the importer has an answer for that path (see `processor::gated`).
+    pub(crate) fn gate_on_processor(&mut self, state: &Arc<ProcessingState>) {
+        for source in self.iter_mut() {
+            source.gate_on_processor(state);
+        }
+    }
+
+    /// Gets the [`AssetSource`] with the given `id`, or the [`MissingAssetSource`] error naming it.
     pub fn get(&self, id: impl Into<AssetSourceId>) -> Result<&AssetSource, MissingAssetSource> {
         match id.into() {
             AssetSourceId::Default => Ok(&self.default),
@@ -517,12 +581,12 @@ impl AssetSources {
         }
     }
 
-    /// Iterates all asset sources in the collection (including the default source).
+    /// Iterates all asset sources in the collection (including the default source and processed sources).
     pub fn iter(&self) -> impl Iterator<Item = &AssetSource> {
         self.sources.values().chain(Some(&self.default))
     }
 
-    /// Mutably iterates all asset sources in the collection (including the default source).
+    /// Mutably iterates all asset sources in the collection (including the default source and processed sources).
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut AssetSource> {
         self.sources.values_mut().chain(Some(&mut self.default))
     }
@@ -537,7 +601,7 @@ impl AssetSources {
         self.iter_mut().filter(|p| p.should_process())
     }
 
-    /// Iterates over the [`AssetSourceId`] of every source (including the default source).
+    /// Iterates over the [`AssetSourceId`] of every source (including the default source and processed sources).
     pub fn iter_id(&self) -> impl Iterator<Item = AssetSourceId> + '_ {
         self.sources
             .keys()
@@ -605,6 +669,8 @@ mod tests {
         assert_eq!(sources.iter_processed().count(), 0);
     }
 
+    /// Asking for watching is not enough on its own: a builder with no watcher function leaves the
+    /// source without a watcher or an event channel, and only logs the warning it was given.
     #[test]
     fn asking_to_watch_without_a_watcher_keeps_the_source_unwatched() {
         let mut builders = AssetSourceBuilders::default();

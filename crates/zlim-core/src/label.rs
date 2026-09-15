@@ -153,13 +153,7 @@ impl<T: ?Sized + Internable> Interner<T> {
 #[doc(hidden)]
 #[inline(always)]
 pub fn leak<T: Sized>(v: T) -> &'static T {
-    unsafe {
-        let layout = core::alloc::Layout::new::<T>();
-        // Do not use `alloc_unchecked` to avoid generic fn.
-        let ptr = Global::alloc(layout).cast::<T>();
-        core::ptr::write(ptr.as_ptr(), v);
-        &mut *ptr.as_ptr()
-    }
+    Global::alloc_static(v)
 }
 
 // -----------------------------------------------------------------------------

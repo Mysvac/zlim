@@ -60,6 +60,9 @@ fn stage_job_a() {}
 // -----------------------------------------------------------------------------
 // Standalone job insertion
 
+/// A standalone job is keyed by its registered name, and both insertion and
+/// removal are idempotent: the second attempt reports failure instead of
+/// duplicating or resurrecting the job.
 #[test]
 fn insert_and_remove_by_name() {
     JobDB::collect();
@@ -77,6 +80,9 @@ fn insert_and_remove_by_name() {
     assert!(!schedule.contains_job(id));
 }
 
+/// A job label that was never auto-registered still has to be usable: when the
+/// name lookup fails, the label itself supplies the job database that gets
+/// registered and inserted.
 #[test]
 fn insert_label_falls_back_to_constructing_itself() {
     JobDB::collect();
@@ -104,6 +110,9 @@ fn insert_missing_name_fails() {
 // -----------------------------------------------------------------------------
 // Group insertion
 
+/// A group is handled as a unit: inserting one brings in its member jobs
+/// together with the group's begin/end marker jobs, and removing it takes all
+/// of them out again.
 #[test]
 fn insert_and_remove_group() {
     JobDB::collect();
@@ -232,6 +241,9 @@ impl System for CountingJob {
     fn apply_deferred(&mut self, _: &mut World) {}
 }
 
+/// A rebuild recycles the job objects of the previous build, so a job that is
+/// still in the schedule must keep its initialized state and its access table
+/// instead of being initialized and registered a second time.
 #[test]
 fn rebuild_recycles_jobs_without_reinitializing() {
     static INITS: AtomicU32 = AtomicU32::new(0);
@@ -268,6 +280,9 @@ fn rebuild_recycles_jobs_without_reinitializing() {
 // -----------------------------------------------------------------------------
 // Executor selection
 
+/// The executor kind decides whether apply-deferred helper jobs are added: the
+/// test jobs are not deferred, so the single- and multi-threaded schedules end
+/// up with the same job count while only the reported kind differs.
 #[test]
 fn executor_kind_controls_apply_deferred() {
     JobDB::collect();
@@ -291,6 +306,9 @@ fn executor_kind_controls_apply_deferred() {
 // -----------------------------------------------------------------------------
 // Node generation — removal must survive a rebuild
 
+/// Removing a job whose object still lives in the compiled schedule has to
+/// survive the next rebuild, which recycles those old objects: the removed job
+/// must not be resurrected from them.
 #[test]
 fn removed_job_stays_removed_after_rebuild() {
     JobDB::collect();
@@ -313,6 +331,9 @@ fn removed_job_stays_removed_after_rebuild() {
     assert!(schedule.contains_job(JobId::new("test::test_job_b", "#anonymous")));
 }
 
+/// A freed job slot is reused by a later insert with a bumped generation tag,
+/// so the rebuild has to tell the new job apart from the stale node it replaced
+/// instead of letting one overwrite the other.
 #[test]
 fn removed_job_slot_reuse_does_not_corrupt() {
     JobDB::collect();
@@ -342,6 +363,9 @@ fn removed_job_slot_reuse_does_not_corrupt() {
 // -----------------------------------------------------------------------------
 // ScheduleStage
 
+/// Inserting into a named stage creates that stage on demand: the schedule
+/// gains the stage's begin/end markers next to the job itself, which keeps the
+/// anonymous group value it was inserted with.
 #[test]
 fn insert_into_named_stage_creates_markers() {
     JobDB::collect();
@@ -359,6 +383,8 @@ fn insert_into_named_stage_creates_markers() {
     assert_eq!(schedule.jobs().len(), 3);
 }
 
+/// The anonymous stage is the absence of a stage: inserting into it creates no
+/// begin/end jobs and no stage entry, so the schedule holds only the job itself.
 #[test]
 fn insert_into_anonymous_stage_creates_no_markers() {
     JobDB::collect();
@@ -373,6 +399,9 @@ fn insert_into_anonymous_stage_creates_no_markers() {
     assert_eq!(schedule.jobs().len(), 1);
 }
 
+/// A group inserted into a named stage keeps its own name for its member and
+/// marker jobs, while the stage markers are created alongside them; the
+/// schedule then runs without ordering cycles.
 #[test]
 fn insert_group_into_stage_creates_markers() {
     JobDB::collect();
@@ -395,6 +424,10 @@ fn insert_group_into_stage_creates_markers() {
     schedule.run(&mut world);
 }
 
+/// The begin marker of a stage has to run before every job in that stage, and
+/// its end marker after them.  The markers are pinned between two jobs whose
+/// only effect is to record their own name, which makes that ordering
+/// observable from the outside.
 #[test]
 fn stage_begin_runs_before_and_end_after_jobs() {
     static ORDER: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
@@ -454,6 +487,8 @@ fn stage_begin_runs_before_and_end_after_jobs() {
 // Each test keeps its counter/order state in a function-local `static`,
 // reset at the start, so parallel tests never share mutable state.
 
+/// A `run_if` condition is consulted before its job runs, so a condition that
+/// returns false skips the job while one that returns true lets it through.
 #[test]
 fn run_if_conditions_gate_jobs() {
     static RAN: AtomicU32 = AtomicU32::new(0);
@@ -487,6 +522,8 @@ fn run_if_conditions_gate_jobs() {
     assert_eq!(RAN.load(Ordering::Relaxed), 1);
 }
 
+/// The condition of a job placed in a stage is evaluated after the stage's
+/// begin marker and before the job itself, which the recorded order pins down.
 #[test]
 fn run_if_condition_runs_after_stage_begin() {
     static STAGE_ORDER: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
@@ -530,6 +567,9 @@ fn run_if_condition_runs_after_stage_begin() {
     assert_eq!(&*order, &["before_begin", "cond", "gated", "after_end"]);
 }
 
+/// A `run_if` condition also gates jobs that arrive through a group: the job
+/// whose condition returns false does not run when the group is executed, so
+/// the gate is not bypassed by group insertion.
 #[test]
 fn run_if_in_group_gates_job() {
     static GROUP_RAN: AtomicU32 = AtomicU32::new(0);

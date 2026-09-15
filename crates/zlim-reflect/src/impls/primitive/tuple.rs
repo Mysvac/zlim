@@ -408,12 +408,16 @@ mod tests {
         };
     }
 
+    /// Pins the naming constants of tuples: `type_path` and `type_name` spell
+    /// the element types out, while `IDENT` keeps only the shape.
     #[test]
     fn tuple_path() {
         assert_path! {
             (), "()", "()", "()", None, None,
         }
 
+        // Every element type is replaced by `_`, so `(u8,)` identifies as
+        // `(_,)`.
         assert_path! {
             (u8,),
             "(u8,)",
@@ -433,6 +437,9 @@ mod tests {
         }
     }
 
+    /// Checks the `Tuple` type info of the unit tuple, a one-field tuple and a
+    /// tuple nested inside another tuple: the field count, the type path and the
+    /// element look-ups must all line up with the tuple's own definition.
     #[test]
     fn tuple_info() {
         let info = <()>::type_info().as_tuple().unwrap();

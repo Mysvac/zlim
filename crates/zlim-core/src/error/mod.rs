@@ -25,11 +25,16 @@
 //! assert_eq!(boxed.to_string(), "disk is nearly full");
 //! ```
 //!
-//! With the `backtrace` feature, [`Severity::Warning`] and
-//! [`Severity::Error`] capture a backtrace that is printed with the error.
+//! With the `backtrace` feature, [`Severity::Error`] and [`Severity::Panic`]
+//! capture a backtrace that is printed with the error (default). The threshold
+//! can be overwrited by [`ZlimError::set_backtrace_threshold`].
 //!
-//! Backtrace will skip some noisy(useless) lines by default, set
-//! `ZLIM_BACKTRACE=full` to disable filtering.
+//! Unlike default panic hook, ZlimError's backtrace display will skip some noisy
+//! (useless) lines by default, set `ZLIM_BACKTRACE=full` to disable filtering.
+//!
+//! If zlim-app's `PanicHandlerPlugin` is enabled and the panic is caused by
+//! ZlimError and the backtrace is captured, it will directly display the content
+//! of ZlimError and skip the default hook, which is clearer.
 //!
 //! # Severity levels
 //!
