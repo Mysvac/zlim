@@ -58,6 +58,24 @@ where
 {
     system: S,
     id: JobId,
+    /// The `tracy::Span` used for performance observation.
+    ///
+    /// `tracing::Span` and `tracy::Span` have different requirements:
+    ///
+    /// - The `tracing::Span` is for logging, so it must also cover the error
+    ///   handling logic. But error handling happens outside of the job's `run`,
+    ///   so the span is stored in `Schedule` to cover a wider scope.
+    ///
+    /// - The Tracy span instruments performance, so it is cached as a field of
+    ///   the `Job` and begun/entered when the job itself runs.
+    ///
+    /// Although zlim_tracy supports a lightweight mode when the feature `tracy`
+    /// is not enabled, `core` is a low-level library — has to optimize as
+    /// aggressively as it can. so we still annotate it with `#[cfg(..)]`.
+    #[cfg(feature = "tracy")]
+    tracy: &'static zlim_tracy::SpanSource,
+    #[cfg(feature = "tracy")]
+    defer_tracy: &'static zlim_tracy::SpanSource,
 }
 
 impl<O, S, const STRICT: bool> Job for JobSystem<O, S, STRICT>
@@ -94,6 +112,8 @@ where
     }
 
     unsafe fn run_raw(&mut self, world: WorldCell<'_>) -> Result<(), SystemError> {
+        #[cfg(feature = "tracy")]
+        let _span = self.tracy.begin();
         unsafe {
             let ret = self.system.run_raw((), world)?;
             IntoJobResult::into_job_result(ret)
@@ -101,6 +121,8 @@ where
     }
 
     fn apply_deferred(&mut self, world: &mut World) {
+        #[cfg(feature = "tracy")]
+        let _span = self.defer_tracy.begin();
         self.system.apply_deferred(world);
     }
 }
@@ -150,8 +172,48 @@ where
     ) -> Box<dyn Job> {
         let id = JobId::new(name, group);
         let system: T::System = IntoSystem::into_system(this);
-        Box::new(JobSystem::<O, T::System, STRICT> { system, id })
+        #[cfg(not(feature = "tracy"))]
+        return Box::new(JobSystem::<O, T::System, STRICT> { system, id });
+
+        #[cfg(feature = "tracy")]
+        let (tracy, defer_tracy) = tracy_span_source(&id, system.flags());
+        #[cfg(feature = "tracy")]
+        return Box::new(JobSystem::<O, T::System, STRICT> {
+            system,
+            id,
+            tracy,
+            defer_tracy,
+        });
     }
+}
+
+// In the current implementation, Jobs can only be inserted into a Schedule to run,
+// so frequent creation should not occur. We can directly intern the span source.
+//
+// In the future, if jobs require frequent additions and deletions, they will need
+// to add deduplication logic.
+#[inline(never)]
+#[cfg(feature = "tracy")]
+fn tracy_span_source(
+    id: &JobId,
+    flag: SystemFlags,
+) -> (
+    &'static zlim_tracy::SpanSource,
+    &'static zlim_tracy::SpanSource,
+) {
+    let func1 = format!("Job::run_raw::<{}>\0", id.name());
+    let func2 = if flag.intersects(SystemFlags::DEFERRED) {
+        format!("Job::apply_deferred::<{}>\0", id.name())
+    } else {
+        String::new()
+    };
+
+    let file = c"zlim_core::job";
+
+    (
+        zlim_tracy::SpanSource::new_leak(String::new(), func1, file, 0, 0xADFF2F),
+        zlim_tracy::SpanSource::new_leak(String::new(), func2, file, 1, 0x2FFFAD),
+    )
 }
 
 // -----------------------------------------------------------------------------

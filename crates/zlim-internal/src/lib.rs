@@ -11,6 +11,7 @@ pub use zlim_utils as utils;
 
 pub use zlim_path as path;
 pub use zlim_task as task;
+pub use zlim_tracy as tracy;
 
 pub use zlim_core as core;
 

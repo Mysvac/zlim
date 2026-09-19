@@ -19,9 +19,8 @@ LogConfig::default().apply();
 |------|------|
 | `filter` | 内容过滤器 |
 | `level` | 全局最低日志级别 |
-| `custom_layer` | 追加一个自定义 [`Layer`] |
 | `format_layer` | 覆盖默认的格式化输出层 |
-| `enable_tracy` | 是否启用 Tracy 流式采集 |
+| `custom_layer` | 追加一个自定义 [`Layer`] |
 
 ### 内容过滤器
 
@@ -51,30 +50,42 @@ let config = LogConfig {
 - debug 构建时默认为 `Level::DEBUG`。
 - release 构建时默认为 `Level::INFO`。
 
-### CustomLayer
-
-`custom_layer: Option<BoxedLayer>` 允许你向 subscriber 栈追加一层自定义
-[`Layer`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/trait.Layer.html)。
-
-
-`custom_layer` 不会覆盖其他 Layer 的实现，默认为空。
-
 ### FormatLayer
 
-`format_layer: Option<BoxedFmtLayer>` 用于覆盖桌面端默认的格式化输出层。
+`format_layer: Option<BoxedFormatLayer>` 用于覆盖桌面端默认的格式化输出层。
 
 在 macos、android、wasm 等平台，format_layer 不会生效，它们有平台特定的日志输出。
 
 在常规平台（win、linux等），format_layer 默认会向 `stderr` 输出日志信息。
 如果此时用户显式提供了 format_layer，则会**替换**默认值。
 
-### EnableTracy
+format_layer 是 subscriber 中最内层的 Layer，事件最终由它负责输出。
 
-用于控制 `trace_tracy` 是否实际启用。
+### CustomLayer
 
-当 `trace_tracy` feature 未启用时，此字段被忽略。
+`custom_layer: Option<BoxedCustomLayer>` 允许你向 subscriber 栈追加一层自定义
+[`Layer`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/trait.Layer.html)。
 
-详细内容请看下方的 Feature 部分。
+`custom_layer` 不会覆盖其他 Layer 的实现，默认为空。
+
+`custom_layer` 位于 `format_layer` 之外，因此它的 Layer 类型必须写出 format_layer 所挂载的
+subscriber；详见[层顺序](#层顺序)。
+
+## 层顺序
+
+subscriber 通过逐层挂载到 `Registry` 上构建，顺序为从最内层到最外层：
+
+| # | Layer | 条件 |
+|---|-------|------|
+| 1 | `format_layer`，或平台自带的输出层 | 总是 |
+| 2 | `custom_layer` | 设置后 |
+| 3 | Chrome tracing（`tracing-chrome`） | `trace_chrome` |
+| 4 | `tracing-error` 的 `ErrorLayer` | `trace_error` |
+| 5 | 由 `filter` 与 `level` 构建的 `Targets` 过滤器 | 总是 |
+
+后挂载的 Layer 会包住先挂载的 Layer，这也是为什么每层的类型必须写出它所挂载的 subscriber：
+`custom_layer` 的类型是 `BoxedCustomLayer`，其中写的是 `Layered<BoxedFormatLayer, Registry>`
+而不是 `Registry`。过滤器挂载在最后，也就是最外层，由它决定哪些事件能到达它内部的各层。
 
 ## Features
 
@@ -85,13 +96,11 @@ let config = LogConfig {
 
 - `debug`: 调整 `LogConfig` 的默认日志级别为 `Debug`，可被覆盖，没什么特殊效果。
 
-- `trace`: 启用 `tracing-error`，通过 `ErrorLayer` 记录错误 span 栈，修改 panic hook，panic 时打印 `SpanTrace`。
-
-- `trace_tracy`: 启用 `tracing-tracy` crate，用于性能分析。当 `LogConfig` 的 `enable_tracy` 字段为 `true` 时，向 Tracy 流式发送事件。
-
-- `tracy_memory`: 启用 `tracy-client`，以支持 Tracy 内存分析。
+- `trace_error`: 启用 `tracing-error`，通过 `ErrorLayer` 记录错误 span 栈，修改 panic hook，panic 时打印 `SpanTrace`。
 
 - `trace_chrome`:  启用 `tracing-chrome`,导出 Chrome tracing 格式(JSON)，用环境变量 `TRACE_CHROME` 指定输出文件路径。
+
+Tracy 剖析器不再属于本 crate，请改用 `zlim-tracy`。
 
 ## 日志宏
 

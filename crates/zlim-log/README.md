@@ -20,9 +20,8 @@ LogConfig::default().apply();
 |-------|---------|
 | `filter` | Content filter |
 | `level` | Global minimum log level |
-| `custom_layer` | Append a custom [`Layer`] |
 | `format_layer` | Override the default formatting output layer |
-| `enable_tracy` | Whether to enable Tracy streaming |
+| `custom_layer` | Append a custom [`Layer`] |
 
 ### Content Filter
 
@@ -57,18 +56,9 @@ in order to optimize logging performance as much as possible.
 - Defaults to `Level::DEBUG` in debug builds.
 - Defaults to `Level::INFO` in release builds.
 
-### CustomLayer
-
-`custom_layer: Option<BoxedLayer>` lets you append a custom
-[`Layer`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/trait.Layer.html)
-to the subscriber stack.
-
-`custom_layer` does not override the implementation of other layers; it is
-empty by default.
-
 ### FormatLayer
 
-`format_layer: Option<BoxedFmtLayer>` is used to override the default
+`format_layer: Option<BoxedFormatLayer>` is used to override the default
 formatting output layer on desktop.
 
 On platforms such as macOS, Android, and WASM, `format_layer` has no effect;
@@ -78,13 +68,39 @@ On regular platforms (Windows, Linux, etc.), `format_layer` defaults to
 outputting log messages to `stderr`. If the user explicitly provides a
 `format_layer`, it **replaces** the default.
 
-### EnableTracy
+`format_layer` is the innermost layer of the subscriber, so it is the layer
+that turns an event into output.
 
-Controls whether `trace_tracy` is actually enabled.
+### CustomLayer
 
-This field is ignored when the `trace_tracy` feature is not enabled.
+`custom_layer: Option<BoxedCustomLayer>` lets you append a custom
+[`Layer`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/trait.Layer.html)
+to the subscriber stack.
 
-See the Feature section below for details.
+`custom_layer` does not override the implementation of other layers; it is
+empty by default.
+
+`custom_layer` is applied outside `format_layer`, so its layer type has to name
+the subscriber the format layer is attached to; see [Layer Order](#layer-order).
+
+## Layer Order
+
+The subscriber is built by chaining layers onto a `Registry`, from the
+innermost layer to the outermost one:
+
+| # | Layer | Condition |
+|---|-------|-----------|
+| 1 | `format_layer`, or the layer of the platform | always |
+| 2 | `custom_layer` | when it is set |
+| 3 | Chrome tracing (`tracing-chrome`) | `trace_chrome` |
+| 4 | `ErrorLayer` of `tracing-error` | `trace_error` |
+| 5 | The `Targets` filter built from `filter` and `level` | always |
+
+Every layer wraps the ones chained before it, which is why the type of a layer
+has to name the subscriber it is attached to: `custom_layer` is a
+`BoxedCustomLayer`, which names `Layered<BoxedFormatLayer, Registry>` rather
+than `Registry`. The filter is chained last, so it is the outermost layer and
+the one that decides which events reach the layers below it.
 
 ## Features
 
@@ -98,19 +114,15 @@ See the Feature section below for details.
 - `debug`: Adjusts `LogConfig`'s default log level to `Debug`; overridable,
   no special effect.
 
-- `trace`: Enables `tracing-error`, records error span stacks via
+- `trace_error`: Enables `tracing-error`, records error span stacks via
   `ErrorLayer`, and modifies the panic hook to print the `SpanTrace` on
   panic.
-
-- `trace_tracy`: Enables the `tracing-tracy` crate for profiling. When
-  `LogConfig`'s `enable_tracy` field is `true`, events are streamed to
-  Tracy.
-
-- `tracy_memory`: Enables `tracy-client` to support Tracy memory profiling.
 
 - `trace_chrome`: Enables `tracing-chrome`, exporting the Chrome tracing
   format (JSON); use the `TRACE_CHROME` environment variable to specify the
   output file path.
+
+The Tracy profiler is no longer part of this crate; use `zlim-tracy` for it.
 
 ## Logging Macros
 

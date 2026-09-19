@@ -118,7 +118,7 @@ debug = ["zlim-internal/debug"]
 # Improve panic backtrace, filter noisy rows.
 backtrace = ["zlim-internal/backtrace"]
 
-# Tracing support, enable tracing span.
+# Tracing support, enables tracing span.
 # - Inserts spans into jobs and other hot paths when enabled.
 # - Required by upper-level features such as `trace_error`.
 # - Has runtime overhead; intended for debugging.
@@ -126,24 +126,74 @@ backtrace = ["zlim-internal/backtrace"]
 trace = ["zlim-internal/trace"]
 
 # Tracing support, improves panic information.
+# - This feature additionally enables the `trace`.
 # - Uses the `tracing-error` crate to show the logical call path in panics.
 # - This feature should not be enabled for published apps!
 trace_error = ["zlim-internal/trace_error", "trace"]
 
-# Tracing support, exposing a port for Tracy.
-# - This feature cannot be used in wasm target.
-# - This feature should not be enabled for published apps!
-trace_tracy = ["zlim-internal/trace_tracy", "trace"]
-
-# Tracing support, with memory profiling, exposing a port for Tracy.
-# - This feature cannot be used in wasm target.
-# - This feature should not be enabled for published apps!
-tracy_memory = ["zlim-internal/tracy_memory"]
-
 # Tracing support, saving a file in Chrome Tracing format.
+# - This feature additionally enables the `trace`.
 # - This feature cannot be used in wasm target.
 # - This feature should not be enabled for published apps!
 trace_chrome = ["zlim-internal/trace_chrome", "trace"]
+
+# Tracy profiling support, enables the base profiler integration.
+# - This feature is not named `zlim-tracy`, so it does not control whether the
+#  `zlim-tracy` dependency is pulled in. It does, however, control the internal
+#   implementation of `zlim-tracy`'s  types and functions. When `tracy` is disabled,
+#   `zlim-tracy` becomes a usable no-op implementation.
+# - Every other `tracy_*` feature requires this one to be enabled explicitly.
+# - Sub-features do NOT enable `tracy` on their own; enabling one without it is a compile error.
+# - This feature should not be enabled for published apps!
+tracy = ["zlim-internal/tracy"]
+
+# Memory profiling support.
+# - Reports allocations and frees to the profiler.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_memory = ["zlim-internal/tracy_memory"]
+
+# System-level profiling support.
+# - Reports CPU usage and other system metrics.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_system = ["zlim-internal/tracy_system"]
+
+# Sampling profiling support.
+# - Periodically samples call stacks instead of instrumenting every span.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_sampling = ["zlim-internal/tracy_sampling"]
+
+# Rust symbol demangling support.
+# - Demangles Rust symbols for display in the profiler.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_demangle = ["zlim-internal/tracy_demangle"]
+
+# Broadcast mode support.
+# - Allows multiple profilers to connect at the same time.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_broadcast = ["zlim-internal/tracy_broadcast"]
+
+# Localhost-only connection support.
+# - Restricts the profiler connection to localhost.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_only_localhost = ["zlim-internal/tracy_only_localhost"]
+
+# Context-switch tracking support.
+# - Reports thread context switches to the profiler.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_context_switch = ["zlim-internal/tracy_context_switch"]
+
+# Inline callstack resolution support.
+# - Resolves inlined frames in captured callstacks.
+# - Requires `tracy`; does not enable it automatically.
+# - This feature should not be enabled for published apps!
+tracy_callstack_inlines = ["zlim-internal/tracy_callstack_inlines"]
 
 # Use async-io's implementation of block_on in multi-thread mode.
 # - This is preferred if your application uses async-io.
@@ -168,6 +218,10 @@ https = ["zlim-internal/https"]
 # - Not effective in wasm target. (ignored)
 # - This feature should not be enabled for published apps!
 web_asset_cache = ["zlim-internal/web_asset_cache"]
+
+# Uses `libm` as the math backend for across platforms deterministic.
+# - `libm` is typically slower than the default standard library backend.
+libm = ["zlim-internal/libm"]
 
 # ----------------------------------------------------------
 

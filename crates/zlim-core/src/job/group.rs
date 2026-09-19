@@ -96,6 +96,8 @@ macro_rules! impl_simple_job {
     };
 }
 
+// A Noop Job is never actually run by the Schedule, so we don't need to insert a Tracy span for it.
+
 impl_simple_job!(GroupBegin, { SystemFlags::NO_OP });
 impl_simple_job!(GroupEnd, {
     SystemFlags::NO_OP.union(SystemFlags::DEFERRED)

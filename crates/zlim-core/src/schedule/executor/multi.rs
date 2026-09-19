@@ -80,7 +80,9 @@ struct PanicBuffer(SpinLock<Option<Box<PanicPayload>>>);
 /// ```
 pub struct MultiThreadedExecutor {
     #[cfg(feature = "trace")]
-    sync_span: SyncUnsafeCell<Option<zlim_log::Span>>,
+    sync_trace: SyncUnsafeCell<Option<zlim_log::Span>>,
+    #[cfg(feature = "tracy")]
+    sync_tracy: Option<&'static zlim_tracy::SpanSource>,
     panic_buffer: PanicBuffer,
     // Each thread only uses try-lock, so spin-lock is better than Mutex.
     state: SpinLock<ExecutorState>,
@@ -121,7 +123,9 @@ impl MultiThreadedExecutor {
     pub const fn new() -> Self {
         Self {
             #[cfg(feature = "trace")]
-            sync_span: SyncUnsafeCell::new(None),
+            sync_trace: SyncUnsafeCell::new(None),
+            #[cfg(feature = "tracy")]
+            sync_tracy: None,
             state: SpinLock::new(ExecutorState::new()),
             completed: SegQueue::new(),
             panic_buffer: PanicBuffer(SpinLock::new(None)),
@@ -426,8 +430,12 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
         let jobs = self.jobs;
         let panic_buffer = &self.executor.panic_buffer;
         let label = self.label;
+
         #[cfg(feature = "trace")]
-        let span = &self.executor.sync_span;
+        let trace = unsafe { (&*self.executor.sync_trace.get()).as_ref() };
+
+        #[cfg(feature = "tracy")]
+        let tracy = self.executor.sync_tracy;
 
         // Drain without reallocating by reusing the existing buffer capacity.
         let mut deferred: Vec<u16> = Vec::new();
@@ -435,7 +443,10 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
 
         Box::new(move || {
             #[cfg(feature = "trace")]
-            let _span = unsafe { (&mut *span.get()).as_mut().unwrap().enter() };
+            let _trace = trace.unwrap().enter();
+
+            #[cfg(feature = "tracy")]
+            let _tracy = tracy.unwrap().begin();
 
             let world = unsafe { world.full_mut() };
             world.flush();
@@ -504,7 +515,7 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
         #[cfg(feature = "trace")]
         let span = unsafe {
             debug_assert!(index_t < self.spans.len());
-            &mut *self.spans.get_unchecked(index_t).get()
+            &*self.spans.get_unchecked(index_t).get()
         };
 
         // Reading raw flags avoids repeated virtual method calls.
@@ -539,7 +550,8 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
 
             let func = AssertUnwindSafe(|| unsafe {
                 #[cfg(feature = "trace")]
-                let _span = span.enter();
+                let _trace = span.enter();
+                // no need to add `tracy` as it already be added in `Job::run_raw`.
                 if let Err(e) = job.run_raw(context.world) {
                     ::core::hint::cold_path();
                     if !matches!(e, SystemError::None) {
@@ -612,8 +624,18 @@ impl JobExecutor for MultiThreadedExecutor {
         self.state.get_mut().init(schedule);
         #[cfg(feature = "trace")]
         {
-            *self.sync_span.get_mut() =
+            *self.sync_trace.get_mut() =
                 Some(zlim_log::info_span!(parent: None, "sync point", schedule = ?schedule.label));
+        }
+
+        #[cfg(feature = "tracy")]
+        {
+            let name = String::new();
+            let func = format!("JobExecutor::sync::<{:?}>\0", schedule.label);
+            let file = c"zlim_core::schedule::executor";
+            self.sync_tracy = Some(zlim_tracy::SpanSource::new_leak(
+                name, func, file, 0, 0x8000FF,
+            ));
         }
     }
 
@@ -645,12 +667,15 @@ impl JobExecutor for MultiThreadedExecutor {
         let jobs = schedule.jobs_mut();
 
         #[cfg(feature = "trace")]
-        let _span = self
-            .sync_span
+        let _trace = self
+            .sync_trace
             .get_mut()
-            .as_mut()
+            .as_ref()
             .expect("should initialized")
             .enter();
+
+        #[cfg(feature = "tracy")]
+        let _tracy = self.sync_tracy.expect("should initialized").begin();
 
         for &index in &self.state.get_mut().deferred_systems {
             let index = index as usize;
@@ -666,8 +691,11 @@ impl JobExecutor for MultiThreadedExecutor {
             }
         }
 
+        #[cfg(feature = "tracy")]
+        ::core::mem::drop(_tracy);
+
         #[cfg(feature = "trace")]
-        ::core::mem::drop(_span);
+        ::core::mem::drop(_trace);
 
         if let Some(payload) = self.panic_buffer.take() {
             ::core::hint::cold_path();

@@ -13,6 +13,8 @@ trace = ["zlim-core/trace"]
 
 trace_error = ["zlim-log/trace_error", "dep:tracing-error"]
 
+tracy = ["dep:zlim-tracy", "zlim-core/tracy"]
+
 backtrace = ["zlim-core/backtrace"]
 
 [dependencies]
@@ -27,6 +29,7 @@ zlim-utils = { path = "../zlim-utils", default-features = false }
 
 zlim-task = { path = "../zlim-task", default-features = false }
 zlim-path = { path = "../zlim-path", default-features = false }
+zlim-tracy = { path = "../zlim-tracy", default-features = false, optional = true }
 
 zlim-core = { path = "../zlim-core", default-features = false }
 

@@ -449,4 +449,18 @@ if World::step_fixed(&mut world) {
 
 更多细节和示例请参考 `time` 模块的文档。
 
+## Cargo Features
+
+- `debug` : 保留更多调试信息，例如 DebugLocation 和 DebugName 。
+  `debug_assertions` 模式下会自动开启此 feature 包含的功能。
+
+- `backtrace` : 启用 ZlimError 的栈追踪。启用后，（默认）在 Error 和 Panic
+  级别时，ZlimError 将输出自身带过滤的栈信息。这比默认 Panic 的栈信息清晰的多。
+
+- `trace` ：启用日志库 `zlim_log` / `tracing` 的 `span` 支持。启用后，Schedule、
+  Job 和 System 的运行都会触发一个 `span`，从而让内部触发的日志携带更多信息。
+
+- `tracy` ：启用性能检查库 `zlim_tracy` / `tracy_client` 的 `span` 支持。启用后，
+  Schedule 和 Job 的运行都会触发一个 `span`，可以配合 `tracy` 实现性能分析。
+
 ---

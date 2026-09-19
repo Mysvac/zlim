@@ -107,6 +107,12 @@ pub struct App {
     pub(crate) runner: Option<RunnerFn>,
     pub(crate) sub_apps: HashMap<InternedAppLabel, SubApp>,
     pub(crate) error_handler: Option<ErrorHandler>,
+    #[cfg(feature = "trace")]
+    pub(crate) _trace: Option<zlim_log::Span>,
+    #[cfg(feature = "tracy")]
+    pub(crate) _tracy: Option<&'static zlim_tracy::SpanSource>,
+    #[cfg(feature = "tracy")]
+    pub(crate) custom_frame_marker: bool,
 }
 
 /// A self-contained [`World`] with its own plugins, update schedule and
@@ -154,6 +160,10 @@ pub struct SubApp {
     pub(crate) plugins_state: PluginsState,
     pub(crate) update_schedule: Option<InternedScheduleLabel>,
     pub(crate) extract: Option<ExtractFn>,
+    #[cfg(feature = "trace")]
+    pub(crate) _trace: Option<zlim_log::Span>,
+    #[cfg(feature = "tracy")]
+    pub(crate) _tracy: Option<&'static zlim_tracy::SpanSource>,
 }
 
 // -----------------------------------------------------------------------------
@@ -171,10 +181,20 @@ impl App {
                 plugins_state: PluginsState::Adding,
                 update_schedule: None,
                 extract: None,
+                #[cfg(feature = "trace")]
+                _trace: None,
+                #[cfg(feature = "tracy")]
+                _tracy: None,
             },
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
+            #[cfg(feature = "trace")]
+            _trace: None,
+            #[cfg(feature = "tracy")]
+            _tracy: None,
+            #[cfg(feature = "tracy")]
+            custom_frame_marker: false,
         }
     }
 
@@ -319,16 +339,23 @@ impl App {
                 plugins_state: PluginsState::Adding,
                 update_schedule: None,
                 extract: None,
+                #[cfg(feature = "trace")]
+                _trace: None,
+                #[cfg(feature = "tracy")]
+                _tracy: None,
             },
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
+            #[cfg(feature = "trace")]
+            _trace: None,
+            #[cfg(feature = "tracy")]
+            _tracy: None,
+            #[cfg(feature = "tracy")]
+            custom_frame_marker: false,
         };
 
         core::mem::swap(self, &mut app);
-
-        #[cfg(feature = "trace")]
-        let _app_run_span = zlim_log::info_span!("app run").entered();
 
         // Build and apply all plugins.
         app.build();
@@ -354,6 +381,9 @@ impl App {
 
         let runner: RunnerFn = app.runner.take().unwrap_or_else(|| Box::new(run_once));
 
+        #[cfg(feature = "trace")]
+        let _app_run_span = zlim_log::info_span!(parent: None, "app run").entered();
+
         // Sent to the main thread for execution.
         // If `App` in the main function and annotated as `#[zlim_main]`,
         // this will be executed directly on the current thread.
@@ -378,9 +408,6 @@ impl App {
     /// [`PluginGroup`]: crate::PluginGroup
     /// [`duplicate_strategy`]: Plugin::duplicate_strategy
     pub fn add_plugins<M>(&mut self, plugins: impl Plugins<M>) -> &mut Self {
-        #[cfg(feature = "trace")]
-        let _app_add_plugins_span = zlim_log::info_span!("app add_plugins").entered();
-
         assert_eq!(
             self.main.plugins_state,
             PluginsState::Adding,
@@ -390,9 +417,6 @@ impl App {
         for mut plugin in plugins.unpack() {
             let id = plugin.id();
             let name = plugin.name();
-
-            #[cfg(feature = "trace")]
-            let _span = zlim_log::info_span!("app add_plugin", plugin = name).entered();
 
             if self
                 .main
@@ -444,10 +468,20 @@ impl SubApp {
                 plugins_state: PluginsState::Adding,
                 update_schedule: None,
                 extract: None,
+                #[cfg(feature = "trace")]
+                _trace: None,
+                #[cfg(feature = "tracy")]
+                _tracy: None,
             },
             runner: None,
             sub_apps: HashMap::new(),
             error_handler: None,
+            #[cfg(feature = "trace")]
+            _trace: None,
+            #[cfg(feature = "tracy")]
+            _tracy: None,
+            #[cfg(feature = "tracy")]
+            custom_frame_marker: false,
         };
 
         core::mem::swap(self, &mut app.main);
@@ -684,7 +718,27 @@ impl App {
         }
 
         #[cfg(feature = "trace")]
+        {
+            self._trace = Some(zlim_log::info_span!(parent: None, "App::update"));
+            self.main._trace = Some(zlim_log::info_span!(parent: None, "main_app"));
+        }
+
+        #[cfg(feature = "tracy")]
+        {
+            use zlim_tracy::SpanSource;
+
+            let func1 = c"App::update";
+            let func2 = c"App::update::<MainApp>";
+            let file = c"zlim_app::app";
+
+            self._tracy = Some(SpanSource::new(c"", func1, file, 0, 0xFF8C00).leak());
+            self.main._tracy = Some(SpanSource::new(c"", func2, file, 1, 0xFFB347).leak());
+        }
+
+        #[cfg(feature = "trace")]
         let _app_build_span = zlim_log::info_span!(parent: None, "app build").entered();
+
+        let time = zlim_os::time::Instant::now();
 
         TaskPoolConfigs::default().try_apply();
 
@@ -700,6 +754,12 @@ impl App {
         self.finish_plugins();
         self.cleanup_plugins();
         self.build_sub_plugins();
+
+        #[cfg(feature = "trace")]
+        ::core::mem::drop(_app_build_span);
+
+        zlim_log::debug!("App build completed: {:?}", time.elapsed());
+
         self
     }
 }
@@ -987,12 +1047,26 @@ impl App {
     pub fn update(&mut self) {
         debug_assert_eq!(self.main.plugins_state, PluginsState::Cleaned);
 
-        #[cfg(feature = "trace")]
-        let _update_span = zlim_log::info_span!("app update").entered();
+        #[cfg(feature = "tracy")]
+        if !self.custom_frame_marker {
+            // Placing at the end and beginning is the same.
+            zlim_tracy::Client::frame_mark();
+        }
 
+        #[cfg(feature = "trace")]
+        let _trace = self._trace.as_ref().map(|t| t.enter());
+
+        #[cfg(feature = "tracy")]
+        let _tracy = self._tracy.map(|t| t.begin());
+
+        // ----------------- Main App -------------------
         let main_world: &mut World = {
             #[cfg(feature = "trace")]
-            let _main_update_span = zlim_log::info_span!("main app").entered();
+            let _trace = self.main._trace.as_ref().map(|t| t.enter());
+
+            #[cfg(feature = "tracy")]
+            let _tracy = self.main._tracy.map(|t| t.begin());
+
             let world: &mut World = match &mut self.main.world {
                 Some(world) => world,
                 None => missing_world(),
@@ -1010,9 +1084,13 @@ impl App {
 
         zlim_task::run_local();
 
-        for (_label, sub_app) in self.sub_apps.iter_mut() {
+        // ----------------- Sub App -------------------
+        for sub_app in self.sub_apps.values_mut() {
             #[cfg(feature = "trace")]
-            let _sub_app_span = zlim_log::info_span!("sub app", name = ?_label).entered();
+            let _trace = sub_app._trace.as_ref().map(|t| t.enter());
+
+            #[cfg(feature = "tracy")]
+            let _tracy = sub_app._tracy.map(|t| t.begin());
 
             let world: &mut World = match &mut sub_app.world {
                 Some(world) => world,
@@ -1206,6 +1284,34 @@ impl App {
             sub_apps.world_mut().try_set_error_handler(error_handler);
         }
     }
+
+    /// Enables the custom frame marker mechanism for the current `App`.
+    ///
+    /// - If the `tracy` feature is not enabled, this setting has no effect.
+    /// - By default, the `App` calls Tracy's `frame_mark` at the start of every
+    ///   frame (at the beginning of `update`). This does not work well when the
+    ///   program contains worlds that run asynchronously.
+    /// - Once the user calls this function, the `App` no longer calls `frame_mark`
+    ///   itself; the responsibility is entirely delegated to the user.
+    ///
+    /// Returns `true` if the call succeeded, or if the `tracy` feature is not
+    /// enabled.
+    ///
+    /// Returns `false` if the call failed. This usually means another plugin has
+    /// already taken over Tracy's `frame_mark`. It may indicate that the `App`
+    /// contains multiple asynchronously running worlds — a scenario Tracy cannot
+    /// currently handle well.
+    pub fn enable_custom_frame_marker(&mut self) -> bool {
+        #[cfg(not(feature = "tracy"))]
+        return true;
+
+        #[cfg(feature = "tracy")]
+        {
+            let r = !self.custom_frame_marker;
+            self.custom_frame_marker = true;
+            r
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -1217,6 +1323,27 @@ impl App {
         if let Some(handler) = self.error_handler {
             sub_app.world_mut().try_set_error_handler(handler);
         }
+
+        let label = label.intern();
+
+        #[cfg(feature = "trace")]
+        {
+            sub_app._trace = Some(zlim_log::info_span!(parent: None, "sub_app", name = ?label));
+        }
+
+        #[cfg(feature = "tracy")]
+        {
+            let func = format!("App::run::<{label:?}>\0");
+            let file = c"zlim_app::app";
+            sub_app._tracy = Some(zlim_tracy::SpanSource::new_leak(
+                String::new(),
+                func,
+                file,
+                2,
+                0,
+            ))
+        }
+
         self.sub_apps.insert(label.intern(), sub_app);
     }
 
@@ -1281,6 +1408,10 @@ impl SubApp {
             plugins_state: PluginsState::Adding,
             update_schedule: None,
             extract: None,
+            #[cfg(feature = "trace")]
+            _trace: None,
+            #[cfg(feature = "tracy")]
+            _tracy: None,
         }
     }
 }

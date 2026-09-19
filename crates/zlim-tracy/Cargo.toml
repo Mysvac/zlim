@@ -1,0 +1,39 @@
+[package]
+name = "zlim-tracy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["README.zh.md"]
+
+[features]
+
+tracy = ["dep:tracy-client-sys", "dep:zlim-utils"]
+
+# Reports the allocations of the program to the profiler.
+# - Installs a global allocator over `System`.
+tracy_memory = []
+
+tracy_system = ["tracy-client-sys/system-tracing"]
+tracy_sampling = ["tracy-client-sys/sampling"]
+tracy_demangle = ["tracy-client-sys/demangle", "dep:rustc-demangle"]
+tracy_broadcast = ["tracy-client-sys/broadcast"]
+tracy_only_localhost = ["tracy-client-sys/only-localhost"]
+tracy_context_switch = ["tracy-client-sys/context-switch-tracing"]
+tracy_callstack_inlines = ["tracy-client-sys/callstack-inlines"]
+
+[dependencies]
+tracy-client-sys = { version = ">=0.23.0, <0.31.0", optional = true, default-features = false, features = ["enable", "ondemand"] }
+
+# Need use Global memory pool to improve `SpanSource::leak`.
+# If you need to remove this dependency, consider the following two approaches:
+# 1. Replace `zlim_utils::mem::Global::alloc` to `Box::leak`. It's a easy way.
+# 2. Or implement a memory pool in this crate, and replace zlim_utils's pool.
+zlim-utils = { path = "../zlim-utils", optional = true, default-features = false }
+
+# feature: tracy_demangle
+rustc-demangle = { version = "0.1", optional = true }
+
+[lints]
+workspace = true

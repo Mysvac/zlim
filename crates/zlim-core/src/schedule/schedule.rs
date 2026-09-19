@@ -27,6 +27,16 @@ struct JobEntry {
     stage: Option<&'static str>,
     object: Option<Box<dyn Job>>,
     access: Option<AccessTable>,
+    /// The `tracing::Span` used for logging.
+    ///
+    /// `tracing::Span` and Tracy's span have different requirements:
+    ///
+    /// - The Tracy span instruments performance, so it is cached as a field of
+    ///   the `Job` and begun/entered when the job itself runs.
+    /// - The `tracing::Span` is for logging, so it must also cover the error
+    ///   handling logic. But error handling happens outside of the job's `run`,
+    ///   so the span is stored in the `JobEntry` of the `Schedule` (rather than
+    ///   in the `Job` itself) to cover a wider scope.
     #[cfg(feature = "trace")]
     span: Option<zlim_log::Span>,
 }
@@ -398,10 +408,17 @@ impl Job for SyncPoint {
     fn apply_deferred(&mut self, _: &mut World) {}
 }
 
+// A Noop Job is never actually run by the Schedule, so we don't need to insert a Tracy span for it.
+
 impl SyncPoint {
     #[inline]
     fn new(name: JobId, after: JobId) -> Self {
         let buf = format!("#Sync<{name}, {after}>");
+        // Should we use `intern_str` instead of `Global::alloc_str` directly?
+        // If Jobs are not deleted from the Schedule, then `Global::alloc_str`
+        // has a significant advantage as there is no need to store and query hashes.
+        // But if the job needs to be deleted and inserted, `Global::alloc_str` may
+        // have duplicate allocation.
         let this_name = zlim_utils::str::intern_str(&buf);
         let id = JobId::isolated(this_name);
         Self {
@@ -475,6 +492,10 @@ pub struct Schedule {
     span: zlim_log::Span,
     #[cfg(feature = "trace")]
     update_span: zlim_log::Span,
+    #[cfg(feature = "tracy")]
+    tracy: &'static zlim_tracy::SpanSource,
+    #[cfg(feature = "tracy")]
+    update_tracy: &'static zlim_tracy::SpanSource,
 }
 
 // -----------------------------------------------------------------------------
@@ -533,6 +554,17 @@ impl Schedule {
     pub fn with_executor(label: impl ScheduleLabel, executor: Box<dyn JobExecutor>) -> Self {
         #[inline(never)]
         fn inner(label: InternedScheduleLabel, executor: Box<dyn JobExecutor>) -> Schedule {
+            #[cfg(feature = "tracy")]
+            let (tracy, update_tracy) = {
+                let func1 = format!("Schedule::run::<{label:?}>\0");
+                let func2 = format!("Schedule::update::<{label:?}>\0");
+                let file = c"zlim_core::schedule";
+                (
+                    zlim_tracy::SpanSource::new_leak(String::new(), func1, file, 0, 0x8000FF),
+                    zlim_tracy::SpanSource::new_leak(String::new(), func2, file, 1, 0xBF00FF),
+                )
+            };
+
             Schedule {
                 label,
                 jobs: Default::default(),
@@ -550,6 +582,10 @@ impl Schedule {
                 span: zlim_log::info_span!(parent: None, "schedule", name = ?label),
                 #[cfg(feature = "trace")]
                 update_span: zlim_log::info_span!(parent: None, "schedule update", name = ?label),
+                #[cfg(feature = "tracy")]
+                tracy,
+                #[cfg(feature = "tracy")]
+                update_tracy,
             }
         }
 
@@ -1871,6 +1907,9 @@ impl Schedule {
             #[cfg(feature = "trace")]
             let _span = self.update_span.clone().entered();
 
+            #[cfg(feature = "tracy")]
+            let _tracy = self.update_tracy.begin();
+
             self.recycle_schedule();
             self.init_systems(world);
             self.build_schedule();
@@ -1919,6 +1958,9 @@ impl Schedule {
 
         #[cfg(feature = "trace")]
         let _span = self.span.clone().entered();
+
+        #[cfg(feature = "tracy")]
+        let _tracy = self.tracy.begin();
 
         world.flush();
 

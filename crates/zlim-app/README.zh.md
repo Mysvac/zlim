@@ -142,3 +142,18 @@ app.with_task_pool_configs(TaskPoolConfigs::default());
   此插件依赖全局变量，不适合常规测试等多 App 并发环境。
 
 - `PanicHandlerPlugin` — 为 `App` 设置合理的 panic hook（wasm 上输出到浏览器控制台）。
+
+## Cargo Features
+
+- `trace` : 在插件构建阶段添加一些 span 以优化日志信息。
+
+- `trace_error` : 启用 `zlim-log/trace_error`, 并通过 PanicHandlerPlugin 在程序 panic
+  时向控制台输出 span 栈。
+
+- `backtrace` : 启用 `zlim-core/backtrace`，在某些严重级别让 ZlimError 捕获栈信息，并通过
+  PanicHandlerPlugin 插件替换默认的 PanicHook，以提供更简洁的 Panic 输出。
+
+- `tracy` : 启用 `zlim-tracy/tracy`，并未各个 SubApp 添加 tracy span 。提供默认策略，
+  在每帧开头调用 frame_mark 函数以区分帧边界，可覆盖。
+
+---

@@ -181,3 +181,21 @@ automatically and set the main world's default schedule to `Main`.
 
 - `PanicHandlerPlugin` — sets a sensible panic hook for `App` (on wasm it
   logs to the browser console).
+
+## Cargo Features
+
+- `trace`: adds a few spans while the plugins are being built, to improve the
+  logs.
+
+- `trace_error`: enables `zlim-log/trace_error`, and makes
+  `PanicHandlerPlugin` print the span stack to the console when the program
+  panics.
+
+- `backtrace`: enables `zlim-core/backtrace`, which lets `ZlimError` capture
+  stack information at certain severities, and makes `PanicHandlerPlugin`
+  replace the default panic hook with a more concise panic output.
+
+- `tracy`: enables `zlim-tracy/tracy` and adds a tracy span to every `SubApp`.
+  It provides a default policy, which calls the `frame_mark` function at the
+  beginning of each frame to distinguish the frame boundaries, and can be
+  overridden.

@@ -517,3 +517,24 @@ if World::step_fixed(&mut world) {
 ```
 
 See the `time` module docs for more details and examples.
+
+## Cargo Features
+
+- `debug`: keeps more debugging information, such as `DebugLocation` and
+  `DebugName`. What this feature turns on is enabled automatically when
+  `debug_assertions` is on.
+
+- `backtrace`: enables the stack traces of `ZlimError`. With it, a `ZlimError`
+  reports its own filtered stack trace at the `Error` and `Panic` levels (by
+  default), which is much clearer than the stack trace of a default panic.
+
+- `trace`: enables the `span` support of the logging crates `zlim_log` /
+  `tracing`. With it, the run of a `Schedule`, a `Job` and a `System` each
+  reports a `span`, so that the logs emitted from within them carry more
+  information.
+
+- `tracy`: enables the `span` support of the profiling crates `zlim_tracy` /
+  `tracy_client`. With it, the run of a `Schedule` and a `Job` each reports a
+  `span`, which can be profiled with `tracy`.
+
+---

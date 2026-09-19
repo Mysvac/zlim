@@ -40,7 +40,6 @@
 
 mod command;
 mod entity;
-mod job;
 mod message;
 mod non_send;
 mod query;

@@ -36,11 +36,18 @@ trace = [
 
 trace_error = ["zlim-log/trace_error", "trace"]
 
-trace_tracy = ["zlim-log/trace_tracy", "trace"]
-
 trace_chrome = ["zlim-log/trace_chrome", "trace"]
 
-tracy_memory = ["zlim-log/tracy_memory"]
+tracy = ["zlim-tracy/tracy"]
+
+tracy_memory = ["zlim-tracy/tracy_memory"]
+tracy_system = ["zlim-tracy/tracy_system"]
+tracy_sampling = ["zlim-tracy/tracy_sampling"]
+tracy_demangle = ["zlim-tracy/tracy_demangle"]
+tracy_broadcast = ["zlim-tracy/tracy_broadcast"]
+tracy_only_localhost = ["zlim-tracy/tracy_only_localhost"]
+tracy_context_switch = ["zlim-tracy/tracy_context_switch"]
+tracy_callstack_inlines = ["zlim-tracy/tracy_callstack_inlines"]
 
 libm = ["zlim-math/libm"]
 
@@ -72,6 +79,7 @@ zlim-log = { path = "../zlim-log", default-features = false }
 
 zlim-path = { path = "../zlim-path", default-features = false }
 zlim-task = { path = "../zlim-task", default-features = false }
+zlim-tracy = { path = "../zlim-tracy", default-features = false }
 
 zlim-core = { path = "../zlim-core", default-features = false }
 

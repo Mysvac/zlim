@@ -13,6 +13,8 @@ debug = ["zlim-utils/debug"]
 
 trace = []
 
+tracy = ["dep:zlim-tracy", "zlim-tracy/tracy"]
+
 backtrace = []
 
 [dependencies]
@@ -29,6 +31,7 @@ zlim-utils = { path = "../zlim-utils", default-features = false }
 
 zlim-task = { path = "../zlim-task", default-features = false }
 zlim-path = { path = "../zlim-path", default-features = false }
+zlim-tracy = { path = "../zlim-tracy", default-features = false, optional = true }
 
 indexmap = { version = "2.14", default-features = false }
 
