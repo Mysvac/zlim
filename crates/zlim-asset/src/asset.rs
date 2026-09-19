@@ -177,6 +177,10 @@ impl<K, V: VisitAssetDependencies> VisitAssetDependencies for BTreeMap<K, V> {
 /// fn react(materials: Query<&MaterialRef, AssetChanged<MaterialRef>>) { /* ... */ }
 /// ```
 ///
+/// This trait exists only to support change detection. Implementing it is not
+/// required for components that hold an asset; it is merely recommended, as it
+/// enables [`AssetChanged`] to work with the component.
+///
 /// [`AssetChanged`]: crate::change::AssetChanged
 pub trait AssetComponent: Component {
     /// The asset type this component refers to.

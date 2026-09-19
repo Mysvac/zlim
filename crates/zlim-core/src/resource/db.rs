@@ -46,6 +46,7 @@ pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'stat
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Resource)]
@@ -128,6 +129,7 @@ impl ResourceDB {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Resource)]

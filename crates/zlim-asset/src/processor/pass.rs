@@ -201,10 +201,10 @@ impl AssetProcessServer {
     ///
     /// The importer's server belongs to no world, so no typed drop job drains those queues for it:
     /// without this, the metadata of every asset the importer loaded would stay behind. (A world's
-    /// own server is drained by [`HandleAssetDropEventsJob`] instead, which is why this is only used
+    /// own server is drained by [`HandleAssetDropEvents`] instead, which is why this is only used
     /// here.)
     ///
-    /// [`HandleAssetDropEventsJob`]: crate::assets::HandleAssetDropEventsJob
+    /// [`HandleAssetDropEvents`]: crate::jobs::HandleAssetDropEvents
     fn consume_handle_drop_events(&self) {
         self.server.0.write_infos().process_handle_drop_events();
     }

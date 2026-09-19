@@ -230,7 +230,17 @@ libm = ["zlim-internal/libm"]
 no-default-features = false
 
 features = [
-    "dev",
+    "debug",
     "zlim-sample",
     "zlim-sysinfo",
 ]
+
+
+# ----------------------------------------------------------
+# Examples
+
+[[example]]
+name = "hello_world"
+path = "examples/hello_world.rs"
+
+# ----------------------------------------------------------

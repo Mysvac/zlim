@@ -10,8 +10,9 @@ use zlim_core::schedule::{AnonymousSchedule, Schedule};
 use zlim_core::system::Local;
 use zlim_core::tick::{DetectChanges, Tick};
 use zlim_core::world::World;
-use zlim_transform::{GlobalTransform, Transform, TransformChangeDetection};
-use zlim_transform::{TransformChangeRoot, TransformPropagateStrategy, TransformPropagation};
+use zlim_transform::jobs::{TransformChangeDetection, TransformPropagation};
+use zlim_transform::{GlobalTransform, Transform};
+use zlim_transform::{TransformChangeRoot, TransformPropagateStrategy};
 
 fn init_config(world: &mut World) {
     world.init_resource::<TransformPropagateStrategy>();

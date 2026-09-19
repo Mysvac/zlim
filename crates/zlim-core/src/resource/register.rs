@@ -35,6 +35,7 @@ use super::resource::Resource;
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::resource::register_base;
 ///
@@ -77,10 +78,10 @@ pub fn register_base<R: Resource>() -> &'static ResourceDB {
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::resource::register_serializable;
 /// use serde::{Deserialize, Serialize};
-/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Clone, Serialize, Deserialize)]
 /// struct Score(u32);

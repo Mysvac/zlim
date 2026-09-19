@@ -24,6 +24,7 @@ use zlim_path::TypePath;
 /// # Using MessageQueue In World
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Message)]
@@ -49,6 +50,7 @@ use zlim_path::TypePath;
 /// so one system reading messages does not consume them for another system.
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Message)]

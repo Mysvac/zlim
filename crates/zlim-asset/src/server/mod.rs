@@ -12,10 +12,7 @@
 //! - [`UnapprovedPathMode`]: what happens to a path that escapes its source root.
 //!
 //! Progress is observed through the load states ([`LoadState`], [`DependencyLoadState`],
-//! [`RecursiveDependencyLoadState`]) or by awaiting the server's wait functions. The jobs
-//! exported here ([`AssetServerDiagnosticJob`], [`ClearFinishedAssetTask`],
-//! [`HandleAssetSaveCommands`], [`HandleAssetSeverEvents`]) are what keep a running app in sync
-//! with the server.
+//! [`RecursiveDependencyLoadState`]) or by awaiting the server's wait functions.
 //!
 //! The module also defines [`UNTYPED_SOURCE_SUFFIX`], the synthetic source a type-erased load
 //! registers its wrapper under.
@@ -61,13 +58,10 @@ pub use builder::{LoadBuilder, SaveBuilder};
 pub(crate) use event::AssetServerEvent;
 pub(crate) use info::HandleLoadingMode;
 pub(crate) use internal::AssetServerData;
+pub(crate) use server::jobs;
 
 pub use config::AssetMetaCheckMode;
 pub use config::AssetServerMode;
 pub use config::UnapprovedPathMode;
 pub use server::AssetServer;
-pub use server::AssetServerDiagnosticJob;
 pub use state::*;
-
-// Job
-pub use server::{ClearFinishedAssetTask, HandleAssetSaveCommands, HandleAssetSeverEvents};

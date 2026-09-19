@@ -23,14 +23,20 @@ pub struct Main;
 // Main Loop - Start Up
 
 /// Runs once before [`Startup`].
+///
+/// Note: This Schdule will be removed after running.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct PreStartup;
 
 /// Runs once after the app is built; the main setup stage.
+///
+/// Note: This Schdule will be removed after running.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Startup;
 
 /// Runs once after [`Startup`].
+///
+/// Note: This Schdule will be removed after running.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct PostStartup;
 
@@ -111,6 +117,10 @@ pub enum FixedMainLoopStage {
 
 /// The ordered list of schedules driven by [`RunMainJob`]: per-frame
 /// `labels` plus the one-shot `startup_labels`.
+///
+/// This can only be adjusted after `App::build` (`MainSchedulePlugin::apply`)
+/// and before `App::run`. Once the `App` starts running, this resource is
+/// temporarily taken out, so job logic cannot access it.
 #[derive(TypePath, Resource, Debug)]
 pub struct MainScheduleOrder {
     pub labels: Vec<InternedScheduleLabel>,
@@ -119,6 +129,10 @@ pub struct MainScheduleOrder {
 
 /// The ordered list of fixed schedules driven by [`RunFixedMainJob`] each
 /// fixed step.
+///
+/// This can only be adjusted after `App::build` (`MainSchedulePlugin::apply`)
+/// and before `App::run`. Once the `App` starts running, this resource is
+/// temporarily taken out, so job logic cannot access it.
 #[derive(TypePath, Resource, Debug)]
 pub struct FixedMainScheduleOrder {
     pub labels: Vec<InternedScheduleLabel>,
@@ -240,8 +254,8 @@ fn run_main(world: &mut World, mut non_startup: Local<bool>) {
     #[cold]
     #[inline(never)]
     fn run_startup(world: &mut World) {
-        world.resource_scope(|world, order: ResMut<MainScheduleOrder>| {
-            for &label in &order.startup_labels {
+        world.resource_scope(|world, mut order: ResMut<MainScheduleOrder>| {
+            for label in core::mem::take(&mut order.startup_labels) {
                 // The startup schedule is one-shot; it is executed once and can be discarded.
                 if let Some(mut schedule) = world.remove_schedule(label) {
                     schedule.run(world);
@@ -298,7 +312,7 @@ fn run_fixed_main_loop(world: &mut World) {
 
     if count >= MAX_LOOP {
         ::core::hint::cold_path();
-        zlim_log::warn!(
+        zlim_log::warn_once!(
             "FixedMain loop exceeded maximum iterations.\n\
             The fixed timestep may be too small, or FixedMain systems are too slow, \
             causing backlog accumulation. Consider increasing the fixed timestep \
@@ -367,9 +381,34 @@ impl Plugin for MainSchedulePlugin {
         // We send signals in the `FixedPostUpdate` schedule. See the end of this function.
         World::enable_update_messages_signal(world);
 
-        world.insert_schedule(main_schedule);
-        world.insert_schedule(fixed_main_schedule);
-        world.insert_schedule(run_fixed_main_schedule);
+        #[cold]
+        #[inline(never)]
+        fn schedule_already_exists(schedule: &mut Schedule) {
+            zlim_log::warn!(
+                "Schedule `{:?}` already exists before MainSchedulePlugin is applied. This was \
+                likely caused by auto-initialization from a `job` insertion. Current schedule \
+                contents: `{:?}`.\n\
+                In general, prefer inserting jobs after `MainSchedulePlugin` is applied: either \
+                by setting the plugin build order, or by calling `App::build` before the insertion.",
+                schedule.label(),
+                schedule.jobs().collect::<Vec<_>>(),
+            );
+            schedule.replace_executor(Box::new(SingleThreadedExecutor::new()));
+        }
+
+        // Consider whether to move Jobs instead of warning and inserting the old schedule back.
+        if let Some(mut old) = world.insert_schedule(main_schedule) {
+            schedule_already_exists(&mut old);
+            let _ = world.insert_schedule(old);
+        };
+        if let Some(mut old) = world.insert_schedule(fixed_main_schedule) {
+            schedule_already_exists(&mut old);
+            let _ = world.insert_schedule(old);
+        };
+        if let Some(mut old) = world.insert_schedule(run_fixed_main_schedule) {
+            schedule_already_exists(&mut old);
+            let _ = world.insert_schedule(old);
+        };
 
         world.init_resource::<MainScheduleOrder>();
         world.init_resource::<FixedMainScheduleOrder>();

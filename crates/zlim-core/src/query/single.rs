@@ -18,6 +18,7 @@ use crate::world::{World, WorldCell};
 /// Use this when your system semantics require one and only one target.
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -43,6 +44,7 @@ use crate::world::{World, WorldCell};
 /// condition is not satisfied, wrap the parameter in an `Option` or `If`:
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -155,6 +157,7 @@ impl<'w, D: QueryData, F: QueryFilter> Single<'w, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone)]

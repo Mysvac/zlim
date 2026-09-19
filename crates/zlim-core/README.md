@@ -19,6 +19,7 @@ Components are **plain Rust structs**, associated with entities via
 `#[derive(Component)]`:
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -43,6 +44,7 @@ engines: it carries no data itself, it is just a "container id" for
 components.
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -76,6 +78,7 @@ its Rust type — at most one value of a given resource type exists in a
 world.
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Resource)]
@@ -83,7 +86,7 @@ struct Score(u32);
 
 let mut world = World::alloc();
 world.insert_resource(Score(100));
-assert_eq!(world.get_resource::<Score>().unwrap().0, 100);
+assert_eq!(world.resource::<Score>().0, 100);
 ```
 
 Resources are accessed from systems with `Res<T>` (read-only) and `ResMut<T>`
@@ -124,6 +127,7 @@ system. System instances are **cached** by default to speed up repeated
 calls (caching internal data such as `Local` parameters and query state).
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -153,6 +157,11 @@ let entity = world.entity(player);
 let position = entity.get::<Position>().unwrap();
 assert_eq!((position.x, position.y), (1.0, 2.0));
 ```
+
+Note that system caching relies on Rust's strong type system, where every function
+is its own type. Do **not** use the cached `invoke` on a function pointer: its type
+information has been erased, so invoke may call a different function that happens
+to share the same parameter list.
 
 See the `system` module docs for more details and examples.
 
@@ -274,6 +283,7 @@ enable ordering constraints between stages:
   commands are **not** guaranteed visible
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -348,6 +358,7 @@ For how component data is stored, see the `table` module docs; here we only
 show how queries are used:
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -383,6 +394,7 @@ read buffer for consumption, and the old read buffer is cleared.
 its own independent cursor, without interfering with the others.
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Message)]
@@ -426,6 +438,7 @@ only sees changes that happened **after that Job's previous run (not
 including the previous run itself)**.
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -468,6 +481,7 @@ improves parallelism.
 deferred commands when needed, guaranteeing visibility.
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]

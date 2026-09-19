@@ -16,6 +16,7 @@ Zlim Engine 的核心层：一个类 ECS 架构的游戏引擎实现，改自 Be
 组件是**标准的 Rust 结构体**，通过 `#[derive(Component)]` 定义：
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -36,6 +37,7 @@ struct Health { current: f32, max: f32 }
 实体是一个**薄句柄**，类似传统游戏引擎中的 GameObject：它本身不携带数据，只是组件的一个"容器标识"。
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -65,6 +67,7 @@ assert_eq!(entity.get::<Position>().unwrap().x, 1.0);
 资源**不属于任何实体**，由它的 Rust 类型唯一标识——同一个世界内一个资源类型最多只有一个值。
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Resource)]
@@ -72,7 +75,7 @@ struct Score(u32);
 
 let mut world = World::alloc();
 world.insert_resource(Score(100));
-assert_eq!(world.get_resource::<Score>().unwrap().0, 100);
+assert_eq!(world.resource::<Score>().0, 100);
 ```
 
 在系统中通过 `Res<T>`（只读）与 `ResMut<T>`（可变）访问资源。
@@ -105,6 +108,7 @@ world.insert_resource(Score(0));
 系统实例默认会被**缓存**，以加速多次调用（缓存内部数据，例如 `Local` 参数与查询状态）。
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -134,6 +138,10 @@ let position = entity.get::<Position>().unwrap();
 assert_eq!((position.x, position.y), (1.0, 2.0));
 ```
 
+注意，System 缓存依赖 Rust 的强类型系统，即每一个函数是一个不同的类型。
+不要使用带缓存的 `invoke` 调用*函数指针*，因为它的类型信息已经消除，此
+时 `invoke` 可能错误地调用其他（参数列表相同）的函数。
+
 更多细节和示例请参考 `system` 模块的文档。
 
 ### 2.6 Job
@@ -142,7 +150,7 @@ assert_eq!((position.x, position.y), (1.0, 2.0));
 
 - 拥有**稳定的字符串标识**（`JobId` = `name` + `group`，均可在运行时按名字查找）；
 
-- **没有输入参数**（没有 `SystemInput`，`SystemParam` 照常支持）；
+- **没有输入参数**（没有 `SystemInput`，但 `SystemParam` 照常支持）；
 
 - 返回值可以转换成标准的 `ZlimResult<()>`（`()`、`bool`、`Result<(), E>`、`Result<bool, E>` 均可）；
 
@@ -233,6 +241,7 @@ job_group! {
 - `insert_relaxed_order`: 宽松序，前一 Job 完成后运行，无论是否成功，不保证延迟命令可见
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -298,6 +307,7 @@ Query 是一个极其重要的系统参数，用于高效地访问**实体与组
 组件的数据存储方式请查看 `table` 模块的模块文档，这里只展示 query 用法：
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -329,6 +339,7 @@ MessageQueue 是一个**双缓冲区轮转**的消息队列：
 **单一消息可以被多消费者读取**，多个消费者各自维护独立的游标，互不干扰。
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Message)]
@@ -366,6 +377,7 @@ zlim-core 对**所有资源**和**组件**数据都追踪了变更，包含 **Ad
 通过 Job 进行的变更检测只会检测**此 Job 上一次运行之后（不包括上一次运行时）**发生的变更。
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -402,6 +414,7 @@ fn check_time(time: Res<Time>) {
 **Schedule 会自动插入同步点**，在需要的时候执行这些延迟命令，以保证可见性。
 
 ```rust
+use zlim_path::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]

@@ -266,6 +266,12 @@ impl World {
     /// Initialization is deferred: the cached instance is initialized the
     /// first time it is run.
     ///
+    /// # Note
+    ///
+    /// Note that system storage relies on Rust's strong type system, where
+    /// every function is its own type. Do **not** `insert` a type erased
+    /// function pointer.
+    ///
     /// [`SystemId`]: crate::system::SystemId
     #[inline]
     pub fn insert_system<I, O, M>(
@@ -378,6 +384,15 @@ impl World {
     /// the world baseline — not just changes since its previous run. Advance
     /// the world baseline with [`World::clear_trackers`] to control what
     /// direct invocations report as changed.
+    ///
+    /// # Note
+    ///
+    /// Note that system caching relies on Rust's strong type system, where
+    /// every function is its own type.
+    ///
+    /// Do **not** use the cached `invoke` on a function pointer: its type
+    /// information has been erased, so invoke may call a different function
+    /// that happens to share the same parameter list.
     ///
     /// [`SystemId`]: crate::system::SystemId
     #[inline]
@@ -560,6 +575,15 @@ impl NonSendWorld {
     /// the world baseline — not just changes since its previous run. Advance
     /// the world baseline with [`World::clear_trackers`] to control what
     /// direct invocations report as changed.
+    ///
+    /// # Note
+    ///
+    /// Note that system caching relies on Rust's strong type system, where
+    /// every function is its own type.
+    ///
+    /// Do **not** use the cached `invoke` on a function pointer: its type
+    /// information has been erased, so invoke may call a different function
+    /// that happens to share the same parameter list.
     ///
     /// [`SystemId`]: crate::system::SystemId
     #[inline]

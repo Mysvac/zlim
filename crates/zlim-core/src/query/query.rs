@@ -27,8 +27,8 @@ use crate::world::{World, WorldCell};
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
-/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Foo;
@@ -309,8 +309,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -355,8 +355,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -386,8 +386,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -424,8 +424,8 @@ impl<'w, 's, D: QuerySlice, F: ArchetypeFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Health(u32);
@@ -458,8 +458,8 @@ impl<'w, 's, D: QuerySlice, F: ArchetypeFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Health(u32);
@@ -506,8 +506,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Player { health: u32 }
@@ -537,8 +537,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Player { health: u32 }
@@ -582,8 +582,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -624,8 +624,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -659,8 +659,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }
@@ -693,8 +693,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position { x: f32, y: f32 }

@@ -381,13 +381,15 @@ impl<'a> SweepLine<'a> {
 /// The last vertex must not be equal to the first vertex.
 ///
 /// A polygon is simple if it is not self intersecting and not self tangent.
-/// As such, no two edges of the polygon may cross each other and each vertex must not lie on another edge.
+/// As such, no two edges of the polygon may cross each other and each vertex
+/// must not lie on another edge.
 ///
 /// Any 'polygon' with less than three vertices is simple.
 ///
-/// The algorithm used is the Shamos-Hoey algorithm, a version of the Bentley-Ottman algorithm adapted to only detect whether any intersections exist.
-/// This function will run in O(n * log n)
-pub(crate) fn is_polygon_simple(vertices: &[Vec2]) -> bool {
+/// The algorithm used is the Shamos-Hoey algorithm, a version of the Bentley-Ottman
+/// algorithm adapted to only detect whether any intersections exist. This function
+/// will run in O(n * log n)
+pub fn is_polygon_simple(vertices: &[Vec2]) -> bool {
     if vertices.len() < 3 {
         return true;
     }

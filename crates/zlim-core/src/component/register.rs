@@ -33,7 +33,8 @@ use crate::entity::EntityMapper;
 /// # Example
 ///
 /// ```rust
-/// use zlim_core::prelude::*;
+/// # use zlim_path::TypePath;
+/// # use zlim_core::prelude::*;
 /// use zlim_core::component::register_base;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -69,7 +70,8 @@ pub fn register_base<C: Component>() -> &'static ComponentDB {
 /// # Example
 ///
 /// ```rust
-/// use zlim_core::prelude::*;
+/// # use zlim_path::TypePath;
+/// # use zlim_core::prelude::*;
 /// use zlim_core::clone::ComponentCloner;
 /// use zlim_core::component::register_serializable;
 /// use serde::{Deserialize, Serialize};

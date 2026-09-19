@@ -34,6 +34,7 @@ use crate::world::{DeferredWorld, FromWorld, World, WorldCell, WorldId};
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -79,6 +80,7 @@ impl Debug for Commands<'_, '_> {
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -268,6 +270,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -590,8 +593,8 @@ impl<'a> EntityCommands<'a> {
     ///
     /// ```rust
     /// use zlim_core::derive::Component;
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
     /// struct Hp(u32);

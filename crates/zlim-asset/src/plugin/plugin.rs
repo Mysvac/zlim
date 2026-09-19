@@ -8,9 +8,10 @@ use crate::event::ErasedAssetLoadFailedEvent;
 use crate::io::embedded::EmbeddedAssetRegistry;
 use crate::loaded::{LoadedFolder, LoadedUntypedAsset};
 use crate::processor::{AssetProcessServer, StartAssetProcessServer};
+use crate::server::UnapprovedPathMode;
+use crate::server::jobs::ClearFinishedAssetTask;
+use crate::server::jobs::{HandleAssetSaveCommands, HandleAssetSeverEvents};
 use crate::server::{AssetMetaCheckMode, AssetServer, AssetServerMode};
-use crate::server::{ClearFinishedAssetTask, HandleAssetSaveCommands};
-use crate::server::{HandleAssetSeverEvents, UnapprovedPathMode};
 use crate::source::AssetSourceBuilders;
 use crate::transaction::TransactionLogger;
 
@@ -47,14 +48,16 @@ use super::{DEFAULT_PROCESSED_FILE_PATH, DEFAULT_UNPROCESSED_FILE_PATH};
 ///   [`DEFAULT_UNPROCESSED_FILE_PATH`] and, in processed mode, writing/reading
 ///   [`DEFAULT_PROCESSED_FILE_PATH`]), the `embedded` source backed by [`EmbeddedAssetRegistry`],
 ///   and every source registered before this plugin ran;
+///
 /// - installs the jobs that drain what that server collects: [`HandleAssetSeverEvents`] in
 ///   `PreUpdate` (applies load results, reports failures, frees the metadata of released handles),
 ///   [`ClearFinishedAssetTask`] in `First` (forgets load tasks that have ended) and
 ///   [`HandleAssetSaveCommands`] in `Last` (runs the saves a frame queued);
+///
 /// - registers [`ErasedAssetLoadFailedEvent`], and the built-in asset types ([`LoadedFolder`],
 ///   [`LoadedUntypedAsset`], `()`) through [`init_asset`] — which is also what installs a type's
-///   *own* jobs ([`HandleAssetEventsJob`], [`HandleAssetDropEventsJob`],
-///   [`ClampAssetChangesTick`]);
+///   *own* jobs ([`HandleAssetEvents`], [`HandleAssetDropEvents`], [`ClampAssetChangesTick`]);
+///
 /// - in [`AssetServerMode::Processed`] with the importer enabled, builds the [`AssetProcessServer`]
 ///   and schedules its `StartAssetProcessServer` job in `Startup`, so the import runs once every
 ///   plugin has registered its loaders and processors.
@@ -63,7 +66,7 @@ use super::{DEFAULT_PROCESSED_FILE_PATH, DEFAULT_UNPROCESSED_FILE_PATH};
 ///
 /// **An [`AssetServer`] is only usable as part of the pipeline this plugin installs.** Everything
 /// the server collects is drained by a job: the per-type [`AssetEvent`] queue and the queue of
-/// dropped handles by [`HandleAssetEventsJob`] / [`HandleAssetDropEventsJob`] (installed by
+/// dropped handles by [`HandleAssetEvents`] / [`HandleAssetDropEvents`] (installed by
 /// [`init_asset`]), the server's load results, save commands and finished tasks by the three jobs
 /// above. Inserting an [`AssetServer`] (or a subset of those jobs) yourself is **not** supported
 /// and fails silently rather than loudly: nothing consumes those queues, so they grow with every
@@ -109,11 +112,11 @@ use super::{DEFAULT_PROCESSED_FILE_PATH, DEFAULT_UNPROCESSED_FILE_PATH};
 /// [`AssetServer`]: crate::server::AssetServer
 /// [`AssetServerMode::Processed`]: crate::server::AssetServerMode::Processed
 /// [`AssetProcessServer`]: crate::processor::AssetProcessServer
-/// [`HandleAssetSeverEvents`]: crate::server::HandleAssetSeverEvents
-/// [`HandleAssetSaveCommands`]: crate::server::HandleAssetSaveCommands
-/// [`ClearFinishedAssetTask`]: crate::server::ClearFinishedAssetTask
-/// [`HandleAssetEventsJob`]: crate::assets::HandleAssetEventsJob
-/// [`HandleAssetDropEventsJob`]: crate::assets::HandleAssetDropEventsJob
+/// [`HandleAssetSeverEvents`]: crate::jobs::HandleAssetSeverEvents
+/// [`HandleAssetSaveCommands`]: crate::jobs::HandleAssetSaveCommands
+/// [`ClearFinishedAssetTask`]: crate::jobs::ClearFinishedAssetTask
+/// [`HandleAssetEvents`]: crate::jobs::HandleAssetEvents
+/// [`HandleAssetDropEvents`]: crate::jobs::HandleAssetDropEvents
 /// [`ClampAssetChangesTick`]: crate::change::ClampAssetChangesTick
 /// [`AssetEvent`]: crate::event::AssetEvent
 /// [`ErasedAssetLoadFailedEvent`]: crate::event::ErasedAssetLoadFailedEvent

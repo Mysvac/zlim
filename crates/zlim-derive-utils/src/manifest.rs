@@ -25,6 +25,9 @@ const ENGINE_PREFIX: &str = "zlim_";
 // -----------------------------------------------------------------------------
 // Manifest
 
+// -------------------------------------------------------------
+// RevPath
+
 /// A container optimized for path comparation.
 ///
 /// Conventional string comparison is char-by-char, but configuration file
@@ -59,6 +62,9 @@ impl Ord for RevPath {
         })
     }
 }
+
+// -------------------------------------------------------------
+// TableKeys
 
 #[derive(Default)]
 #[repr(transparent)]
@@ -103,8 +109,22 @@ impl<'a> Deserialize<'a> for TableKeys {
     }
 }
 
+// -------------------------------------------------------------
+// Package
+
+#[derive(Default, Deserialize)]
+struct Package {
+    #[serde(default)]
+    name: String,
+}
+
+// -------------------------------------------------------------
+// Dependencies
+
 #[derive(Deserialize)]
 struct Dependencies {
+    #[serde(default)]
+    package: Package,
     #[serde(default)]
     dependencies: TableKeys,
     #[serde(rename = "dev-dependencies", default)]
@@ -112,6 +132,11 @@ struct Dependencies {
 }
 
 impl Dependencies {
+    #[inline]
+    fn is(&self, name: &str) -> bool {
+        self.package.name == name
+    }
+
     #[inline]
     fn contains(&self, name: &str) -> bool {
         self.dependencies.0.contains(name)
@@ -227,16 +252,21 @@ impl Manifest {
     }
 
     fn find_crate_path(&self, name: &'static str) -> syn::Path {
-        // find from `dependencies`
-        if let Some(module) = name.strip_prefix(ENGINE_PREFIX)
-            && self.manifest.contains(ENGINE_NAME)
-        {
+        let Some(module) = name.strip_prefix(ENGINE_PREFIX) else {
+            let mut path: syn::Path = syn::parse_str(name).unwrap();
+            path.leading_colon = Some(Default::default());
+            return path;
+        };
+
+        // find `zlim`
+        if self.manifest.is(ENGINE_NAME) || self.manifest.contains(ENGINE_NAME) {
             let mut path: syn::Path = syn::parse_str(ENGINE_PATH).unwrap();
             let module: syn::PathSegment = syn::parse_str(module).unwrap();
             path.segments.push(module);
             return path;
         }
 
+        // find from `dependencies`
         if self.manifest.contains(name) {
             let mut path: syn::Path = syn::parse_str(name).unwrap();
             path.leading_colon = Some(Default::default());
@@ -246,9 +276,7 @@ impl Manifest {
         core::hint::cold_path();
 
         // find from `dev-dependencies`
-        if let Some(module) = name.strip_prefix(ENGINE_PREFIX)
-            && self.manifest.dev_contains(ENGINE_NAME)
-        {
+        if self.manifest.dev_contains(ENGINE_NAME) {
             let mut path: syn::Path = syn::parse_str(ENGINE_PATH).unwrap();
             let module: syn::PathSegment = syn::parse_str(module).unwrap();
             path.segments.push(module);

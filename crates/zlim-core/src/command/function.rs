@@ -304,7 +304,8 @@ where
 /// # Examples
 ///
 /// ```rust
-/// # use zlim_core::prelude::*;
+/// use zlim_path::TypePath;
+/// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);

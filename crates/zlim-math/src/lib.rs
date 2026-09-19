@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(docsrs, expect(internal_features, reason = "needed for fake_variadic"))]
 #![cfg_attr(docsrs, feature(doc_cfg, rustdoc_internals))]
 #![forbid(unsafe_code)]
@@ -105,36 +106,72 @@ pub mod proj;
 
 /// The math prelude.
 pub mod prelude {
+    // doc(hidden): keeps this path out of autocomplete suggestions.
+    #[doc(hidden)]
     pub use glam::bool::{BVec2, bvec2};
+    #[doc(hidden)]
     pub use glam::bool::{BVec3, bvec3};
+    #[doc(hidden)]
     pub use glam::bool::{BVec3A, bvec3a};
+    #[doc(hidden)]
     pub use glam::bool::{BVec4, bvec4};
+    #[doc(hidden)]
     pub use glam::bool::{BVec4A, bvec4a};
+    #[doc(hidden)]
     pub use glam::f32::{Mat2, mat2};
+    #[doc(hidden)]
     pub use glam::f32::{Mat3, mat3};
+    #[doc(hidden)]
     pub use glam::f32::{Mat3A, mat3a};
+    #[doc(hidden)]
     pub use glam::f32::{Mat4, mat4};
+    #[doc(hidden)]
     pub use glam::f32::{Quat, quat};
+    #[doc(hidden)]
     pub use glam::f32::{Vec2, vec2};
+    #[doc(hidden)]
     pub use glam::f32::{Vec3, vec3};
+    #[doc(hidden)]
     pub use glam::f32::{Vec3A, vec3a};
+    #[doc(hidden)]
     pub use glam::f32::{Vec4, vec4};
+    #[doc(hidden)]
     pub use glam::i32::{IVec2, ivec2};
+    #[doc(hidden)]
     pub use glam::i32::{IVec3, ivec3};
+    #[doc(hidden)]
     pub use glam::i32::{IVec4, ivec4};
+    #[doc(hidden)]
     pub use glam::u32::{UVec2, uvec2};
+    #[doc(hidden)]
     pub use glam::u32::{UVec3, uvec3};
+    #[doc(hidden)]
     pub use glam::u32::{UVec4, uvec4};
 
+    #[doc(hidden)]
     pub use glam::swizzles::{Vec2Swizzles, Vec3Swizzles, Vec4Swizzles};
+
+    #[doc(hidden)]
     pub use glam::{EulerRot, FloatExt};
 
+    #[doc(hidden)]
     pub use crate::FloatPow;
+
+    #[doc(hidden)]
     pub use crate::ops;
 
+    #[doc(hidden)]
     pub use crate::Rot2;
+
+    #[doc(hidden)]
     pub use crate::common_traits::StableInterpolate;
+
+    #[doc(hidden)]
     pub use crate::direction::{Dir2, Dir3, Dir3A};
+
+    #[doc(hidden)]
     pub use crate::isometry::{Isometry2d, Isometry3d};
+
+    #[doc(hidden)]
     pub use crate::rects::{IRect, Rect, URect};
 }

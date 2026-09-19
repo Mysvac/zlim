@@ -42,6 +42,7 @@ use super::{World, WorldCell};
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]

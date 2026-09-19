@@ -22,7 +22,6 @@ use super::Job;
 ///
 /// ```no_run
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::JobDB;
 ///
 /// #[job_fn(type = MyJob, name = "my_job")]
 /// fn my_job() {}
@@ -160,7 +159,6 @@ impl JobDB {
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::{JobDB, JobLabel};
 ///
 /// // `#[job_fn]` implements `JobLabel` for the marker type:
 /// #[job_fn(type = MyJob, name = "my_job")]
@@ -222,7 +220,7 @@ impl __JobReg__ {
 /// #[job_fn(type = MyJob)]
 /// fn my_job() {}
 ///
-/// register_job!(MyJob);
+/// zlim_core::register_job!(MyJob);
 ///
 /// JobDB::collect();
 /// assert!(JobDB::get(MyJob::name()).is_some());

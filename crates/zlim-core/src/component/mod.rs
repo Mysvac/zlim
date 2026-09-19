@@ -3,8 +3,8 @@
 //! A component is any plain data type annotated with `#[derive(Component)]`.
 //!
 //! ```rust, no_run
+//! # use zlim_path::TypePath;
 //! # use zlim_core::prelude::*;
-//! #
 //! #[derive(TypePath, Component, Clone)]
 //! struct Position { x: f32, y: f32 }
 //! ```
@@ -15,8 +15,8 @@
 //! and stores them within a [`ComponentDB`].
 //!
 //! ```rust
+//! # use zlim_path::TypePath;
 //! # use zlim_core::prelude::*;
-//! #
 //! #[derive(TypePath, Component, Clone)]
 //! struct Position { x: f32, y: f32 }
 //!

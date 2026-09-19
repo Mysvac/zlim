@@ -30,6 +30,7 @@ use super::{Component, ComponentCollector, ComponentWriter};
 ///
 /// ```rust
 /// use core::any::TypeId;
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::component::Required;
 ///

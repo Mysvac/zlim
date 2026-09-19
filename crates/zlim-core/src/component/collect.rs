@@ -126,6 +126,7 @@ pub mod __internal__ {
 /// # Example
 ///
 /// ```no_run
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -134,7 +135,7 @@ pub mod __internal__ {
 /// #[derive(TypePath, Component, Clone)]
 /// struct Velocity;
 ///
-/// register_component!(Transform, Velocity);
+/// zlim_core::register_component!(Transform, Velocity);
 ///
 /// // Bulk registration runs once per program lifetime — the engine does
 /// // this automatically at startup:

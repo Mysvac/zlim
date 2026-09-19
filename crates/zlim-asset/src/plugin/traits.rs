@@ -212,17 +212,17 @@ fn init_asset_impl<A: Asset>(world: &mut World) {
     world.register_message::<AssetLoadFailedEvent<A>>();
     world.init_resource::<AssetChanges<A>>();
 
-    use crate::assets::{HandleAssetDropEventsJob, HandleAssetEventsJob};
+    use crate::assets::jobs::{HandleAssetDropEvents, HandleAssetEvents};
     use crate::change::ClampAssetChangesTick;
-    use crate::server::HandleAssetSeverEvents;
+    use crate::server::jobs::HandleAssetSeverEvents;
 
     world
         .schedule_entry(PostUpdate)
-        .insert::<HandleAssetEventsJob<A>>(());
+        .insert::<HandleAssetEvents<A>>(());
 
     world
         .schedule_entry(PreUpdate)
-        .insert::<HandleAssetDropEventsJob<A>>(());
+        .insert::<HandleAssetDropEvents<A>>(());
 
     world
         .schedule_entry(First)
@@ -231,7 +231,7 @@ fn init_asset_impl<A: Asset>(world: &mut World) {
     // Dropped handles are processed after the load results of this frame have been applied.
     world.schedule_entry(PreUpdate).insert_order(&[
         JobId::isolated(HandleAssetSeverEvents::name()),
-        JobId::isolated(HandleAssetDropEventsJob::<A>::name()),
+        JobId::isolated(HandleAssetDropEvents::<A>::name()),
     ]);
 }
 

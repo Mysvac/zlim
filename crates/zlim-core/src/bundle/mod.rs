@@ -34,6 +34,7 @@
 //! struct:
 //!
 //! ```rust
+//! use zlim_path::TypePath;
 //! use zlim_core::prelude::*;
 //!
 //! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -57,6 +58,7 @@
 //! The recommended way to define a bundle is via `#[derive(Bundle)]`:
 //!
 //! ```rust, no_run
+//! use zlim_path::TypePath;
 //! use zlim_core::prelude::*;
 //!
 //! #[derive(TypePath, Component, Clone, Debug, PartialEq)]

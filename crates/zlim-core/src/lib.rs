@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(docsrs, expect(internal_features, reason = "needed for fake_variadic"))]
 #![cfg_attr(docsrs, feature(doc_cfg, rustdoc_internals))]
 #![expect(unsafe_code, reason = "performance optimization")]
@@ -74,58 +75,96 @@ pub mod __macro_exports__ {
 
 /// zlim-core prelude
 pub mod prelude {
-    #[doc(hidden)] // use `zlim_path::TypePath` instead
-    pub use zlim_path::derive::TypePath;
+    // doc(hidden): keeps this path out of autocomplete suggestions.
 
-    pub use crate::{register_component, register_job, register_job_group, register_resource};
+    #[doc(hidden)]
     pub use zlim_core_derive::{job, job_fn, job_group};
 
+    #[doc(hidden)]
     pub use crate::tick::{DetectChanges, DetectChangesMut, Tick};
 
+    #[doc(hidden)]
     pub use crate::world::{DeferredWorld, World, WorldCell};
+    #[doc(hidden)]
     pub use crate::world::{FromWorld, NonSendWorld, WorldId};
 
+    // implicit use zlim_core_derive::Error
+    #[doc(hidden)]
     pub use crate::error::{Error, Severity, ZlimError};
 
-    pub use crate::resource::{Resource, ResourceDB};
+    // implicit use zlim_core_derive::Resource
+    #[doc(hidden)]
+    pub use crate::resource::{Resource, ResourceDB, ResourceId};
 
+    #[doc(hidden)]
     pub use crate::entity::{EntityId, EntityMap, EntityMapper, MapEntities};
 
-    pub use crate::component::{Component, ComponentDB, ComponentId, Required};
-    pub use crate::component::{ComponentHook, Components, HookContext};
+    // implicit use zlim_core_derive::Component
+    #[doc(hidden)]
+    pub use crate::component::{Component, ComponentDB, ComponentId};
+    #[doc(hidden)]
+    pub use crate::component::{ComponentHook, HookContext};
 
+    #[doc(hidden)]
     pub use crate::ops::{Entity, EntityMut, EntityOwned, EntityRef};
 
+    #[doc(hidden)]
     pub use crate::borrow::{Mut, Ref, SliceMut, SliceRef};
+    #[doc(hidden)]
     pub use crate::borrow::{NonSend, NonSendMut, Res, ResMut};
 
+    // implicit use zlim_core_derive::Bundle
+    #[doc(hidden)]
     pub use crate::bundle::{Bundle, DataBundle};
 
+    #[doc(hidden)]
     pub use crate::command::{Command, EntityCommand};
-    pub use crate::command::{CommandQueue, Commands, EntityCommands};
+    #[doc(hidden)]
+    pub use crate::command::{Commands, EntityCommands};
 
+    #[doc(hidden)]
     pub use crate::clone::EntityCloner;
 
+    #[doc(hidden)]
     pub use crate::job::{IntoJob, Job, JobDB, JobId};
+    #[doc(hidden)]
     pub use crate::job::{JobGroup, JobGroupLabel, JobLabel};
 
+    // implicit use zlim_core_derive::Message
+    #[doc(hidden)]
     pub use crate::message::MessageCursor;
+    #[doc(hidden)]
     pub use crate::message::{Message, MessageId, MessageKey, MessageQueue};
+    #[doc(hidden)]
     pub use crate::message::{MessageMutator, MessageReader, MessageWriter};
 
+    #[doc(hidden)]
     pub use crate::message::{ClampTickSignal, ReparentSignal};
 
-    pub use crate::query::{Added, And, Changed, Or, Query, With, Without};
-    pub use crate::query::{ArchetypeFilter, Children, Parent, QueryData, QueryFilter, QuerySlice};
-    pub use crate::query::{QueryIter, QuerySingleError, QuerySliceIter, Single};
-    pub use crate::query::{QueryState, ReadOnlyQueryData};
+    #[doc(hidden)]
+    pub use crate::query::{Added, And, Changed, Children, Or, Parent, With, Without};
+    #[doc(hidden)]
+    pub use crate::query::{Query, QueryIter, QuerySlice, QuerySliceIter, Single};
+    #[doc(hidden)]
+    pub use crate::query::{QuerySingleError, QueryState, ReadOnlyQueryData};
+    #[doc(hidden)]
+    pub use zlim_core_derive::QueryData;
 
+    // implicit use zlim_core_derive::{ScheduleLabel, ScheduleStage}
+    #[doc(hidden)]
     pub use crate::schedule::{Schedule, ScheduleLabel, ScheduleStage, Schedules};
 
+    #[doc(hidden)]
     pub use crate::system::{ExclusiveMarker, If, Local, NonSendMarker};
-    pub use crate::system::{In, InMut, InRef, IntoSystem, SystemParam};
-    pub use crate::system::{System, SystemError, SystemHandle, SystemId};
+    #[doc(hidden)]
+    pub use crate::system::{In, InMut, InRef, IntoSystem, System};
+    #[doc(hidden)]
+    pub use crate::system::{SystemError, SystemHandle, SystemId};
+    #[doc(hidden)]
+    pub use zlim_core_derive::SystemParam;
 
+    #[doc(hidden)]
     pub use crate::time::{Fixed, Real, Time, TimeState, Virtual};
+    #[doc(hidden)]
     pub use crate::time::{TimeSnapshot, TimeUpdateStrategy, Timer, TimerMode};
 }

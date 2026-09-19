@@ -7,6 +7,7 @@
 //! Usually defined through `#[derive(Resource)]`.
 //!
 //! ```rust, no_run
+//! # use zlim_path::TypePath;
 //! # use zlim_core::prelude::*;
 //! #
 //! #[derive(TypePath, Resource)]
@@ -18,6 +19,7 @@
 //! in the per-world [`Resources`] storage.
 //!
 //! ```rust
+//! # use zlim_path::TypePath;
 //! # use zlim_core::prelude::*;
 //! #
 //! #[derive(TypePath, Resource)]
@@ -31,6 +33,7 @@
 //! # Examples
 //!
 //! ```rust
+//! use zlim_path::TypePath;
 //! use zlim_core::prelude::*;
 //!
 //! // Any `TypePath` type becomes a resource with the derive macro.

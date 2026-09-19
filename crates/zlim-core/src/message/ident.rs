@@ -21,6 +21,7 @@ crate::utils::define_ident!(
     /// # Example
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Message)]

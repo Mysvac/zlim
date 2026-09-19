@@ -57,6 +57,7 @@ use crate::ops::EntityOwned;
 /// # Derive macro
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -90,6 +91,7 @@ use crate::ops::EntityOwned;
 /// inline component lists:
 ///
 /// ```rust, no_run
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -214,6 +216,7 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
 /// # Example
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone)]

@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-exclude = ["tests", "README.zh.md"]
+exclude = ["README.zh.md"]
 
 [features]
 glam = ["dep:glam"]

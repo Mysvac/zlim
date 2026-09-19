@@ -361,7 +361,7 @@ zlim_task::cfg::single_thread! {
 
         /// Propagates transforms and updates `GlobalTransform`.
         ///
-        /// Must run after [`TransformChangeDetection`](crate::TransformChangeDetection).
+        /// Must run after [`TransformChangeDetection`](crate::jobs::TransformChangeDetection).
         #[job_fn(type = TransformPropagation, name = "zlim_transform::TransformPropagation")]
         fn propagate_transform(
             hierarchy: HierarchyQuery,
@@ -987,7 +987,7 @@ zlim_task::cfg::multi_thread! {
 
         /// Propagates transforms and updates `GlobalTransform`.
         ///
-        /// Must run after [`TransformChangeDetection`](crate::TransformChangeDetection).
+        /// Must run after [`TransformChangeDetection`](crate::jobs::TransformChangeDetection).
         #[job_fn(type = TransformPropagation, name = "zlim_transform::TransformPropagation")]
         fn propagate_transform(
             hierarchy: HierarchyQuery,
