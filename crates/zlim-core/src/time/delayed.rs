@@ -12,6 +12,7 @@ use zlim_utils::hash::HashMap;
 use crate::borrow::ResMut;
 use crate::command::{CommandQueue, Commands};
 use crate::derive::Resource;
+use crate::system::If;
 use crate::world::World;
 
 use super::Time;
@@ -293,7 +294,8 @@ pub(crate) fn queue_delayed_commands(world: &mut World) {
 ///
 /// Otherwise, you may need to add it manually.
 #[job_fn(type = OptimizeDelayedCommands, name = "zlim_core::time::OptimizeDelayedCommands")]
-fn optimize_delayed_commands(mut queues: ResMut<DelayedCommandQueues>) {
+fn optimize_delayed_commands(queues: If<ResMut<DelayedCommandQueues>>) {
+    let mut queues = queues.0;
     if queues.sorted {
         return;
     }

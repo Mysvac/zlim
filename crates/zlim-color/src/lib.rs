@@ -134,12 +134,24 @@ pub use primaries::*;
 pub use srgba::*;
 pub use xyza::*;
 
+// -----------------------------------------------------------------------------
+
 /// The color prelude.
 pub mod prelude {
-    pub use crate::{
-        color::*, color_ops::*, hsla::*, hsva::*, hwba::*, laba::*, lcha::*, linear_rgba::*,
-        okhsla::*, okhsva::*, okhwba::*, oklaba::*, oklcha::*, srgba::*, xyza::*,
-    };
+    #[doc(hidden)]
+    pub use crate::{color::*, color_ops::*};
+
+    #[doc(hidden)]
+    pub use crate::{linear_rgba::*, srgba::*, xyza::*};
+
+    #[doc(hidden)]
+    pub use crate::{hsla::*, hsva::*, hwba::*};
+
+    #[doc(hidden)]
+    pub use crate::{laba::*, lcha::*};
+
+    #[doc(hidden)]
+    pub use crate::{okhsla::*, okhsva::*, okhwba::*, oklaba::*, oklcha::*};
 }
 
 // -----------------------------------------------------------------------------

@@ -305,6 +305,7 @@ impl<M: Message> FusedIterator for MessageWithKeyIter<'_, M> {}
 /// # Example
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Message)]
@@ -460,6 +461,7 @@ impl<M: Message> FusedIterator for MessageMutWithKeyIter<'_, M> {}
 /// # Example
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Message)]

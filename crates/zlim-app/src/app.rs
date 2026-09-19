@@ -67,8 +67,8 @@ pub type ExtractFn = Box<dyn FnMut(&mut World, &mut World) + Send>;
 /// # Example
 ///
 /// ```rust
-/// use zlim_app::{App, Plugin};
-///
+/// # use zlim_app::{App, Plugin};
+/// #
 /// struct GreetPlugin;
 ///
 /// impl Plugin for GreetPlugin {
@@ -131,17 +131,18 @@ pub struct App {
 /// # Example
 ///
 /// ```rust
-/// use zlim_app::SubApp;
-/// use zlim_core::prelude::*;
-///
+/// # use zlim_app::SubApp;
+/// # use zlim_path::TypePath;
+/// # use zlim_core::prelude::*;
+/// #
 /// #[derive(TypePath, Resource, Clone, Copy)]
 /// struct Score(u32);
 ///
 /// let mut sub_app = SubApp::new();
 ///
 /// // Every sub-app has its own world:
-/// sub_app.world_mut().insert_resource(Score(0));
-/// assert_eq!(sub_app.world().get_resource::<Score>().unwrap().0, 0);
+/// sub_app.insert_resource(Score(0));
+/// assert_eq!(sub_app.world().resource::<Score>().0, 0);
 ///
 /// // The extract step copies data from the main world each frame:
 /// sub_app.set_extract(|main, sub| {
@@ -516,7 +517,7 @@ impl App {
             core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
 
             #[cfg(feature = "trace")]
-            let _span = zlim_log::info_span!("plugin build", plugin = plugin.name()).entered();
+            let _span = zlim_log::info_span!("build", plugin = plugin.name()).entered();
 
             plugin.build(self);
 
@@ -589,7 +590,7 @@ impl App {
             core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
 
             #[cfg(feature = "trace")]
-            let _span = zlim_log::info_span!("plugin apply", plugin = plugin.name()).entered();
+            let _span = zlim_log::info_span!("apply", plugin = plugin.name()).entered();
 
             plugin.apply(self);
 
@@ -622,7 +623,7 @@ impl App {
             core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
 
             #[cfg(feature = "trace")]
-            let _span = zlim_log::info_span!("plugin finish", plugin = plugin.name()).entered();
+            let _span = zlim_log::info_span!("finish", plugin = plugin.name()).entered();
 
             plugin.finish(self);
 
@@ -657,7 +658,7 @@ impl App {
             core::mem::swap(&mut plugin, &mut self.main.plugins[index]);
 
             #[cfg(feature = "trace")]
-            let _span = zlim_log::info_span!("plugin cleanup", plugin = plugin.name()).entered();
+            let _span = zlim_log::info_span!("cleanup", plugin = plugin.name()).entered();
 
             plugin.cleanup(self);
 
@@ -1301,6 +1302,10 @@ impl App {
     /// already taken over Tracy's `frame_mark`. It may indicate that the `App`
     /// contains multiple asynchronously running worlds — a scenario Tracy cannot
     /// currently handle well.
+    ///
+    /// If your plugin calls this function, remember to emit a short message with
+    /// `log::debug!` explaining that the frame marker is now the responsibility of
+    /// your plugin.
     pub fn enable_custom_frame_marker(&mut self) -> bool {
         #[cfg(not(feature = "tracy"))]
         return true;
@@ -1463,6 +1468,12 @@ impl SubApp {
         self
     }
 
+    /// Inserts or replaces a resource.
+    pub fn insert_resource<T: Resource + Send>(&mut self, value: T) -> &mut Self {
+        self.world_mut().insert_resource(value);
+        self
+    }
+
     /// Registers a message type for use in this world (app).
     ///
     /// See [`World::register_message`] for details.
@@ -1504,6 +1515,12 @@ impl App {
     /// Initializes the resource if it does not exist.
     pub fn init_resource<T: Resource + Send + FromWorld>(&mut self) -> &mut Self {
         self.main_world_mut().init_resource::<T>();
+        self
+    }
+
+    /// Inserts or replaces a resource.
+    pub fn insert_resource<T: Resource + Send>(&mut self, value: T) -> &mut Self {
+        self.main_world_mut().insert_resource(value);
         self
     }
 

@@ -9,8 +9,8 @@ impl World {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_core::derive::Component;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
     /// struct Tag;

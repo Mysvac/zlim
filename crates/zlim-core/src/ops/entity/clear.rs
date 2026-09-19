@@ -21,6 +21,7 @@ impl EntityOwned<'_> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]

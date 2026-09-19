@@ -132,6 +132,22 @@ impl Schedules {
     }
 
     /// Removes and returns the schedule stored under `label`.
+    ///
+    /// # Important
+    ///
+    /// Before using `Schedules`'s `remove` function, make sure the items being
+    /// removed will not be created and inserted again during this game session.
+    ///
+    /// When certain features are enabled, `Job` and `Schedule` allocate global
+    /// static memory on creation. That memory is never released (until the program
+    /// ends), so repeatedly creating the same `Job` and `Schedule` will cause
+    /// memory to grow without bound.
+    ///
+    /// If you need to run certain Jobs or Schedules conditionally, use the `run_if`
+    /// provided by JobGroup or Job, or insert a stable strong-order relationship.
+    ///
+    /// Only choose `remove` when you are certain that some content will no longer be
+    /// used (and there is a fair amount of it).
     pub fn remove(&mut self, label: impl ScheduleLabel) -> Option<Schedule> {
         self.inner.remove(&label.intern())
     }

@@ -4,25 +4,22 @@
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
 use core::any::TypeId;
-use core::task::{Context, Poll, Waker};
-use std::path::PathBuf;
+use core::task::{Context, Poll};
 use std::sync::Arc;
 
-use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
-use zlim_core::derive::job_fn;
-use zlim_core::system::If;
-use zlim_core::world::World;
-use zlim_diagnostic::{DiagnosticPath, Diagnostics};
+use zlim_diagnostic::DiagnosticPath;
 use zlim_path::derive::TypePath;
-use zlim_utils::hash::HashSet;
 
+use super::builder::{LoadBuilder, SaveBuilder};
+use super::config::{AssetMetaCheckMode, UnapprovedPathMode};
+use super::state::{DependencyLoadState, LoadState, RecursiveDependencyLoadState};
+use super::{AssetServerData, AssetServerMode};
 use crate::asset::{Asset, VisitAssetDependencies};
 use crate::assets::Assets;
 use crate::error::{AssetError, AssetLoadError};
 use crate::error::{AssetMetaWriteError, AssetSaveError};
 use crate::error::{EmptyPathError, MissingAssetSource, UnapprovedPath, WaitForAssetError};
-use crate::event::{AssetSourceEvent, ErasedAssetLoadFailedEvent};
 use crate::handle::{ErasedHandle, Handle};
 use crate::ident::{AssetId, AssetSourceId, ErasedAssetId, TypedAssetIndex};
 use crate::loaded::{LoadedAsset, LoadedFolder};
@@ -30,14 +27,7 @@ use crate::loader::AssetLoader;
 use crate::meta::ErasedAssetMeta;
 use crate::path::AssetPath;
 use crate::saver::AssetSaver;
-use crate::server::builder::{LoadBuilder, SaveBuilder};
-use crate::server::config::{AssetMetaCheckMode, UnapprovedPathMode};
-use crate::server::info::AssetInfos;
-use crate::server::state::{DependencyLoadState, LoadState, RecursiveDependencyLoadState};
-use crate::server::{AssetServerEvent, AssetServerMode};
 use crate::source::{AssetSource, AssetSources};
-
-use super::AssetServerData;
 
 // -----------------------------------------------------------------------------
 // AssetServer
@@ -48,23 +38,6 @@ use super::AssetServerData;
 #[derive(TypePath, Resource, Clone)]
 #[repr(transparent)]
 pub struct AssetServer(pub(crate) Arc<AssetServerData>);
-
-// -----------------------------------------------------------------------------
-// Diagnostic
-
-impl AssetServer {
-    /// Cumulative count of all load tasks started since the server was created.
-    pub const STARTED_LOAD_COUNT: DiagnosticPath = DiagnosticPath::new("asset/started_load_count");
-}
-
-#[job_fn(type = AssetServerDiagnosticJob)]
-fn asset_server_diagnostic_system(
-    server: If<Res<AssetServer>>,
-    mut store: If<ResMut<Diagnostics>>,
-) {
-    let started = server.0.into_inner().0.get_started_load_tasks();
-    store.add_measurement(&AssetServer::STARTED_LOAD_COUNT, || started as f64);
-}
 
 // -----------------------------------------------------------------------------
 // Construction
@@ -929,65 +902,211 @@ impl AssetServer {
 }
 
 // -----------------------------------------------------------------------------
-// Clear Finished Tasks
-
-#[job_fn(type = ClearFinishedAssetTask)]
-fn clear_asset_tasks(server: ResMut<AssetServer>) {
-    server
-        .0
-        .write_infos()
-        .pending_tasks
-        .retain(|_, load_task| !load_task.is_finished());
-}
+// job seal
 
 // -----------------------------------------------------------------------------
-// HandleAssetSeverEvents
+// Diagnostic
 
-#[job_fn(type = HandleAssetSeverEvents)]
-fn handle_asset_sever_events(world: &mut World) {
-    world.resource_scope(|world, server: ResMut<AssetServer>| {
-        let server = server.as_ref();
-        let mut infos = server.0.write_infos();
-        let mut failures: Vec<ErasedAssetLoadFailedEvent> = Vec::new();
+impl AssetServer {
+    /// Cumulative count of all load tasks started since the server was created.
+    pub const STARTED_LOAD_COUNT: DiagnosticPath = DiagnosticPath::new("asset/started_load_count");
+}
 
-        while let Some(event) = server.0.queue.pop() {
+pub(crate) mod jobs {
+    use super::AssetServer;
+    use crate::event::{AssetSourceEvent, ErasedAssetLoadFailedEvent};
+    use crate::ident::{AssetSourceId, TypedAssetIndex};
+    use crate::path::AssetPath;
+    use crate::server::info::AssetInfos;
+    use crate::server::{AssetServerEvent, AssetServerMode};
+    use core::task::Waker;
+    use std::path::PathBuf;
+    use zlim_core::borrow::{Res, ResMut};
+    use zlim_core::job_fn;
+    use zlim_core::system::If;
+    use zlim_core::world::World;
+    use zlim_diagnostic::Diagnostics;
+    use zlim_utils::hash::HashSet;
+
+    // -----------------------------------------------------------------------------
+    // diagnostic
+
+    #[job_fn(type = AssetServerDiagnostic)]
+    fn asset_server_diagnostic_system(
+        server: If<Res<AssetServer>>,
+        mut store: If<ResMut<Diagnostics>>,
+    ) {
+        let started = server.0.into_inner().0.get_started_load_tasks();
+        store.add_measurement(&AssetServer::STARTED_LOAD_COUNT, || started as f64);
+    }
+
+    // -----------------------------------------------------------------------------
+    // Clear Finished Tasks
+
+    #[job_fn(type = ClearFinishedAssetTask)]
+    fn clear_asset_tasks(server: ResMut<AssetServer>) {
+        server
+            .0
+            .write_infos()
+            .pending_tasks
+            .retain(|_, load_task| !load_task.is_finished());
+    }
+
+    // -----------------------------------------------------------------------------
+    // HandleAssetSeverEvents
+
+    #[job_fn(type = HandleAssetSeverEvents)]
+    fn handle_asset_sever_events(world: &mut World) {
+        world.resource_scope(|world, server: ResMut<AssetServer>| {
+            let server = server.as_ref();
+            let mut infos = server.0.write_infos();
+            let mut failures: Vec<ErasedAssetLoadFailedEvent> = Vec::new();
+
+            while let Some(event) = server.0.queue.pop() {
+                match event {
+                    AssetServerEvent::Failed { index, path, error } => {
+                        infos.process_asset_fail(index, error.clone());
+
+                        // Send untyped failure event
+                        failures.push(ErasedAssetLoadFailedEvent {
+                            id: index.into(),
+                            path: path.clone(),
+                            error: error.clone(),
+                        });
+
+                        // Send typed failure event
+                        let sender = infos
+                            .dependency_failed_event_sender
+                            .get(index.type_id)
+                            .expect("Asset failed event sender should exist");
+
+                        sender(world, index.index, path, error);
+                    }
+                    AssetServerEvent::Loaded {
+                        index,
+                        loaded_asset,
+                    } => {
+                        infos.process_asset_load(index, loaded_asset, world, &server.0.queue);
+                    }
+                    AssetServerEvent::FullyLoaded { index } => {
+                        let sender = infos
+                            .dependency_loaded_event_sender
+                            .get(index.type_id)
+                            .expect("Asset event sender should exist");
+
+                        sender(world, index.index);
+
+                        if let Some(info) = infos.get_mut(index) {
+                            core::mem::take(&mut info.waiting_tasks)
+                                .into_iter()
+                                .for_each(Waker::wake);
+                        }
+                    }
+                }
+            }
+
+            ::core::mem::drop(infos);
+
+            if !failures.is_empty() {
+                world.write_message_batch::<ErasedAssetLoadFailedEvent>(failures);
+            }
+
+            // The following code all deals with hot-reloading,
+            // which we can skip if the server isn't watching for changes.
+            if server.watching_for_changes() {
+                handle_hot_reload(server);
+            }
+        })
+    }
+
+    #[inline(never)]
+    #[cfg_attr(not(debug_assertions), cold)]
+    fn handle_hot_reload(server: &AssetServer) {
+        let infos = server.0.read_infos();
+
+        fn queue_ancestors(
+            asset_path: &AssetPath<'_>,
+            infos: &AssetInfos,
+            paths_to_reload: &mut HashSet<AssetPath<'static>>,
+        ) {
+            if let Some(dependents) = infos.loader_dependents.get(asset_path) {
+                for dependent in dependents {
+                    paths_to_reload.insert(dependent.to_owned());
+                    queue_ancestors(dependent, infos, paths_to_reload);
+                }
+            }
+        }
+
+        let mut folders_to_reload = Vec::new();
+        let mut reload_parent_folders = |path: &PathBuf, source: &AssetSourceId| {
+            for parent in path.ancestors().skip(1) {
+                let parent_path = AssetPath::from_path(parent).with_source_id(source.clone());
+                for folder_handle in infos.iter_handles_by_path(&parent_path) {
+                    zlim_log::info!(
+                        "Reloading folder {parent_path} because the content has changed"
+                    );
+                    folders_to_reload.push((folder_handle, parent_path.clone_owned()));
+                }
+            }
+        };
+
+        let mut paths_to_reload: HashSet<AssetPath<'static>> = HashSet::new();
+        let mut reload_path = |path: PathBuf, source: &AssetSourceId| {
+            let path = AssetPath::from(path).with_source_id(source.clone());
+            queue_ancestors(&path, &infos, &mut paths_to_reload);
+            paths_to_reload.insert(path);
+        };
+
+        let mut handle_event = |source: AssetSourceId, event: AssetSourceEvent| {
             match event {
-                AssetServerEvent::Failed { index, path, error } => {
-                    infos.process_asset_fail(index, error.clone());
-
-                    // Send untyped failure event
-                    failures.push(ErasedAssetLoadFailedEvent {
-                        id: index.into(),
-                        path: path.clone(),
-                        error: error.clone(),
-                    });
-
-                    // Send typed failure event
-                    let sender = infos
-                        .dependency_failed_event_sender
-                        .get(index.type_id)
-                        .expect("Asset failed event sender should exist");
-
-                    sender(world, index.index, path, error);
+                AssetSourceEvent::AddedAsset(path) => {
+                    reload_parent_folders(&path, &source);
+                    reload_path(path, &source);
                 }
-                AssetServerEvent::Loaded {
-                    index,
-                    loaded_asset,
-                } => {
-                    infos.process_asset_load(index, loaded_asset, world, &server.0.queue);
+                // TODO: if the asset was processed and the processed file was changed,
+                // the first modified event should be skipped?
+                AssetSourceEvent::ModifiedAsset(path) | AssetSourceEvent::ModifiedMeta(path) => {
+                    reload_path(path, &source);
                 }
-                AssetServerEvent::FullyLoaded { index } => {
-                    let sender = infos
-                        .dependency_loaded_event_sender
-                        .get(index.type_id)
-                        .expect("Asset event sender should exist");
+                AssetSourceEvent::RenamedFolder { old, new } => {
+                    reload_parent_folders(&old, &source);
+                    reload_parent_folders(&new, &source);
+                }
+                AssetSourceEvent::RemovedAsset(path)
+                | AssetSourceEvent::RemovedFolder(path)
+                | AssetSourceEvent::AddedFolder(path) => {
+                    reload_parent_folders(&path, &source);
+                }
+                _ => {}
+            }
+        };
 
-                    sender(world, index.index);
+        for source in server.0.sources.iter() {
+            // The side this server reads is the side it follows — and the *only* side it drains: the
+            // events of the other side belong to whoever owns it (in processed mode the importer follows
+            // the source side, so stealing its events would make it miss changes).
+            match server.0.server_mode {
+                AssetServerMode::Unprocessed => {
+                    if let Some(receiver) = source.event_receiver() {
+                        while let Some(event) = receiver.try_recv() {
+                            handle_event(source.id(), event);
+                        }
+                    }
 
-                    if let Some(info) = infos.get_mut(index) {
-                        core::mem::take(&mut info.waiting_tasks)
-                            .into_iter()
-                            .for_each(Waker::wake);
+                    debug_assert!(
+                        source.processed_event_receiver().is_none(),
+                        "run on unprocessed mode, `processed_event_receiver` must be None"
+                    );
+                }
+                AssetServerMode::Processed => {
+                    // If `AssetProcessServer` is exist, `event_receiver` is received by it.
+                    // If `AssetProcessServer` is not exist, `event_receiver` must be `None`.
+                    // See `AssetPlugin` for details.
+
+                    if let Some(receiver) = source.processed_event_receiver() {
+                        while let Some(event) = receiver.try_recv() {
+                            handle_event(source.id(), event);
+                        }
                     }
                 }
             }
@@ -995,136 +1114,32 @@ fn handle_asset_sever_events(world: &mut World) {
 
         ::core::mem::drop(infos);
 
-        if !failures.is_empty() {
-            world.write_message_batch::<ErasedAssetLoadFailedEvent>(failures);
+        // The load count for these reloads is added by `load_folder_internal` and `reload_internal`.
+
+        for (handle, path) in folders_to_reload {
+            let index = TypedAssetIndex::try_from(handle.id())
+                .expect("`iter_handles_by_path` yields strong handles");
+            server.load_folder_internal(index, path);
         }
 
-        // The following code all deals with hot-reloading,
-        // which we can skip if the server isn't watching for changes.
-        if server.watching_for_changes() {
-            handle_hot_reload(server);
-        }
-    })
-}
-
-#[inline(never)]
-#[cfg_attr(not(debug_assertions), cold)]
-fn handle_hot_reload(server: &AssetServer) {
-    let infos = server.0.read_infos();
-
-    fn queue_ancestors(
-        asset_path: &AssetPath<'_>,
-        infos: &AssetInfos,
-        paths_to_reload: &mut HashSet<AssetPath<'static>>,
-    ) {
-        if let Some(dependents) = infos.loader_dependents.get(asset_path) {
-            for dependent in dependents {
-                paths_to_reload.insert(dependent.to_owned());
-                queue_ancestors(dependent, infos, paths_to_reload);
-            }
+        for path in paths_to_reload {
+            server.reload_internal(path, true);
         }
     }
 
-    let mut folders_to_reload = Vec::new();
-    let mut reload_parent_folders = |path: &PathBuf, source: &AssetSourceId| {
-        for parent in path.ancestors().skip(1) {
-            let parent_path = AssetPath::from_path(parent).with_source_id(source.clone());
-            for folder_handle in infos.iter_handles_by_path(&parent_path) {
-                zlim_log::info!("Reloading folder {parent_path} because the content has changed");
-                folders_to_reload.push((folder_handle, parent_path.clone_owned()));
-            }
-        }
-    };
+    // -----------------------------------------------------------------------------
+    // HandleAssetSaveCommands
 
-    let mut paths_to_reload: HashSet<AssetPath<'static>> = HashSet::new();
-    let mut reload_path = |path: PathBuf, source: &AssetSourceId| {
-        let path = AssetPath::from(path).with_source_id(source.clone());
-        queue_ancestors(&path, &infos, &mut paths_to_reload);
-        paths_to_reload.insert(path);
-    };
+    #[job_fn(type = HandleAssetSaveCommands, run_if = contains_save_command)]
+    fn handle_asset_save_commands(world: &World, server: Res<AssetServer>) {
+        let server = &*server;
 
-    let mut handle_event = |source: AssetSourceId, event: AssetSourceEvent| {
-        match event {
-            AssetSourceEvent::AddedAsset(path) => {
-                reload_parent_folders(&path, &source);
-                reload_path(path, &source);
-            }
-            // TODO: if the asset was processed and the processed file was changed,
-            // the first modified event should be skipped?
-            AssetSourceEvent::ModifiedAsset(path) | AssetSourceEvent::ModifiedMeta(path) => {
-                reload_path(path, &source);
-            }
-            AssetSourceEvent::RenamedFolder { old, new } => {
-                reload_parent_folders(&old, &source);
-                reload_parent_folders(&new, &source);
-            }
-            AssetSourceEvent::RemovedAsset(path)
-            | AssetSourceEvent::RemovedFolder(path)
-            | AssetSourceEvent::AddedFolder(path) => {
-                reload_parent_folders(&path, &source);
-            }
-            _ => {}
-        }
-    };
-
-    for source in server.0.sources.iter() {
-        // The side this server reads is the side it follows — and the *only* side it drains: the
-        // events of the other side belong to whoever owns it (in processed mode the importer follows
-        // the source side, so stealing its events would make it miss changes).
-        match server.0.server_mode {
-            AssetServerMode::Unprocessed => {
-                if let Some(receiver) = source.event_receiver() {
-                    while let Some(event) = receiver.try_recv() {
-                        handle_event(source.id(), event);
-                    }
-                }
-
-                debug_assert!(
-                    source.processed_event_receiver().is_none(),
-                    "run on unprocessed mode, `processed_event_receiver` must be None"
-                );
-            }
-            AssetServerMode::Processed => {
-                // If `AssetProcessServer` is exist, `event_receiver` is received by it.
-                // If `AssetProcessServer` is not exist, `event_receiver` must be `None`.
-                // See `AssetPlugin` for details.
-
-                if let Some(receiver) = source.processed_event_receiver() {
-                    while let Some(event) = receiver.try_recv() {
-                        handle_event(source.id(), event);
-                    }
-                }
-            }
-        }
+        // The body lives on the server so that a driver (or a test) with a world in hand can run the
+        // queue itself; this job is the world-accessing caller the App schedules.
+        server.run_pending_saves(world);
     }
 
-    ::core::mem::drop(infos);
-
-    // The load count for these reloads is added by `load_folder_internal` and `reload_internal`.
-
-    for (handle, path) in folders_to_reload {
-        let index = TypedAssetIndex::try_from(handle.id())
-            .expect("`iter_handles_by_path` yields strong handles");
-        server.load_folder_internal(index, path);
+    fn contains_save_command(server: Res<AssetServer>) -> bool {
+        !server.0.saves.is_empty()
     }
-
-    for path in paths_to_reload {
-        server.reload_internal(path, true);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// HandleAssetSaveCommands
-
-#[job_fn(type = HandleAssetSaveCommands, run_if = contains_save_command)]
-fn handle_asset_save_commands(world: &World, server: Res<AssetServer>) {
-    let server = &*server;
-
-    // The body lives on the server so that a driver (or a test) with a world in hand can run the
-    // queue itself; this job is the world-accessing caller the App schedules.
-    server.run_pending_saves(world);
-}
-
-fn contains_save_command(server: Res<AssetServer>) -> bool {
-    !server.0.saves.is_empty()
 }

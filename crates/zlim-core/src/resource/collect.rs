@@ -24,8 +24,8 @@ impl ResourceDB {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Resource)]
     /// struct Score(u32);
@@ -148,8 +148,8 @@ pub mod __internal__ {
 /// # Examples
 ///
 /// ```no_run
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
-/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Resource)]
 /// struct MyResource;
@@ -157,7 +157,7 @@ pub mod __internal__ {
 /// #[derive(TypePath, Resource)]
 /// struct AnotherResource;
 ///
-/// register_resource!(MyResource, AnotherResource);
+/// zlim_core::register_resource!(MyResource, AnotherResource);
 ///
 /// // Bulk registration runs once per program lifetime — the engine does
 /// // this automatically at startup:

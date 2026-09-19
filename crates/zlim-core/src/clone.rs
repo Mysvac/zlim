@@ -350,10 +350,10 @@ impl CloneContext {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// #[component(cloner = clone_link)]
@@ -421,9 +421,9 @@ impl CloneContext {
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::clone::ComponentCloner;
-/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
 /// #[component(copy)]
@@ -492,6 +492,7 @@ impl ComponentCloner {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::ComponentCloner;
     ///
@@ -548,6 +549,7 @@ impl ComponentCloner {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
@@ -625,6 +627,7 @@ impl ComponentCloner {
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
@@ -699,12 +702,14 @@ impl<'w> EntityCloner<'w> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
     /// struct Position { x: f32, y: f32 }
     ///
     /// let mut world = World::alloc();
+    ///
     /// let ids: Vec<EntityId> = (0..3)
     ///     .map(|i| world.spawn((Position { x: i as f32, y: 0.0 },), None).id())
     ///     .collect();
@@ -740,6 +745,7 @@ impl<'w> EntityCloner<'w> {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]

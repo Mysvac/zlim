@@ -140,7 +140,6 @@ where
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::IntoJob;
 ///
 /// fn my_system() {}
 ///

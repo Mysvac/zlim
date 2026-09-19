@@ -2,7 +2,8 @@ use zlim_app::{App, MainSchedulePlugin, Plugin, PluginExt, Update};
 use zlim_diagnostic::{AppDiagnosticExt, Diagnostic, DiagnosticsPlugin};
 
 use super::AssetPlugin;
-use crate::server::{AssetServer, AssetServerDiagnosticJob};
+use crate::server::AssetServer;
+use crate::server::jobs::AssetServerDiagnostic;
 
 /// Adds the asset server diagnostics to an [`App`].
 ///
@@ -39,6 +40,6 @@ impl Plugin for AssetDiagnosticsPlugin {
                 .with_max_history_length(0),
         );
 
-        app.add_job::<AssetServerDiagnosticJob>(Update, ());
+        app.add_job::<AssetServerDiagnostic>(Update, ());
     }
 }

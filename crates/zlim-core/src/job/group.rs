@@ -193,7 +193,6 @@ register_job!(GroupEnd);
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::{JobGroup, JobGroupLabel};
 ///
 /// #[job_fn(type = JobA, name = "group_job_a")]
 /// fn job_a() {}
@@ -545,7 +544,6 @@ impl JobGroup {
 ///
 /// ```rust
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::{JobGroup, JobGroupLabel};
 ///
 /// #[job_fn(type = JobA, name = "group_job_a")]
 /// fn job_a() {}
@@ -611,7 +609,6 @@ impl __JobGroupReg__ {
 ///
 /// ```no_run
 /// use zlim_core::prelude::*;
-/// use zlim_core::job::JobGroup;
 /// use zlim_core::register_job_group;
 ///
 /// #[job_fn(type = JobA, name = "group_job_a")]

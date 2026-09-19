@@ -251,6 +251,24 @@ impl LogConfig {
 }
 
 // -----------------------------------------------------------------------------
+// prelude
+
+/// The log prelude.
+pub mod prelude {
+    // doc(hidden): keeps this path out of autocomplete suggestions.
+    #[doc(hidden)]
+    pub use crate::{debug, debug_once, debug_span};
+    #[doc(hidden)]
+    pub use crate::{error, error_once, error_span};
+    #[doc(hidden)]
+    pub use crate::{info, info_once, info_span};
+    #[doc(hidden)]
+    pub use crate::{trace, trace_once, trace_span};
+    #[doc(hidden)]
+    pub use crate::{warn, warn_once, warn_span};
+}
+
+// -----------------------------------------------------------------------------
 // Tests
 
 #[cfg(test)]

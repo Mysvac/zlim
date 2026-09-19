@@ -37,10 +37,41 @@ pub use zlim_sample as sample;
 #[cfg(feature = "zlim-sysinfo")]
 pub use zlim_sysinfo as sysinfo;
 
-/// Macros
+/// zlim macros
 pub mod derive {
+    #[doc(hidden)]
     pub use zlim_app::derive::*;
+    #[doc(hidden)]
     pub use zlim_asset::derive::*;
+    #[doc(hidden)]
     pub use zlim_core::derive::*;
+    #[doc(hidden)]
     pub use zlim_path::derive::*;
+}
+
+/// zlim preludes
+pub mod prelude {
+    // doc(hidden): keeps this path out of autocomplete suggestions.
+    #[doc(hidden)]
+    pub use zlim_app::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_asset::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_color::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_core::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_log::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_math::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_os::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_path::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_shape::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_task::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_transform::prelude::*;
 }

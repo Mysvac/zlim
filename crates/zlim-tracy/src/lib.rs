@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(feature = "tracy", expect(unsafe_code, reason = "C FFI"))]
 
 #[cfg(all(not(feature = "tracy"), feature = "tracy_memory"))]

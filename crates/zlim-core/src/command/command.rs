@@ -40,6 +40,7 @@ use crate::world::World;
 ///
 /// ```rust
 /// use zlim_core::command::CommandQueue;
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone)]
@@ -176,6 +177,7 @@ pub trait Command: Send + Sized + 'static {
 /// Closures over an [`EntityOwned`] are [`EntityCommand`]s automatically:
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -222,6 +224,7 @@ pub trait EntityCommand: Send + Sized + 'static {
     ///
     /// ```rust
     /// use zlim_core::command::CommandQueue;
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]

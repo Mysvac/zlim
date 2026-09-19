@@ -14,18 +14,13 @@ use core::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use uuid::Uuid;
-use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::{Error, Resource};
-use zlim_core::job_fn;
-use zlim_core::message::MessageWriter;
-use zlim_core::system::SystemTick;
 use zlim_path::TypePath;
 use zlim_utils::hash::HashMap;
 use zlim_utils::hash::map::Entry as MapEntry;
 use zlim_utils::sync::SpinLock;
 
 use crate::asset::Asset;
-use crate::change::AssetChanges;
 use crate::event::AssetEvent;
 use crate::handle::{AssetHandleProvider, Handle};
 use crate::ident::{AssetId, AssetIndex, AssetIndexAllocator};
@@ -811,60 +806,73 @@ impl<A: Asset> Iterator for AssetIdIterator<'_, A> {
 }
 
 // -----------------------------------------------------------------------------
-// AssetEvents
+// jobs
 
-#[job_fn(type = HandleAssetEventsJob<A: Asset>, run_if = contains_asset_event::<A>)]
-fn asset_events<A: Asset>(
-    mut assets: ResMut<Assets<A>>,
-    mut messages: MessageWriter<AssetEvent<A>>,
-    asset_changes: Option<ResMut<AssetChanges<A>>>,
-    ticks: SystemTick,
-) {
-    use AssetEvent::{Added, FullyLoaded, Modified, Removed, Unused};
+pub(crate) mod jobs {
+    use crate::asset::Asset;
+    use crate::assets::Assets;
+    use crate::change::AssetChanges;
+    use crate::event::AssetEvent;
+    use crate::server::AssetServer;
+    use zlim_core::borrow::{Res, ResMut};
+    use zlim_core::derive::job_fn;
+    use zlim_core::message::MessageWriter;
+    use zlim_core::system::SystemTick;
 
-    if let Some(mut asset_changes) = asset_changes {
-        for new_event in &assets.queued_events {
-            match new_event {
-                Removed { id } | Unused { id } => asset_changes.remove(id),
-                Added { id } | Modified { id } | FullyLoaded { id } => {
-                    asset_changes.insert(*id, ticks.this_run);
-                }
-            };
-        }
-    }
+    // -----------------------------------------------------------------------------
+    // AssetEvents
 
-    messages.write_batch(assets.queued_events.drain(..));
-}
+    #[job_fn(type = HandleAssetEvents<A: Asset>, run_if = contains_asset_event::<A>)]
+    fn asset_events<A: Asset>(
+        mut assets: ResMut<Assets<A>>,
+        mut messages: MessageWriter<AssetEvent<A>>,
+        asset_changes: Option<ResMut<AssetChanges<A>>>,
+        ticks: SystemTick,
+    ) {
+        use AssetEvent::{Added, FullyLoaded, Modified, Removed, Unused};
 
-fn contains_asset_event<A: Asset>(assets: Res<Assets<A>>) -> bool {
-    !assets.queued_events.is_empty()
-}
-
-// -----------------------------------------------------------------------------
-// AssetServer
-// -----------------------------------------------------------------------------
-
-use crate::server::AssetServer;
-
-#[job_fn(type = HandleAssetDropEventsJob<A: Asset>, run_if = contains_drop_event::<A>)]
-fn track_assets<A: Asset>(mut assets: ResMut<Assets<A>>, asset_server: ResMut<AssetServer>) {
-    let mut infos = asset_server.0.write_infos();
-    while let Some(drop_event) = assets.handle_provider.try_recv() {
-        if drop_event.asset_server_managed {
-            // the `process_handle_drop` call checks whether new handles have been
-            // created since the drop event was fired, before removing the asset
-            if !infos.process_handle_drop(drop_event.index, drop_event.type_id) {
-                // a new handle has been created, or the asset doesn't exist
-                continue;
+        if let Some(mut asset_changes) = asset_changes {
+            for new_event in &assets.queued_events {
+                match new_event {
+                    Removed { id } | Unused { id } => asset_changes.remove(id),
+                    Added { id } | Modified { id } | FullyLoaded { id } => {
+                        asset_changes.insert(*id, ticks.this_run);
+                    }
+                };
             }
         }
 
-        assets.remove_dropped(drop_event.index);
+        messages.write_batch(assets.queued_events.drain(..));
     }
-}
 
-fn contains_drop_event<A: Asset>(assets: Res<Assets<A>>) -> bool {
-    assets.handle_provider.has_drop_event()
+    fn contains_asset_event<A: Asset>(assets: Res<Assets<A>>) -> bool {
+        !assets.queued_events.is_empty()
+    }
+
+    // -----------------------------------------------------------------------------
+    // AssetServer
+    // -----------------------------------------------------------------------------
+
+    #[job_fn(type = HandleAssetDropEvents<A: Asset>, run_if = contains_drop_event::<A>)]
+    fn track_assets<A: Asset>(mut assets: ResMut<Assets<A>>, asset_server: ResMut<AssetServer>) {
+        let mut infos = asset_server.0.write_infos();
+        while let Some(drop_event) = assets.handle_provider.try_recv() {
+            if drop_event.asset_server_managed {
+                // the `process_handle_drop` call checks whether new handles have been
+                // created since the drop event was fired, before removing the asset
+                if !infos.process_handle_drop(drop_event.index, drop_event.type_id) {
+                    // a new handle has been created, or the asset doesn't exist
+                    continue;
+                }
+            }
+
+            assets.remove_dropped(drop_event.index);
+        }
+    }
+
+    fn contains_drop_event<A: Asset>(assets: Res<Assets<A>>) -> bool {
+        assets.handle_provider.has_drop_event()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -874,6 +882,7 @@ fn contains_drop_event<A: Asset>(assets: Res<Assets<A>>) -> bool {
 mod tests {
     use zlim_app::{App, Last, Plugin, PluginExt};
     use zlim_core::component::Component;
+    use zlim_core::derive::job_fn;
     use zlim_core::message::MessageQueue;
     use zlim_core::world::World;
     use zlim_path::TypePath;

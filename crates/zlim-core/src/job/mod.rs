@@ -157,7 +157,7 @@
 //! #[job_fn(type = MyJob, name = "my_job")]
 //! fn my_job() {}
 //!
-//! register_job!(MyJob);
+//! zlim_core::register_job!(MyJob);
 //!
 //! // Loads the statically-registered jobs into the global registry, once:
 //! JobDB::collect();

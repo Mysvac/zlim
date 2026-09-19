@@ -592,6 +592,13 @@ impl Schedule {
         inner(label.intern(), executor)
     }
 
+    /// Replaces the JobExecutor within schedule and returns the old one.
+    #[inline]
+    pub fn replace_executor(&mut self, executor: Box<dyn JobExecutor>) -> Box<dyn JobExecutor> {
+        self.executor_initialized = false;
+        ::core::mem::replace(&mut self.executor, executor)
+    }
+
     /// Returns this schedule's interned label.
     pub fn label(&self) -> InternedScheduleLabel {
         self.label
@@ -1002,6 +1009,25 @@ impl Schedule {
     /// Removes the standalone job with the given name.
     ///
     /// Returns `false` if the job is not registered in this schedule.
+    ///
+    /// # Important
+    ///
+    /// Before using `Schedule`'s `remove` function, make sure the items being removed
+    /// will not be created and inserted again during this game session.
+    ///
+    /// 1. `remove` forces the schedule to rebuild its internal structure on the next
+    ///    run, which carries non-trivial overhead.
+    ///
+    /// 2. When certain features are enabled, `Job` and `Schedule` allocate global
+    ///    static memory on creation. That memory is never released (until the program
+    ///    ends), so repeatedly creating the same `Job` and `Schedule` will cause
+    ///    memory to grow without bound.
+    ///
+    /// If you need to run certain Jobs or Schedules conditionally, use the `run_if`
+    /// provided by JobGroup or Job, or insert a stable strong-order relationship.
+    ///
+    /// Only choose `remove` when you are certain that some content will no longer be
+    /// used (and there is a fair amount of it).
     pub fn remove_by_name(&mut self, name: &str) -> bool {
         // SAFETY: Temporary Value
         let name = unsafe { core::mem::transmute::<&str, &'static str>(name) };
@@ -1009,6 +1035,25 @@ impl Schedule {
     }
 
     /// Removes the standalone job identified by the [`JobLabel`].
+    ///
+    /// # Important
+    ///
+    /// Before using `Schedule`'s `remove` function, make sure the items being removed
+    /// will not be created and inserted again during this game session.
+    ///
+    /// 1. `remove` forces the schedule to rebuild its internal structure on the next
+    ///    run, which carries non-trivial overhead.
+    ///
+    /// 2. When certain features are enabled, `Job` and `Schedule` allocate global
+    ///    static memory on creation. That memory is never released (until the program
+    ///    ends), so repeatedly creating the same `Job` and `Schedule` will cause
+    ///    memory to grow without bound.
+    ///
+    /// If you need to run certain Jobs or Schedules conditionally, use the `run_if`
+    /// provided by JobGroup or Job, or insert a stable strong-order relationship.
+    ///
+    /// Only choose `remove` when you are certain that some content will no longer be
+    /// used (and there is a fair amount of it).
     ///
     /// [`JobLabel`]: crate::job::JobLabel
     pub fn remove<L: JobLabel>(&mut self) -> bool {
@@ -1080,6 +1125,7 @@ impl Schedule {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::schedule::AnonymousSchedule;
     ///
@@ -1157,6 +1203,7 @@ impl Schedule {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::schedule::AnonymousSchedule;
     ///
@@ -1235,6 +1282,7 @@ impl Schedule {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::schedule::AnonymousSchedule;
     ///
@@ -1525,6 +1573,25 @@ impl Schedule {
     ///
     /// Job ids that no longer exist are skipped.  Returns `false` if the
     /// group is not registered in this schedule.
+    ///
+    /// # Important
+    ///
+    /// Before using `Schedule`'s `remove` function, make sure the items being removed
+    /// will not be created and inserted again during this game session.
+    ///
+    /// 1. `remove` forces the schedule to rebuild its internal structure on the next
+    ///    run, which carries non-trivial overhead.
+    ///
+    /// 2. When certain features are enabled, `Job` and `Schedule` allocate global
+    ///    static memory on creation. That memory is never released (until the program
+    ///    ends), so repeatedly creating the same `Job` and `Schedule` will cause
+    ///    memory to grow without bound.
+    ///
+    /// If you need to run certain Jobs or Schedules conditionally, use the `run_if`
+    /// provided by JobGroup or Job, or insert a stable strong-order relationship.
+    ///
+    /// Only choose `remove` when you are certain that some content will no longer be
+    /// used (and there is a fair amount of it).
     #[inline(never)]
     pub fn remove_group_by_name(&mut self, name: &str) -> bool {
         let Some(entry) = self.groups.remove(name) else {
@@ -1549,6 +1616,25 @@ impl Schedule {
     }
 
     /// Removes the group identified by the [`JobGroupLabel`].
+    ///
+    /// # Important
+    ///
+    /// Before using `Schedule`'s `remove` function, make sure the items being removed
+    /// will not be created and inserted again during this game session.
+    ///
+    /// 1. `remove` forces the schedule to rebuild its internal structure on the next
+    ///    run, which carries non-trivial overhead.
+    ///
+    /// 2. When certain features are enabled, `Job` and `Schedule` allocate global
+    ///    static memory on creation. That memory is never released (until the program
+    ///    ends), so repeatedly creating the same `Job` and `Schedule` will cause
+    ///    memory to grow without bound.
+    ///
+    /// If you need to run certain Jobs or Schedules conditionally, use the `run_if`
+    /// provided by JobGroup or Job, or insert a stable strong-order relationship.
+    ///
+    /// Only choose `remove` when you are certain that some content will no longer be
+    /// used (and there is a fair amount of it).
     ///
     /// [`JobGroupLabel`]: crate::job::JobGroupLabel
     pub fn remove_group<G: JobGroupLabel>(&mut self) -> bool {
@@ -1595,6 +1681,25 @@ impl Schedule {
     }
 
     /// Remove a stage and also remove all Jobs and JobGroups belonging to the current stage.
+    ///
+    /// # Important
+    ///
+    /// Before using `Schedule`'s `remove` function, make sure the items being removed
+    /// will not be created and inserted again during this game session.
+    ///
+    /// 1. `remove` forces the schedule to rebuild its internal structure on the next
+    ///    run, which carries non-trivial overhead.
+    ///
+    /// 2. When certain features are enabled, `Job` and `Schedule` allocate global
+    ///    static memory on creation. That memory is never released (until the program
+    ///    ends), so repeatedly creating the same `Job` and `Schedule` will cause
+    ///    memory to grow without bound.
+    ///
+    /// If you need to run certain Jobs or Schedules conditionally, use the `run_if`
+    /// provided by JobGroup or Job, or insert a stable strong-order relationship.
+    ///
+    /// Only choose `remove` when you are certain that some content will no longer be
+    /// used (and there is a fair amount of it).
     pub fn remove_stage(&mut self, stage: impl ScheduleStage) -> bool {
         let name = stage.stage_name();
         self.remove_stage_internal(&name)

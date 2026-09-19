@@ -31,6 +31,7 @@ use crate::world::World;
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// // `Cell` is `Send` but not `Sync`, so this resource can only be touched
@@ -90,6 +91,7 @@ impl World {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Resource)]
@@ -129,6 +131,7 @@ impl World {
     /// # Examples
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Resource)]

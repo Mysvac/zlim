@@ -30,6 +30,16 @@ pub mod thread;
 pub mod time;
 
 // -----------------------------------------------------------------------------
+// prelude
+
+/// The zlim-os prelude.
+pub mod prelude {
+    // doc(hidden): keeps this path out of autocomplete suggestions.
+    #[doc(hidden)]
+    pub use crate::time::{Instant, SystemTime};
+}
+
+// -----------------------------------------------------------------------------
 // Special platform support
 
 #[doc(hidden)]
@@ -46,3 +56,5 @@ pub mod sys {
     #[cfg(target_family = "wasm")]
     pub use wasm_bindgen;
 }
+
+// -----------------------------------------------------------------------------

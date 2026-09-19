@@ -39,10 +39,38 @@ pub use main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, Startup};
 
 pub use schedule_runner::{RunMode, ScheduleRunnerPlugin};
 
-/// re-exports jobs
+// -----------------------------------------------------------------------------
+// jobs
+
+/// The app jobs.
 pub mod jobs {
     pub use crate::main_schedule::{RunFixedMainJob, RunFixedMainLoopJob, RunMainJob};
     pub use crate::shutdown::HandleExitSignal;
+}
+
+// -----------------------------------------------------------------------------
+// prelude
+
+/// The app preludes.
+pub mod prelude {
+    #[doc(hidden)]
+    pub use crate::app::{App, SubApp};
+    #[doc(hidden)]
+    pub use crate::exit::AppExit;
+    #[doc(hidden)]
+    pub use crate::main_schedule::{First, Last, PostUpdate, PreUpdate, Update};
+    #[doc(hidden)]
+    pub use crate::main_schedule::{FixedFirst, FixedLast, FixedMainLoopStage};
+    #[doc(hidden)]
+    pub use crate::main_schedule::{FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder};
+    #[doc(hidden)]
+    pub use crate::main_schedule::{FixedPostUpdate, FixedPreUpdate, FixedUpdate};
+    #[doc(hidden)]
+    pub use crate::main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, Startup};
+    #[doc(hidden)]
+    pub use crate::plugin::{Plugin, PluginExt, PluginGroup};
+    #[doc(hidden)]
+    pub use zlim_app_derive::{AppLabel, zlim_main};
 }
 
 // -----------------------------------------------------------------------------

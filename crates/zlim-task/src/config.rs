@@ -167,7 +167,7 @@ impl TaskPoolConfigs {
     /// untouched.
     pub fn apply(&mut self) {
         if crate::cfg::single_thread!() {
-            zlim_log::info!("TaskPoolConfigs was ignored in single-threaded mode.");
+            zlim_log::debug!("TaskPoolConfigs was ignored in single-threaded mode.");
             return;
         }
 
@@ -267,11 +267,11 @@ impl TaskPoolConfigs {
             }
         }
 
-        zlim_log::info!(
-            "Global TaskPools initialized: \n\
-            - Main Threads:  {} \n\
-            - Io Threads:    {} \n\
-            - Async Threads: {} ",
+        zlim_log::debug!(
+            "Global TaskPools initialized, \
+            Main Threads: {}, \
+            Io Threads: {}, \
+            Async Threads: {}.",
             MainTaskPool::get().thread_count(),
             IoTaskPool::get().thread_count(),
             AsyncTaskPool::get().thread_count(),

@@ -63,6 +63,7 @@ use crate::world::{DeferredWorld, World};
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
@@ -84,6 +85,7 @@ use crate::world::{DeferredWorld, World};
 /// [`EntityNode`]: crate::entity::EntityNode
 /// [`World::entity`]: crate::world::World::entity
 /// [`World::get_entity`]: crate::world::World::get_entity
+#[doc(alias = "EntityView")]
 pub struct Entity<'w> {
     pub(crate) id: EntityId,
     pub(crate) world: WorldCell<'w>,
@@ -100,6 +102,7 @@ pub struct Entity<'w> {
 /// [`World::entity_ref`] / [`World::get_entity_ref`].
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
@@ -157,6 +160,7 @@ pub struct EntityRef<'w> {
 /// [`World::get_entity_mut`].
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
@@ -223,6 +227,7 @@ pub struct EntityMut<'w> {
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]

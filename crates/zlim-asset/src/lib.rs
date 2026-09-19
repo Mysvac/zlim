@@ -58,18 +58,45 @@ pub mod transaction;
 pub mod transformer;
 pub mod utils;
 
-/// The most commonly used asset items.
-pub mod prelude {
-    pub use crate::asset::{Asset, AssetComponent, VisitAssetDependencies};
-    pub use crate::assets::{AssetMut, Assets};
-    pub use crate::event::{AssetEvent, AssetSourceEvent};
-    pub use crate::handle::{AssetHandleProvider, ErasedHandle, Handle};
-    pub use crate::ident::{AssetId, AssetIndex, AssetSourceId, ErasedAssetId};
-    pub use crate::io::future::{ReadAllFuture, WriteAllFuture};
-    pub use crate::io::watcher::AssetWatcher;
-    pub use crate::io::{AssetReader, AssetReaderError, ErasedAssetReader, Reader, VecReader};
-    pub use crate::io::{AssetWriter, AssetWriterError, ErasedAssetWriter, Writer};
-    pub use crate::path::AssetPath;
-    pub use crate::source::{AssetSource, AssetSources};
-    pub use crate::source::{AssetSourceBuilder, AssetSourceBuilders};
+// -----------------------------------------------------------------------------
+// jobs re-exports
+
+/// The asset jobs.
+pub mod jobs {
+    pub use crate::assets::jobs::HandleAssetDropEvents;
+    pub use crate::assets::jobs::HandleAssetEvents;
+    pub use crate::server::jobs::AssetServerDiagnostic;
+    pub use crate::server::jobs::ClearFinishedAssetTask;
+    pub use crate::server::jobs::HandleAssetSaveCommands;
+    pub use crate::server::jobs::HandleAssetSeverEvents;
 }
+
+// -----------------------------------------------------------------------------
+// jobs re-exports
+
+/// The asset prelude.
+pub mod prelude {
+    // implicit use zlim_asset_derive::Asset;
+    #[doc(hidden)]
+    pub use crate::asset::Asset;
+    #[doc(hidden)]
+    pub use crate::assets::{AssetMut, Assets};
+    #[doc(hidden)]
+    pub use crate::change::AssetChanged;
+    #[doc(hidden)]
+    pub use crate::event::AssetEvent;
+    #[doc(hidden)]
+    pub use crate::handle::{ErasedHandle, Handle};
+    #[doc(hidden)]
+    pub use crate::ident::{AssetId, AssetSourceId};
+    #[doc(hidden)]
+    pub use crate::path::AssetPath;
+    #[doc(hidden)]
+    pub use crate::plugin::{AppAssetExt, WorldAssetExt};
+    #[doc(hidden)]
+    pub use crate::plugin::{AssetDiagnosticsPlugin, AssetPlugin, WebAssetPlugin};
+    #[doc(hidden)]
+    pub use crate::server::{AssetServer, AssetServerMode};
+}
+
+// -----------------------------------------------------------------------------

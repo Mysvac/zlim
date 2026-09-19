@@ -71,8 +71,8 @@ pub use inset::Inset;
 // ---------------------------------------------------------------------
 // Polygon
 
-// Internal helpers (`is_polygon_simple`), consumed by `dim2`.
 mod polygon;
+pub use polygon::is_polygon_simple;
 
 // ---------------------------------------------------------------------
 // ViewFrustum
@@ -117,4 +117,7 @@ pub mod prelude {
 
     #[doc(hidden)]
     pub use crate::view_frustum::ViewFrustum;
+
+    #[doc(hidden)]
+    pub use crate::polygon::is_polygon_simple;
 }

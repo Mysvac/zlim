@@ -24,8 +24,8 @@ use crate::world::{World, WorldCell};
 /// # Examples
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
-/// use zlim_path::derive::TypePath;
 ///
 /// #[derive(TypePath, Component, Clone)]
 /// struct Velocity(f32);

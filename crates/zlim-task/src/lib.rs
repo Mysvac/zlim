@@ -32,3 +32,20 @@ pub use async_task::Task;
 pub use futures_lite;
 pub use futures_lite::future::poll_once;
 pub use futures_lite::future::yield_now;
+
+// -----------------------------------------------------------------------------
+// Prelude
+
+/// The tasks prelude.
+pub mod prelude {
+    // doc(hidden): keeps this path out of autocomplete suggestions.
+
+    #[doc(hidden)]
+    pub use crate::{AsyncTaskPool, IoTaskPool, MainTaskPool};
+    #[doc(hidden)]
+    pub use crate::{ParallelSlice, block_on};
+    #[doc(hidden)]
+    pub use crate::{TaskPoolConfig, TaskPoolConfigs};
+}
+
+// -----------------------------------------------------------------------------

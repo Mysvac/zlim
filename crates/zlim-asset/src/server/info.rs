@@ -737,7 +737,7 @@ impl AssetInfos {
 
     /// Drains the handle-drop queue of *every* registered provider.
     ///
-    /// The typed job (assets.rs's HandleAssetDropEventsJob<A>) is what removes a dropped asset
+    /// The typed job (assets.rs's HandleAssetDropEvents<A>) is what removes a dropped asset
     /// from Assets<A>, and it pops from these very queues: draining them here instead would take
     /// the event away from that job and leave the value in Assets<A> forever. So this is only
     /// usable where no typed job runs — the standalone importer, which owns a server of its own.

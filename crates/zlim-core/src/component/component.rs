@@ -30,6 +30,7 @@ use crate::utils::Dropper;
 /// validates options.
 ///
 /// ```rust
+/// use zlim_path::TypePath;
 /// use zlim_core::prelude::*;
 /// use std::collections::BTreeSet;
 ///
@@ -95,8 +96,8 @@ pub trait Component: TypePath + Send + Sync + Sized {
     /// # Example
     ///
     /// ```rust
+    /// use zlim_path::TypePath;
     /// use zlim_core::prelude::*;
-    /// use zlim_path::derive::TypePath;
     ///
     /// #[derive(TypePath, Component, Clone)]
     /// struct Position;
