@@ -7,6 +7,7 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 
 mod bundle;
 mod component;
+mod entity;
 mod error;
 mod job;
 mod job_group;
@@ -17,6 +18,7 @@ mod resource;
 mod schedule;
 mod schedule_stage;
 mod system_param;
+mod template;
 mod utils;
 
 // -----------------------------------------------------------------------------
@@ -131,30 +133,17 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 /// This macro automatically implements the `Bundle` trait for your struct,
 /// allowing it to be used as a bundle when spawning entities.
 ///
-/// # Default Behavior
+/// # Behavior
 ///
-/// By default, all fields must implement `Bundle`.  The generated impl sets
-/// `NEED_APPLY_EFFECT` to the logical OR of all field types' flags — a
-/// bundle needs `apply_effect` only when at least one of its sub-bundles
-/// does — and calls `apply_effect` on each field in declaration order.
-///
-/// - Each field in the struct represents a sub-bundle that will be combined.
-/// - Components from all fields are collected and written in declaration
-///   order.
+/// - Every field must implement `Bundle`; components from all fields are
+///   collected and written in declaration order.
+/// - A field that is itself a bundle (a tuple, or another `#[derive(Bundle)]`
+///   struct) is flattened into the outer one.
 /// - If duplicate components exist across fields, later fields override
 ///   earlier ones.
 ///
-/// # Data Bundles (`#[bundle(data)]`)
-///
-/// Adding `#[bundle(data)]` tightens the field constraint to `DataBundle`
-/// (instead of `Bundle`) and also emits an explicit `DataBundle` impl, which
-/// requires `NEED_APPLY_EFFECT = false`.  Use this for bundles that contain
-/// only pure data with no post-spawn side effects.
-///
-/// # Attribute
-///
-/// - `#[bundle(data)]` — mark the type as a pure-data bundle; every field
-///   must be a `DataBundle`, and the type itself implements `DataBundle`.
+/// A bundle carries data only: the entity it was written to is never handed
+/// back to it.
 ///
 /// # Limitations
 ///
@@ -171,23 +160,13 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 /// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
 /// struct Velocity { dx: f32, dy: f32 }
 ///
-/// // Default bundle — fields need Bundle; `NEED_APPLY_EFFECT` is the OR of
-/// // the fields' flags.
 /// #[derive(Bundle)]
-/// struct SpawnBundle {
-///     position: Position,
-///     effect: SomeEffectField,
-/// }
-///
-/// // Data bundle — fields need DataBundle; also implements DataBundle.
-/// #[derive(Bundle)]
-/// #[bundle(data)]
 /// struct MovableBundle {
 ///     position: Position,
 ///     velocity: Velocity,
 /// }
 /// ```
-#[proc_macro_derive(Bundle, attributes(bundle))]
+#[proc_macro_derive(Bundle)]
 pub fn derive_bundle(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     bundle::expand(ast).into()
@@ -720,6 +699,29 @@ pub fn job_group(input: TokenStream) -> TokenStream {
     job_group::expand(input).into()
 }
 
+/// Derives the `EntityLabel` trait implementation.
+///
+/// # Required Traits
+///
+/// The target type must implement the following traits:
+/// - `Send` + `Sync` (required by the `EntityLabel` trait itself)
+/// - `Clone`
+/// - `Debug`
+/// - `Hash`
+/// - `Eq` (and therefore `PartialEq`)
+///
+/// # Examples
+///
+/// ```ignore
+/// #[derive(EntityLabel, Clone, Debug, Hash, PartialEq, Eq)]
+/// pub struct SceneRoot;
+/// ```
+#[proc_macro_derive(EntityLabel)]
+pub fn derive_entity_label(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    entity::expand(ast).into()
+}
+
 /// Derives the `ScheduleLabel` trait implementation.
 ///
 /// # Required Traits
@@ -811,4 +813,61 @@ pub fn derive_schedule_stage(input: TokenStream) -> TokenStream {
 pub fn derive_message(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     message::expand(ast)
+}
+
+/// Derives the `FromTemplate` trait implementation.
+///
+/// # Generated items
+///
+/// A companion type named `<Type>Template` holds one template field per field of the type, each
+/// typed as the template of that field, and the derive associates the two with
+/// `impl FromTemplate for <Type>`. The type itself is also made not `Unpin`, which keeps that
+/// association from overlapping with the blanket implementation that every `Clone + Default` type
+/// gets — which also means the three of `FromTemplate`, `Default` and `Clone` cannot be derived
+/// together.
+///
+/// The companion template is the shape of the type it produces: a named struct, a tuple struct, a
+/// unit struct, or an enum whose variants are the variants of the type.
+///
+/// # Field attributes
+///
+/// | Attribute | Template of the field |
+/// |-----------|-----------------------|
+/// | *(none)* | `<FieldType as FromTemplate>::Template` |
+/// | `#[template(SomeTemplate)]` | `SomeTemplate` |
+/// | `#[template(built_in)]` | `<FieldType as BuiltInTemplate>::Template` |
+///
+/// `#[template(built_in)]` is what maps a container to the template of its element, so that an
+/// `Option<Handle<Image>>` field becomes an `OptionTemplate<HandleTemplate<Image>>` instead of an
+/// `Option<Handle<Image>>`.
+///
+/// # Enum attributes
+///
+/// An enum needs one variant marked with `#[default]`, whose template is what
+/// `Default::default()` produces.
+///
+/// # Generic types
+///
+/// The generated impls carry the generics and where clause of the type, so a generic type needs
+/// the `FromTemplate` bounds its fields need to be written on the type itself.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[derive(FromTemplate)]
+/// struct Sprite {
+///     image: Handle<Image>,
+///     scale: f32,
+/// }
+///
+/// // Generated, in short:
+/// struct SpriteTemplate {
+///     image: HandleTemplate<Image>,
+///     scale: f32,
+/// }
+/// ```
+#[proc_macro_derive(FromTemplate, attributes(template, default))]
+pub fn derive_from_template(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    template::expand(ast).into()
 }

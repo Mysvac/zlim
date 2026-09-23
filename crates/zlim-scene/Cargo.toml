@@ -1,0 +1,27 @@
+[package]
+name = "zlim-scene"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+exclude = ["README.zh.md"]
+
+[dependencies]
+
+zlim-scene-derive = { path = "derive" }
+
+zlim-core = { path = "../zlim-core", default-features = false }
+
+zlim-utils = { path = "../zlim-utils", default-features = false }
+
+zlim-path = { path = "../zlim-path", default-features = false }
+
+zlim-log = { path = "../zlim-log", default-features = false }
+
+zlim-app = { path = "../zlim-app", default-features = false }
+
+zlim-asset = { path = "../zlim-asset", default-features = false }
+
+[lints]
+workspace = true

@@ -235,7 +235,7 @@ impl Drop for DelayedCommandQueues {
 // -----------------------------------------------------------------------------
 // DelayedCommandQueues
 
-pub(crate) fn queue_delayed_commands(world: &mut World) {
+pub(crate) fn apply_delayed_commands(world: &mut World) {
     let cell = world.cell();
     let world = unsafe { cell.data_mut() };
 
@@ -248,6 +248,18 @@ pub(crate) fn queue_delayed_commands(world: &mut World) {
 
     #[cfg(feature = "trace")]
     let _span = zlim_log::info_span!("apply delayed commands").entered();
+
+    #[cfg(feature = "tracy")]
+    static SOURCE: zlim_tracy::SpanSource = zlim_tracy::SpanSource::new(
+        c"",
+        c"World::apply_delayed_commands",
+        c"zlim_core::time::delayed",
+        0,
+        0xC9A227,
+    );
+
+    #[cfg(feature = "tracy")]
+    let _tracy = SOURCE.begin();
 
     ::core::hint::cold_path();
     let queues = queues.into_inner();
@@ -278,10 +290,7 @@ pub(crate) fn queue_delayed_commands(world: &mut World) {
         commands.append(&mut last.queue);
     }
 
-    // NOTE: the appended commands are NOT executed here.  The caller is
-    // expected to flush the world's command queue at an appropriate time
-    // (e.g. `world.flush()`) to actually apply them.
-    // world.flush();
+    world.flush();
 }
 
 /// Optimizes the delayed command queue order for faster processing.
@@ -293,7 +302,7 @@ pub(crate) fn queue_delayed_commands(world: &mut World) {
 /// this job will run in the `Last` stage. See `zlim_app` crate for details.
 ///
 /// Otherwise, you may need to add it manually.
-#[job_fn(type = OptimizeDelayedCommands, name = "zlim_core::time::OptimizeDelayedCommands")]
+#[job_fn(type = OptimizeDelayedCommands, name = "zlim_core::jobs::OptimizeDelayedCommands")]
 fn optimize_delayed_commands(queues: If<ResMut<DelayedCommandQueues>>) {
     let mut queues = queues.0;
     if queues.sorted {

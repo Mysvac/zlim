@@ -359,8 +359,8 @@ fn run_fixed_main_loop(world: &mut World) {
 /// are added to them later by other plugins.
 ///
 /// [`App::new`]: crate::App::new
-/// [`OptimizeDelayedCommands`]: zlim_core::time::OptimizeDelayedCommands
-/// [`UpdateMessagesSignal`]: zlim_core::message::UpdateMessagesSignal
+/// [`OptimizeDelayedCommands`]: zlim_core::jobs::OptimizeDelayedCommands
+/// [`UpdateMessagesSignal`]: zlim_core::jobs::UpdateMessagesSignal
 #[derive(Debug, Default)]
 pub struct MainSchedulePlugin;
 
@@ -442,7 +442,7 @@ impl Plugin for MainSchedulePlugin {
         fixed_main_loop.insert::<RunFixedMainLoopJob>(());
 
         let last = world.schedule_entry(Last);
-        last.insert::<zlim_core::time::OptimizeDelayedCommands>(());
+        last.insert::<zlim_core::jobs::OptimizeDelayedCommands>(());
 
         let run_fixed_main = world.schedule_entry(RunFixedMainLoop);
         run_fixed_main.insert_stage(FixedMainLoopStage::BeforeFixedMainLoop);
@@ -459,7 +459,7 @@ impl Plugin for MainSchedulePlugin {
         ]);
 
         let fixed_post = world.schedule_entry(FixedPostUpdate);
-        fixed_post.insert::<zlim_core::message::UpdateMessagesSignal>(());
+        fixed_post.insert::<zlim_core::jobs::UpdateMessagesSignal>(());
     }
 }
 

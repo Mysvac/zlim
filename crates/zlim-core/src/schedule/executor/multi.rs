@@ -703,7 +703,7 @@ impl JobExecutor for MultiThreadedExecutor {
         }
 
         // In theory, the deferred queue should be empty at this point.
-        world.flush();
+        // world.flush();
     }
 }
 

@@ -822,7 +822,11 @@ pub(crate) mod jobs {
     // -----------------------------------------------------------------------------
     // AssetEvents
 
-    #[job_fn(type = HandleAssetEvents<A: Asset>, run_if = contains_asset_event::<A>)]
+    #[job_fn(
+        type = HandleAssetEvents<A: Asset>,
+        run_if = contains_asset_event::<A>,
+        name = "zlim_asset::jobs::HandleAssetEvents",
+    )]
     fn asset_events<A: Asset>(
         mut assets: ResMut<Assets<A>>,
         mut messages: MessageWriter<AssetEvent<A>>,
@@ -853,7 +857,11 @@ pub(crate) mod jobs {
     // AssetServer
     // -----------------------------------------------------------------------------
 
-    #[job_fn(type = HandleAssetDropEvents<A: Asset>, run_if = contains_drop_event::<A>)]
+    #[job_fn(
+        type = HandleAssetDropEvents<A: Asset>,
+        run_if = contains_drop_event::<A>,
+        name = "zlim_asset::jobs::HandleAssetDropEvents",
+    )]
     fn track_assets<A: Asset>(mut assets: ResMut<Assets<A>>, asset_server: ResMut<AssetServer>) {
         let mut infos = asset_server.0.write_infos();
         while let Some(drop_event) = assets.handle_provider.try_recv() {

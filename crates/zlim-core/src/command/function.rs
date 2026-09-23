@@ -2,7 +2,7 @@
 
 use zlim_utils::debug::DebugLocation;
 
-use crate::bundle::{Bundle, DataBundle};
+use crate::bundle::Bundle;
 use crate::command::{Command, EntityCommand};
 use crate::entity::{Entities, EntityId};
 use crate::error::{IntoZlimResult, ZlimError};
@@ -37,8 +37,14 @@ pub(super) fn spawn_empty_at(entity: EntityId, parent: Option<EntityId>) -> impl
     move |world: &mut World| -> Result<(), ZlimError> {
         check_spawnable(&world.entities, entity)?;
 
-        if let Some(c) = parent {
-            check_contains(&world.entities, c)?;
+        if let Some(p) = parent
+            && let Err(e) = check_contains(&world.entities, p)
+        {
+            // Retrieve reusable entity id.
+            world
+                .allocator
+                .free(world.entities.free_slot(entity.index()));
+            return Err(e);
         }
 
         world.spawn_empty_at_with_caller(entity, parent, caller);
@@ -60,15 +66,22 @@ pub(super) fn spawn_at<B: Bundle>(
     move |world: &mut World| -> Result<(), ZlimError> {
         check_spawnable(&world.entities, entity)?;
 
-        if let Some(c) = parent {
-            check_contains(&world.entities, c)?;
+        if let Some(p) = parent
+            && let Err(e) = check_contains(&world.entities, p)
+        {
+            // Retrieve reusable entity id.
+            world
+                .allocator
+                .free(world.entities.free_slot(entity.index()));
+            return Err(e);
         }
+
         world.spawn_at_with_caller(bundle, entity, parent, caller);
         Ok(())
     }
 }
 
-/// A [`Command`] that consumes an iterator of [`DataBundle`]s to spawn a series of entities.
+/// A [`Command`] that consumes an iterator of [`Bundle`]s to spawn a series of entities.
 ///
 /// This is more efficient than spawning the entities individually.
 #[inline]
@@ -76,7 +89,7 @@ pub(super) fn spawn_at<B: Bundle>(
 pub(super) fn spawn_batch<I>(bundles_iter: I, parent: Option<EntityId>) -> impl Command
 where
     I: IntoIterator + Send + Sync + 'static,
-    I::Item: DataBundle,
+    I::Item: Bundle,
 {
     let caller = DebugLocation::caller();
     move |world: &mut World| -> Result<(), ZlimError> {
@@ -85,6 +98,36 @@ where
         }
         world.spawn_batch_with_caller(bundles_iter, parent, caller);
         Ok(())
+    }
+}
+
+/// A [`EntityCommand`] that spawns a child entity.
+///
+/// Returns an error if the source entity (self) is despawned.
+#[inline]
+pub(super) fn spawn_child<B: Bundle>(bundle: B) -> impl EntityCommand {
+    move |mut entity: EntityOwned| -> Result<(), ZlimError> {
+        match entity.with_child(bundle) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(ZlimError::from(e)),
+        }
+    }
+}
+
+/// A [`EntityCommand`] that spawns multiple child entities.
+///
+/// Returns an error if the source entity (self) is despawned.
+#[inline]
+pub(super) fn spawn_children<B, I>(iter: I) -> impl EntityCommand
+where
+    B: Bundle,
+    I: IntoIterator<Item = B> + Send + 'static,
+{
+    move |mut entity: EntityOwned| -> Result<(), ZlimError> {
+        match entity.with_children(iter) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(ZlimError::from(e)),
+        }
     }
 }
 
@@ -339,7 +382,7 @@ pub(super) fn insert(bundle: impl Bundle) -> impl EntityCommand {
 /// An [`EntityCommand`] that inserts a [`Bundle`] into an entity if missing.
 #[inline]
 #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-pub(super) fn insert_if_new<T: DataBundle>(
+pub(super) fn insert_if_new<T: Bundle>(
     bundle: impl FnOnce() -> T + Send + 'static,
 ) -> impl EntityCommand {
     let caller = DebugLocation::caller();
@@ -358,7 +401,7 @@ pub(super) fn insert_if_new<T: DataBundle>(
 /// remaining components.
 #[inline]
 #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-pub(super) fn remove<T: DataBundle>() -> impl EntityCommand {
+pub(super) fn remove<T: Bundle>() -> impl EntityCommand {
     let caller = DebugLocation::caller();
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.remove_explicit_with_caller::<T>(caller) {
@@ -375,7 +418,7 @@ pub(super) fn remove<T: DataBundle>() -> impl EntityCommand {
 /// remaining components.
 #[inline]
 #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-pub(super) fn remove_explicit<T: DataBundle>() -> impl EntityCommand {
+pub(super) fn remove_explicit<T: Bundle>() -> impl EntityCommand {
     let caller = DebugLocation::caller();
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.remove_explicit_with_caller::<T>(caller) {
@@ -395,7 +438,7 @@ pub(super) fn remove_explicit<T: DataBundle>() -> impl EntityCommand {
 /// remaining components.
 #[inline]
 #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-pub(super) fn remove_required<T: DataBundle>() -> impl EntityCommand {
+pub(super) fn remove_required<T: Bundle>() -> impl EntityCommand {
     let caller = DebugLocation::caller();
     move |mut entity: EntityOwned| -> Result<(), ZlimError> {
         match entity.remove_required_with_caller::<T>(caller) {

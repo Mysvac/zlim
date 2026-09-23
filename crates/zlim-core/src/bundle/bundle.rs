@@ -1,4 +1,4 @@
-//! The [`Bundle`] and [`DataBundle`] traits.
+//! The [`Bundle`] trait.
 
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
@@ -6,8 +6,8 @@ use core::any::TypeId;
 
 use zlim_ptr::OwningPtr;
 
-use crate::component::{Component, ComponentCollector, ComponentWriter};
-use crate::ops::EntityOwned;
+use crate::bundle::BundleWriter;
+use crate::component::{Component, ComponentCollector, ComponentWriter, Components};
 
 // -----------------------------------------------------------------------------
 // Bundle
@@ -30,8 +30,10 @@ use crate::ops::EntityOwned;
 ///    the bundle's component data into storage.
 /// 4. Calls [`write_required`] to initialise required components that were
 ///    not provided explicitly with their `Default` values.
-/// 5. Calls [`apply_effect`] for any post-spawn side effects (only when
-///    [`NEED_APPLY_EFFECT`] is `true`).
+///
+/// A bundle carries data only: once its components are written, nothing else
+/// runs for it — in particular the newly spawned entity is never handed back
+/// to the bundle.
 ///
 /// [`collect_explicit`] collects only the bundle's own components and is
 /// not invoked by the current spawn pipeline; [`collect_required`]
@@ -41,8 +43,6 @@ use crate::ops::EntityOwned;
 /// [`collect_required`]: Bundle::collect_required
 /// [`write_explicit`]: Bundle::write_explicit
 /// [`write_required`]: Bundle::write_required
-/// [`apply_effect`]: Bundle::apply_effect
-/// [`NEED_APPLY_EFFECT`]: Bundle::NEED_APPLY_EFFECT
 ///
 /// # Safety
 ///
@@ -67,7 +67,6 @@ use crate::ops::EntityOwned;
 /// struct Velocity { dx: f32, dy: f32 }
 ///
 /// #[derive(Bundle)]
-/// #[bundle(data)] // derive DataBundle
 /// struct MovableBundle {
 ///     position: Position,
 ///     velocity: Velocity,
@@ -120,19 +119,6 @@ use crate::ops::EntityOwned;
     note = "Consider annotating `{Self}` with `#[derive(Bundle)]`."
 )]
 pub unsafe trait Bundle: Sized + Sync + Send + 'static {
-    /// Whether this bundle requires [`apply_effect`] after writing.
-    ///
-    /// Set this to `true` when the bundle needs to perform post-spawn
-    /// work that requires access to the newly-created entity handle.
-    ///
-    /// For pure-data bundles (the common case), leave this `false`.
-    /// `#[derive(Bundle)]` computes this as the logical OR of all field
-    /// types' flags, while adding `#[bundle(data)]` requires every field
-    /// to be a [`DataBundle`], so the flag is always `false`.
-    ///
-    /// [`apply_effect`]: Bundle::apply_effect
-    const NEED_APPLY_EFFECT: bool;
-
     /// Registers and collects the bundle's own component types, **without**
     /// following required components.
     ///
@@ -152,6 +138,25 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
     /// components are present in storage even when they are not written
     /// explicitly.
     fn collect_required(collector: &mut ComponentCollector);
+
+    /// Pushes every component this bundle carries onto `writer`, in
+    /// declaration order, reading them out of `data`.
+    ///
+    /// A caller that holds a bundle *by value* pushes it with
+    /// [`BundleWriter::push`], which turns the value into a pointer and calls
+    /// this.  Walking the pointer instead of the fields is what keeps the
+    /// components off the stack: `offset_of!` locates each one inside the value
+    /// that is already there, and each component is then copied once, straight
+    /// into the scratch space.
+    ///
+    /// # Safety
+    ///
+    /// - `data` must point to a valid, initialised, properly-aligned `Self`.
+    /// - `data` must stay valid for the duration of the call, and the
+    ///   components pushed from it are copied, never moved out.
+    ///
+    /// [`BundleWriter::push`]: crate::bundle::BundleWriter::push
+    unsafe fn push_to(data: OwningPtr<'_>, writer: &mut BundleWriter, infos: Option<&Components>);
 
     /// Writes all explicit component data from this bundle into storage.
     ///
@@ -180,81 +185,16 @@ pub unsafe trait Bundle: Sized + Sync + Send + 'static {
     /// [`write_explicit`]: Bundle::write_explicit
     /// [`collect_required`]: Bundle::collect_required
     unsafe fn write_required(writer: &mut ComponentWriter);
-
-    /// Performs post-spawn side effects after all components have been
-    /// written.
-    ///
-    /// Only called when [`Bundle::NEED_APPLY_EFFECT`] is `true`.  This receives
-    /// the original bundle data (consumed) and a mutable handle to the
-    /// newly-spawned entity.
-    ///
-    /// # Safety
-    ///
-    /// - `data` must be a valid, properly-aligned `OwningPtr` to `Self`.
-    /// - The entity must have been spawned immediately before this call.
-    unsafe fn apply_effect(data: OwningPtr<'_>, entity: &mut EntityOwned<'_>);
 }
-
-// -----------------------------------------------------------------------------
-// DataBundle
-// -----------------------------------------------------------------------------
-
-/// Marker supertrait for [`Bundle`] types that contain only pure data and
-/// never produce post-spawn side effects.
-///
-/// All [`Component`] types and the empty tuple `()` implement this trait
-/// automatically.  Tuples implement `DataBundle` when **every** element
-/// implements it, and a `#[derive(Bundle)]` struct implements it when
-/// declared with `#[bundle(data)]` (which also requires every field to be
-/// a `DataBundle`).
-///
-/// # Contract
-///
-/// Implementing this trait guarantees that [`Bundle::NEED_APPLY_EFFECT`]
-/// is `false` and [`Bundle::apply_effect`] is a no-op.
-///
-/// # Example
-///
-/// ```rust
-/// use zlim_path::TypePath;
-/// use zlim_core::prelude::*;
-///
-/// #[derive(TypePath, Component, Clone)]
-/// struct Position { x: f32, y: f32 }
-///
-/// #[derive(TypePath, Component, Clone)]
-/// struct Velocity { dx: f32, dy: f32 }
-///
-/// // `#[bundle(data)]` marks the struct as a pure-data bundle.
-/// #[derive(Bundle)]
-/// #[bundle(data)]
-/// struct MovableBundle {
-///     position: Position,
-///     velocity: Velocity,
-/// }
-///
-/// fn assert_data_bundle<B: DataBundle>() {}
-///
-/// assert_data_bundle::<MovableBundle>();
-///
-/// // `data` bundles never run a post-spawn side effect.
-/// assert!(!MovableBundle::NEED_APPLY_EFFECT);
-/// ```
-///
-/// # Safety
-/// `Self::NEED_APPLY_EFFECT == false`
-pub unsafe trait DataBundle: Bundle {}
 
 // -----------------------------------------------------------------------------
 // Blanket impl: every Component is a Bundle
 // -----------------------------------------------------------------------------
 
-/// Every individual [`Component`] is automatically a [`Bundle`] (and a
-/// [`DataBundle`]).  This lets you pass a single component directly to
-/// spawn functions without wrapping it in a tuple or struct.
+/// Every individual [`Component`] is automatically a [`Bundle`].  This lets
+/// you pass a single component directly to spawn functions without wrapping it
+/// in a tuple or struct.
 unsafe impl<T: Component> Bundle for T {
-    const NEED_APPLY_EFFECT: bool = false;
-
     #[inline]
     fn collect_explicit(collector: &mut ComponentCollector) {
         collector.collect_explicit::<T>();
@@ -263,6 +203,11 @@ unsafe impl<T: Component> Bundle for T {
     #[inline]
     fn collect_required(collector: &mut ComponentCollector) {
         collector.collect_required::<T>();
+    }
+
+    #[inline]
+    unsafe fn push_to(data: OwningPtr<'_>, writer: &mut BundleWriter, infos: Option<&Components>) {
+        writer.push_owning::<T>(data, infos);
     }
 
     #[inline]
@@ -278,51 +223,34 @@ unsafe impl<T: Component> Bundle for T {
             unsafe { required.write(writer) };
         }
     }
-
-    #[inline(always)]
-    unsafe fn apply_effect(_: OwningPtr<'_>, _: &mut EntityOwned<'_>) {}
 }
-
-unsafe impl<T: Component> DataBundle for T {}
 
 // -----------------------------------------------------------------------------
 // Tuple bundle impls (0..=12)
 // -----------------------------------------------------------------------------
 
-/// Generates [`Bundle`] and [`DataBundle`] implementations for tuples.
+/// Generates [`Bundle`] implementations for tuples.
 ///
-/// Each tuple element's [`collect_explicit`], [`collect_required`],
-/// [`write_explicit`], [`write_required`], and [`apply_effect`] calls are
-/// forwarded in declaration order.  [`NEED_APPLY_EFFECT`] is the logical
-/// OR of all elements' flags.
+/// Each tuple element's [`collect_explicit`], [`collect_required`], [`push_to`],
+/// [`write_explicit`], and [`write_required`] calls are forwarded in
+/// declaration order.
 ///
 /// [`collect_explicit`]: Bundle::collect_explicit
 /// [`collect_required`]: Bundle::collect_required
+/// [`push_to`]: Bundle::push_to
 /// [`write_explicit`]: Bundle::write_explicit
 /// [`write_required`]: Bundle::write_required
-/// [`apply_effect`]: Bundle::apply_effect
-/// [`NEED_APPLY_EFFECT`]: Bundle::NEED_APPLY_EFFECT
 macro_rules! impl_bundle_for_tuple {
     (0: []) => {
-        unsafe impl DataBundle for () {}
-
         unsafe impl Bundle for () {
-            const NEED_APPLY_EFFECT: bool = false;
             fn collect_explicit(_collector: &mut ComponentCollector) {}
             fn collect_required(_collector: &mut ComponentCollector) {}
+            unsafe fn push_to(_: OwningPtr<'_>, _: &mut BundleWriter, _: Option<&Components>) {}
             unsafe fn write_explicit(_: OwningPtr<'_>, _: &mut ComponentWriter) {}
             unsafe fn write_required(_writer: &mut ComponentWriter) {}
-            unsafe fn apply_effect(_: OwningPtr<'_>, _: &mut EntityOwned<'_>) {}
         }
     };
     (1 : [ $index:tt : $name:ident ]) => {
-        #[cfg_attr(docsrs, doc(fake_variadic))]
-        #[cfg_attr(
-            docsrs,
-            doc = "This trait is implemented for tuples up to 12 items long.\n"
-        )]
-        unsafe impl<$name: DataBundle> DataBundle for ($name,) {}
-
         #[cfg_attr(docsrs, doc(fake_variadic))]
         #[cfg_attr(
             docsrs,
@@ -333,83 +261,61 @@ macro_rules! impl_bundle_for_tuple {
             doc = "For larger data, consider using #[derive(Bundle)] to create custom types."
         )]
         unsafe impl<$name: Bundle> Bundle for ($name,) {
-            const NEED_APPLY_EFFECT: bool =
-                <$name as Bundle>::NEED_APPLY_EFFECT;
-
+            #[inline]
             fn collect_explicit(collector: &mut ComponentCollector) {
-                <$name>::collect_explicit(collector);
+                <$name as Bundle>::collect_explicit(collector);
             }
 
+            #[inline]
             fn collect_required(collector: &mut ComponentCollector) {
-                <$name>::collect_required(collector);
+                <$name as Bundle>::collect_required(collector);
             }
 
-            unsafe fn write_explicit(
-                data: OwningPtr<'_>,
-                writer: &mut ComponentWriter,
-            ) {
+            #[inline]
+            unsafe fn push_to(data: OwningPtr<'_>, writer: &mut BundleWriter, infos: Option<&Components>) {
                 let offset = ::core::mem::offset_of!(Self, 0);
-                unsafe { <$name>::write_explicit(data.byte_add(offset), writer) };
+                unsafe { <$name as Bundle>::push_to(data.byte_add(offset), writer, infos) };
             }
 
+            #[inline]
+            unsafe fn write_explicit(data: OwningPtr<'_>, writer: &mut ComponentWriter) {
+                let offset = ::core::mem::offset_of!(Self, 0);
+                unsafe { <$name as Bundle>::write_explicit(data.byte_add(offset), writer) };
+            }
+
+            #[inline]
             unsafe fn write_required(writer: &mut ComponentWriter) {
-                unsafe { <$name>::write_required(writer) };
-            }
-
-            unsafe fn apply_effect(
-                data: OwningPtr<'_>,
-                entity: &mut EntityOwned<'_>,
-            ) {
-                if <Self as Bundle>::NEED_APPLY_EFFECT {
-                    let offset = ::core::mem::offset_of!(Self, 0);
-                    unsafe {
-                        <$name>::apply_effect(data.byte_add(offset), entity)
-                    };
-                }
+                unsafe { <$name as Bundle>::write_required(writer) };
             }
         }
     };
     ($num:literal : [$($index:tt : $name:ident),*]) => {
         #[cfg_attr(docsrs, doc(hidden))]
-        unsafe impl<$($name: DataBundle),*> DataBundle for ($($name,)*) {}
-
-        #[cfg_attr(docsrs, doc(hidden))]
         unsafe impl<$($name: Bundle),*> Bundle for ($($name,)*) {
-            const NEED_APPLY_EFFECT: bool = false
-                $( || <$name as Bundle>::NEED_APPLY_EFFECT )*;
-
             fn collect_explicit(collector: &mut ComponentCollector) {
-                $( <$name>::collect_explicit(collector); )*
+                $( <$name as Bundle>::collect_explicit(collector); )*
             }
 
             fn collect_required(collector: &mut ComponentCollector) {
-                $( <$name>::collect_required(collector); )*
+                $( <$name as Bundle>::collect_required(collector); )*
             }
 
-            unsafe fn write_explicit(
-                mut data: OwningPtr<'_>,
-                writer: &mut ComponentWriter,
-            ) {
+            unsafe fn push_to(mut data: OwningPtr<'_>, writer: &mut BundleWriter, infos: Option<&Components>) {
                 $(unsafe {
                     let offset = ::core::mem::offset_of!(Self, $index);
-                    <$name>::write_explicit(data.take_field(offset), writer);
+                    <$name as Bundle>::push_to(data.take_field(offset), writer, infos);
+                })*
+            }
+
+            unsafe fn write_explicit(mut data: OwningPtr<'_>, writer: &mut ComponentWriter) {
+                $(unsafe {
+                    let offset = ::core::mem::offset_of!(Self, $index);
+                    <$name as Bundle>::write_explicit(data.take_field(offset), writer);
                 })*
             }
 
             unsafe fn write_required(writer: &mut ComponentWriter) {
-                $(unsafe { <$name>::write_required(writer); })*
-            }
-
-            unsafe fn apply_effect(
-                mut data: OwningPtr<'_>,
-                entity: &mut EntityOwned<'_>,
-            ) {
-                if <Self as Bundle>::NEED_APPLY_EFFECT {
-                    $(unsafe {
-                        let offset = ::core::mem::offset_of!(Self, $index);
-                        <$name>::apply_effect(data.take_field(offset), entity);
-                    })*
-                }
+                $(unsafe { <$name as Bundle>::write_required(writer); })*
             }
         }
     };

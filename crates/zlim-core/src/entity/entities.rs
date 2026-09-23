@@ -12,8 +12,10 @@ use core::num::NonZeroU32;
 use std::collections::BTreeSet;
 
 use zlim_core_derive::Error;
+use zlim_utils::hash::HashMap;
 
 use super::{EntityId, Location};
+use crate::entity::InternedEntityLabel;
 use crate::table::MovedEntityRow;
 use crate::utils::position_entity;
 
@@ -118,6 +120,8 @@ pub struct Entities {
     pub(crate) root: BTreeSet<EntityId>,
     /// Per-index entity nodes, grown on demand.
     pub(crate) entities: Vec<EntityNode>,
+    /// Labeled Entities
+    pub(crate) labeled: HashMap<InternedEntityLabel, EntityId>,
 }
 
 impl Debug for Entities {
@@ -136,9 +140,14 @@ impl Entities {
     pub(crate) fn new() -> Self {
         let root: BTreeSet<EntityId> = BTreeSet::new();
         let mut entities: Vec<EntityNode> = Vec::with_capacity(256);
+        let labeled = HashMap::new();
         let new_len = entities.capacity();
         entities.resize_with(new_len, || DEFAULT_NODE);
-        Self { root, entities }
+        Self {
+            root,
+            entities,
+            labeled,
+        }
     }
 }
 
@@ -778,6 +787,49 @@ impl Entities {
 }
 
 // -----------------------------------------------------------------------------
+// Label
+
+impl Entities {
+    /// Associates the given `label` with the given `id`.
+    ///
+    /// If `id` does not exist, returns `Err(EntityError)` and leaves any existing
+    /// label mapping unchanged.
+    ///
+    /// If `label` is already associated with another entity, the old mapping is
+    /// silently overwritten.
+    pub fn set_labeled_entity(
+        &mut self,
+        id: EntityId,
+        label: InternedEntityLabel,
+    ) -> Result<(), EntityError> {
+        let _ = self.get(id)?;
+        self.labeled.insert(label, id);
+        Ok(())
+    }
+
+    /// Returns the [`EntityId`] associated with the given `label`.
+    ///
+    /// Returns `Err(EntityError::MissingLabel(label))` if the label is not
+    /// associated with any entity, or if the associated entity no longer exists.
+    pub fn get_labeled_entity(&self, label: InternedEntityLabel) -> Result<EntityId, EntityError> {
+        let Some(&id) = self.labeled.get(&label) else {
+            return Err(EntityError::MissingLabel(label));
+        };
+        if !self.contains(id) {
+            return Err(EntityError::MissingLabel(label));
+        }
+        Ok(id)
+    }
+
+    /// Removes expired labels.
+    pub(crate) fn update_labeled(&mut self) {
+        let mut labeled = core::mem::take(&mut self.labeled);
+        labeled.retain(|_, id| self.contains(*id));
+        self.labeled = labeled;
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Error
 // -----------------------------------------------------------------------------
 
@@ -791,6 +843,10 @@ pub enum EntityError {
     /// The slot for the given index has never been used (index out of bounds).
     #[error("Entity with Index {_0} was not found")]
     NotFound(u32),
+
+    /// The labeled entity is not spawned.
+    #[error("Labeled Entity {_0:?} has not been spawned yet")]
+    MissingLabel(InternedEntityLabel),
 
     /// The entity exists (generation matches) but is not spawned, so it has
     /// no storage location.
@@ -814,6 +870,7 @@ pub enum EntityError {
 // -----------------------------------------------------------------------------
 // RootEntities
 
+/// Iterator for root entities.
 #[derive(Debug, Clone)]
 pub struct RootEntities<'w>(std::collections::btree_set::Iter<'w, EntityId>);
 
@@ -882,11 +939,31 @@ impl Entities {
     /// // Making an entity its own parent would create a cycle.
     /// assert!(world.entity_owned(child).reparent(Some(child)).is_err());
     /// ```
+    #[inline]
     pub(crate) fn modify_parent(
         world: &mut World,
         id: EntityId,
         parent: Option<EntityId>,
     ) -> Result<(), EntityError> {
+        if Self::modify_parent_without_signal(world, id, parent)? {
+            world.write_message(ReparentSignal { entity: id });
+        }
+
+        Ok(())
+    }
+
+    /// Re-parents an entity, validating the new hierarchy first.
+    ///
+    /// Fails if the new parent (or the entity itself) is missing, mismatched,
+    /// not spawned, or would create a cycle.
+    ///
+    /// - Returns `Ok(false)` if the parent is not changed (the same).
+    /// - Returns `Ok(true)` if the parent is modified.
+    pub(crate) fn modify_parent_without_signal(
+        world: &mut World,
+        id: EntityId,
+        parent: Option<EntityId>,
+    ) -> Result<bool, EntityError> {
         let this = &mut world.entities;
         //--------------------------------------------------------------------
         // validate new parent
@@ -938,7 +1015,7 @@ impl Entities {
 
         if info.parent == parent {
             core::hint::cold_path();
-            return Ok(());
+            return Ok(false);
         }
 
         //--------------------------------------------------------------------
@@ -999,9 +1076,7 @@ impl Entities {
             this.root.insert(id);
         }
 
-        world.write_message(ReparentSignal { entity: id });
-
-        Ok(())
+        Ok(true)
     }
 }
 

@@ -132,6 +132,30 @@ impl Block {
         prev as *mut usize
     }
 
+    /// Reset the current block and return the pointer to the previous block.
+    ///
+    /// Return `null_ptr` if self is head block.
+    ///
+    /// # Safety
+    /// - `self` must be a valid block that has not been deallocated yet.
+    #[must_use = "Need to dealloc the previous block"]
+    unsafe fn reset(self) -> *mut usize {
+        unsafe {
+            let prev: NonNull<usize> = self.pointer.byte_add(SIZE1);
+            // span points to the first free byte
+            let span: NonNull<usize> = self.pointer.byte_add(SIZE2);
+            // free points to the first available bit
+            let free: NonNull<usize> = self.pointer.byte_add(SIZE3);
+            // reset span
+            span.write(free.as_ptr() as *mut u8 as usize);
+            // read out prev
+            let result: usize = prev.read();
+            // reset `prev`
+            prev.write(0_usize);
+            result as *mut usize
+        }
+    }
+
     /// Attempts to allocate `layout` bytes from this block's free space.
     ///
     /// # Safety
@@ -259,6 +283,20 @@ impl PagePool {
         }
     }
 
+    /// Reset the page pool and only retain the largest block.
+    ///
+    /// The largest block will become completely empty.
+    fn reset(&self) {
+        if let Some(tail) = Block::from_raw(self.tail.get()) {
+            unsafe {
+                let mut prev = tail.reset();
+                while let Some(block) = Block::from_raw(prev) {
+                    prev = block.dealloc();
+                }
+            }
+        }
+    }
+
     /// Allocates memory with the given layout and returns a pointer to it.
     ///
     /// The returned pointer is aligned according to the layout's alignment
@@ -377,6 +415,14 @@ impl Bump {
     #[inline]
     pub const fn new(base_size: usize) -> Self {
         Self(PagePool::base(base_size))
+    }
+
+    /// Reset the page pool and only retain the largest block.
+    ///
+    /// The largest block will become completely empty for reusing.
+    #[inline]
+    pub fn reset(&self) {
+        self.0.reset();
     }
 
     /// Allocates memory with the given layout and returns a pointer to it.
@@ -597,7 +643,7 @@ cfg_select! {
 }
 
 struct AtomicPool {
-    tail: AtomicUsize,  //
+    tail: AtomicUsize,  // usize as *mut Block
     size: Mutex<usize>, // size + lock
 }
 

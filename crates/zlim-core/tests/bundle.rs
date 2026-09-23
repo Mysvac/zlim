@@ -1,14 +1,9 @@
 //! Integration tests for `#[derive(Bundle)]`.
 
-use zlim_core::bundle::Bundle as BundleTrait;
-use zlim_core::bundle::DataBundle;
-use zlim_core::component::{ComponentCollector, ComponentWriter};
-use zlim_core::derive::{Bundle, Component, Resource};
+use zlim_core::derive::{Bundle, Component};
 use zlim_core::entity::EntityId;
-use zlim_core::ops::EntityOwned;
 use zlim_core::world::World;
 use zlim_path::TypePath;
-use zlim_ptr::OwningPtr;
 
 // -----------------------------------------------------------------------------
 // Components
@@ -35,13 +30,6 @@ struct Health(u32);
 struct MovableBundle {
     position: Position,
     velocity: Velocity,
-}
-
-#[test]
-fn named_bundle_consts() {
-    // Plain component fields need no effect, so the OR of their flags is
-    // `false`.
-    const { assert!(!<MovableBundle as BundleTrait>::NEED_APPLY_EFFECT) };
 }
 
 #[test]
@@ -84,31 +72,20 @@ fn named_bundle_spawns_at_given_entity() {
 }
 
 // -----------------------------------------------------------------------------
-// Data bundles
+// Bundles without sub-bundles
 
 #[derive(Bundle)]
-#[bundle(data)]
-struct DataOnlyBundle {
+struct HealthBundle {
     position: Position,
     health: Health,
 }
 
-/// A data bundle has to satisfy two separate claims at once: it must report no
-/// post-spawn effect, and it must implement the `DataBundle` marker trait.
 #[test]
-fn data_bundle_consts() {
-    const { assert!(!<DataOnlyBundle as BundleTrait>::NEED_APPLY_EFFECT) };
-
-    fn assert_data_bundle<T: DataBundle>() {}
-    assert_data_bundle::<DataOnlyBundle>();
-}
-
-#[test]
-fn data_bundle_spawns() {
+fn bundle_spawns() {
     let mut world = World::alloc();
 
     let entity = world.spawn(
-        DataOnlyBundle {
+        HealthBundle {
             position: Position { x: 1.0, y: 2.0 },
             health: Health(100),
         },
@@ -120,17 +97,17 @@ fn data_bundle_spawns() {
 }
 
 #[test]
-fn data_bundle_batch_spawns() {
+fn bundle_batch_spawns() {
     let mut world = World::alloc();
 
     let entities: Vec<EntityId> = world
-        .spawn_batch::<DataOnlyBundle, _>(
+        .spawn_batch::<HealthBundle, _>(
             [
-                DataOnlyBundle {
+                HealthBundle {
                     position: Position { x: 0.0, y: 0.0 },
                     health: Health(1),
                 },
-                DataOnlyBundle {
+                HealthBundle {
                     position: Position { x: 1.0, y: 1.0 },
                     health: Health(2),
                 },
@@ -143,11 +120,29 @@ fn data_bundle_batch_spawns() {
     assert_eq!(world.entity_count(), 2);
 }
 
+/// A derived bundle names its components, so the removal APIs take it as they
+/// take any other bundle.
+#[test]
+fn derived_bundle_removes_its_components() {
+    let mut world = World::alloc();
+    let mut entity = world.spawn(
+        HealthBundle {
+            position: Position { x: 1.0, y: 2.0 },
+            health: Health(100),
+        },
+        None,
+    );
+
+    entity.remove::<HealthBundle>().unwrap();
+
+    assert!(!entity.contains::<Position>());
+    assert!(!entity.contains::<Health>());
+}
+
 // -----------------------------------------------------------------------------
 // Tuple struct bundles
 
 #[derive(Bundle)]
-#[bundle(data)]
 struct TupleBundle(Position, Velocity);
 
 #[test]
@@ -173,11 +168,6 @@ fn tuple_bundle_spawns() {
 struct UnitBundle;
 
 #[test]
-fn unit_bundle_consts() {
-    const { assert!(!<UnitBundle as BundleTrait>::NEED_APPLY_EFFECT) };
-}
-
-#[test]
 fn unit_bundle_spawns_empty_entity() {
     let mut world = World::alloc();
 
@@ -192,7 +182,6 @@ fn unit_bundle_spawns_empty_entity() {
 // Nested bundles
 
 #[derive(Bundle)]
-#[bundle(data)]
 struct NestedBundle {
     tuple: TupleBundle,
     health: Health,
@@ -226,21 +215,6 @@ struct GenericBundle<T> {
     value: T,
 }
 
-#[derive(Bundle)]
-#[bundle(data)]
-struct GenericDataBundle<T> {
-    value: T,
-}
-
-#[test]
-fn generic_bundle_consts() {
-    // Plain component fields keep the OR `false`...
-    const { assert!(!<GenericBundle<Health> as BundleTrait>::NEED_APPLY_EFFECT) };
-    // ...while an effectful field makes it `true`.
-    const { assert!(<GenericBundle<Effect> as BundleTrait>::NEED_APPLY_EFFECT) };
-    const { assert!(!<GenericDataBundle<Health> as BundleTrait>::NEED_APPLY_EFFECT) };
-}
-
 /// The type parameter is filled with a tuple of components, so the derived
 /// implementation has to forward to the tuple's own bundle implementation
 /// rather than treating the value as a single component.
@@ -258,104 +232,6 @@ fn generic_bundle_spawns() {
     assert!(entity.contains::<Position>());
     assert!(entity.contains::<Velocity>());
     assert_eq!(entity.get::<Health>(), None);
-}
-
-#[test]
-fn generic_data_bundle_impls_data_bundle() {
-    fn assert_data_bundle<T: DataBundle>() {}
-    assert_data_bundle::<GenericDataBundle<Health>>();
-    assert_data_bundle::<GenericDataBundle<Position>>();
-}
-
-// -----------------------------------------------------------------------------
-// Bundles with post-spawn effects
-
-/// A test-only bundle whose `apply_effect` pushes its id into the world's
-/// [`EffectLog`] resource — making post-spawn side effects observable.
-struct Effect(u32);
-
-#[expect(unsafe_code, reason = "test-only bundle implementation")]
-unsafe impl BundleTrait for Effect {
-    const NEED_APPLY_EFFECT: bool = true;
-
-    fn collect_explicit(_: &mut ComponentCollector) {}
-
-    fn collect_required(_: &mut ComponentCollector) {}
-
-    unsafe fn write_explicit(_: OwningPtr<'_>, _: &mut ComponentWriter) {}
-
-    unsafe fn write_required(_writer: &mut ComponentWriter) {}
-
-    unsafe fn apply_effect(data: OwningPtr<'_>, entity: &mut EntityOwned<'_>) {
-        // SAFETY: `data` points to a live, aligned `Effect` instance — this is
-        // guaranteed by the `Bundle::apply_effect` contract.
-        let id = unsafe { data.as_ref::<Self>() }.0;
-        entity.resource_mut::<EffectLog>().0.push(id);
-    }
-}
-
-#[derive(TypePath, Resource, Debug, PartialEq)]
-struct EffectLog(Vec<u32>);
-
-#[derive(Bundle)]
-struct EffectBundle {
-    first: Effect,
-    second: Effect,
-}
-
-#[derive(Bundle)]
-struct NestedEffectBundle {
-    inner: EffectBundle,
-    tail: Effect,
-}
-
-#[test]
-fn effect_bundle_needs_apply_effect() {
-    const { assert!(<EffectBundle as BundleTrait>::NEED_APPLY_EFFECT) };
-}
-
-/// `apply_effect` is a bundle's only chance to run post-spawn logic, so the
-/// derived implementation has to call it once per effectful field, in field
-/// declaration order. The effects here record their ids into `EffectLog`, which
-/// makes that order observable from the outside.
-#[test]
-fn effect_bundle_applies_effects_in_field_order() {
-    let mut world = World::alloc();
-    world.insert_resource(EffectLog(Vec::new()));
-
-    let entity = world.spawn(
-        EffectBundle {
-            first: Effect(1),
-            second: Effect(2),
-        },
-        None,
-    );
-
-    assert!(entity.is_spawned());
-    // Both effects ran, and `first` ran before `second`.
-    assert_eq!(world.resource::<EffectLog>().0, vec![1, 2]);
-}
-
-/// A nested effect bundle is not applied as one unit: the inner bundle's
-/// effects run before the outer bundle's own trailing fields, so the log
-/// follows declaration order depth first.
-#[test]
-fn nested_effect_bundle_forwards_effects() {
-    let mut world = World::alloc();
-    world.insert_resource(EffectLog(Vec::new()));
-
-    world.spawn(
-        NestedEffectBundle {
-            inner: EffectBundle {
-                first: Effect(1),
-                second: Effect(2),
-            },
-            tail: Effect(3),
-        },
-        None,
-    );
-
-    assert_eq!(world.resource::<EffectLog>().0, vec![1, 2, 3]);
 }
 
 // -----------------------------------------------------------------------------

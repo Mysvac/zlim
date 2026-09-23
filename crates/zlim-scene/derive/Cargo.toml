@@ -1,0 +1,21 @@
+[package]
+name = "zlim-scene-derive"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+
+zlim-derive-utils = { path = "../../zlim-derive-utils", default-features = false }
+
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits"] }
+
+[lints]
+workspace = true

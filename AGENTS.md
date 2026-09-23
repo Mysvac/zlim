@@ -86,7 +86,8 @@ zlim (root facade crate, src/lib.rs)
     ├── zlim-transform  (transform propagation, crates/zlim-transform/)
     ├── zlim-diagnostic (diagnostics store & plugins, crates/zlim-diagnostic/)
     ├── zlim-sysinfo    (host system info, crates/zlim-sysinfo/)
-    └── zlim-asset      (asset system, crates/zlim-asset/)
+    ├── zlim-asset      (asset system, crates/zlim-asset/)
+    └── zlim-scene      (scenes & scene assets, crates/zlim-scene/)
 
 Auxiliary:
 ├── zlim-derive-utils (proc-macro utilities, crates/zlim-derive-utils/)
@@ -194,6 +195,15 @@ Auxiliary:
     blake3, uuid, bitflags, futures-lite, async-broadcast, async-lock, atomicow, and the optional
     `ureq` (`http` / `https`) and `notify-debouncer-full` (`watch`).
 
+- **`zlim-scene`**
+  - **Purpose**: scenes: the `Scene` / `SceneList` descriptions, resolving one into a `ResolvedScene`,
+    applying it (spawn the entities, write the templates, connect the hierarchy), and the composition
+    pieces a description is built from. Also the scene asset — `ScenePatch` / `SceneListPatch`,
+    resolved once and applied many times — the copy-on-write that lets one scene build on a cached
+    one, and the queued form that builds a scene later in the `SpawnScene` schedule
+    (`ScenePatchInstance` / `SceneListPatchInstance`).
+  - **Dependencies**: `zlim-core`, `zlim-utils`, `zlim-path`, `zlim-log`, `zlim-app`, `zlim-asset`.
+
 - **`zlim-sysinfo-dylib`**
   - **Purpose**: dynamic-library isolation layer embedding `sysinfo`; keeps `sysinfo` objects out of the engine cdylib (Windows LNK1189). Depends on no zlim workspace crate. Enabled with `feature = "dylib"`.
   - **Dependencies**: sysinfo.
@@ -236,6 +246,10 @@ Auxiliary:
 - `zlim-app/derive`
   - `#[derive(AppLabel)]` macro
   - `#[zlim_main]` attribute macro
+
+- `zlim-scene/derive`
+  - `scn!` macro
+  - `scn_list!` macro
 
 All use `zlim-derive-utils::crate_path` to resolve paths, enabling correct
 `::zlim::*` references from external crates.
@@ -305,7 +319,7 @@ All use `zlim-derive-utils::crate_path` to resolve paths, enabling correct
 | `job` | ✅ Implemented | Job trait + JobDB/JobLabel/JobGroup + `#[job_fn]`/`job!`/`job_group!` macros |
 | `world` | ✅ Implemented | World struct, WorldCell (three-level safe access: read_only/data_mut/full_mut), DeferredWorld, NonSendWorld |
 | `table` | ✅ Implemented | Dense columnar storage Table (organized by archetype), Column (BlobArray + TickArray), TableId, Tables manager |
-| `bundle` | ✅ Implemented | Bundle trait (collect/write/apply_effect), DataBundle, tuple impls (0..=12), `#[derive(Bundle)]` |
+| `bundle` | ✅ Implemented | Bundle trait (collect/write), tuple impls (0..=12), `#[derive(Bundle)]` |
 | `borrow` | ✅ Implemented | Ref/Mut/SliceRef/SliceMut + corresponding Untyped* variants, integrated change detection |
 | `resource` | ✅ Implemented | Resource trait + ResourceDB global registry, Resources with per-type storage slots, `register_resource!` macro |
 | `ops` | ✅ Implemented | Entity/EntityRef/EntityMut/EntityOwned type definitions; implementation of Common Methods |
@@ -318,6 +332,8 @@ All use `zlim-derive-utils::crate_path` to resolve paths, enabling correct
 | `clone` | ✅ Implemented | Entity cloning: ComponentCloner, per-type clone strategies |
 | `label` | ✅ Implemented | Interned label primitives (ScheduleLabel and other label traits) |
 | `init` | ✅ Implemented | Global application initialization (startup CTOR collection) |
-| `scene` | 🔸 Placeholder | Scene bump-storage staging (developing) |
+
+> Scenes used to live here as a placeholder; they are now the `zlim-scene` crate, on top of the
+> `template` and `bundle` modules.
 
 ---

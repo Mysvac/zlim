@@ -150,6 +150,7 @@ impl<T: ?Sized + Internable> Interner<T> {
 // -----------------------------------------------------------------------------
 // Interner
 
+/// Users should not use this function!!
 #[doc(hidden)]
 #[inline(always)]
 pub fn leak<T: Sized>(v: T) -> &'static T {

@@ -178,7 +178,7 @@ zlim_task::cfg::single_thread! {
         /// are skipped and replaced by an upward query: each changed node
         /// walks its ancestor chain and becomes a root only when no ancestor
         /// is changed.
-        #[job_fn(type = TransformChangeDetection, name = "zlim_transform::TransformChangeDetection")]
+        #[job_fn(type = TransformChangeDetection, name = "zlim_transform::jobs::TransformChangeDetection")]
         fn transform_change_detection(
             hierarchy: HierarchyQuery,
             global: Query<&GlobalTransform>,
@@ -362,7 +362,7 @@ zlim_task::cfg::single_thread! {
         /// Propagates transforms and updates `GlobalTransform`.
         ///
         /// Must run after [`TransformChangeDetection`](crate::jobs::TransformChangeDetection).
-        #[job_fn(type = TransformPropagation, name = "zlim_transform::TransformPropagation")]
+        #[job_fn(type = TransformPropagation, name = "zlim_transform::jobs::TransformPropagation")]
         fn propagate_transform(
             hierarchy: HierarchyQuery,
             mut query: Query<(Mut<Transform>, Mut<GlobalTransform>)>,
@@ -483,7 +483,7 @@ zlim_task::cfg::multi_thread! {
         /// are skipped and replaced by an upward query: each changed node
         /// walks its ancestor chain and becomes a root only when no ancestor
         /// is changed.
-        #[job_fn(type = TransformChangeDetection, name = "zlim_transform::TransformChangeDetection")]
+        #[job_fn(type = TransformChangeDetection, name = "zlim_transform::jobs::TransformChangeDetection")]
         fn transform_change_detection(
             hierarchy: HierarchyQuery,
             global: Query<&GlobalTransform>,
@@ -988,7 +988,7 @@ zlim_task::cfg::multi_thread! {
         /// Propagates transforms and updates `GlobalTransform`.
         ///
         /// Must run after [`TransformChangeDetection`](crate::jobs::TransformChangeDetection).
-        #[job_fn(type = TransformPropagation, name = "zlim_transform::TransformPropagation")]
+        #[job_fn(type = TransformPropagation, name = "zlim_transform::jobs::TransformPropagation")]
         fn propagate_transform(
             hierarchy: HierarchyQuery,
             mut query: Query<(Mut<Transform>, Mut<GlobalTransform>)>,

@@ -1,4 +1,4 @@
-use crate::job::JobLabel;
+use crate::job::{JobGroupLabel, JobLabel};
 use crate::schedule::{MissingSchedule, Schedule, ScheduleLabel, ScheduleStage};
 use crate::world::{World, WorldCell};
 
@@ -35,6 +35,19 @@ impl World {
         stage: impl ScheduleStage,
     ) {
         self.schedules.entry(label.intern()).insert::<J>(stage);
+    }
+
+    /// Inserts a job group from a [`JobGroupLabel`] into the given [`Schedule`].
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn insert_job_group<J: JobGroupLabel>(
+        &mut self,
+        label: impl ScheduleLabel,
+        stage: impl ScheduleStage,
+    ) {
+        self.schedules
+            .entry(label.intern())
+            .insert_group::<J>(stage);
     }
 }
 

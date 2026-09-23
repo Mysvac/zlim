@@ -20,7 +20,8 @@ use serde::de::Visitor;
 
 const ENGINE_NAME: &str = "zlim";
 const ENGINE_PATH: &str = "::zlim";
-const ENGINE_PREFIX: &str = "zlim_";
+const ENGINE_PREFIX1: &str = "zlim_";
+const ENGINE_PREFIX2: &str = "zlim-";
 
 // -----------------------------------------------------------------------------
 // Manifest
@@ -214,11 +215,26 @@ impl Manifest {
             (path, modified_time)
         }
 
+        fn reduce(keys: &mut TableKeys) {
+            let mut buf = BTreeSet::new();
+            for item in core::mem::take(&mut keys.0) {
+                if let Some(m) = item.strip_prefix(ENGINE_PREFIX2) {
+                    buf.insert(String::from(m));
+                } else if item == "zlim" {
+                    buf.insert(item);
+                }
+            }
+            keys.0 = buf;
+        }
+
         fn read_manifest(path: &Path) -> Dependencies {
             let s = std::fs::read_to_string(path)
                 .unwrap_or_else(|_| panic!("Failed to read cargo manifest: {path:?}"));
-            toml::from_str(&s)
-                .unwrap_or_else(|e| panic!("Failed to parse cargo manifest({path:?}): {e}"))
+            let mut d: Dependencies = toml::from_str(&s)
+                .unwrap_or_else(|e| panic!("Failed to parse cargo manifest({path:?}): {e}"));
+            reduce(&mut d.dependencies);
+            reduce(&mut d.dev_dependencies);
+            d
         }
 
         let (path, time) = manifest_meta();
@@ -252,7 +268,7 @@ impl Manifest {
     }
 
     fn find_crate_path(&self, name: &'static str) -> syn::Path {
-        let Some(module) = name.strip_prefix(ENGINE_PREFIX) else {
+        let Some(module) = name.strip_prefix(ENGINE_PREFIX1) else {
             let mut path: syn::Path = syn::parse_str(name).unwrap();
             path.leading_colon = Some(Default::default());
             return path;
@@ -267,7 +283,7 @@ impl Manifest {
         }
 
         // find from `dependencies`
-        if self.manifest.contains(name) {
+        if self.manifest.contains(module) {
             let mut path: syn::Path = syn::parse_str(name).unwrap();
             path.leading_colon = Some(Default::default());
             return path;

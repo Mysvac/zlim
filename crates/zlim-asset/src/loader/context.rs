@@ -213,8 +213,6 @@ impl LoadContext<'_> {
     /// [`add_labeled_asset`]: LoadContext::add_labeled_asset
     /// [`finish`]: LoadContext::finish
     #[doc(alias = "add_label")]
-    #[doc(alias = "register_label")]
-    #[doc(alias = "register_dependency")]
     #[must_use = "not using the returned handle may cause the asset to be released"]
     pub fn add_dependency<A: Asset>(
         &mut self,

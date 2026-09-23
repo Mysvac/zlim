@@ -1101,6 +1101,16 @@ impl EntityAllocator {
             slow_path(self)
         }
     }
+
+    /// Returns the largest entity index currently allocated.
+    ///
+    /// This is typically used to detect bugs where an [`EntityId`] fails to be
+    /// properly recycled.
+    #[inline]
+    pub fn max_index(&self) -> u32 {
+        use core::sync::atomic::Ordering::Relaxed;
+        self.shared.fresh.next.load(Relaxed) - 1
+    }
 }
 
 // -----------------------------------------------------------------------------

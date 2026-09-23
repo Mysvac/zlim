@@ -48,12 +48,23 @@ pub enum DuplicateStrategy {
 /// 1. [`build`](Self::build) — inspect the app, add dependency plugins and
 ///    adjust the plugin execution order.
 /// 2. [`apply`](Self::apply) — apply the plugin in **dependency order**
-///    (dependencies first); main-app plugins run before every sub-app's.
+///    (dependencies first).
 /// 3. [`finish`](Self::finish) — runs after **every** plugin has been
 ///    applied, in installation order; for work that needs the fully applied
 ///    app (validation, final registries, …).
 /// 4. [`cleanup`](Self::cleanup) — tear down temporary resources; afterwards
 ///    the plugin objects are removed from the app.
+///
+/// The main app is initialized before every sub-app: it is built and applied
+/// first, then each sub-app is built and applied in turn — which is also why
+/// a plugin of the main sub-app is the one that installs sub-apps.
+///
+/// `finish` and `cleanup` are separate passes over the main sub-app and then
+/// the sub-apps, so a plugin of a sub-app sees the fully applied main sub-app
+/// and a plugin installed to the main sub-app sees every sub-app. One plugin's
+/// `finish` may nevertheless not rely on another plugin's `finish` having run:
+/// only the preceding stage is guaranteed to be complete. The order among the
+/// sub-apps themselves is unspecified.
 ///
 /// The plugin itself must be `Send + Sync` (the app may be moved to the main
 /// thread before initialization).
@@ -74,8 +85,10 @@ pub trait Plugin: Any + Send + Sync + 'static {
 
     /// Applies the plugin to the app.
     ///
-    /// Called once per plugin, in **dependency order** (dependencies first)
-    /// — main-app plugins before every sub-app's plugins.
+    /// Called once per plugin, in **dependency order** (dependencies first).
+    /// Every plugin of the *same app* has been built by the time this runs;
+    /// the plugins of the sub-apps are not built yet while the main sub-app
+    /// applies.
     ///
     /// At this stage, the plugin list has stabilized and new additions are prohibited.
     fn apply(&mut self, app: &mut App);
@@ -88,12 +101,19 @@ pub trait Plugin: Any + Send + Sync + 'static {
     /// their `apply` — reading or validating what they registered, building
     /// final lookup tables, and so on.
     ///
+    /// This stage may not depend on another plugin's `finish` having run. When
+    /// it is invoked for a given app, every plugin of that app has been
+    /// applied, but `finish` has only run for the plugins before it in that
+    /// app — plus, for a sub-app, the whole main sub-app and whichever
+    /// sub-apps happen to have been visited before it.
+    ///
     /// At this stage, the plugin list has stabilized and new additions are prohibited.
     fn finish(&mut self, _app: &mut App) {
         // do nothing
     }
 
-    /// Runs after every plugin has been finished.
+    /// Runs after every plugin of the app has been finished, and after the
+    /// main sub-app's plugins have been cleaned up (for a sub-app).
     ///
     /// Useful for tearing down temporary resources before the app schedules
     /// execute. Plugins are visited in installation order.

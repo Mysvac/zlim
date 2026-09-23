@@ -5,7 +5,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 
 use super::CommandQueue;
 use super::function as func;
-use crate::bundle::{Bundle, DataBundle};
+use crate::bundle::Bundle;
 use crate::command::{Command, EntityCommand};
 use crate::entity::{EntityError, EntityId};
 use crate::error::{ErrorHandler, IntoZlimResult};
@@ -254,6 +254,8 @@ impl<'w, 's> Commands<'w, 's> {
     /// Spawns an empty entity.
     ///
     /// This command is faster than `spawn((), parent)`.
+    ///
+    /// Logs at warn level if the parent is some but does not exist and do nothing.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_empty(&mut self, parent: Option<EntityId>) -> EntityCommands<'_> {
@@ -262,7 +264,22 @@ impl<'w, 's> Commands<'w, 's> {
         self.with_entity(entity)
     }
 
+    /// Spawns an empty entity.
+    ///
+    /// This command is faster than `spawn((), parent)`.
+    ///
+    /// No-op if the entity is already despawned.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_spawn_empty(&mut self, parent: Option<EntityId>) -> EntityCommands<'_> {
+        let entity = self.world.alloc_entity();
+        self.queue_silenced(func::spawn_empty_at(entity, parent));
+        self.with_entity(entity)
+    }
+
     /// Enqueues a spawn operation and returns the corresponding [`EntityCommands`].
+    ///
+    /// Logs at warn level if the parent is some but does not exist.
     ///
     /// To spawn many entities with the same combination of components,
     /// [`spawn_batch`](Self::spawn_batch) can be used for better performance.
@@ -304,21 +321,103 @@ impl<'w, 's> Commands<'w, 's> {
         self.with_entity(entity)
     }
 
-    /// Enqueues spawning multiple entities from a batch of [`DataBundle`] values.
+    /// Enqueues a spawn operation and returns the corresponding [`EntityCommands`].
+    ///
+    /// No-op if the entity is already despawned.
+    ///
+    /// To spawn many entities with the same combination of components,
+    /// [`spawn_batch`](Self::spawn_batch) can be used for better performance.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_spawn<B: Bundle>(
+        &mut self,
+        bundle: B,
+        parent: Option<EntityId>,
+    ) -> EntityCommands<'_> {
+        let entity = self.world.alloc_entity();
+        self.queue(func::spawn_at(bundle, entity, parent));
+        self.with_entity(entity)
+    }
+
+    /// Enqueues spawning multiple entities from a batch of [`Bundle`] values.
     ///
     /// A batch can be any type that implements [`IntoIterator`] and
     /// contains bundles, such as a `Vec<Bundle>` or an array `[Bundle; N]`.
     ///
     /// This is equivalent to repeatedly calling [`spawn`](Self::spawn), but can
     /// be faster due to batched allocation and contiguous processing.
+    ///
+    /// Logs at warn level if the parent is some but does not exist.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_batch<I>(&mut self, batch: I, parent: Option<EntityId>)
     where
         I: IntoIterator + Send + Sync + 'static,
-        I::Item: DataBundle,
+        I::Item: Bundle,
     {
         self.queue(func::spawn_batch(batch, parent));
+    }
+
+    /// Enqueues spawning multiple entities from a batch of [`Bundle`] values.
+    ///
+    /// A batch can be any type that implements [`IntoIterator`] and
+    /// contains bundles, such as a `Vec<Bundle>` or an array `[Bundle; N]`.
+    ///
+    /// This is equivalent to repeatedly calling [`spawn`](Self::spawn), but can
+    /// be faster due to batched allocation and contiguous processing.
+    ///
+    /// No-op if the entity is already despawned.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_spawn_batch<I>(&mut self, batch: I, parent: Option<EntityId>)
+    where
+        I: IntoIterator + Send + Sync + 'static,
+        I::Item: Bundle,
+    {
+        self.queue_silenced(func::spawn_batch(batch, parent));
+    }
+
+    /// Allocate a [`EntityId`] that can be used for [`Commands::spawn_at`].
+    ///
+    /// Once allocated, the ID **must** be used; otherwise its corresponding
+    /// entity slot will never be reclaimed.
+    #[inline]
+    pub fn alloc_entity_id(&mut self) -> EntityId {
+        self.world.allocator.alloc()
+    }
+
+    /// Enqueues a spawn operation at given entity and returns the corresponding [`EntityCommands`].
+    ///
+    /// If the command fails but the [`EntityId`] is valid, it will be recycled by entity allocator.
+    ///
+    /// Logs at warn level if the parent does not exists or the entity id cannot be used to spawn.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn spawn_at<B: Bundle>(
+        &mut self,
+        bundle: B,
+        entity: EntityId,
+        parent: Option<EntityId>,
+    ) -> EntityCommands<'_> {
+        self.queue(func::spawn_at(bundle, entity, parent));
+        self.with_entity(entity)
+    }
+
+    /// Enqueues a spawn operation at given entity and returns the corresponding [`EntityCommands`].
+    ///
+    /// If the command fails but the [`EntityId`] is valid, it will be recycled by entity allocator.
+    ///
+    /// Skips warning if the parent does not exists or the entity id cannot be used to spawn.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_spawn_at<B: Bundle>(
+        &mut self,
+        bundle: B,
+        entity: EntityId,
+        parent: Option<EntityId>,
+    ) -> EntityCommands<'_> {
+        self.queue_silenced(func::spawn_at(bundle, entity, parent));
+        self.with_entity(entity)
     }
 
     /// Despawns an entity and removes all of its components.
@@ -388,7 +487,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// Queues a command that runs the schedule with the given
     /// [`ScheduleLabel`].
     ///
-    /// Log a warning if the schdule does not exist, just like
+    /// Log a error if the schdule does not exist, just like
     /// [`World::try_run_schedule`].
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
@@ -402,7 +501,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// Do nothing if the schedule does not exist, just like:
     ///
     /// ```ignore
-    /// let _ = world.try_un_schedule(label);
+    /// let _ = world.try_run_schedule(label);
     /// ```
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
@@ -632,7 +731,7 @@ impl<'a> EntityCommands<'a> {
     /// If the entity does not exist, this command will log a warning.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn insert_if_new<T: DataBundle, F>(&mut self, bundle: F) -> &mut Self
+    pub fn insert_if_new<T: Bundle, F>(&mut self, bundle: F) -> &mut Self
     where
         F: FnOnce() -> T + Send + 'static,
     {
@@ -644,7 +743,7 @@ impl<'a> EntityCommands<'a> {
     /// Errors are ignored if the entity is despawned before command execution.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn try_insert_if_new<T: DataBundle, F>(&mut self, bundle: F) -> &mut Self
+    pub fn try_insert_if_new<T: Bundle, F>(&mut self, bundle: F) -> &mut Self
     where
         F: FnOnce() -> T + Send + 'static,
     {
@@ -658,7 +757,7 @@ impl<'a> EntityCommands<'a> {
     /// If the entity does not exist, this command will log a warning.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn remove<B: DataBundle>(&mut self) -> &mut Self {
+    pub fn remove<B: Bundle>(&mut self) -> &mut Self {
         self.queue(func::remove::<B>())
     }
 
@@ -669,7 +768,7 @@ impl<'a> EntityCommands<'a> {
     /// Errors are ignored if the entity is despawned before command execution.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn try_remove<B: DataBundle>(&mut self) -> &mut Self {
+    pub fn try_remove<B: Bundle>(&mut self) -> &mut Self {
         self.queue_silenced(func::remove::<B>())
     }
 
@@ -680,7 +779,7 @@ impl<'a> EntityCommands<'a> {
     /// If the entity does not exist, this command will log a warning.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn remove_required<B: DataBundle>(&mut self) -> &mut Self {
+    pub fn remove_required<B: Bundle>(&mut self) -> &mut Self {
         self.queue(func::remove_required::<B>())
     }
 
@@ -689,7 +788,7 @@ impl<'a> EntityCommands<'a> {
     /// If the entity does not exist, this command will log a warning.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn try_remove_required<B: DataBundle>(&mut self) -> &mut Self {
+    pub fn try_remove_required<B: Bundle>(&mut self) -> &mut Self {
         self.queue_silenced(func::remove_required::<B>())
     }
 
@@ -698,7 +797,7 @@ impl<'a> EntityCommands<'a> {
     /// Errors are ignored if the entity is despawned before command execution.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn remove_explicit<B: DataBundle>(&mut self) -> &mut Self {
+    pub fn remove_explicit<B: Bundle>(&mut self) -> &mut Self {
         self.queue(func::remove_explicit::<B>())
     }
 
@@ -709,7 +808,7 @@ impl<'a> EntityCommands<'a> {
     /// Errors are ignored if the entity is despawned before command execution.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn try_remove_explicit<B: DataBundle>(&mut self) -> &mut Self {
+    pub fn try_remove_explicit<B: Bundle>(&mut self) -> &mut Self {
         self.queue_silenced(func::remove_explicit::<B>())
     }
 
@@ -769,9 +868,7 @@ impl<'a> EntityCommands<'a> {
     ///
     /// - Pass `Some(id)` to make `id` the new parent.
     ///
-    /// If the entity (or parent) does not exist, this command will log a warning.
-    ///
-    /// Note that if the parent entity does not exist, the operation will not take effect.
+    /// If the entity (or parent) does not exist, this command will log a warning do nothing.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn reparent(&mut self, parent: Option<EntityId>) -> &mut Self {
@@ -793,6 +890,86 @@ impl<'a> EntityCommands<'a> {
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_reparent(&mut self, parent: Option<EntityId>) -> &mut Self {
         self.queue_silenced(func::reparent(parent))
+    }
+
+    /// Spawns a child entity as a direct child of this entity and **returns it**.
+    ///
+    /// If you don't need to operate on the spawned child, use [`with_child`](Self::with_child) instead.
+    ///
+    /// If the entity (or parent) does not exist, this command will log a warning and do nothing.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    #[must_use = "use `with_child` instead if you don't need the returned child `EntityCommands`"]
+    pub fn spawn_child<B: Bundle>(&mut self, bundle: B) -> EntityCommands<'_> {
+        let id = self.commands.world.allocator.alloc();
+        self.commands.spawn_at(bundle, id, Some(self.entity))
+    }
+
+    /// Spawns a child entity as a direct child of this entity and **returns it**.
+    ///
+    /// If you don't need to operate on the spawned child, use [`try_with_child`](Self::try_with_child) instead.
+    ///
+    /// Warning will be skipped if the command fails.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    #[must_use = "use `with_child` instead if you don't need the returned child `EntityCommands`"]
+    pub fn try_spawn_child<B: Bundle>(&mut self, bundle: B) -> EntityCommands<'_> {
+        let id = self.commands.world.allocator.alloc();
+        self.commands.try_spawn_at(bundle, id, Some(self.entity))
+    }
+
+    /// Spawns a child entity as a direct child of this entity.
+    ///
+    /// Note that this function returns itself (`&mut Self`), **not** the spawned children.
+    /// If you need to operate on the spawned child, use [`spawn_child`](Self::spawn_child) instead.
+    ///
+    /// If the entity (or parent) does not exist, this command will log a warning and do nothing.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_child<B: Bundle>(&mut self, bundle: B) -> &mut Self {
+        self.queue(func::spawn_child(bundle))
+    }
+
+    /// Spawns a child entity as a direct child of this entity.
+    ///
+    /// Note that this function returns itself (`&mut Self`), **not** the spawned children.
+    /// If you need to operate on the spawned child, use [`try_spawn_child`](Self::try_spawn_child) instead.
+    ///
+    /// Warning will be skipped if the command fails.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_with_child<B: Bundle>(&mut self, bundle: B) -> &mut Self {
+        self.queue_silenced(func::spawn_child(bundle))
+    }
+
+    /// Spawns multiple child entities as a direct child of this entity.
+    ///
+    /// Note that this function returns itself (`&mut Self`), **not** the spawned children.
+    ///
+    /// If the entity (or parent) does not exist, this command will log a warning and do nothing.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with_children<B, I>(&mut self, iter: I) -> &mut Self
+    where
+        B: Bundle,
+        I: IntoIterator<Item = B> + Send + 'static,
+    {
+        self.queue(func::spawn_children(iter))
+    }
+
+    /// Spawns multiple child entities as a direct child of this entity.
+    ///
+    /// Note that this function returns itself (`&mut Self`), **not** the spawned children.
+    ///
+    /// Warning will be skipped if the command fails.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_with_children<B, I>(&mut self, iter: I) -> &mut Self
+    where
+        B: Bundle,
+        I: IntoIterator<Item = B> + Send + 'static,
+    {
+        self.queue_silenced(func::spawn_children(iter))
     }
 
     /// Despawns an entity and removes all of its components.

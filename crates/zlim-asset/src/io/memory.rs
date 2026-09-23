@@ -34,8 +34,14 @@
 //! Paths are interpreted relative to the root that the reader/writer was created with: `.` is
 //! skipped and `..` walks back as far as it can. A component that cannot be resolved — a `..`
 //! above the root, or a `Prefix` component like `C:` — is reported with a warning and skipped
-//! by [`Dir::get_or_init_dir`], while [`Dir::get_dir`] turns it into `None`. Intermediate
-//! directories are created on demand.
+//! by [`Dir::get_or_init_dir`], while [`Dir::get_dir`] turns it into `None`.
+//!
+//! Only the accessors that *insert* create anything: [`Dir::get_or_init_dir`] and, through it,
+//! [`Dir::insert_asset`] / [`Dir::insert_meta`] and the writes and renames of
+//! [`MemoryAssetWriter`], which all make the intermediate directories they need. Nothing else
+//! creates a node — [`Dir::get_dir`], [`Dir::get_asset`], [`Dir::get_meta`] and the three
+//! `remove_*` report a path whose directory is missing as `None` (or as
+//! [`NotFound`](AssetWriterError::NotFound) through the writer), leaving the tree as it was.
 
 use core::fmt::Debug;
 use core::pin::Pin;
@@ -377,6 +383,8 @@ impl Dir {
     }
 
     /// Removes the metadata at `path`, returning `None` when the path is invalid.
+    ///
+    /// Missing intermediate directories are treated as an invalid path.
     pub fn remove_meta(&self, path: &Path) -> Option<Data> {
         let mut dir = self.clone();
         if let Some(parent) = path.parent() {
@@ -393,20 +401,11 @@ impl Dir {
 
     /// Removes the directory at `path`, returning `None` when the path is invalid.
     ///
-    /// The whole subtree goes away with it; the returned [`Dir`] keeps the removed node (and
-    /// therefore its contents) alive for as long as it is held.
-    ///
-    /// Unlike [`remove_asset`] and [`remove_meta`], the parent is resolved with
-    /// [`get_or_init_dir`], so a missing intermediate directory is created
-    /// as a side effect even though the removal then returns `None`.
-    ///
-    /// [`remove_asset`]: Self::remove_asset
-    /// [`remove_meta`]: Self::remove_meta
-    /// [`get_or_init_dir`]: Self::get_or_init_dir
+    /// Missing intermediate directories are treated as an invalid path.
     pub fn remove_dir(&self, path: &Path) -> Option<Dir> {
         let mut dir = self.clone();
         if let Some(parent) = path.parent() {
-            dir = self.get_or_init_dir(parent);
+            dir = self.get_dir(parent)?;
         }
 
         let name: &str = path.file_name()?.to_str()?;

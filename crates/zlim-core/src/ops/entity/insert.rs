@@ -1,8 +1,9 @@
 //! Component-insertion methods implemented on `EntityOwned`.
 
+use zlim_ptr::OwningPtr;
 use zlim_utils::debug::DebugLocation;
 
-use crate::bundle::{Bundle, BundleId, DataBundle};
+use crate::bundle::{Bundle, BundleId};
 use crate::component::{ComponentWriter, HookContext};
 use crate::entity::{EntityError, Location};
 use crate::ops::entity::EntityOwned;
@@ -82,7 +83,7 @@ impl EntityOwned<'_> {
     /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn insert_if_new<B: DataBundle>(
+    pub fn insert_if_new<B: Bundle>(
         &mut self,
         f: impl FnOnce() -> B,
     ) -> Result<&mut Self, EntityError> {
@@ -125,14 +126,7 @@ impl EntityOwned<'_> {
         let data = bundle;
 
         if current_table_id == new_table_id {
-            insert_local(
-                self,
-                data,
-                bundle_id,
-                B::write_explicit,
-                B::write_required,
-                caller,
-            );
+            insert_local(self, data, bundle_id, B::write_explicit, caller);
         } else {
             insert_moved(
                 self,
@@ -149,7 +143,7 @@ impl EntityOwned<'_> {
         Ok(self)
     }
 
-    pub(crate) fn insert_if_new_with_caller<B: DataBundle>(
+    pub(crate) fn insert_if_new_with_caller<B: Bundle>(
         &mut self,
         f: impl FnOnce() -> B,
         caller: DebugLocation,
@@ -184,10 +178,9 @@ impl EntityOwned<'_> {
 #[inline(never)]
 fn insert_local(
     this: &mut EntityOwned,
-    data: zlim_ptr::OwningPtr<'_>,
+    data: OwningPtr<'_>,
     bundle_id: BundleId,
-    write_fn: unsafe fn(zlim_ptr::OwningPtr<'_>, &mut ComponentWriter),
-    write_required_fn: unsafe fn(&mut ComponentWriter),
+    write_fn: unsafe fn(OwningPtr<'_>, &mut ComponentWriter),
     caller: DebugLocation,
 ) {
     let entity = this.id;
@@ -228,7 +221,7 @@ fn insert_local(
             // SAFETY: assume_init does not access `Table`.
             (*table_ptr).types().for_each(|ty| writer.assume_init(ty));
             write_fn(data, &mut writer);
-            write_required_fn(&mut writer);
+            // All components already exist, there is no need to write required components.
         }
     }
 
@@ -258,10 +251,10 @@ fn insert_local(
 #[inline(never)]
 fn insert_moved(
     this: &mut EntityOwned,
-    data: zlim_ptr::OwningPtr<'_>,
+    data: OwningPtr<'_>,
     bundle_id: BundleId,
     new_table_id: TableId,
-    write_fn: unsafe fn(zlim_ptr::OwningPtr<'_>, &mut ComponentWriter),
+    write_fn: unsafe fn(OwningPtr<'_>, &mut ComponentWriter),
     write_required_fn: unsafe fn(&mut ComponentWriter),
     caller: DebugLocation,
 ) {

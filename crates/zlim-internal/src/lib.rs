@@ -31,6 +31,8 @@ pub use zlim_diagnostic as diagnostic;
 
 pub use zlim_asset as asset;
 
+pub use zlim_scene as scene;
+
 #[cfg(feature = "zlim-sample")]
 pub use zlim_sample as sample;
 
@@ -68,6 +70,8 @@ pub mod prelude {
     pub use zlim_os::prelude::*;
     #[doc(hidden)]
     pub use zlim_path::prelude::*;
+    #[doc(hidden)]
+    pub use zlim_scene::prelude::*;
     #[doc(hidden)]
     pub use zlim_shape::prelude::*;
     #[doc(hidden)]

@@ -295,6 +295,13 @@ pub trait AssetWriter: Send + Sync + 'static {
     ) -> impl Future<Output = Result<(), AssetWriterError>> + Send;
 
     /// Removes the directory at the given path, including all assets and directories in it.
+    ///
+    /// Nothing is created on the way: a directory that is not there — or whose parent is not —
+    /// cannot be removed.
+    ///
+    /// # Errors
+    ///
+    /// [`NotFound`](AssetWriterError::NotFound) when the directory does not exist.
     fn remove_directory<'a>(
         &'a self,
         path: &'a Path,
@@ -304,7 +311,9 @@ pub trait AssetWriter: Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// [`DirectoryNotEmpty`](AssetWriterError::DirectoryNotEmpty) when it still has entries.
+    /// [`DirectoryNotEmpty`](AssetWriterError::DirectoryNotEmpty) when it still has entries, and
+    /// [`NotFound`](AssetWriterError::NotFound) when the directory does not exist. Like
+    /// [`remove_directory`](Self::remove_directory) it creates nothing.
     fn remove_empty_directory<'a>(
         &'a self,
         path: &'a Path,

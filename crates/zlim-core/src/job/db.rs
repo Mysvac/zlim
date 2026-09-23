@@ -102,7 +102,7 @@ impl JobDB {
             }
 
             #[cfg(any(debug_assertions, feature = "debug"))]
-            zlim_log::debug!(
+            zlim_log::trace!(
                 "JobDB({}) collection finished in {:?}",
                 REGISTRY
                     .read()

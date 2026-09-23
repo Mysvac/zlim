@@ -6,7 +6,7 @@ use core::ptr::NonNull;
 use zlim_ptr::OwningPtr;
 use zlim_utils::debug::DebugLocation;
 
-use crate::bundle::{Bundle, BundleId, DataBundle};
+use crate::bundle::{Bundle, BundleId};
 use crate::component::ComponentWriter;
 use crate::entity::{AllocEntitiesIter, EntityId, Location};
 use crate::ops::EntityOwned;
@@ -247,17 +247,11 @@ impl World {
 
         let storage = spawner.spawn_at_flush(data, entity, parent);
 
-        let mut owned = EntityOwned {
+        EntityOwned {
             id: entity,
             storage,
             world: cell,
-        };
-
-        if B::NEED_APPLY_EFFECT {
-            unsafe { B::apply_effect(ptr, &mut owned) };
         }
-
-        owned
     }
 
     #[inline] // We enable inlining to avoid copying data
@@ -292,17 +286,11 @@ impl World {
 
         let storage = spawner.spawn_at_flush(data, entity, parent);
 
-        let mut owned = EntityOwned {
+        EntityOwned {
             id: entity,
             storage,
             world: cell,
-        };
-
-        if B::NEED_APPLY_EFFECT {
-            unsafe { B::apply_effect(ptr, &mut owned) };
         }
-
-        owned
     }
 }
 
@@ -310,7 +298,7 @@ impl World {
 // Spawn Batch Iter
 // -----------------------------------------------------------------------------
 
-/// An iterator that spawns one entity per [`DataBundle`] produced by the
+/// An iterator that spawns one entity per [`Bundle`] produced by the
 /// underlying iterator.
 ///
 /// Returned by [`World::spawn_batch`].  If not fully consumed, the remaining
@@ -318,7 +306,7 @@ impl World {
 pub struct SpawnBatchIter<'w, I>
 where
     I: Iterator,
-    I::Item: DataBundle,
+    I::Item: Bundle,
 {
     inner: I,
     parent: Option<EntityId>,
@@ -329,7 +317,7 @@ where
 impl<I> Drop for SpawnBatchIter<'_, I>
 where
     I: Iterator,
-    I::Item: DataBundle,
+    I::Item: Bundle,
 {
     fn drop(&mut self) {
         // The panicked item was cleaned up by
@@ -351,7 +339,7 @@ where
 impl<I> Iterator for SpawnBatchIter<'_, I>
 where
     I: Iterator,
-    I::Item: DataBundle,
+    I::Item: Bundle,
 {
     type Item = EntityId;
 
@@ -374,8 +362,8 @@ where
     }
 }
 
-impl<I: ExactSizeIterator<Item: DataBundle>> ExactSizeIterator for SpawnBatchIter<'_, I> {}
-impl<I: FusedIterator<Item: DataBundle>> FusedIterator for SpawnBatchIter<'_, I> {}
+impl<I: ExactSizeIterator<Item: Bundle>> ExactSizeIterator for SpawnBatchIter<'_, I> {}
+impl<I: FusedIterator<Item: Bundle>> FusedIterator for SpawnBatchIter<'_, I> {}
 
 // -----------------------------------------------------------------------------
 // Spawn Batch
@@ -421,7 +409,7 @@ impl World {
         parent: Option<EntityId>,
     ) -> SpawnBatchIter<'_, I::IntoIter>
     where
-        B: DataBundle,
+        B: Bundle,
         I: IntoIterator<Item = B>,
     {
         self.spawn_batch_with_caller(iter, parent, DebugLocation::caller())
@@ -435,7 +423,7 @@ impl World {
         caller: DebugLocation,
     ) -> SpawnBatchIter<'_, I::IntoIter>
     where
-        B: DataBundle,
+        B: Bundle,
         I: IntoIterator<Item = B>,
     {
         let bundle_id = self.register_required_bundle::<B>();

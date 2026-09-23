@@ -62,7 +62,9 @@ impl<T, const N: usize> ArrayDeque<T, N> {
     #[inline]
     fn drop_data(&mut self) {
         if core::mem::needs_drop::<T>() && self.len != 0 {
-            if self.len == N {
+            let len = self.len;
+            self.len = 0; // avoid double drop during panic
+            if len == N {
                 // SAFETY: When `self.len == N`, all N slots contain initialized `T` values.
                 // The cast from `*mut MaybeUninit<T>` to `*mut T` is valid because they have
                 // the same layout.
@@ -74,7 +76,7 @@ impl<T, const N: usize> ArrayDeque<T, N> {
                 }
                 return;
             }
-            let begin = (self.tail + N - self.len) % N;
+            let begin = (self.tail + N - len) % N;
             if self.tail > begin {
                 // SAFETY: In the contiguous case, `begin = self.tail - self.len`, so
                 // `begin + self.len = self.tail <= N`. The range `[begin, begin + len)`
@@ -82,7 +84,7 @@ impl<T, const N: usize> ArrayDeque<T, N> {
                 unsafe {
                     ptr::drop_in_place::<[T]>(ptr::slice_from_raw_parts_mut(
                         self.slots.as_mut_ptr().add(begin) as *mut T,
-                        self.len,
+                        len,
                     ));
                 }
             } else {

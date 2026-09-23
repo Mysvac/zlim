@@ -15,6 +15,7 @@ use zlim_core::world::FromWorld;
 use zlim_core::world::World;
 use zlim_log::LogConfig;
 use zlim_task::TaskPoolConfigs;
+use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::HashMap;
 
 use crate::AppLabel;
@@ -157,7 +158,7 @@ pub struct SubApp {
     pub(crate) world: Option<Box<World>>,
     pub(crate) plugins: Vec<Box<dyn Plugin>>,
     pub(crate) plugin_names: Vec<(TypeId, &'static str)>,
-    pub(crate) plugin_graph: HashMap<TypeId, BTreeSet<TypeId>>,
+    pub(crate) plugin_graph: TypeMap<BTreeSet<TypeId>>,
     pub(crate) plugins_state: PluginsState,
     pub(crate) update_schedule: Option<InternedScheduleLabel>,
     pub(crate) extract: Option<ExtractFn>,
@@ -178,7 +179,7 @@ impl App {
                 world: Some(World::alloc()),
                 plugins: Vec::new(),
                 plugin_names: Vec::new(),
-                plugin_graph: HashMap::new(),
+                plugin_graph: TypeMap::new(),
                 plugins_state: PluginsState::Adding,
                 update_schedule: None,
                 extract: None,
@@ -220,7 +221,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panic if called after the app has entered the `Adding` stage.
+    /// May panic if called outside the `Adding` stage (after `App::build`).
     pub fn init_logger(&mut self) -> &mut Self {
         debug_assert_eq!(
             self.main.plugins_state,
@@ -254,7 +255,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panic if called after the app has entered the `Adding` stage.
+    /// May panic if called outside the `Adding` stage (after `App::build`).
     #[inline]
     pub fn with_logger(&mut self, config: LogConfig) -> &mut Self {
         debug_assert_eq!(
@@ -284,7 +285,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panic if called after the app has entered the `Adding` stage.
+    /// May panic if called outside the `Adding` stage (after `App::build`).
     pub fn init_task_pool(&mut self) -> &mut Self {
         debug_assert_eq!(
             self.main.plugins_state,
@@ -313,7 +314,7 @@ impl App {
     ///
     /// # Panics
     ///
-    /// May panic if called after the app has entered the `Adding` stage.
+    /// May panic if called outside the `Adding` stage (after `App::build`).
     #[inline]
     pub fn with_task_pool(&mut self, mut configs: TaskPoolConfigs) -> &mut Self {
         debug_assert_eq!(
@@ -336,7 +337,7 @@ impl App {
                 world: None,
                 plugins: Vec::new(),
                 plugin_names: Vec::new(),
-                plugin_graph: HashMap::new(),
+                plugin_graph: TypeMap::new(),
                 plugins_state: PluginsState::Adding,
                 update_schedule: None,
                 extract: None,
@@ -396,6 +397,37 @@ impl App {
 // Add_plugins
 
 impl App {
+    /// Adds one plugin.
+    fn add_plugin(&mut self, mut plugin: Box<dyn Plugin>) {
+        let id = plugin.id();
+        let name = plugin.name();
+
+        if self.main.plugin_graph.try_insert(id, BTreeSet::new) {
+            self.main.plugins.push(plugin);
+            self.main.plugin_names.push((id, name));
+        } else {
+            ::core::hint::cold_path();
+            #[expect(clippy::print_stderr, reason = "Logger has not been set yet")]
+            match plugin.duplicate_strategy() {
+                DuplicateStrategy::Skip => {
+                    std::eprintln!("Find a duplicated Plugin `{name}`, the new one was skipped.");
+                }
+                DuplicateStrategy::Cover => {
+                    let ps = &mut self.main.plugins;
+                    let x: &mut Box<dyn Plugin> = ps
+                        .iter_mut()
+                        .find(|x| x.id() == id || x.is::<PlaceholderPlugin>())
+                        .unwrap_or_else(|| {
+                            panic!("Find duplicated Plugin `{name}`, but missing object.")
+                        });
+                    core::mem::swap(x, &mut plugin);
+                    std::eprintln!("Find a duplicated Plugin `{name}`, the old one was replaced.");
+                }
+                DuplicateStrategy::Panic => panic!("duplicated plugin `{name}`"),
+            }
+        }
+    }
+
     /// Adds one or more plugins (a [`Plugin`], a [`PluginGroup`], or a
     /// tuple of them) to the main sub-app.
     ///
@@ -415,45 +447,10 @@ impl App {
             "Plugins can only be added in `Adding` stage (before `App::build` and `App::run`)."
         );
 
-        for mut plugin in plugins.unpack() {
-            let id = plugin.id();
-            let name = plugin.name();
-
-            if self
-                .main
-                .plugin_graph
-                .try_insert(id, BTreeSet::new())
-                .is_err()
-            {
-                ::core::hint::cold_path();
-                #[expect(clippy::print_stderr, reason = "Logger has not been set yet")]
-                match plugin.duplicate_strategy() {
-                    DuplicateStrategy::Skip => {
-                        std::eprintln!(
-                            "Find a duplicated Plugin `{name}`, the new one was skipped."
-                        );
-                        continue;
-                    }
-                    DuplicateStrategy::Cover => {
-                        let ps = &mut self.main.plugins;
-                        let x: &mut Box<dyn Plugin> = ps
-                            .iter_mut()
-                            .find(|x| x.id() == id || x.is::<PlaceholderPlugin>())
-                            .unwrap_or_else(|| {
-                                panic!("Find duplicated Plugin `{name}`, but missing object.")
-                            });
-                        core::mem::swap(x, &mut plugin);
-                        std::eprintln!(
-                            "Find a duplicated Plugin `{name}`, the old one was replaced."
-                        );
-                    }
-                    DuplicateStrategy::Panic => panic!("duplicated plugin `{name}`"),
-                }
-            } else {
-                self.main.plugins.push(plugin);
-                self.main.plugin_names.push((id, name));
-            }
+        for plugin in plugins.unpack() {
+            self.add_plugin(plugin);
         }
+
         self
     }
 }
@@ -465,7 +462,7 @@ impl SubApp {
                 world: None,
                 plugins: Vec::new(),
                 plugin_names: Vec::new(),
-                plugin_graph: HashMap::new(),
+                plugin_graph: TypeMap::new(),
                 plugins_state: PluginsState::Adding,
                 update_schedule: None,
                 extract: None,
@@ -507,6 +504,12 @@ impl SubApp {
 
 impl App {
     fn build_plugins(&mut self) {
+        debug_assert_eq!(
+            self.main.plugins_state,
+            PluginsState::Adding,
+            "`build` is the first plugin stage",
+        );
+
         #[cfg(feature = "trace")]
         let _build_span = zlim_log::info_span!("build plugins").entered();
 
@@ -542,6 +545,12 @@ impl App {
     }
 
     fn apply_plugins(&mut self) {
+        debug_assert_eq!(
+            self.main.plugins_state,
+            PluginsState::Built,
+            "`build` has to be completed before `apply`",
+        );
+
         #[cfg(feature = "trace")]
         let _apply_span = zlim_log::info_span!("apply plugins").entered();
 
@@ -550,7 +559,7 @@ impl App {
                 .main
                 .plugin_graph
                 .iter()
-                .find_map(|(x, y)| y.is_empty().then_some(*x));
+                .find_map(|(x, y)| y.is_empty().then_some(x));
 
             fn find_name(app: &App, ty: TypeId) -> &'static str {
                 for (xty, name) in &app.main.plugin_names {
@@ -566,7 +575,7 @@ impl App {
                 let mut deps_graph: HashMap<&'static str, Vec<&'static str>> = HashMap::new();
 
                 for (k, v) in self.main.plugin_graph.iter() {
-                    let key: &'static str = find_name(self, *k);
+                    let key: &'static str = find_name(self, k);
                     let val: Vec<&'static str> = v.iter().map(|ty| find_name(self, *ty)).collect();
                     deps_graph.insert(key, val);
                 }
@@ -574,7 +583,7 @@ impl App {
                 panic!("Find circular dependencies: {deps_graph:?}");
             });
 
-            let _ = self.main.plugin_graph.remove(&ty);
+            let _ = self.main.plugin_graph.remove(ty);
             for x in self.main.plugin_graph.values_mut() {
                 x.remove(&ty);
             }
@@ -613,6 +622,12 @@ impl App {
     }
 
     fn finish_plugins(&mut self) {
+        debug_assert_eq!(
+            self.main.plugins_state,
+            PluginsState::Ready,
+            "every plugin has to be applied before `finish`",
+        );
+
         #[cfg(feature = "trace")]
         let _finish_span = zlim_log::info_span!("finish plugins").entered();
 
@@ -648,6 +663,12 @@ impl App {
     }
 
     fn cleanup_plugins(&mut self) {
+        debug_assert_eq!(
+            self.main.plugins_state,
+            PluginsState::Finish,
+            "every plugin has to be finished before `cleanup`",
+        );
+
         #[cfg(feature = "trace")]
         let _clean_span = zlim_log::info_span!("cleanup plugins").entered();
 
@@ -685,25 +706,49 @@ impl App {
         self.main.plugins_state = PluginsState::Cleaned;
     }
 
-    fn build_sub_plugins(&mut self) {
+    /// Runs `f` against every sub-app, each in its own [`SubApp::app_scope`].
+    ///
+    /// The sub-apps are visited in an **unspecified** order: their labels are
+    /// hashed, so the order is deterministic within one process but is not the
+    /// order the sub-apps were inserted in. Plugins must not depend on it.
+    fn for_each_sub_app(&mut self, mut f: impl FnMut(&mut App)) {
         for (_label, sub_app) in self.sub_apps.iter_mut() {
             #[cfg(feature = "trace")]
-            let _span = zlim_log::info_span!("sub app build", name = ?_label).entered();
+            let _span = zlim_log::info_span!("sub app", name = ?_label).entered();
 
-            sub_app.app_scope(|app| {
-                app.build();
-            });
+            sub_app.app_scope(|app| f(app));
         }
     }
 }
 
 impl App {
-    /// Builds the app: initializes logging and the task pools, then executes
-    /// every plugin through `build` → `apply` → `finish` → `cleanup` for the
-    /// main sub-app and each sub-app.
+    /// Builds the app: initializes the task pools and the core registries,
+    /// then runs every plugin of the main sub-app and of each sub-app through
+    /// the four lifecycle stages `build` → `apply` → `finish` → `cleanup`.
     ///
-    /// `apply` runs in dependency order (dependencies first); `finish` and
-    /// `cleanup` run in installation order.
+    /// The main sub-app is initialized first — all of its plugins are built
+    /// and then applied — so its plugins run against a fully initialized main
+    /// app (they are the ones that install sub-apps). Each sub-app is then
+    /// initialized the same way, one after another: a sub-app is built and
+    /// applied before the next one is touched. `finish` and `cleanup` are
+    /// separate passes, the main sub-app first in each:
+    ///
+    /// 1. `build` + `apply` — the main app, then every sub-app (each of
+    ///    them built and applied in turn).
+    /// 2. `finish` — the main sub-app, then every sub-app.
+    /// 3. `cleanup` — the main sub-app, then every sub-app.
+    ///
+    /// A sub-app's plugins are therefore already applied when the main
+    /// sub-app's `finish` runs, and the main sub-app's plugins are already
+    /// applied when a sub-app's `finish` runs. Note that the sub-apps are not
+    /// built yet while the main sub-app applies, and that the main sub-app's
+    /// `cleanup` runs after every sub-app has been finished (but before the
+    /// sub-apps are cleaned up).
+    ///
+    /// Within one app, `apply` runs in dependency order (dependencies first)
+    /// while `finish` and `cleanup` run in installation order.
+    ///
+    /// The order among the sub-apps themselves is unspecified.
     ///
     /// Idempotent: once `cleanup` has run for all plugins (state
     /// [`PluginsState::Cleaned`]) subsequent calls return immediately.
@@ -750,11 +795,23 @@ impl App {
         // - ECS Job Group Registry
         zlim_core::init::core_init();
 
+        // The main sub-app is built and applied first, so its plugins run
+        // against a fully initialized main app — they are the ones that
+        // install sub-apps. The sub-apps follow, one at a time: every sub-app
+        // is built and then applied before the next one is touched. `finish`
+        // and `cleanup` are separate passes over the main sub-app and then the
+        // sub-apps, so a plugin installed to the main sub-app sees every
+        // sub-app.
         self.build_plugins();
         self.apply_plugins();
+        self.for_each_sub_app(|app| {
+            app.build_plugins();
+            app.apply_plugins();
+        });
         self.finish_plugins();
+        self.for_each_sub_app(App::finish_plugins);
         self.cleanup_plugins();
-        self.build_sub_plugins();
+        self.for_each_sub_app(App::cleanup_plugins);
 
         #[cfg(feature = "trace")]
         ::core::mem::drop(_app_build_span);
@@ -778,7 +835,7 @@ impl SubApp {
     pub fn contains_plugin<T: Plugin>(&self) -> bool {
         let id = TypeId::of::<T>();
         match self.plugins_state {
-            PluginsState::Adding | PluginsState::Built => self.plugin_graph.contains_key(&id),
+            PluginsState::Adding | PluginsState::Built => self.plugin_graph.contains(id),
             PluginsState::Ready | PluginsState::Finish | PluginsState::Cleaned => {
                 self.plugin_names.iter().find(|(x, _)| *x == id).is_some()
             }
@@ -839,13 +896,13 @@ impl SubApp {
         let before_id = TypeId::of::<Before>();
         let after_id = TypeId::of::<After>();
 
-        if !self.plugin_graph.contains_key(&before_id) {
+        if !self.plugin_graph.contains(before_id) {
             ::core::hint::cold_path();
             let name = ::core::any::type_name::<Before>();
             panic!("Try add a plugin order but Plugin `{name}` is not registered.");
         }
 
-        match self.plugin_graph.get_mut(&after_id) {
+        match self.plugin_graph.get_mut(after_id) {
             Some(deps) => {
                 deps.insert(before_id);
             }
@@ -1409,7 +1466,7 @@ impl SubApp {
             world: Some(World::alloc()),
             plugins: Vec::new(),
             plugin_names: Vec::new(),
-            plugin_graph: HashMap::new(),
+            plugin_graph: TypeMap::new(),
             plugins_state: PluginsState::Adding,
             update_schedule: None,
             extract: None,

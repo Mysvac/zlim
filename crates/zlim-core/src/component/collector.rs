@@ -42,9 +42,24 @@ impl<'a> ComponentCollector<'a> {
     }
 
     /// Insert a [`ComponentId`] explicitly.
-    #[inline(always)]
+    #[inline]
     pub fn insert(&mut self, id: ComponentId) {
         self.collected.insert(id);
+    }
+
+    /// Insert a [`ComponentId`] explicitly with required components.
+    #[inline]
+    pub fn insert_with_required(&mut self, id: ComponentId) {
+        if self.collected.insert(id) {
+            let db = self
+                .components
+                .and_then(|infos| infos.get_by_id(id))
+                .unwrap_or_else(|| ComponentDB::get_by_id(id));
+
+            if let Some(required) = db.required {
+                required.collect(self);
+            }
+        }
     }
 
     /// Collects a component type, registering it if necessary, **without**

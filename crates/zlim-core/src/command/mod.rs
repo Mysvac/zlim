@@ -42,7 +42,7 @@
 //! |--------|--------|
 //! | [`spawn_empty`] | Spawn an entity with no components |
 //! | [`spawn`] | Spawn an entity from a [`Bundle`] |
-//! | [`spawn_batch`] | Spawn many entities from an iterator of [`DataBundle`]s |
+//! | [`spawn_batch`] | Spawn many entities from an iterator of [`Bundle`]s |
 //! | [`despawn`] | Despawn an entity (warn on missing) |
 //! | [`try_despawn`] | Despawn an entity (no-op if missing) |
 //! | [`init_resource`] | Insert a [`Resource`] if it does not already exist |
@@ -88,7 +88,6 @@
 //! [`World`]: crate::world::World
 //! [`World::flush`]: crate::world::World::flush
 //! [`Bundle`]: crate::bundle::Bundle
-//! [`DataBundle`]: crate::bundle::DataBundle
 //! [`Resource`]: crate::resource::Resource
 //! [`Command`]: crate::command::Command
 //! [`Command::handle_error`]: crate::command::Command::handle_error

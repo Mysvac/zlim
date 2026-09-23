@@ -38,7 +38,11 @@ trace_error = ["zlim-log/trace_error", "trace"]
 
 trace_chrome = ["zlim-log/trace_chrome", "trace"]
 
-tracy = ["zlim-tracy/tracy"]
+tracy = [
+    "zlim-tracy/tracy",
+    "zlim-core/tracy",
+    "zlim-app/tracy",
+]
 
 tracy_memory = ["zlim-tracy/tracy_memory"]
 tracy_system = ["zlim-tracy/tracy_system"]
@@ -98,6 +102,8 @@ zlim-transform = { path = "../zlim-transform", default-features = false }
 zlim-diagnostic = { path = "../zlim-diagnostic", default-features = false }
 
 zlim-asset = { path = "../zlim-asset", default-features = false }
+
+zlim-scene = { path = "../zlim-scene", default-features = false }
 
 zlim-sample = { path = "../zlim-sample", default-features = false, optional = true }
 

@@ -47,6 +47,21 @@ pub struct ComponentDB {
     /// Opaque [`TypeId`] for runtime type comparison.
     pub type_id: TypeId,
 
+    // --------------------------------
+    // Memory Layout
+    /// Memory layout (size + alignment) of `Self`.
+    pub layout: Layout,
+    /// Cloning strategy for this component.
+    pub cloner: ComponentCloner,
+    /// Optional custom dropper; `None` means standard drop.
+    pub dropper: Option<Dropper>,
+
+    // --------------------------------
+    // Required Components
+    pub required: Option<Required>,
+
+    // --------------------------------
+    // Names
     /// Fully-qualified type path (e.g. `"my_crate::components::Transform"`).
     pub type_path: &'static str,
     /// Short type name (e.g. `"Transform"`).
@@ -69,19 +84,6 @@ pub struct ComponentDB {
     pub on_discard: Option<ComponentHook>,
     /// Hook invoked when the owning entity is despawned.
     pub on_despawn: Option<ComponentHook>,
-
-    // --------------------------------
-    // Required Components
-    pub required: Option<Required>,
-
-    // --------------------------------
-    // Memory Layout
-    /// Memory layout (size + alignment) of `Self`.
-    pub layout: Layout,
-    /// Cloning strategy for this component.
-    pub cloner: ComponentCloner,
-    /// Optional custom dropper; `None` means standard drop.
-    pub dropper: Option<Dropper>,
 
     /// Type-erased entity-remapping function.
     ///

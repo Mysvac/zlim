@@ -30,7 +30,7 @@ use super::{InternedScheduleLabel, Schedule, ScheduleLabel};
 /// [`World::try_run_schedule`]: crate::world::World
 #[derive(Debug, Error)]
 #[error("missing schedule `{label:?}`")]
-#[zlim_error(warning)]
+#[zlim_error(error)]
 pub struct MissingSchedule {
     pub label: InternedScheduleLabel,
 }

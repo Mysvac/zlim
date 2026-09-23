@@ -171,7 +171,7 @@ impl JobExecutor for SingleThreadedExecutor {
             }
         }
 
-        world.flush();
+        // world.flush();
     }
 }
 

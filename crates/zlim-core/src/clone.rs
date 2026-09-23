@@ -257,7 +257,8 @@ impl CloneContext {
     /// Pass `recursive = true` when children entities should be recursively
     /// cloned as part of the operation. The flag is queried by relationship
     /// cloners through [`Self::recursive`].
-    pub(crate) fn new(recursive: bool) -> Self {
+    #[inline]
+    fn new(recursive: bool) -> Self {
         Self {
             recursive,
             id: ComponentId::without_provenance(0),
@@ -389,7 +390,7 @@ impl CloneContext {
         &mut self,
         func: impl FnOnce(&mut C, &mut CloneEntityMapper) + Send + 'static,
     ) {
-        #[cfg(debug_assertions)]
+        #[cfg(any(debug_assertions, feature = "debug"))]
         self.assert_type::<C>();
 
         let wrapper = move |mut value: CloneValue, mapper: &mut CloneEntityMapper| {

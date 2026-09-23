@@ -246,6 +246,10 @@ impl Tables {
         bundles: &Bundles,
         components: &Components,
     ) -> TableId {
+        if current == TableId::EMPTY {
+            return self.register(bundle_id, bundles, components);
+        }
+
         // Check cache on the current table first.
         if let Some(cached) = unsafe { self.get_unchecked(current).after_insert(bundle_id) } {
             return cached;

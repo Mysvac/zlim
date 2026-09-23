@@ -35,7 +35,7 @@ pub use main_schedule::MainSchedulePlugin;
 pub use main_schedule::{First, FixedMainLoopStage, Last, PostUpdate, PreUpdate, Update};
 pub use main_schedule::{FixedFirst, FixedLast, FixedPostUpdate, FixedPreUpdate, FixedUpdate};
 pub use main_schedule::{FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder};
-pub use main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, Startup};
+pub use main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, SpawnScene, Startup};
 
 pub use schedule_runner::{RunMode, ScheduleRunnerPlugin};
 
@@ -64,9 +64,9 @@ pub mod prelude {
     #[doc(hidden)]
     pub use crate::main_schedule::{FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder};
     #[doc(hidden)]
-    pub use crate::main_schedule::{FixedPostUpdate, FixedPreUpdate, FixedUpdate};
+    pub use crate::main_schedule::{FixedPostUpdate, FixedPreUpdate, FixedUpdate, Startup};
     #[doc(hidden)]
-    pub use crate::main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, Startup};
+    pub use crate::main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, SpawnScene};
     #[doc(hidden)]
     pub use crate::plugin::{Plugin, PluginExt, PluginGroup};
     #[doc(hidden)]
@@ -78,6 +78,8 @@ pub mod prelude {
 
 #[doc(hidden)]
 pub mod sys {
+    pub use zlim_task::designate_main_thread;
+
     zlim_os::cfg::android! {
         pub use zlim_os::sys::android_activity::AndroidApp;
         pub static ANDROID_APP: std::sync::OnceLock<AndroidApp> = std::sync::OnceLock::new();

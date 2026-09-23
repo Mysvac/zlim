@@ -121,6 +121,7 @@ impl EntityOwned<'_> {
                 .entities
                 .get_unchecked_mut(entity.index() as usize)
                 .location;
+
             *location = Some(Location {
                 table_id: TableId::EMPTY,
                 table_row: new_table_row,

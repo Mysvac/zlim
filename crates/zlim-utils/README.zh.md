@@ -20,6 +20,7 @@ zlim 引擎的基础工具库。
 
 - `Bump` —— 作用域化的 bump 分配器，用于临时数据（在 drop 时释放）。
 - `Global` —— 互斥锁保护的静态 bump 分配器，用于 `'static` 生命周期数据。
+- `MemorySize` —— 内置的用于表示内存占用的容器。
 
 ## mpmc
 

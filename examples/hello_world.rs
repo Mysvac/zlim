@@ -1,17 +1,23 @@
 //! ```text
 //! cargo run --example hello_world
 //! ```
+//!
+//! This example logs "Hello World!" once.
 
-use zlim::prelude::{App, Update, job};
+use zlim::prelude::{App, Update, info, job};
 
 // define a job by `job!` or `#[job_fn]`
 job! {
     type: HelloWorld,
-    system: || std::println!("Hello World!"),
+    system: || info!("Hello World!"),
 }
 
 fn main() {
-    App::new().build().add_job::<HelloWorld>(Update, ()).run();
+    App::new()
+        .init_logger()
+        .build()
+        .add_job::<HelloWorld>(Update, ())
+        .run();
 
     // Basic steps:
     // App::new() : create a default App with `MainSchedulePlugin`.

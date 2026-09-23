@@ -45,10 +45,10 @@ pub mod message;
 pub mod ops;
 pub mod query;
 pub mod resource;
-pub mod scene;
 pub mod schedule;
 pub mod system;
 pub mod table;
+pub mod template;
 pub mod tick;
 pub mod time;
 pub mod utils;
@@ -71,9 +71,18 @@ pub mod __macro_exports__ {
 }
 
 // -----------------------------------------------------------------------------
+// Jobs
+
+/// the zlim-core jobs
+pub mod jobs {
+    pub use crate::message::jobs::UpdateMessagesSignal;
+    pub use crate::time::jobs::OptimizeDelayedCommands;
+}
+
+// -----------------------------------------------------------------------------
 // Prelude
 
-/// zlim-core prelude
+/// the zlim-core preludes
 pub mod prelude {
     // doc(hidden): keeps this path out of autocomplete suggestions.
 
@@ -97,7 +106,9 @@ pub mod prelude {
     pub use crate::resource::{Resource, ResourceDB, ResourceId};
 
     #[doc(hidden)]
-    pub use crate::entity::{EntityId, EntityMap, EntityMapper, MapEntities};
+    pub use crate::entity::{EntityId, EntityMap, EntityMapper};
+    #[doc(hidden)]
+    pub use crate::entity::{EntityLabel, MapEntities};
 
     // implicit use zlim_core_derive::Component
     #[doc(hidden)]
@@ -115,7 +126,7 @@ pub mod prelude {
 
     // implicit use zlim_core_derive::Bundle
     #[doc(hidden)]
-    pub use crate::bundle::{Bundle, DataBundle};
+    pub use crate::bundle::Bundle;
 
     #[doc(hidden)]
     pub use crate::command::{Command, EntityCommand};
@@ -124,6 +135,10 @@ pub mod prelude {
 
     #[doc(hidden)]
     pub use crate::clone::EntityCloner;
+
+    // implicit use zlim_core_derive::FromTemplate
+    #[doc(hidden)]
+    pub use crate::template::{EntityTemplate, FromTemplate, Template, TemplateContext};
 
     #[doc(hidden)]
     pub use crate::job::{IntoJob, Job, JobDB, JobId};
@@ -164,7 +179,7 @@ pub mod prelude {
     pub use zlim_core_derive::SystemParam;
 
     #[doc(hidden)]
-    pub use crate::time::{Fixed, Real, Time, TimeState, Virtual};
+    pub use crate::time::{Fixed, Moment, Real, Time, TimeState, Virtual};
     #[doc(hidden)]
     pub use crate::time::{TimeSnapshot, TimeUpdateStrategy, Timer, TimerMode};
 }

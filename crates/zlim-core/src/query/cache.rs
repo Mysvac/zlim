@@ -35,7 +35,7 @@ use core::any::{Any, TypeId};
 use core::fmt::Debug;
 use std::sync::{Mutex, PoisonError};
 
-use zlim_utils::ext::TypeMap;
+use zlim_utils::ext::{CachePadded, TypeMap};
 
 use crate::query::{Query, QueryData, QueryFilter, QuerySingleError};
 use crate::query::{QueryState, ReadOnlyQueryData, Single};
@@ -66,7 +66,7 @@ type Slot = Mutex<Box<dyn Any + Send + Sync + 'static>>;
 /// Owned by [`World`]; see the module-level documentation for the locking
 /// design.
 pub struct QueryCache {
-    pub(crate) cache: Mutex<TypeMap<Box<Slot>>>,
+    pub(crate) cache: CachePadded<Mutex<TypeMap<Box<Slot>>>>,
 }
 
 impl Debug for QueryCache {
@@ -79,7 +79,7 @@ impl QueryCache {
     /// Creates an empty cache.
     pub(crate) const fn new() -> Self {
         Self {
-            cache: Mutex::new(TypeMap::new()),
+            cache: CachePadded::new(Mutex::new(TypeMap::new())),
         }
     }
 }

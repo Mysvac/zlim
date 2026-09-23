@@ -28,12 +28,24 @@ app.insert_sub_app(Render, render_sub_app);
 
 ## App run flow
 
-1. **Apply plugins**: `App::run` first calls `App::build` (skipped if it was
-   already called). All added plugins run in
-   `build → apply → finish → cleanup` order.
-2. **Start the runner**: once built, `App` drives the frame loop with the
-   runner set via `set_runner` (or the default runner), then returns
-   `AppExit`.
+1. **Apply plugins**: `App::build` applies every plugin inside the app, in this
+   order:
+   1.1. `build(app)` — build the main app's plugins: add dependencies and set the plugin execution order.
+   1.2. `apply(app)` — apply the main app's plugins: usually the bulk of a plugin's logic.
+   1.3. `build(sub_apps)` — build the sub-apps' plugins: add dependencies and set the plugin execution order.
+   1.4. `apply(sub_apps)` — apply the sub-apps' plugins: usually the bulk of a plugin's logic.
+   1.5. `finish(app)` — finish the main app's plugins: handle the lagging work, such as work that needs the sub-apps' data.
+   1.6. `finish(sub_apps)` — finish the sub-apps' plugins: handle their lagging work.
+   1.7. `cleanup(app)` — clean up the main app's plugins: release their data.
+   1.8. `cleanup(sub_apps)` — clean up the sub-apps' plugins.
+
+   The order among the sub-apps themselves is undefined.
+
+   Steps 1.3 and 1.4 run per sub-app: one sub-app is built and then applied before the next one is touched.
+2. **Start the runner**: `App::run` starts the app. If `App::build` has not
+   been called yet, it is called implicitly first. Once built, `App` drives the
+   frame loop with the runner set via `set_runner` (or the default runner),
+   then returns `AppExit`.
 
 ## Regular main loop flow
 
@@ -90,7 +102,7 @@ Plugins have four stages:
 |---|---|
 | `build` | Initialize the plugin itself; add **dependency plugins** to the app; set the `apply` order of plugins (dependency graph). Plugins may still be added in this stage. |
 | `apply` | The plugin list is now **immutable** (no more additions). Usually where plugin logic runs and the world is modified (registering systems/resources/messages, …). The execution order is the topological order of the dependency graph built in `build` (cycles panic). |
-| `finish` | Runs after **every** plugin has been applied, in **installation order**. Use it for work that needs the fully applied app: reading or validating what other plugins registered, building final lookup tables, and so on. |
+| `finish` | Runs after **every** plugin (main sub-app and sub-apps alike) has been applied, in **installation order**. Use it for work that needs the fully applied app: reading or validating what other plugins registered, building final lookup tables, and so on. It must not depend on another plugin's `finish` having run. |
 | `cleanup` | Clean up the plugin's own data. **After `cleanup` finishes, all plugins are removed**, so game logic added by a plugin must not rely on the plugin object itself remaining alive. |
 
 `apply` is required; `build`, `finish` and `cleanup` have default no-op

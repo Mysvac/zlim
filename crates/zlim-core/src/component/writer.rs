@@ -201,23 +201,25 @@ impl<'a> ComponentWriter<'a> {
 
         let ptr = table as *mut Table;
         for (ty, &col) in table.type_cols() {
-            let column = unsafe { (&mut *ptr).get_column_mut(col) as *mut Column };
-            let data = unsafe { (&mut *column).get_data_mut(index).promote() };
-            let size = unsafe { (&*column).item_layout().size() };
-            let dropper = unsafe { (&*column).dropper() };
-            let added = unsafe { (&mut *column).get_added_mut(index) };
-            let changed = unsafe { (&mut *column).get_changed_mut(index) };
-            mapper.insert(
-                ty,
-                Slot {
-                    data,
-                    size,
-                    dropper,
-                    added,
-                    changed,
-                    initialized: false,
-                },
-            );
+            unsafe {
+                let column = (&mut *ptr).get_column_mut(col) as *mut Column;
+                let data = (&mut *column).get_data_mut(index).promote();
+                let size = (&*column).item_layout().size();
+                let dropper = (&*column).dropper();
+                let added = (&mut *column).get_added_mut(index);
+                let changed = (&mut *column).get_changed_mut(index);
+                mapper.insert(
+                    ty,
+                    Slot {
+                        data,
+                        size,
+                        dropper,
+                        added,
+                        changed,
+                        initialized: false,
+                    },
+                );
+            }
         }
 
         Self { now, mapper }

@@ -62,6 +62,7 @@ mod cache;
 mod conditions;
 mod delayed;
 mod fixed;
+mod moment;
 mod real;
 mod state;
 mod stopwatch;
@@ -75,6 +76,7 @@ mod virt;
 
 pub use conditions::*;
 pub use fixed::Fixed;
+pub use moment::Moment;
 pub use real::Real;
 pub use state::{TimeSnapshot, TimeState};
 pub use stopwatch::Stopwatch;
@@ -83,8 +85,10 @@ pub use time::{Time, TimeContext};
 pub use timer::{Timer, TimerMode};
 pub use virt::Virtual;
 
-pub use delayed::OptimizeDelayedCommands;
 pub use delayed::{DelayedCommandQueue, DelayedCommandQueues, DelayedCommands};
 
 pub(crate) use cache::TimeCache;
-pub(crate) use delayed::queue_delayed_commands;
+pub(crate) use delayed::apply_delayed_commands;
+pub(crate) mod jobs {
+    pub use super::delayed::OptimizeDelayedCommands;
+}

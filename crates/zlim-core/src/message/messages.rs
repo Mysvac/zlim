@@ -332,16 +332,17 @@ impl Job for UpdateMessagesSignal {
 }
 
 impl JobLabel for UpdateMessagesSignal {
+    #[inline]
     fn name() -> &'static str {
-        "zlim_core::SignalMessagesUpdate"
+        "zlim_core::jobs::SignalMessagesUpdate"
     }
 
     fn database() -> JobDB {
         JobDB {
-            name: "zlim_core::SignalMessagesUpdate",
+            name: <Self as JobLabel>::name(),
             ctor: |group: &'static str| -> Box<dyn Job> {
                 Box::new(Self {
-                    id: JobId::new("zlim_core::SignalMessagesUpdate", group),
+                    id: JobId::new(<Self as JobLabel>::name(), group),
                     last_run: Tick::new(0),
                 })
             },

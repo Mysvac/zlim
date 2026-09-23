@@ -34,7 +34,7 @@ use crate::borrow::Res;
 use crate::borrow::ResMut;
 use crate::borrow::UntypedMut;
 use crate::borrow::UntypedRef;
-use crate::bundle::{Bundle, DataBundle};
+use crate::bundle::Bundle;
 use crate::component::ComponentId;
 use crate::entity::Location;
 use crate::entity::{Entities, EntityId};
@@ -1517,7 +1517,7 @@ impl<'w> EntityOwned<'w> {
     ///
     /// - Pass `Some(id)` to make `id` the new parent.
     ///
-    /// Returns `Err` if this entity is despawned.
+    /// Returns `Err` if this entity (or parent) is despawned.
     ///
     /// # Examples
     ///
@@ -1548,12 +1548,63 @@ impl<'w> EntityOwned<'w> {
         Ok(self)
     }
 
-    /// Spawns a child entity as a direct child of this entity.
+    /// Changes the parent of this entity but does not trigger [`ReparentSignal`].
+    ///
+    /// This is typically only used when initializing an `Entity`.
+    ///
+    /// For example, a user may need to create an empty entity with
+    /// `spawn_empty(None)`, then insert components and set the parent. In this
+    /// case, the user does not want setting the parent to trigger
+    /// [`ReparentSignal`], so this function can be used instead.
+    ///
+    /// [`ReparentSignal`]: crate::message::ReparentSignal
+    #[inline]
+    pub fn reparent_without_signal(
+        &mut self,
+        parent: Option<EntityId>,
+    ) -> Result<&mut Self, EntityError> {
+        self.validate()?;
+        let this = self.id();
+        let world = unsafe { self.world.full_mut() };
+        let guard = RelocateGuard(self);
+        Entities::modify_parent_without_signal(world, this, parent)?;
+        ::core::mem::drop(guard); // drop, not forget
+        Ok(self)
+    }
+
+    /// Spawns a child entity as a direct child of this entity and **returns it**.
+    ///
+    /// If you don't  need to operate child entity, use [`EntityOwned::with_child`] instead.
+    ///
+    /// Returns `Err` if this entity is despawned.
     ///
     /// The spawned entity inherits the parent's lifecycle — when the
     /// parent is despawned, all descendants are recursively despawned.
     ///
+    /// This function takes `self` by value rather than `&mut self`, because
+    /// two `EntityOwnd<'_>` must not coexist: if multiple exist, an operation
+    /// on one may leave the other's internal data invalid.
+    #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    #[must_use = "use `with_child` instead if you don't need the returned child `EntityOwned`"]
+    pub fn spawn_child(self, bundle: impl Bundle) -> Result<EntityOwned<'w>, EntityError> {
+        self.validate()?;
+        let caller = DebugLocation::caller();
+        let this = self.id();
+        let world = unsafe { self.world.full_mut() };
+        Ok(world.spawn_with_caller(bundle, Some(this), caller))
+    }
+
+    /// Spawns a child entity as a direct child of this entity.
+    ///
     /// Returns `Err` if this entity is despawned.
+    ///
+    /// The spawned entity inherits the parent's lifecycle — when the
+    /// parent is despawned, all descendants are recursively despawned.
+    ///
+    /// Note that this function returns itself (`&mut Self`), **not**
+    /// the spawned child. If you need to operate child entity, use
+    /// [`EntityOwned::spawn_child`] instead.
     ///
     /// # Examples
     ///
@@ -1602,7 +1653,7 @@ impl<'w> EntityOwned<'w> {
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn with_children<B, I>(&mut self, iter: I) -> Result<&mut Self, EntityError>
     where
-        B: DataBundle,
+        B: Bundle,
         I: IntoIterator<Item = B>,
     {
         self.validate()?;

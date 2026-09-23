@@ -92,7 +92,7 @@ impl ResourceDB {
             };
 
             #[cfg(any(debug_assertions, feature = "debug"))]
-            zlim_log::debug!(
+            zlim_log::trace!(
                 "ResourceDB({len}) collection finished in {:?}",
                 start.elapsed(),
             );

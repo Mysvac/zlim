@@ -3,6 +3,7 @@
 use core::mem::MaybeUninit;
 
 use crate::entity::{AllocEntitiesIter, EntityError, EntityId};
+use crate::entity::{EntityLabel, InternedEntityLabel};
 use crate::ops::{Entity, EntityMut, EntityOwned, EntityRef};
 use crate::utils::DebugCheckedUnwrap;
 use crate::world::{DeferredWorld, World, WorldCell};
@@ -114,6 +115,25 @@ unsafe impl FetchEntities for EntityId {
     #[inline]
     unsafe fn fetch_mut(this: Self, world: WorldCell<'_>) -> Result<Self::Mut<'_>, EntityError> {
         get_entity_mut(unsafe { world.data_mut() }, this)
+    }
+}
+
+unsafe impl<T: EntityLabel> FetchEntities for T {
+    type Ref<'a> = EntityRef<'a>;
+    type Mut<'a> = EntityMut<'a>;
+
+    #[inline]
+    unsafe fn fetch_ref(this: Self, world: WorldCell<'_>) -> Result<Self::Ref<'_>, EntityError> {
+        let label = this.intern();
+        let id = unsafe { world.read_only().entities.get_labeled_entity(label)? };
+        get_entity_ref(unsafe { world.read_only() }, id)
+    }
+
+    #[inline]
+    unsafe fn fetch_mut(this: Self, world: WorldCell<'_>) -> Result<Self::Mut<'_>, EntityError> {
+        let label = this.intern();
+        let id = unsafe { world.read_only().entities.get_labeled_entity(label)? };
+        get_entity_mut(unsafe { world.data_mut() }, id)
     }
 }
 
@@ -342,8 +362,8 @@ impl World {
     /// assert!(handle.is_spawned());
     /// ```
     #[inline]
-    pub fn entity_owned(&mut self, entities: EntityId) -> EntityOwned<'_> {
-        self.get_entity_owned(entities).unwrap()
+    pub fn entity_owned(&mut self, entity: EntityId) -> EntityOwned<'_> {
+        self.get_entity_owned(entity).unwrap()
     }
 
     /// Returns an [`Entity`] handle for one entity.
@@ -367,8 +387,8 @@ impl World {
     /// assert_eq!(view.id(), id);
     /// ```
     #[inline]
-    pub fn entity(&mut self, entities: EntityId) -> Entity<'_> {
-        self.get_entity(entities).unwrap()
+    pub fn entity(&mut self, entity: EntityId) -> Entity<'_> {
+        self.get_entity(entity).unwrap()
     }
 }
 
@@ -451,5 +471,56 @@ impl DeferredWorld<'_> {
     #[inline]
     pub fn entity(&mut self, entities: EntityId) -> Entity<'_> {
         self.get_entity(entities).unwrap()
+    }
+}
+
+impl World {
+    /// Returns a [`EntityId`] for a [`EntityLabel`].
+    ///
+    /// Returns `Err` if the entity label does not exist.
+    #[inline]
+    pub fn get_entity_id(&self, label: impl EntityLabel) -> Result<EntityId, EntityError> {
+        self.entities.get_labeled_entity(label.intern())
+    }
+
+    /// Returns an [`EntityOwned`] handle for a [`EntityLabel`].
+    ///
+    /// Unlike [`World::entity_owned`], this function will not panic.
+    ///
+    /// If the labeled entity does not exist, this function will create
+    /// a empty `Entity` (without parent) and return it.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use zlim_core::prelude::*;
+    ///
+    /// #[derive(EntityLabel, Clone, Debug, PartialEq, Eq, Hash)]
+    /// struct SceneRoot;
+    ///
+    /// let mut world = World::alloc();
+    ///
+    /// let entity = world.labeled_entity(SceneRoot);
+    /// // do something...
+    /// ```
+    #[inline]
+    pub fn labeled_entity(&mut self, label: impl EntityLabel) -> EntityOwned<'_> {
+        fn internal(world: &mut World, label: InternedEntityLabel) -> EntityOwned<'_> {
+            let id = world
+                .entities
+                .get_labeled_entity(label)
+                .unwrap_or_else(|_| {
+                    let id = world.spawn_empty(None).id();
+                    world
+                        .entities
+                        .set_labeled_entity(id, label)
+                        .expect("should exists");
+                    id
+                });
+
+            world.entity_owned(id)
+        }
+
+        internal(self, label.intern())
     }
 }

@@ -80,9 +80,9 @@ use crate::tick::CHECK_CYCLE;
 use crate::tick::Tick;
 use crate::time::TimeUpdateStrategy;
 
-use crate::entity::EntityAllocator;
 use crate::entity::RemoteAllocator;
 use crate::entity::{Entities, RootEntities};
+use crate::entity::{EntityAllocator, EntityId};
 
 use crate::bundle::Bundles;
 use crate::component::Components;
@@ -206,12 +206,6 @@ pub struct World {
     /// Named collection of schedules that can be run against this world.
     pub(crate) schedules: Schedules,
 
-    /// Type-erased cache of system instances, keyed by their SystemId.
-    pub(crate) system_cache: SystemCache,
-
-    /// Per-world memoisation of query states, keyed by query type.
-    pub(crate) query_cache: QueryCache,
-
     /// A cache used to accelerate access to the times.
     pub(crate) time_cache: TimeCache,
     /// How this world advances its real time each frame.
@@ -221,6 +215,12 @@ pub struct World {
     pub(crate) command_queue: CommandQueue,
     /// Record the starting position of the world level command queue.
     pub(crate) command_start: usize,
+
+    /// Type-erased cache of system instances, keyed by their SystemId.
+    pub(crate) system_cache: SystemCache,
+
+    /// Per-world memoisation of query states, keyed by query type.
+    pub(crate) query_cache: QueryCache,
 
     /// Current change-detection epoch, stored behind cache-line padding
     /// to reduce false sharing in multi-threaded contexts.
@@ -613,6 +613,12 @@ impl World {
 // -----------------------------------------------------------------------------
 
 impl World {
+    /// Returns `true` if the entity is currently spawned.
+    #[inline]
+    pub fn contains_entity(&self, entity: EntityId) -> bool {
+        self.entities.contains(entity)
+    }
+
     /// Return a iterator of the root entities.
     ///
     /// The root entities is unordered.
@@ -694,11 +700,12 @@ impl World {
     /// [`TimeUpdateStrategy`]: crate::time::TimeUpdateStrategy
     /// [`Commands::delayed`]: crate::command::Commands::delayed
     pub fn refresh_metadata(world: &mut Self) {
+        world.entities.update_labeled();
         world.components.update();
         world.clamp_ticks();
         World::update_times(world);
         crate::message::update_messages(world);
-        crate::time::queue_delayed_commands(world);
+        crate::time::apply_delayed_commands(world);
     }
 
     /// Updates the internal states of all schedules, if they need updating.
@@ -758,7 +765,7 @@ impl World {
     /// This is useful for worlds that need to synchronize message updates with a separate
     /// logic loop running at a lower frequency than the main frame loop.
     ///
-    /// [`UpdateMessagesSignal`]: crate::message::UpdateMessagesSignal
+    /// [`UpdateMessagesSignal`]: crate::jobs::UpdateMessagesSignal
     pub fn enable_update_messages_signal(world: &mut Self) {
         crate::message::enable_manual_update(&mut world.messages);
     }

@@ -19,11 +19,11 @@
 //! |---|---|
 //! | `EntityId` | The entity's own ID |
 //! | `&T` / `Option<&T>` | Shared references to component `T` |
-//! | `&mut T` / `Option<&mut T>` | Exclusive references to component `T`; iterating/fetching yields [`Mut<T>`](crate::borrow::Mut), so change ticks are preserved |
+//! | `&mut T` / `Option<&mut T>` | Exclusive references to component `T`; iterating/fetching yields `Mut<T>`, so change ticks are preserved |
 //! | `Ref<T>` / `Option<Ref<T>>` | Shared references with change detection |
 //! | `Mut<T>` / `Option<Mut<T>>` | Exclusive references with change detection |
-//! | [`Parent`] | The entity's parent (`Option<EntityId>`, `None` when root) |
-//! | [`Children`] | The entity's direct children (`&[EntityId]`, ordered by insertion) |
+//! | `Parent` | The entity's parent (`Option<EntityId>`, `None` when root) |
+//! | `Children` | The entity's direct children (`&[EntityId]`, ordered by insertion) |
 //! | `EntityRef` / `EntityMut` | A handle to the whole entity — shared / exclusive access to all of its components |
 //! | `(A, B, ...)` | Tuples combining 0–12 items, e.g. `(&Position, &mut Velocity, Parent)` |
 //! | Custom `#[derive(QueryData)]` structs | Derived from the forms above (supports `#[query_data(readonly)]` and `#[query_data(query_slice(...))]`) |

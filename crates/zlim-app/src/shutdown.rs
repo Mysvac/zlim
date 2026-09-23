@@ -97,6 +97,8 @@ impl Plugin for ShutdownPlugin {
             Err(err) => zlim_log::warn!("Failed to set `Ctrl+C` handler: {err}"),
         }
 
+        // Ensure that this plugin works properly when using App::empty().
+        app.add_message::<AppExit>();
         app.add_job::<HandleExitSignal>(Update, ());
     }
 }

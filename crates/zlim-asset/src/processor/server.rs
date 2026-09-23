@@ -176,6 +176,9 @@ pub(crate) struct AssetProcessorData {
     /// never needs one, so an app's server has no business knowing about them.
     pub(crate) processors: CachePadded<RwLock<AssetProcessors>>,
 
+    /// Whether the process server is started by [`AssetProcessServer::start`].
+    pub(crate) is_started: AtomicBool,
+
     /// Whether the processed side may be trusted, i.e. whether an asset that looks up to date may be
     /// skipped. An interrupted previous run (or a log that cannot be read) clears it, so this run
     /// processes everything again.
@@ -230,6 +233,7 @@ impl AssetProcessServer {
             sources,
             state,
             processors: CachePadded::new(RwLock::new(AssetProcessors::default())),
+            is_started: AtomicBool::new(false),
             skip_up_to_date: AtomicBool::new(true),
             log: Arc::new(async_lock::Mutex::new(None)),
             logger: Mutex::new(LogFactoryState::Pending(transaction_logger)),
@@ -386,6 +390,8 @@ impl AssetProcessServer {
 
     /// Starts the importer's service: process what the sources hold now, then keep watching them.
     ///
+    /// This function should only be called once (for each `ProcessServer`).
+    ///
     /// The run is handed to the IO task pool, so this returns as soon as it has been queued; a read
     /// of the processed side waits for it through the processed-side gate instead.
     ///
@@ -395,9 +401,18 @@ impl AssetProcessServer {
     ///
     /// # Panics
     ///
+    /// Panics if this function is called multiple times by same [`AssetProcessServer`].
+    ///
     /// The run panics when a source cannot be read at all, because the scan would then process
     /// nothing. [`run`](Self::run) reports that failure as [`InitializeError`] instead of panicking.
     pub fn start(&self) {
+        use core::sync::atomic::Ordering::Relaxed;
+
+        if self.data.is_started.swap(true, Relaxed) {
+            ::core::hint::cold_path();
+            panic!("AssetProcessServer starts repeatedly");
+        }
+
         let this = self.clone();
 
         IoTaskPool::get()

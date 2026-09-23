@@ -2,7 +2,7 @@
 
 use zlim_utils::debug::DebugLocation;
 
-use crate::bundle::{BundleId, DataBundle};
+use crate::bundle::{Bundle, BundleId};
 use crate::component::HookContext;
 use crate::entity::{EntityError, Location};
 use crate::ops::entity::EntityOwned;
@@ -45,7 +45,7 @@ impl EntityOwned<'_> {
     /// ```
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn remove<B: DataBundle>(&mut self) -> Result<&mut Self, EntityError> {
+    pub fn remove<B: Bundle>(&mut self) -> Result<&mut Self, EntityError> {
         self.remove_explicit_with_caller::<B>(DebugLocation::caller())
     }
 
@@ -59,7 +59,7 @@ impl EntityOwned<'_> {
     /// to a different table.
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn remove_required<B: DataBundle>(&mut self) -> Result<&mut Self, EntityError> {
+    pub fn remove_required<B: Bundle>(&mut self) -> Result<&mut Self, EntityError> {
         self.remove_required_with_caller::<B>(DebugLocation::caller())
     }
 
@@ -71,7 +71,7 @@ impl EntityOwned<'_> {
     /// to a different table.
     #[inline(always)]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
-    pub fn remove_explicit<B: DataBundle>(&mut self) -> Result<&mut Self, EntityError> {
+    pub fn remove_explicit<B: Bundle>(&mut self) -> Result<&mut Self, EntityError> {
         self.remove_explicit_with_caller::<B>(DebugLocation::caller())
     }
 
@@ -92,7 +92,7 @@ impl EntityOwned<'_> {
 
 impl EntityOwned<'_> {
     #[inline]
-    pub(crate) fn remove_explicit_with_caller<B: DataBundle>(
+    pub(crate) fn remove_explicit_with_caller<B: Bundle>(
         &mut self,
         caller: DebugLocation,
     ) -> Result<&mut Self, EntityError> {
@@ -102,7 +102,7 @@ impl EntityOwned<'_> {
     }
 
     #[inline]
-    pub(crate) fn remove_required_with_caller<B: DataBundle>(
+    pub(crate) fn remove_required_with_caller<B: Bundle>(
         &mut self,
         caller: DebugLocation,
     ) -> Result<&mut Self, EntityError> {
@@ -210,6 +210,7 @@ fn remove_moved(this: &mut EntityOwned, new_table_id: TableId, caller: DebugLoca
             .entities
             .get_unchecked_mut(entity.index() as usize)
             .location;
+
         *location = Some(Location {
             table_id: new_table_id,
             table_row: new_table_row,

@@ -44,10 +44,10 @@ macro_rules! def_path_fn {
 
 def_path_fn!(zlim_error, error::ZlimError);
 def_path_fn!(bundle_, bundle::Bundle);
-def_path_fn!(data_bundle_, bundle::DataBundle);
+def_path_fn!(bundle_writer_, bundle::BundleWriter);
 def_path_fn!(component_collector_, component::ComponentCollector);
 def_path_fn!(component_writer_, component::ComponentWriter);
-def_path_fn!(entity_owned_, ops::EntityOwned);
+def_path_fn!(components_, component::Components);
 def_path_fn!(owning_ptr_, __macro_exports__::__OwningPtr);
 def_path_fn!(type_path_, __macro_exports__::__TypePath);
 def_path_fn!(resource_, resource::Resource);
@@ -92,3 +92,10 @@ def_path_fn!(filter_param_builder_, system::FilterParamBuilder);
 def_path_fn!(table_, table::Table);
 def_path_fn!(table_row_, table::TableRow);
 def_path_fn!(entity_id_, entity::EntityId);
+def_path_fn!(template_, template::Template);
+def_path_fn!(from_template_, template::FromTemplate);
+def_path_fn!(template_context_, template::TemplateContext);
+def_path_fn!(built_in_template_, template::BuiltInTemplate);
+def_path_fn!(specialize_from_template_, template::SpecializeFromTemplate);
+def_path_fn!(zlim_result_, error::ZlimResult);
+def_path_fn!(entity_label_, entity::EntityLabel);

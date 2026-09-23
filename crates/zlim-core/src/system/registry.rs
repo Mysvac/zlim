@@ -162,7 +162,7 @@ pub(crate) struct SystemCache {
 
 impl Debug for SystemCache {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("SystemCache").finish_non_exhaustive()
+        f.write_str("SystemCache { .. }")
     }
 }
 

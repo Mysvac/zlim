@@ -109,7 +109,7 @@ pub use iterators::{MessageCursor, MessageKeyIter};
 pub use iterators::{MessageIterator, MessageWithKeyIter};
 pub use iterators::{MessageMutIterator, MessageMutWithKeyIter};
 pub use message::Message;
-pub use messages::{MessageMeta, Messages, UpdateMessagesSignal};
+pub use messages::{MessageMeta, Messages};
 pub use mutator::MessageMutator;
 pub use queue::MessageQueue;
 pub use reader::MessageReader;
@@ -118,7 +118,9 @@ pub use writer::MessageWriter;
 pub use zlim_core_derive::Message;
 
 pub(crate) use messages::{enable_manual_update, update_messages};
-
+pub(crate) mod jobs {
+    pub use super::messages::UpdateMessagesSignal;
+}
 // -----------------------------------------------------------------------------
 
 pub use signals::*;

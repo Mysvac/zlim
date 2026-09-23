@@ -20,6 +20,7 @@ Foundation utilities for the zlim engine.
 
 - `Bump` — scoped bump allocator for temporary data (freed on drop).
 - `Global` — mutex-protected static bump allocator for `'static` lifetime data.
+- `MemorySize` — built in container for representing memory usage.
 
 ## mpmc
 

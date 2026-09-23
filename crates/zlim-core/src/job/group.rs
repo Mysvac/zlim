@@ -661,7 +661,7 @@ impl JobGroup {
             }
 
             #[cfg(any(debug_assertions, feature = "debug"))]
-            log::debug!(
+            log::trace!(
                 "JobGroup({}) collection finished in {:?}",
                 REGISTRY
                     .read()

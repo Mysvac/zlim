@@ -931,7 +931,7 @@ pub(crate) mod jobs {
     // -----------------------------------------------------------------------------
     // diagnostic
 
-    #[job_fn(type = AssetServerDiagnostic)]
+    #[job_fn(type = AssetServerDiagnostic, name = "zlim_asset::jobs::AssetServerDiagnostic")]
     fn asset_server_diagnostic_system(
         server: If<Res<AssetServer>>,
         mut store: If<ResMut<Diagnostics>>,
@@ -943,7 +943,7 @@ pub(crate) mod jobs {
     // -----------------------------------------------------------------------------
     // Clear Finished Tasks
 
-    #[job_fn(type = ClearFinishedAssetTask)]
+    #[job_fn(type = ClearFinishedAssetTask, name = "zlim_asset::jobs::ClearFinishedAssetTask")]
     fn clear_asset_tasks(server: ResMut<AssetServer>) {
         server
             .0
@@ -955,7 +955,7 @@ pub(crate) mod jobs {
     // -----------------------------------------------------------------------------
     // HandleAssetSeverEvents
 
-    #[job_fn(type = HandleAssetSeverEvents)]
+    #[job_fn(type = HandleAssetSeverEvents, name = "zlim_asset::jobs::HandleAssetSeverEvents")]
     fn handle_asset_sever_events(world: &mut World) {
         world.resource_scope(|world, server: ResMut<AssetServer>| {
             let server = server.as_ref();
@@ -1130,7 +1130,11 @@ pub(crate) mod jobs {
     // -----------------------------------------------------------------------------
     // HandleAssetSaveCommands
 
-    #[job_fn(type = HandleAssetSaveCommands, run_if = contains_save_command)]
+    #[job_fn(
+        type = HandleAssetSaveCommands,
+        run_if = contains_save_command,
+        name = "zlim_asset::jobs::HandleAssetSaveCommands",
+    )]
     fn handle_asset_save_commands(world: &World, server: Res<AssetServer>) {
         let server = &*server;
 

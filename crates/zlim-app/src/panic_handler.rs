@@ -34,7 +34,7 @@ fn set_hook() {
                     && zlim_core::error::handler::PANIC_BACKTRACE_CAPTURED.replace(false)
                     && let Some(msg) = info.payload_as_str()
                 {
-                    std::eprintln!("{msg}");
+                    std::eprintln!("{msg}\n\n\tdefault panic hook was skipped due to `PanicHandlerPlugin`");
                 } else {
                     default_hook(info);
                 }
@@ -50,7 +50,7 @@ fn set_hook() {
                 if zlim_core::error::handler::PANIC_BACKTRACE_CAPTURED.replace(false)
                     && let Some(msg) = info.payload_as_str()
                 {
-                    std::eprintln!("{msg}");
+                    std::eprintln!("{msg}\n\n\tdefault panic hook was skipped due to `PanicHandlerPlugin`");
                 } else {
                     default_hook(info);
                 }

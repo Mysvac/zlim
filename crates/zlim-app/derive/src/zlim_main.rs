@@ -9,7 +9,6 @@ pub(crate) fn expand(mut item_fn: ItemFn) -> TokenStream {
     );
 
     let zlim_app = zlim_derive_utils::crate_path("zlim_app");
-    let zlim_task = zlim_derive_utils::crate_path("zlim_task");
 
     // Android APP
     let android_app = quote! { #zlim_app::sys::AndroidApp };
@@ -19,7 +18,7 @@ pub(crate) fn expand(mut item_fn: ItemFn) -> TokenStream {
     item_fn
         .block
         .stmts
-        .insert(0, parse_quote! { #zlim_task::designate_main_thread(); });
+        .insert(0, parse_quote! { #zlim_app::sys::designate_main_thread(); });
 
     quote! {
         #[unsafe(no_mangle)]
