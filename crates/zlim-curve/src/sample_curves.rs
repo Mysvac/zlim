@@ -5,7 +5,7 @@ use core::fmt::{self, Debug};
 
 use serde::{Deserialize, Serialize};
 use zlim_math::StableInterpolate;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::cores::{EvenCore, EvenCoreError, UnevenCore, UnevenCoreError};
 use super::{Curve, Interval};

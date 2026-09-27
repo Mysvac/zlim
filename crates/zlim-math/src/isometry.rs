@@ -2,7 +2,7 @@
 use core::ops::Mul;
 
 use serde::{Deserialize, Serialize};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::{Affine2, Affine3, Affine3A, Dir2, Dir3};
 use crate::{Mat3, Mat3A, Quat, Rot2, Vec2, Vec3, Vec3A};

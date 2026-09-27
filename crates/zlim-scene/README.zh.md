@@ -9,7 +9,7 @@
 ```rust
 # use zlim_core::derive::FromTemplate;
 # use zlim_core::prelude::*;
-# use zlim_path::TypePath;
+# use zlim_reflect::TypePath;
 # use zlim_scene::{WorldSceneExt, Scene, SceneList};
 #
 # #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
@@ -343,7 +343,7 @@ app.build();
 # use zlim_app::App;
 # use zlim_asset::plugin::AssetPlugin;
 # use zlim_core::derive::Component;
-# use zlim_path::TypePath;
+# use zlim_reflect::TypePath;
 # use zlim_scene::{ScenePlugin, WorldSceneQueueExt, scn};
 # #[derive(TypePath, Component, Clone, Default)]
 # struct Scale(f32);

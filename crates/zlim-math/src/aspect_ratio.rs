@@ -3,7 +3,7 @@
 use core::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::Vec2;
 

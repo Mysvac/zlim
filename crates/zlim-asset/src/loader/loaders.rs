@@ -3,7 +3,7 @@
 use core::any::TypeId;
 use std::sync::Arc;
 
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::HashMap;
 use zlim_utils::vec::SmallVec;

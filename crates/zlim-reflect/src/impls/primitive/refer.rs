@@ -11,9 +11,9 @@ impl<T: TypePath + ?Sized> TypePath for &'static T {
         CELL.get_or_init::<Self>(|| concat(&["&", T::type_name()]))
     }
 
-    const IDENT: &str = "&_";
-    const CRATE: Option<&str> = None;
-    const MODULE: Option<&str> = None;
+    const IDENT: &'static str = "&_";
+    const CRATE: Option<&'static str> = None;
+    const MODULE: Option<&'static str> = None;
 }
 
 impl<T: TypePath + ?Sized> TypePath for &'static mut T {
@@ -27,7 +27,7 @@ impl<T: TypePath + ?Sized> TypePath for &'static mut T {
         CELL.get_or_init::<Self>(|| concat(&["&mut ", T::type_name()]))
     }
 
-    const IDENT: &str = "&mut _";
-    const CRATE: Option<&str> = None;
-    const MODULE: Option<&str> = None;
+    const IDENT: &'static str = "&mut _";
+    const CRATE: Option<&'static str> = None;
+    const MODULE: Option<&'static str> = None;
 }

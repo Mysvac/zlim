@@ -3,7 +3,7 @@
 
 use core::time::Duration;
 
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use crate::derive::Resource;
 

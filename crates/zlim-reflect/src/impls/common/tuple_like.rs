@@ -2,21 +2,17 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 
 use crate::Reflect;
-use crate::db::TypeDB;
 use crate::impls::CLONE_TYPE_ERROR;
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::ops::{ApplyError, Tuple};
 
 /// Applies a reflected value to a tuple, field by field in index order.
 ///
 /// 1. If the types are identical, clone-and-assign directly (fast path).
-/// 2. If the [`TypeDB`] has a conversion from `other`'s type to `Self`,
-///    clone-and-assign directly.
-/// 3. Require `other` to also be a [`Tuple`]; fail with
+/// 2. Require `other` to also be a [`Tuple`]; fail with
 ///    [`mismatched_kind`](ApplyError::mismatched_kind) otherwise.
-/// 4. Fail with [`mismatched_size`](ApplyError::mismatched_size) if the
+/// 3. Fail with [`mismatched_size`](ApplyError::mismatched_size) if the
 ///    lengths differ — tuples are fixed-size.
-/// 5. Apply each field pair by index in order, propagating the first
+/// 4. Apply each field pair by index in order, propagating the first
 ///    error.
 #[inline(never)]
 pub fn tuple_apply(this: &mut dyn Tuple, other: &dyn Reflect) -> Result<(), ApplyError> {
@@ -31,17 +27,7 @@ pub fn tuple_apply(this: &mut dyn Tuple, other: &dyn Reflect) -> Result<(), Appl
         return Ok(());
     }
 
-    // Phase 2: fast path — TypeDB conversion exists, clone and assign.
-    if let Some(db) = TypeDB::get_by_type(other_type)
-        && db.contains_convertor(this_type)
-        && let Ok(cloned) = other.reflect_clone()
-        && let Ok(converted) = db.convert(cloned, this_type)
-    {
-        this.reflect_assign(converted).expect(CONVERT_TYPE_ERROR);
-        return Ok(());
-    }
-
-    // Phase 3: cast `other` to `&dyn Tuple`.
+    // Phase 2: cast `other` to `&dyn Tuple`.
     let other: &dyn Tuple = other.reflect_ref().as_tuple().map_err(|e| {
         ::core::hint::cold_path();
         let src = this.reflect_type_path();
@@ -49,7 +35,7 @@ pub fn tuple_apply(this: &mut dyn Tuple, other: &dyn Reflect) -> Result<(), Appl
         ApplyError::mismatched_kind(src, apply, e.expected, e.received)
     })?;
 
-    // Phase 4: validate lengths match (tuples are fixed-size).
+    // Phase 3: validate lengths match (tuples are fixed-size).
     let this_len = this.field_len();
     let other_len = other.field_len();
     if this_len != other_len {
@@ -59,7 +45,7 @@ pub fn tuple_apply(this: &mut dyn Tuple, other: &dyn Reflect) -> Result<(), Appl
         return Err(ApplyError::mismatched_size(src, apply, this_len, other_len));
     }
 
-    // Phase 5: apply each field pair by index.
+    // Phase 4: apply each field pair by index.
     for index in 0..this_len {
         const MSG: &str = "the length of tuple should be correct";
         let to = this.field_mut(index).expect(MSG);

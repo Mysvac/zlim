@@ -1,6 +1,6 @@
 # zlim-reflect
 
-专为 Zlim Engine 设计的运行时反射系统，整体可以分成四个部分：
+专为 Zlim Engine 设计的运行时反射系统。
 
 ## 模块列表
 
@@ -9,9 +9,10 @@
 | `path` | 编译期确定的类型路径，提供稳定的类型唯一标识 |
 | `info` | 编译期类型数据，例如字段列表、自定义属性、泛型参数等 |
 | `ops` | 核心的反射 Trait，以及类型特定的数据操作子 Trait  |
-| `db` | 全局类型注册表 |
+| `db` | 全局类型注册表，并提供基于反射的序列化支持 |
 | `dynamic` | 动态构造的类型擦除容器，通常用于反射序列化。 |
 | `impls` | 提供一些用于实现反射的通用函数，并为常见类型实现反射 |
+| `remote` | 通过本地包装类型，反射定义在其他 crate 中的类型 |
 | `derive` | 提供反射相关的宏 |
 
 ## 类型路径
@@ -41,10 +42,10 @@ assert_eq!(Foo::type_name(), "Foo");
 通过 `Reflect` 宏为类型生成完整反射所需的代码，这包含 `TypePath` 的内容：
 
 ```rust
-use zlim_reflect::Reflect;
+use zlim_reflect::{TypePath, Reflect};
 use zlim_reflect::info::Typed;
 
-#[derive(Reflect)]
+#[derive(TypePath, Reflect)]
 struct Position {
     x: f32,
     y: f32,
@@ -77,21 +78,21 @@ println!("{:?}", r); // 类似：Struct<Position>({x: 1.0, y: 2.0})
 
 - `reflect_hash`：类型擦除状态下的 Hash。
 
-- `from_reflect`：尝试从反射值构造自身。非完全的弱类型。
-  如果类型相等，必然成功。如果类型数据库提供了转换函数，也必然成功。
+- `from_reflect`：尝试从反射值构造自身，非完全的弱类型。
+  如果类型相等，必然成功。
   否则，对于基本数据类型，尝试转换成字符串，然后从字符串反序列化自身。
-  对于复合数据类型，尝试逐个字段构造自身，但字段需要直接兼容（类型相等或提供了转换函数），不会再递归构造。
+  对于复合数据类型，尝试逐个字段构造自身，但字段必须是期望的类型，不会再递归构造，也不做任何转换。
 
 `reflect_apply` 通常比 `from_reflect` 更加宽松：前者是完全的弱类型，结构相似就能赋值；
-后者只允许类型本身不同，字段等子类型必须直接兼容（类型相等或提供了转换函数）。
+后者只允许类型本身不同，字段等子类型必须是期望的类型。
 
-反过来，`from_reflect` 通常比 `reflect_apply` 更高效，因为它直接转换类型，无需拷贝值。
+另一方面，`from_reflect` 通常比 `reflect_apply` 更高效，因为它直接转换类型，无需拷贝值。
 
 ```rust
-use zlim_reflect::Reflect;
+use zlim_reflect::{TypePath, Reflect};
 use zlim_reflect::dynamic::DynamicStruct;
 
-#[derive(Reflect, Clone, Debug, Default)]
+#[derive(TypePath, Reflect, Clone, Debug, Default)]
 struct Point { x: i32, y: f32 }
 
 let mut dyn_struct = DynamicStruct::new();
@@ -106,7 +107,7 @@ let pt: Box<Point> = Point::from_reflect(Box::new(dyn_struct)).unwrap();
 assert_eq!(pt.x, 114);
 ```
 
-## 反射种类
+## 反射类别
 
 本库定义了八种常见的反射子类型：
 
@@ -126,9 +127,10 @@ assert_eq!(pt.x, 114);
 可以将反射对象转换为子类型，以实现更多的动态操作，比如字段访问。
 
 ```rust
-use zlim_reflect::ops::{Reflect, Struct};
+use zlim_reflect::{TypePath, Reflect};
+use zlim_reflect::ops::Struct;
 
-#[derive(Reflect, Debug, Default)]
+#[derive(TypePath, Reflect, Debug, Default)]
 struct Point { x: i32, y: f32 }
 
 let mut pt: Point = Point::default();
@@ -143,7 +145,7 @@ assert_eq!(pt.x, 5);
 ## 类型数据库
 
 `TypeDB` 结构体是所有反射类型的"类型数据库"：保存每种类型的类型信息，
-并附带可选的构造函数、转换函数，以及序列化/反序列化函数指针。
+并附带可选的构造函数，以及序列化/反序列化函数指针。
 
 复合类型在注册时会自动注册子类型，比如 `struct A(Vec<i32>)` 在注册时会自动注册 `Vec<i32>`。
 
@@ -154,9 +156,9 @@ assert_eq!(pt.x, 5);
 重复注册是安全的，可以放心使用：
 
 ```rust
-use zlim_reflect::{Reflect, register_reflect};
+use zlim_reflect::{TypePath, Reflect, register_reflect};
 
-#[derive(Reflect)]
+#[derive(TypePath, Reflect)]
 struct Foo<T>(T);
 
 register_reflect!(Foo<u32>, Foo<i32>);
@@ -176,18 +178,21 @@ register_reflect!(Foo<u32>, Foo<i32>);
 
 处理优先级：
 
-1. **已注册的函数优先**：如果类型在 `TypeDB` 中注册了
-   `SerdFunc`/`DeseFunc`（通过 `insert_serializer`/`insert_deserializer` 设置），
-   则直接调用——这是拥有 serde 实现类型的快路径。
+1. **显式提供的处理器**：如果使用 `serialize_with` 等函数提供了显式的
+   处理器，则优先使用它。如果成功或失败则直接返回，不支持则使用后面的两个步骤。
 
-2. **反射兜底**：未注册时，按反射种类（Opaque、Struct、Tuple、Array、
+2. **注册的序列化函数**：如果类型在 `TypeDB` 中注册了 `SerdFunc`/`DeseFunc`
+  （通过 `insert_serializer`/`insert_deserializer` 设置），则直接调用——这是
+  拥有 serde 实现类型的快路径，通常更加高效。
+
+3. **反射兜底**：未注册时，按反射种类（Opaque、Struct、Tuple、Array、
    List、Map、Set、Enum）分派到对应的序列化函数或反序列化 visitor。
 
 另外，Opaque 类型即使没有注册任何序列化函数，也会通过 `Opaque::stringify`
 将值字符串化后再序列化。因此**任何反射类型都可以序列化**，只是效率不同。
 
 反序列化采用两阶段策略：类型有默认构造函数时，先构造空值再就地修改字段（快）；
-否则先构造 `Dynamic*` 值，再通过 `TypeDB::from_reflect` 转换为目标类型（总能成功，但更慢）。
+否则先构造 `Dynamic*` 值，再通过 `TypeDB::from_reflect` 转换为目标类型（通常能成功，但更慢）。
 
 ## 代码生成
 
@@ -201,9 +206,9 @@ register_reflect!(Foo<u32>, Foo<i32>);
 - `#[derive(Reflect)]`：一次生成反射所需的全部代码：
   - `Reflect` 核心 trait（`reflect_clone`、`reflect_apply`、`reflect_eq`、
     `reflect_hash`、`reflect_debug`、`from_reflect`）
-  - `TypePath` 与 `Typed`（提供运行时类型信息）
+  - `Typed`（提供运行时类型信息；`TypePath` 由独立的 `#[derive(TypePath)]` 生成）
   - 类型对应的子 trait（结构体生成 `Struct`，枚举生成 `Enum`，依此类推）
-  - `TypeDatabase`（类型注册、转换与自动发现）
+  - `TypeDatabase`（类型注册与自动发现）
 
 对于非泛型类型，宏还会额外生成 `register_reflect!` 调用，
 程序启动时由 `TypeDB::collect` 自动发现并注册。

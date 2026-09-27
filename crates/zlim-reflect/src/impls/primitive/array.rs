@@ -1,13 +1,11 @@
-use core::any::TypeId;
-
 use zlim_utils::format_smol;
 
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
+use crate::impls::UNPACK_ERROR;
 use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR};
-use crate::impls::{CONVERT_TYPE_ERROR, UNPACK_ERROR, is_convertable};
-use crate::info::{ArrayInfo, InfoCell, ReflectKind, TypeInfo, Typed};
-use crate::ops::{Array, CloneError};
+use crate::info::{ArrayInfo, InfoCell, TypeInfo, Typed};
+use crate::ops::{Array, CloneError, ReflectRef};
 use crate::path::{PathCell, TypePath, concat};
 
 // -----------------------------------------------------------------------------
@@ -25,9 +23,9 @@ impl<T: TypePath> TypePath for [T] {
         CELL.get_or_init::<Self>(|| concat(&["[", <T>::type_name(), "]"]))
     }
 
-    const IDENT: &str = "[_]";
-    const CRATE: Option<&str> = None;
-    const MODULE: Option<&str> = None;
+    const IDENT: &'static str = "[_]";
+    const CRATE: Option<&'static str> = None;
+    const MODULE: Option<&'static str> = None;
 }
 
 // -----------------------------------------------------------------------------
@@ -45,9 +43,9 @@ impl<T: TypePath, const N: usize> TypePath for [T; N] {
         CELL.get_or_init::<Self>(|| concat(&["[", T::type_name(), "; ", &format_smol!("{N}"), "]"]))
     }
 
-    const IDENT: &str = "[_; _]";
-    const CRATE: Option<&str> = None;
-    const MODULE: Option<&str> = None;
+    const IDENT: &'static str = "[_; _]";
+    const CRATE: Option<&'static str> = None;
+    const MODULE: Option<&'static str> = None;
 }
 
 // -----------------------------------------------------------------------------
@@ -127,43 +125,30 @@ impl<T: Reflect + Typed, const N: usize> Reflect for [T; N] {
     where
         Self: Sized,
     {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
 
-        if let Some(db) = TypeDB::get_by_type((*value).type_id()) {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => {
-                    let r = ret.downcast::<Self>().expect(CONVERT_TYPE_ERROR);
-                    return Ok(r);
-                }
-                Err(e) => value = e,
-            }
+        let ReflectRef::Array(v) = value.reflect_ref() else {
+            return Err(value);
+        };
+
+        if v.item_len() != N {
+            return Err(value);
         }
 
-        if value.reflect_kind() != ReflectKind::Array {
+        if v.iter_items().any(|item| !item.is::<T>()) {
             return Err(value);
         }
 
         let value: Box<dyn Array> = value.reflect_owned().into_array().unwrap();
-
-        if value.item_len() != N {
-            return Err(value);
-        }
-
-        for item in value.iter_items() {
-            if !is_convertable(item, TypeId::of::<T>()) {
-                return Err(value);
-            }
-        }
-
         let items: Vec<Box<dyn Reflect>> = value.unpack();
         assert_eq!(items.len(), N, "{}", UNPACK_ERROR);
 
         let mut values: Vec<T> = Vec::with_capacity(N);
         for item in items {
-            values.push(*T::from_reflect(item).expect(COMPATIBLE_ERROR));
+            values.push(item.take::<T>().expect(COMPATIBLE_ERROR));
         }
 
         match TryInto::<Box<Self>>::try_into(values) {

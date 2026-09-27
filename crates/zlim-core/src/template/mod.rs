@@ -52,6 +52,8 @@ pub use erased::ErasedTemplate;
 pub use function::{FnTemplate, template};
 pub use tuple::TemplateTuple;
 
+pub use crate::derive::FromTemplate;
+
 use crate::error::ZlimResult;
 
 // -----------------------------------------------------------------------------
@@ -247,7 +249,7 @@ impl<T: Clone + Default + Unpin> FromTemplate for T {
 
 #[cfg(test)]
 mod tests {
-    use zlim_path::derive::TypePath;
+    use zlim_reflect::derive::TypePath;
 
     use crate::derive::Resource;
     use crate::entity::EntityId;

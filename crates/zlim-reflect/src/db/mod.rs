@@ -1,8 +1,8 @@
 //! Type database and registration system.
 //!
 //! This module provides [`TypeDB`], a per-type `'static` registry that stores
-//! compile-time metadata ([`TypeInfo`], [`TypePath`]), conversion functions,
-//! constructors, serde hooks, and pointer reconstruction helpers.
+//! compile-time metadata ([`TypeInfo`], [`TypePath`]), constructors, serde
+//! hooks, and pointer reconstruction helpers.
 //!
 //! # Registration
 //!
@@ -61,8 +61,8 @@ pub trait TypeDatabase: Reflect + Typed {
 /// Per-type metadata and runtime operation registry.
 ///
 /// Each registered type gets one `'static` [`TypeDB`] instance that stores
-/// the type's identity, reflection metadata, conversion functions, optional
-/// constructor, and function pointers for safe pointer reconstruction.
+/// the type's identity, reflection metadata, optional constructor, and
+/// function pointers for safe pointer reconstruction.
 ///
 /// # Acquisition
 ///
@@ -72,7 +72,6 @@ pub struct TypeDB {
     id: TypeId,
     type_path: &'static str,
     type_info: &'static TypeInfo,
-    into_func: RwLock<TypeMap<IntoFunc>>,
     ctor_func: OnceLock<CtorFunc>,
     serialize: OnceLock<SerdFunc>,
     deserialize: OnceLock<DeseFunc>,
@@ -87,8 +86,7 @@ static TYPE_REGISTRY: CachePadded<RwLock<TypeMap<&'static TypeDB>>> =
 static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'static TypeDB>>> =
     CachePadded::new(RwLock::new(HashMap::new()));
 
-type IntoFunc = &'static (dyn Fn(Box<dyn Reflect>) -> Box<dyn Reflect> + Sync + 'static);
-type CtorFunc = &'static (dyn Fn() -> Box<dyn Reflect> + Sync + 'static);
+type CtorFunc = fn() -> Box<dyn Reflect>;
 type FromFunc = fn(Box<dyn Reflect>) -> Result<Box<dyn Reflect>, Box<dyn Reflect>>;
 
 // Returns `&dyn Serialize` instead of taking `&mut dyn Serializer` because
@@ -180,7 +178,6 @@ impl TypeDB {
             id: TypeId::of::<T>(),
             type_path: T::type_path(),
             type_info: T::type_info(),
-            into_func: RwLock::new(TypeMap::new()),
             ctor_func: OnceLock::new(),
             serialize: OnceLock::new(),
             deserialize: OnceLock::new(),
@@ -312,12 +309,6 @@ impl TypeDB {
 mod default;
 
 // -----------------------------------------------------------------------------
-// Convert
-// -----------------------------------------------------------------------------
-
-mod convert;
-
-// -----------------------------------------------------------------------------
 // Serialize & Deserialize
 // -----------------------------------------------------------------------------
 
@@ -328,6 +319,9 @@ crate::cfg::debug! {
 
 mod des;
 mod ser;
+
+pub use des::DeserializeProcessor;
+pub use ser::SerializeProcessor;
 
 // -----------------------------------------------------------------------------
 // Bulk Registration
@@ -352,8 +346,8 @@ impl TypeDB {
             use __internal__::__TypeReg__ as Reg;
             const PRE: usize = 256;
 
+            #[cfg(any(debug_assertions, feature = "debug"))]
             let start = zlim_os::time::Instant::now();
-            log::debug!("Collecting TypeDB registrations...");
 
             {
                 // pre-reserve, for better register speed.
@@ -371,7 +365,7 @@ impl TypeDB {
                 (r.0)();
             });
 
-            let len: usize = {
+            let _len: usize = {
                 // post-reserve, for better hash performance.
                 let len: usize = TYPE_REGISTRY
                     .read()
@@ -389,7 +383,11 @@ impl TypeDB {
                 len
             };
 
-            log::debug!("TypeDB({len}) collection finished in {:?}", start.elapsed());
+            #[cfg(any(debug_assertions, feature = "debug"))]
+            log::trace!(
+                "TypeDB({_len}) collection finished in {:?}",
+                start.elapsed()
+            );
         }
 
         static ONCE: std::sync::Once = std::sync::Once::new();

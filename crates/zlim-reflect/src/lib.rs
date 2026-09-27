@@ -23,16 +23,51 @@ extern crate self as zlim_reflect;
 
 pub mod db;
 pub mod dynamic;
-pub mod impls;
 pub mod info;
 pub mod ops;
 pub mod path;
+pub mod remote;
 
-pub use zlim_reflect_derive as derive;
+#[doc(hidden)]
+pub mod impls;
 
 // -----------------------------------------------------------------------------
 // Top-Level exports
 
 pub use db::TypeDB;
+
+// implicit use derive::Reflect
 pub use ops::Reflect;
+
+// implicit use derive::TypePath
 pub use path::TypePath;
+
+// -----------------------------------------------------------------------------
+// Macros
+
+/// The reflect macros.
+pub mod derive {
+    #[doc(no_inline)]
+    pub use crate::register_reflect;
+    #[doc(inline)]
+    pub use zlim_reflect_derive::Reflect;
+    #[doc(inline)]
+    pub use zlim_reflect_derive::TypePath;
+    #[doc(inline)]
+    pub use zlim_reflect_derive::impl_reflect;
+}
+
+// -----------------------------------------------------------------------------
+// Prelude
+
+/// The reflect preludes.
+pub mod prelude {
+    #[doc(no_inline)]
+    pub use crate::db::TypeDB;
+    // implicit use derive::Reflect
+    #[doc(no_inline)]
+    pub use crate::ops::Reflect;
+    // implicit use derive::TypePath
+    #[doc(no_inline)]
+    pub use crate::path::TypePath;
+}

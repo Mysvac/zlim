@@ -97,12 +97,11 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// - [`Reflect`] — the core reflection trait (`reflect_clone`,
 ///   `reflect_apply`, `reflect_eq`, `reflect_hash`, `reflect_debug`,
 ///   `from_reflect`).
-/// - [`TypePath`] — stable compile-time type identifiers.
 /// - `Typed` — static access to `TypeInfo` metadata.
 /// - `Struct` (for named-field and tuple structs) or
 ///   `Enum` (for enums) — kind-specific field-accessor trait.
-/// - `TypeDatabase` — enables type registration, conversion, and
-///   auto-discovery via `TypeDB`.
+/// - `TypeDatabase` — enables type registration and auto-discovery via
+///   `TypeDB`.
 ///
 /// For non-generic types (lifetime-only parameters are fine), a
 /// `register_reflect!` call is also emitted so the type is automatically
@@ -111,17 +110,6 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// Unit structs (`struct Foo;`) are treated as opaque — they implement
 /// [`Reflect`] with `ReflectKind::Opaque` and do not receive a
 /// `Struct` impl.
-///
-/// # Custom type path
-///
-/// `#[type_path = "..."]` overrides the default type path, same as with
-/// `#[derive(TypePath)]`:
-///
-/// ```rust, ignore
-/// #[derive(Reflect)]
-/// #[type_path = "my_game::components::Position"]
-/// struct Pos { x: f32, y: f32 }
-/// ```
 ///
 /// # Opaque types — `#[reflect(Opaque)]`
 ///
@@ -148,7 +136,67 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// This attribute is type-level only.
+/// This attribute is type-level only. It is also why there is no
+/// `#[reflect(Opaque = false)]`: supplying the `Opaque` impl is exactly what
+/// this flag already asks for.
+///
+/// # Opting out of a generated trait — `#[reflect(Trait = false)]`
+///
+/// Each implementation the macro would emit can be turned off, so that you can
+/// write your own:
+///
+/// | Attribute | Skipped |
+/// |-----------|---------|
+/// | `#[reflect(Reflect = false)]` | `Reflect` |
+/// | `#[reflect(Typed = false)]` | `Typed` |
+/// | `#[reflect(Struct = false)]` | `Struct`, on a named-field struct |
+/// | `#[reflect(Tuple = false)]` | `Tuple`, on a tuple struct |
+/// | `#[reflect(Enum = false)]` | `Enum`, on an enum |
+/// | `#[reflect(TypeDatabase = false)]` | `TypeDatabase`, and the type's automatic registration |
+///
+/// Skip one only when you are providing the implementation.
+///
+/// # Two rules for the kind traits
+///
+/// **A kind trait can only be skipped on the kind that generates it.** The type
+/// decides which one the macro emits, so `Struct = false` belongs on a
+/// named-field struct and nothing else. This is rejected rather than ignored:
+///
+/// ```text
+/// error: `Pair` cannot use `#[reflect(Tuple = false)]`: its reflection kind is
+/// `Struct`, so `Struct` is the only kind trait the macro generates for it.
+/// `#[reflect(Tuple = false)]` applies to a tuple struct.
+/// ```
+///
+/// A unit struct (`struct Foo;`) reflects as `Opaque`, so it follows that rule
+/// too — `Struct = false` on it is an error.
+///
+/// **A kind trait can only be skipped together with `Reflect`.** The generated
+/// `Reflect` dispatches `reflect_kind` / `reflect_ref` / `reflect_mut` /
+/// `reflect_owned` to the kind trait, so it cannot be compiled without it. Write
+/// both by hand and turn off both:
+///
+/// ```rust, ignore
+/// #[derive(Reflect)]
+/// #[reflect(Reflect = false, Struct = false)]
+/// struct Point { x: f32, y: f32 }
+///
+/// impl Struct for Point { /* ... */ }
+/// impl Reflect for Point { /* ... */ }
+/// ```
+///
+/// These are checked before anything is generated, so a type that gets one wrong
+/// reports that one thing instead of a page of "trait bound is not satisfied".
+///
+/// # The other two
+///
+/// `TypeDatabase` is the pair to `register_reflect!`, so opting out of it also
+/// stops the type from being discovered at startup — a type left out that way
+/// has to be registered by hand.
+///
+/// `Opaque` is not in the table: `#[reflect(Opaque)]` already means "treat this
+/// as opaque and supply the `Opaque` impl yourself", so a `= false` spelling of
+/// the same name would only be a second way to say it.
 ///
 /// # Optimization with standard traits
 ///
@@ -178,8 +226,8 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// # Default constructor — `#[reflect(Default)]`
 ///
 /// When set, the generated `TypeDatabase::on_register` calls
-/// `TypeDB::insert_defaultor` with `|| Self::default()`. This makes
-/// the type constructible at runtime via `TypeDB::default`.
+/// `TypeDB::insert_defaultor::<Self>()`, which stores `Self::default` itself.
+/// This makes the type constructible at runtime via `TypeDB::default`.
 ///
 /// ```rust, ignore
 /// #[derive(Reflect, Default)]
@@ -188,6 +236,46 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// This attribute is type-level only.
+///
+/// # Serialize — `#[reflect(Serialize)]` & `#[reflect(Deserialize)]`
+///
+/// The reflective serializer cannot know that a type has a serde
+/// implementation, so serialization goes through the reflection fallback unless
+/// the type says otherwise. These two flags make it say otherwise: the
+/// generated `TypeDatabase::on_register` calls
+/// `TypeDB::insert_serializer::<Self>()` / `TypeDB::insert_deserializer::<Self>()`,
+/// which store the function pointers to `Serialize::serialize` /
+/// `Deserialize::deserialize`.
+///
+/// | Attribute | Effect |
+/// |-----------|--------|
+/// | `#[reflect(Serialize)]` | `TypeDB::reflect_serialize` calls `serde::Serialize` directly |
+/// | `#[reflect(Deserialize)]` | `TypeDB::reflect_deserialize` calls `serde::Deserialize` directly |
+///
+/// ```rust, ignore
+/// #[derive(Reflect, serde::Serialize, serde::Deserialize)]
+/// #[reflect(Serialize, Deserialize)]
+/// struct Settings { volume: f32 }
+/// ```
+///
+/// Both paths produce the same document — the flags change how the value is
+/// produced, not its shape. Without them the fallback walks `Reflect::reflect_ref`
+/// and serializes the value kind by kind; with them serde writes it in one go.
+///
+/// Two things follow from where the pointer is stored:
+///
+/// - It belongs to **the type**, so it only takes effect once that type is in
+///   the `TypeDB` — for a non-generic type the derive's own auto-registration
+///   already covers it, and anything else has to be registered.
+/// - The type must actually implement `Serialize` / `Deserialize`; that is a
+///   trait bound on `insert_serializer` / `insert_deserializer`, checked when
+///   the type is registered.
+///
+/// A **field** can ask for the same thing with `#[reflect(serialize)]` /
+/// `#[reflect(deserialize)]`. That is the form to use when the field's type is a
+/// concrete instantiation of a generic one: a generic type's own `TypeDatabase`
+/// impl cannot commit to serde for a parameter it does not know — see the
+/// field-level section below.
 ///
 /// # Custom attributes — `#[reflect(@expr)]`
 ///
@@ -255,13 +343,20 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// ## `#[reflect(default)]`
 ///
 /// Marks a field as having a fallback default value via
-/// `Default::default()`. This affects two methods:
+/// `Default::default()`. This affects three places:
 ///
 /// - `from_reflect`: when the source omits this field,
 ///   `Default::default()` is used to construct it.
 /// - `reflect_clone`: when the type does
 ///   **not** use `#[reflect(Clone)]`, ignored fields are constructed
 ///   via `Default::default()` during the field-by-field clone.
+/// - `TypeDatabase::register_dependencies`: the field's type gets its
+///   `Default` constructor registered, so it is constructible through
+///   `TypeDB::default` without carrying `#[reflect(Default)]` itself.
+///
+/// The registration matters most for generic field types, for the reason given
+/// under `#[reflect(serialize)]` below: a generic type's own registration cannot
+/// commit to the traits of a parameter it does not know.
 ///
 /// ```rust, ignore
 /// #[derive(Reflect)]
@@ -271,6 +366,50 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 ///     theme: String,   // defaults to ""
 /// }
 /// ```
+///
+/// ## `#[reflect(serialize)]` and `#[reflect(deserialize)]`
+///
+/// Register the field's type as serde serializable / deserializable in
+/// `TypeDatabase::register_dependencies`, as if the type carried the
+/// type-level `#[reflect(Serialize)]` / `#[reflect(Deserialize)]`.
+///
+/// A type registers the traits it names at the type level, and that is enough
+/// for a plain field. It is not enough for a *generic* field: the impl for
+/// `Vec<T>` only forwards the `TypeDatabase` bound to `T`, so it cannot register
+/// `Serialize` / `Deserialize` — whether `Vec<T>` is serde-able depends on `T`,
+/// which the impl does not know. A concrete field such as `Vec<String>` is
+/// nevertheless serde-able, and saying so on the field registers the fast-path
+/// pointers for that exact type, so serializing and deserializing it goes
+/// through `Serialize` / `Deserialize` instead of the reflective fallback.
+///
+/// The field type must actually implement `Serialize` / `Deserialize`. Both are
+/// checked when the container is registered, not when it is defined.
+///
+/// ```rust, ignore
+/// #[derive(Reflect)]
+/// struct Settings {
+///     // `Vec<String>` is serde-able, but `Vec<T>`'s registration cannot know
+///     // that; the field says so for this concrete type.
+///     #[reflect(serialize, deserialize)]
+///     themes: Vec<String>,
+/// }
+/// ```
+///
+/// ## `#[reflect(remote = Wrapper)]`
+///
+/// Marks a field whose type lives in another crate, so that reflection reaches it through the
+/// local *wrapper* named here instead. The field keeps holding the remote type; the accessors,
+/// `unpack`, and `from_reflect` all hand out the wrapper, which must implement
+/// `zlim_reflect::remote::ReflectRemote`.
+///
+/// ```rust, ignore
+/// #[derive(Reflect)]
+/// struct Holder {
+///     #[reflect(remote = TheirTypeRemote)]
+///     data: some_lib::TheirType,
+/// }
+/// ```
+///
 ///
 /// # Overriding method implementations
 ///
@@ -301,7 +440,7 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// The `on_register` override is **additional** — it does not replace the
 /// default `on_register` logic. The provided function is called after the
 /// standard registration completes, so you can run custom setup code
-/// (e.g. inserting extra convertors) when the type is registered.
+/// when the type is registered.
 ///
 /// ```rust, ignore
 /// fn my_on_register(db: &TypeDB) {
@@ -331,8 +470,11 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 /// Repeated registration is safe.
 ///
 /// Field types are automatically registered as dependencies in
-/// `TypeDatabase::register_dependencies`.
-#[proc_macro_derive(Reflect, attributes(reflect, type_path))]
+/// `TypeDatabase::register_dependencies`; a field flag such as
+/// `#[reflect(default)]`, `#[reflect(serialize)]` or
+/// `#[reflect(deserialize)]` additionally registers the matching trait for the
+/// field's type.
+#[proc_macro_derive(Reflect, attributes(reflect))]
 pub fn derive_reflect(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
     reflect::expand_reflect(&ast).into()
@@ -340,16 +482,24 @@ pub fn derive_reflect(input: TokenStream) -> TokenStream {
 
 /// Implements reflection for foreign types.
 ///
-/// It requires full type information and access to fields. ecause of the
+/// It requires full type information and access to fields. Because of the
 /// orphan rule, this is typically used inside the reflection crate itself.
 ///
-/// The usage is similar to [`derive Reflect`](derive_reflect).
+/// This macro emits the reflection only. The type's [`TypePath`] is written
+/// separately, next to the invocation, with `impl_simple_type_path!` — or by
+/// hand when that macro does not cover the shape. A foreign type has no
+/// `module_path!()` of its own to be named by, so its path belongs where it is
+/// spelled out, not here.
+///
+/// The usage is otherwise similar to [`derive Reflect`](derive_reflect).
 ///
 /// ## Example
 ///
 /// ```rust, ignore
+/// impl_simple_type_path!(@Option<T>: "core", "option", "Option");
+///
 /// impl_reflect! {
-///     #[type_path = "core::option:Option"]
+///     #[reflect(Default)]
 ///     enum Option<T> {
 ///         Some(T),
 ///         None,
@@ -361,18 +511,5 @@ pub fn derive_reflect(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn impl_reflect(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as syn::DeriveInput);
-
-    let custom = match type_path::CustomPath::parse(&ast.attrs) {
-        Ok(c) => c,
-        Err(e) => return e.into_compile_error().into(),
-    };
-
-    if custom.path.is_none() {
-        let msg = "#[type_path = \"...\"] must be specified when impl Reflect for Foreign Type.";
-        return syn::Error::new(ast.ident.span(), msg)
-            .into_compile_error()
-            .into();
-    }
-
     reflect::expand_reflect(&ast).into()
 }

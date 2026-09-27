@@ -1,38 +1,38 @@
-use zlim_reflect::Reflect;
 use zlim_reflect::dynamic::{
     DynamicArray, DynamicEnum, DynamicList, DynamicMap, DynamicSet, DynamicStruct, DynamicTuple,
     DynamicVariant,
 };
 use zlim_reflect::info::ReflectKind;
 use zlim_reflect::ops::{Array, Enum, List, Map, Set, Struct, Tuple};
+use zlim_reflect::{Reflect, TypePath};
 
 // -----------------------------------------------------------------------------
 // Test types
 // -----------------------------------------------------------------------------
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct Point {
     x: i32,
     y: f32,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct Person {
     name: String,
     age: i32,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct Vec3(i32, i32, i32);
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct Pair(i32, f32);
 
-#[derive(Reflect, Debug, PartialEq, Clone)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone)]
 #[reflect(Clone, Debug)]
 enum MyOption {
     None,

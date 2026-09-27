@@ -1,7 +1,7 @@
 use core::sync::atomic::AtomicU32;
 use core::sync::atomic::Ordering::{Acquire, SeqCst};
 
-use zlim_core::job_fn;
+use zlim_core::job::job_fn;
 use zlim_core::message::MessageWriter;
 use zlim_utils::sync::SpinLock;
 

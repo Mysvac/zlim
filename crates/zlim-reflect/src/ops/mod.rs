@@ -36,13 +36,12 @@
 //!
 //! 1. **Same type** — if the concrete types match, downcast and return
 //!    directly (fast path).
-//! 2. **Type database** — if the [`TypeDB`] has a registered conversion
-//!    function from the source type to the target type, use it.
-//! 3. **Field compatibility** — if the types differ and no conversion is
-//!    registered, check whether the immediate (single-layer) fields are
-//!    compatible. This check is **non-recursive**: only the top-level fields
-//!    are examined; fields of fields are not inspected.
-//! 4. **Construct** — if all required fields are compatible, unpack the source
+//! 2. **Field compatibility** — if the types differ, check whether the
+//!    immediate (single-layer) fields are compatible. This check is
+//!    **non-recursive**: only the top-level fields are examined; fields of
+//!    fields are not inspected. A field is compatible only when its type is
+//!    exactly the expected one — no conversion is attempted.
+//! 3. **Construct** — if all required fields are compatible, unpack the source
 //!    value and construct the target field by field.
 //!
 //! ## Strict vs Lenient
@@ -62,7 +61,6 @@
 //!
 //! [`from_reflect`]: Reflect::from_reflect
 //! [`ReflectKind`]: crate::info::ReflectKind
-//! [`TypeDB`]: crate::db::TypeDB
 //! [`Hash`]: core::hash::Hash
 //! [`Eq`]: core::cmp::Eq
 //! [`TypeId`]: core::any::TypeId
@@ -85,6 +83,7 @@ mod tuple_ops;
 // -----------------------------------------------------------------------------
 // Exports
 
+pub use crate::derive::Reflect;
 pub use error::{ApplyError, CloneError};
 pub use kind::{ReflectMut, ReflectOwned, ReflectRef};
 pub use reflect::Reflect;

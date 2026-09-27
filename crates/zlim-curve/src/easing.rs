@@ -72,7 +72,7 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Dir2, Dir3, Dir3A, Isometry2d, Isometry3d, Sum};
 use zlim_math::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4, VectorSpace};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::{Curve, CurveExt, FunctionCurve, Interval};
 

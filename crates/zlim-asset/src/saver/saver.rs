@@ -5,7 +5,7 @@ use core::future::Future;
 use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use crate::asset::Asset;
 use crate::error::{AssetSaveError, MismatchedSettingsType};

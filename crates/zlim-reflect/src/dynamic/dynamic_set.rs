@@ -24,8 +24,7 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 ///
 /// `DynamicSet` can be constructed from any type that implements
 /// [`Set`](crate::ops::Set) via [`from_ref`](Self::from_ref), and
-/// can be converted back to a concrete type via
-/// [`from_reflect`](crate::Reflect::from_reflect).
+/// can be converted back to a concrete type via [`from_reflect`].
 ///
 /// # Examples
 ///
@@ -41,6 +40,8 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 ///
 /// assert_eq!(set.value_len(), 2);
 /// ```
+///
+/// [`from_reflect`]: crate::Reflect::from_reflect
 #[derive(Default)]
 pub struct DynamicSet {
     table: HashSet<Box<dyn Reflect>, NoopState>,

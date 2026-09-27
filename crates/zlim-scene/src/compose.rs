@@ -209,7 +209,7 @@ where
 /// use zlim_scene::{PatchTemplate, ResolveContext, ResolvedScene, Scene};
 /// use zlim_core::template::{Template, TemplateContext};
 /// use zlim_core::error::ZlimResult;
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::derive::Component;
 ///
 /// #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
@@ -246,7 +246,7 @@ where
 ///
 /// ```rust
 /// use zlim_scene::{PatchFromTemplate, ResolveContext, ResolvedScene, Scene};
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::derive::Component;
 ///
 /// #[derive(TypePath, Component, Clone, Default)]

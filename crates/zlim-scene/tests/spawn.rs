@@ -6,7 +6,7 @@ use zlim_asset::plugin::AssetPlugin;
 use zlim_core::component::Component;
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use zlim_scene::{SceneListPatchInstance, ScenePatchInstance, ScenePlugin};
 use zlim_scene::{WorldSceneQueueExt, scn, scn_list};

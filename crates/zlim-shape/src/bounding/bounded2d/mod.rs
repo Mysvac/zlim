@@ -2,7 +2,7 @@ mod primitive_impls;
 
 use serde::{Deserialize, Serialize};
 use zlim_math::{FloatPow, Isometry2d, Mat2, Rot2, Vec2, ops};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::{BoundingVolume, IntersectsVolume};
 use crate::Circle;

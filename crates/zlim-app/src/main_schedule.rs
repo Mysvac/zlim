@@ -1,6 +1,6 @@
 use zlim_core::borrow::ResMut;
 use zlim_core::derive::Resource;
-use zlim_core::job_fn;
+use zlim_core::job::job_fn;
 use zlim_core::schedule::InternedScheduleLabel;
 use zlim_core::schedule::Schedule;
 use zlim_core::schedule::ScheduleLabel;
@@ -8,7 +8,7 @@ use zlim_core::schedule::ScheduleStage;
 use zlim_core::schedule::SingleThreadedExecutor;
 use zlim_core::system::Local;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use super::{App, Plugin};
 

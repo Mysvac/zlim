@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 use zlim_core::derive::{Error, Resource};
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::hash::HashMap;
 use zlim_utils::hash::map::Entry as MapEntry;
 use zlim_utils::sync::SpinLock;
@@ -893,7 +893,7 @@ mod tests {
     use zlim_core::derive::job_fn;
     use zlim_core::message::MessageQueue;
     use zlim_core::world::World;
-    use zlim_path::TypePath;
+    use zlim_reflect::TypePath;
 
     use super::*;
     use crate::asset::{AssetComponent, VisitAssetDependencies};

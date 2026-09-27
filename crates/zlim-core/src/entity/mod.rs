@@ -72,4 +72,5 @@ pub use entities::{Entities, EntityError, EntityNode};
 pub use id::{EntityId, Location};
 pub use label::{EntityLabel, InternedEntityLabel};
 pub use mapper::{EntityMap, EntityMapper, MapEntities};
-pub use zlim_core_derive::EntityLabel;
+
+pub use crate::derive::EntityLabel;

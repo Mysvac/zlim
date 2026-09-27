@@ -8,7 +8,7 @@ use zlim_core::derive::{Component, FromTemplate};
 use zlim_core::entity::EntityId;
 use zlim_core::error::ZlimResult;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use zlim_scene::{ResolveContext, ResolvedScene, Scene, ScenePatch};
 use zlim_scene::{ScenePlugin, WorldSceneExt, scn, scn_list};

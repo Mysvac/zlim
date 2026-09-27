@@ -1,8 +1,5 @@
-use core::any::TypeId;
-
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::info::{OpaqueInfo, TypeInfo};
 use crate::ops::{ApplyError, CloneError};
 
@@ -21,9 +18,9 @@ macro_rules! impl_opaque_typed {
             fn type_name() -> &'static str {
                 stringify!($ty)
             }
-            const IDENT: &str = stringify!($ty);
-            const MODULE: Option<&str> = None;
-            const CRATE: Option<&str> = None;
+            const IDENT: &'static str = stringify!($ty);
+            const MODULE: Option<&'static str> = None;
+            const CRATE: Option<&'static str> = None;
         }
 
         impl $crate::info::Typed for $ty {
@@ -152,18 +149,7 @@ macro_rules! impl_reflect {
         fn reflect_debug(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result { ::core::fmt::Debug::fmt(self, f) }
 
         fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-            let value = match value.downcast::<Self>() {
-                Ok(ret) => return Ok(ret),
-                Err(e) => e,
-            };
-
-            match TypeDB::get_by_type((*value).type_id()) {
-                Some(db) => {
-                    let converted = db.convert(value, TypeId::of::<Self>())?;
-                    Ok(converted.downcast::<Self>().expect(CONVERT_TYPE_ERROR))
-                }
-                None => Err(value),
-            }
+            value.downcast::<Self>()
         }
     };
     () => {
@@ -233,13 +219,12 @@ impl Reflect for f64 {
 // -----------------------------------------------------------------------------
 
 macro_rules! impl_type_database {
-    ($ty:ty, $($e:expr),* $(,)?) => {
+    ($ty:ty $(,)?) => {
         impl TypeDatabase for $ty {
             fn on_register(db: &'static TypeDB) {
-                db.insert_defaultor(Self::default);
+                db.insert_defaultor::<Self>();
                 db.insert_serializer::<Self>();
                 db.insert_deserializer::<Self>();
-                $( db.insert_convertor($e); )*
             }
         }
 
@@ -247,296 +232,22 @@ macro_rules! impl_type_database {
     };
 }
 
-impl_type_database!(
-    char,
-    <Self as Into<String>>::into,
-    <Self as Into<u32>>::into,
-    <Self as Into<u64>>::into,
-    <Self as Into<u128>>::into,
-);
-
-impl_type_database!(
-    bool,
-    |s: Self| s.to_string(),
-    <Self as Into<u8>>::into,
-    <Self as Into<i8>>::into,
-    <Self as Into<u16>>::into,
-    <Self as Into<i16>>::into,
-    <Self as Into<u32>>::into,
-    <Self as Into<i32>>::into,
-    <Self as Into<u64>>::into,
-    <Self as Into<i64>>::into,
-    <Self as Into<u128>>::into,
-    <Self as Into<i128>>::into,
-    <Self as Into<usize>>::into,
-    <Self as Into<isize>>::into,
-    <Self as Into<f32>>::into,
-    <Self as Into<f64>>::into,
-);
-
-impl_type_database!(
-    i8,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    // |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    i16,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    // |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    i32,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    // |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    i64,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    // |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    i128,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    // |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    isize,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    // |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    u8,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    // |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    u16,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    // |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    u32,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    // |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    u64,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    // |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    u128,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    // |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    usize,
-    |s: Self| s.to_string(),
-    |s: Self| s == 0,
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    // |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    f32,
-    |s: Self| s.to_string(),
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    // |s: Self| s as f32,
-    |s: Self| s as f64,
-);
-
-impl_type_database!(
-    f64,
-    |s: Self| s.to_string(),
-    |s: Self| s as u8,
-    |s: Self| s as u16,
-    |s: Self| s as u32,
-    |s: Self| s as u64,
-    |s: Self| s as u128,
-    |s: Self| s as usize,
-    |s: Self| s as i8,
-    |s: Self| s as i16,
-    |s: Self| s as i32,
-    |s: Self| s as i64,
-    |s: Self| s as isize,
-    |s: Self| s as f32,
-    // |s: Self| s as f64,
-);
+impl_type_database!(char);
+impl_type_database!(bool);
+impl_type_database!(i8);
+impl_type_database!(i16);
+impl_type_database!(i32);
+impl_type_database!(i64);
+impl_type_database!(i128);
+impl_type_database!(isize);
+impl_type_database!(u8);
+impl_type_database!(u16);
+impl_type_database!(u32);
+impl_type_database!(u64);
+impl_type_database!(u128);
+impl_type_database!(usize);
+impl_type_database!(f32);
+impl_type_database!(f64);
 
 // -----------------------------------------------------------------------------
 // Tests

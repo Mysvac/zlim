@@ -106,72 +106,68 @@ pub mod proj;
 
 /// The math prelude.
 pub mod prelude {
-    // doc(hidden): keeps this path out of autocomplete suggestions.
-    #[doc(hidden)]
-    pub use glam::bool::{BVec2, bvec2};
-    #[doc(hidden)]
-    pub use glam::bool::{BVec3, bvec3};
-    #[doc(hidden)]
-    pub use glam::bool::{BVec3A, bvec3a};
-    #[doc(hidden)]
-    pub use glam::bool::{BVec4, bvec4};
-    #[doc(hidden)]
-    pub use glam::bool::{BVec4A, bvec4a};
-    #[doc(hidden)]
-    pub use glam::f32::{Mat2, mat2};
-    #[doc(hidden)]
-    pub use glam::f32::{Mat3, mat3};
-    #[doc(hidden)]
-    pub use glam::f32::{Mat3A, mat3a};
-    #[doc(hidden)]
-    pub use glam::f32::{Mat4, mat4};
-    #[doc(hidden)]
-    pub use glam::f32::{Quat, quat};
-    #[doc(hidden)]
-    pub use glam::f32::{Vec2, vec2};
-    #[doc(hidden)]
-    pub use glam::f32::{Vec3, vec3};
-    #[doc(hidden)]
-    pub use glam::f32::{Vec3A, vec3a};
-    #[doc(hidden)]
-    pub use glam::f32::{Vec4, vec4};
-    #[doc(hidden)]
-    pub use glam::i32::{IVec2, ivec2};
-    #[doc(hidden)]
-    pub use glam::i32::{IVec3, ivec3};
-    #[doc(hidden)]
-    pub use glam::i32::{IVec4, ivec4};
-    #[doc(hidden)]
-    pub use glam::u32::{UVec2, uvec2};
-    #[doc(hidden)]
-    pub use glam::u32::{UVec3, uvec3};
-    #[doc(hidden)]
-    pub use glam::u32::{UVec4, uvec4};
+    #[doc(no_inline)]
+    pub use crate::{BVec2, bvec2};
+    #[doc(no_inline)]
+    pub use crate::{BVec3, bvec3};
+    #[doc(no_inline)]
+    pub use crate::{BVec3A, bvec3a};
+    #[doc(no_inline)]
+    pub use crate::{BVec4, bvec4};
+    #[doc(no_inline)]
+    pub use crate::{BVec4A, bvec4a};
+    #[doc(no_inline)]
+    pub use crate::{IVec2, ivec2};
+    #[doc(no_inline)]
+    pub use crate::{IVec3, ivec3};
+    #[doc(no_inline)]
+    pub use crate::{IVec4, ivec4};
+    #[doc(no_inline)]
+    pub use crate::{Mat2, mat2};
+    #[doc(no_inline)]
+    pub use crate::{Mat3, mat3};
+    #[doc(no_inline)]
+    pub use crate::{Mat3A, mat3a};
+    #[doc(no_inline)]
+    pub use crate::{Mat4, mat4};
+    #[doc(no_inline)]
+    pub use crate::{Quat, quat};
+    #[doc(no_inline)]
+    pub use crate::{UVec2, uvec2};
+    #[doc(no_inline)]
+    pub use crate::{UVec3, uvec3};
+    #[doc(no_inline)]
+    pub use crate::{UVec4, uvec4};
+    #[doc(no_inline)]
+    pub use crate::{Vec2, vec2};
+    #[doc(no_inline)]
+    pub use crate::{Vec3, vec3};
+    #[doc(no_inline)]
+    pub use crate::{Vec3A, vec3a};
+    #[doc(no_inline)]
+    pub use crate::{Vec4, vec4};
 
-    #[doc(hidden)]
-    pub use glam::swizzles::{Vec2Swizzles, Vec3Swizzles, Vec4Swizzles};
+    #[doc(no_inline)]
+    pub use crate::{Vec2Swizzles, Vec3Swizzles, Vec4Swizzles};
 
-    #[doc(hidden)]
-    pub use glam::{EulerRot, FloatExt};
+    #[doc(no_inline)]
+    pub use crate::{EulerRot, FloatExt};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::FloatPow;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::ops;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::Rot2;
 
-    #[doc(hidden)]
-    pub use crate::common_traits::StableInterpolate;
+    #[doc(no_inline)]
+    pub use crate::{Dir2, Dir3, Dir3A};
 
-    #[doc(hidden)]
-    pub use crate::direction::{Dir2, Dir3, Dir3A};
+    #[doc(no_inline)]
+    pub use crate::{Isometry2d, Isometry3d};
 
-    #[doc(hidden)]
-    pub use crate::isometry::{Isometry2d, Isometry3d};
-
-    #[doc(hidden)]
-    pub use crate::rects::{IRect, Rect, URect};
+    #[doc(no_inline)]
+    pub use crate::{IRect, Rect, URect};
 }

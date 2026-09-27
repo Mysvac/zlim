@@ -1,9 +1,11 @@
 use core::any::TypeId;
 
+use crate::impls::impl_simple_type_path;
 use crate::ops::Opaque;
 
+impl_simple_type_path!(TypeId: "core", "any", "TypeId");
+
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "core::any::TypeId"]
     #[reflect(Opaque, Clone, Debug, Eq, Hash)]
     pub struct TypeId;
 }

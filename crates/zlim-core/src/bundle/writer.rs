@@ -76,7 +76,7 @@ struct ComponentCell {
 /// # Example
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::bundle::BundleScratch;
 /// use zlim_core::prelude::*;
 ///
@@ -220,7 +220,7 @@ impl Drop for BundleScratch {
 /// the same bundle:
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::bundle::BundleScratch;
 /// use zlim_core::prelude::*;
 ///

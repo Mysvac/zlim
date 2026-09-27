@@ -351,7 +351,7 @@ impl CloneContext {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
@@ -422,7 +422,7 @@ impl CloneContext {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::clone::ComponentCloner;
 ///
@@ -493,7 +493,7 @@ impl ComponentCloner {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::ComponentCloner;
     ///
@@ -550,7 +550,7 @@ impl ComponentCloner {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
@@ -628,7 +628,7 @@ impl ComponentCloner {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
@@ -703,7 +703,7 @@ impl<'w> EntityCloner<'w> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
@@ -746,7 +746,7 @@ impl<'w> EntityCloner<'w> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
@@ -1103,7 +1103,7 @@ mod tests {
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     use serde::{Deserialize, Serialize};
-    use zlim_path::TypePath;
+    use zlim_reflect::TypePath;
 
     use crate::world::World;
     use crate::{derive::Component, entity::EntityId};

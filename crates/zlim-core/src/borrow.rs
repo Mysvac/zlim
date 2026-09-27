@@ -468,7 +468,7 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -521,7 +521,7 @@ pub struct Ref<'w, T: ?Sized> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -567,7 +567,7 @@ pub struct Mut<'w, T: ?Sized> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -621,7 +621,7 @@ unsafe impl<T: Send> Send for SliceRef<'_, T> {}
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -872,7 +872,7 @@ impl<'w, T: ?Sized> Ref<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -910,7 +910,7 @@ impl<'w, T: ?Sized> Ref<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -998,7 +998,7 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -1025,7 +1025,7 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -1529,7 +1529,7 @@ impl<'w, T> IntoIterator for SliceMut<'w, T> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Resource)]
@@ -1565,7 +1565,7 @@ pub struct Res<'w, T: Resource + Sync> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Resource)]
@@ -1603,7 +1603,7 @@ pub struct ResMut<'w, T: Resource + Send> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// // `Cell` is `Send` but not `Sync`, so this type cannot be shared across
@@ -1654,7 +1654,7 @@ pub struct NonSend<'w, T: Resource> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Resource)]

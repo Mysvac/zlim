@@ -9,7 +9,7 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::spanned::Spanned;
-use syn::{Attribute, DeriveInput, Expr, ExprLit, Path};
+use syn::{Attribute, DeriveInput, Expr, ExprLit, ImplGenerics, Path, TypeGenerics};
 use syn::{GenericParam, Generics, Ident, Lit, Meta};
 
 use crate::string_expr::StringExpr;
@@ -44,10 +44,8 @@ impl CustomPath {
     }
 
     fn parse_custom_path(&mut self, pair: &syn::MetaNameValue) -> syn::Result<()> {
-        if let Expr::Lit(e) = &pair.value
-            && let ExprLit {
-                lit: Lit::Str(lit), ..
-            } = e
+        if let Expr::Lit(ExprLit { lit, .. }) = &pair.value
+            && let Lit::Str(lit) = lit
         {
             let path: Path = syn::parse_str(&lit.value())?;
 
@@ -121,9 +119,9 @@ pub(crate) fn expand_type_path(input: &DeriveInput, zlim_reflect: &Path) -> Toke
                     #type_name
                 }
 
-                const IDENT: &str = #ident_;
-                const MODULE: ::core::option::Option<&str> = #module;
-                const CRATE: ::core::option::Option<&str> = #crate_name;
+                const IDENT: &'static str = #ident_;
+                const MODULE: ::core::option::Option<&'static str> = #module;
+                const CRATE: ::core::option::Option<&'static str> = #crate_name;
             }
         };
     }
@@ -297,26 +295,20 @@ fn build_generic_concat(
     cell: &TokenStream,
 ) -> TokenStream {
     let type_path_trait = crate::path::type_path_trait(zlim_reflect);
-    let method = Ident::new(method, proc_macro2::Span::call_site());
 
-    let params = generics
-        .params
-        .iter()
-        .filter(|p| !matches!(p, GenericParam::Lifetime(_)))
-        .peekable();
+    let method = Ident::new(method, proc_macro2::Span::call_site());
 
     let mut is_first = true;
 
-    for param in params {
+    for param in generics.params.iter() {
         match param {
             GenericParam::Type(tp) => {
                 if !is_first {
                     prefix.push(StringExpr::from_str(", "));
                 }
                 let t = &tp.ident;
-                prefix.push(StringExpr::Static(
-                    quote! { <#t as #type_path_trait>::#method() },
-                ));
+                let s = quote! { <#t as #type_path_trait>::#method() };
+                prefix.push(StringExpr::Static(s));
                 is_first = false;
             }
             GenericParam::Const(cp) => {
@@ -324,12 +316,11 @@ fn build_generic_concat(
                     prefix.push(StringExpr::from_str(", "));
                 }
                 let c = &cp.ident;
-                prefix.push(StringExpr::Owned(
-                    quote! { ::std::string::ToString::to_string(&#c) },
-                ));
+                let s = quote! { ::std::string::ToString::to_string(&#c) };
+                prefix.push(StringExpr::Owned(s));
                 is_first = false;
             }
-            _ => { /* do nothing */ }
+            _ => { /* Lifetime - do nothing */ }
         }
     }
 
@@ -349,39 +340,52 @@ fn build_generic_concat(
 
 /// Produces `(impl_generics, ty_generics, where_clause)` with a `TypePath`
 /// bound added for every type parameter.
-fn split_generics_for_type_path(
-    generics: &Generics,
+fn split_generics_for_type_path<'a>(
+    generics: &'a Generics,
     zlim_reflect: &Path,
-) -> (TokenStream, TokenStream, TokenStream) {
-    let (x, y, z) = generics.split_for_impl();
-    let impl_gen = x.to_token_stream();
-    let ty_gen = y.to_token_stream();
-    let mut wc = z.map(|w| w.to_token_stream()).unwrap_or_default();
+) -> (ImplGenerics<'a>, TypeGenerics<'a>, TokenStream) {
+    let (impl_ge, ty_gen, z) = generics.split_for_impl();
 
-    // // TypePath no need 'static
-    // let has_lifetime = generics.lifetimes().next().is_some();
-    // if has_lifetime {
-    //     if wc.is_empty() {
-    //         wc = quote! { where Self: 'static };
-    //     } else {
-    //         wc = quote! { #wc, Self: 'static };
-    //     }
-    // }
+    let has_lifetime = generics.lifetimes().next().is_some();
+    let has_type_const = generics.type_params().next().is_some();
 
-    let has_type = generics.type_params().next().is_some();
+    if !has_lifetime && !has_type_const {
+        let wc = z.map(|w| w.to_token_stream()).unwrap_or_default();
+        return (impl_ge, ty_gen, wc);
+    }
 
-    if has_type {
+    let mut trailing_punct = z.map(|w| w.predicates.trailing_punct()).unwrap_or(false);
+    let mut where_clause = z.map(|w| w.to_token_stream()).unwrap_or_default();
+
+    if has_lifetime {
+        if where_clause.is_empty() {
+            where_clause = quote! { where Self: 'static, };
+        } else if trailing_punct {
+            where_clause = quote! { #where_clause Self: 'static, };
+        } else {
+            where_clause = quote! { #where_clause, Self: 'static, };
+        }
+        trailing_punct = true;
+    }
+
+    if has_type_const {
         let type_path_trait = crate::path::type_path_trait(zlim_reflect);
+
         let predicates = generics.type_params().map(|tp| {
             let t = &tp.ident;
             quote! { #t: #type_path_trait }
         });
-        if wc.is_empty() {
-            wc = quote! { where #(#predicates),* };
+
+        if where_clause.is_empty() {
+            where_clause = quote! { where #(#predicates),* };
+        } else if trailing_punct {
+            where_clause = quote! { #where_clause #(#predicates),* };
         } else {
-            wc = quote! { #wc, #(#predicates),* };
+            where_clause = quote! { #where_clause, #(#predicates),* };
         }
     }
 
-    (impl_gen, ty_gen, wc)
+    (impl_ge, ty_gen, where_clause)
 }
+
+// -----------------------------------------------------------------------------

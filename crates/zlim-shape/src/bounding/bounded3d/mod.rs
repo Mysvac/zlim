@@ -4,7 +4,7 @@ mod primitive_impls;
 use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Isometry3d, Mat3, Quat, Vec3A};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::{BoundingVolume, IntersectsVolume};
 use crate::Cuboid;

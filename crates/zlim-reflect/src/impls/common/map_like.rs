@@ -2,21 +2,17 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 
 use crate::Reflect;
-use crate::db::TypeDB;
 use crate::impls::CLONE_TYPE_ERROR;
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::ops::{ApplyError, Map};
 
 /// Applies a reflected value to a map by draining and rebuilding it.
 ///
 /// 1. If the types are identical, clone-and-assign directly (fast path).
-/// 2. If the [`TypeDB`] has a conversion from `other`'s type to `Self`,
-///    clone-and-assign directly.
-/// 3. Require `other` to also be a [`Map`]; fail with
+/// 2. Require `other` to also be a [`Map`]; fail with
 ///    [`mismatched_kind`](ApplyError::mismatched_kind) otherwise.
-/// 4. Drain the destination, saving the removed entries for potential
+/// 3. Drain the destination, saving the removed entries for potential
 ///    recovery.
-/// 5. For each source entry: clone the key and value, then insert them
+/// 4. For each source entry: clone the key and value, then insert them
 ///    into the destination. On clone or insert failure, restore the
 ///    original entries via the recovery function and return the error.
 #[inline(never)]
@@ -32,17 +28,7 @@ pub fn map_apply(this: &mut dyn Map, other: &dyn Reflect) -> Result<(), ApplyErr
         return Ok(());
     }
 
-    // Phase 2: fast path — TypeDB conversion exists, clone and assign.
-    if let Some(db) = TypeDB::get_by_type(other_type)
-        && db.contains_convertor(this_type)
-        && let Ok(cloned) = other.reflect_clone()
-        && let Ok(converted) = db.convert(cloned, this_type)
-    {
-        this.reflect_assign(converted).expect(CONVERT_TYPE_ERROR);
-        return Ok(());
-    }
-
-    // Phase 3: cast `other` to `&dyn Map`.
+    // Phase 2: cast `other` to `&dyn Map`.
     let other: &dyn Map = other.reflect_ref().as_map().map_err(|e| {
         ::core::hint::cold_path();
         let src = this.reflect_type_path();
@@ -50,7 +36,7 @@ pub fn map_apply(this: &mut dyn Map, other: &dyn Reflect) -> Result<(), ApplyErr
         ApplyError::mismatched_kind(src, apply, e.expected, e.received)
     })?;
 
-    // Phase 4: drain destination; define recovery for rollback on failure.
+    // Phase 3: drain destination; define recovery for rollback on failure.
     let removed: Vec<(Box<dyn Reflect>, Box<dyn Reflect>)> = this.drain_all();
 
     #[cold]
@@ -63,7 +49,7 @@ pub fn map_apply(this: &mut dyn Map, other: &dyn Reflect) -> Result<(), ApplyErr
         }
     }
 
-    // Phase 5: clone each source key-value pair and insert into destination.
+    // Phase 4: clone each source key-value pair and insert into destination.
     for (key, value) in other.iter_entries() {
         // Clone the key; on failure, restore original map and return error.
         let k = match key.reflect_clone() {

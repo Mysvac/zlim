@@ -4,8 +4,6 @@
 // -----------------------------------------------------------------------------
 // Modules
 
-mod macros;
-
 pub mod debug;
 pub mod event;
 pub mod exp;
@@ -18,3 +16,7 @@ pub mod num;
 pub mod str;
 pub mod sync;
 pub mod vec;
+
+mod macros;
+
+// -----------------------------------------------------------------------------

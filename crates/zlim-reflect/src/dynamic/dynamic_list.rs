@@ -22,8 +22,7 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 ///
 /// `DynamicList` can be constructed from any type that implements
 /// [`List`](crate::ops::List) via [`from_ref`](Self::from_ref), and
-/// can be converted back to a concrete type via
-/// [`from_reflect`](crate::Reflect::from_reflect).
+/// can be converted back to a concrete type via [`from_reflect`].
 ///
 /// # Examples
 ///
@@ -41,6 +40,8 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 /// assert!(dynamic.pop_back().is_some());
 /// assert_eq!(dynamic.item_len(), 2);
 /// ```
+///
+/// [`from_reflect`]: crate::Reflect::from_reflect
 #[derive(Default)]
 pub struct DynamicList {
     values: Vec<Box<dyn Reflect>>,

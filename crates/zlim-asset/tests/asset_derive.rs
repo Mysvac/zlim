@@ -4,7 +4,7 @@ use zlim_asset::asset::{Asset, VisitAssetDependencies};
 use zlim_asset::handle::Handle;
 use zlim_asset::ident::{AssetId, ErasedAssetId};
 use zlim_asset::uuid::Uuid;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::hash::HashSet;
 
 // -----------------------------------------------------------------------------

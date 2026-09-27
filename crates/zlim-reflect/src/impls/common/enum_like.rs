@@ -2,9 +2,7 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 
 use crate::Reflect;
-use crate::db::TypeDB;
 use crate::impls::CLONE_TYPE_ERROR;
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::info::VariantKind;
 use crate::ops::{ApplyError, Enum};
 
@@ -21,14 +19,12 @@ use crate::ops::{ApplyError, Enum};
 /// # Execution steps
 ///
 /// 1. If the types are identical, clone-and-assign directly (fast path).
-/// 2. If the [`TypeDB`] has a conversion from `other`'s type to `Self`,
-///    clone-and-assign directly.
-/// 3. Require `other` to be an [`Enum`]; fail otherwise.
-/// 4. If the variant name differs, return `Ok(Err(other))` — the caller
+/// 2. Require `other` to be an [`Enum`]; fail otherwise.
+/// 3. If the variant name differs, return `Ok(Err(other))` — the caller
 ///    decides how to handle the variant change.
-/// 5. If the variant name matches but the variant kind differs, fail
+/// 4. If the variant name matches but the variant kind differs, fail
 ///    with [`mismatched_variant`](ApplyError::mismatched_variant).
-/// 6. Apply fields according to the variant kind:
+/// 5. Apply fields according to the variant kind:
 ///    - **Unit**: nothing to apply.
 ///    - **Tuple**: validate field count, then apply each field by index.
 ///    - **Struct**: apply each field by name (missing source fields are
@@ -61,17 +57,7 @@ pub fn enum_try_apply<'b>(
         return Ok(Ok(()));
     }
 
-    // Phase 2: fast path — TypeDB conversion exists, clone and assign.
-    if let Some(db) = TypeDB::get_by_type(other_type)
-        && db.contains_convertor(this_type)
-        && let Ok(cloned) = other.reflect_clone()
-        && let Ok(converted) = db.convert(cloned, this_type)
-    {
-        this.reflect_assign(converted).expect(CONVERT_TYPE_ERROR);
-        return Ok(Ok(()));
-    }
-
-    // Phase 3: cast `other` to `&dyn Enum`.
+    // Phase 2: cast `other` to `&dyn Enum`.
     let other: &dyn Enum = other.reflect_ref().as_enum().map_err(|e| {
         ::core::hint::cold_path();
         let src = this.reflect_type_path();
@@ -79,7 +65,7 @@ pub fn enum_try_apply<'b>(
         ApplyError::mismatched_kind(src, apply, e.expected, e.received)
     })?;
 
-    // Phase 4: check variant name; return `Ok(Err(other))` on mismatch
+    // Phase 3: check variant name; return `Ok(Err(other))` on mismatch
     // so the caller can handle the variant change.
     if this.variant_name() != other.variant_name() {
         return Ok(Err(other));

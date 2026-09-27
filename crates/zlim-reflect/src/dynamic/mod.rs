@@ -109,9 +109,9 @@ macro_rules! impl_dynamic_type_path {
                 stringify!($ty)
             }
 
-            const IDENT: &str = stringify!($ty);
-            const CRATE: Option<&str> = Some("zlim_reflect");
-            const MODULE: Option<&str> = Some("zlim_reflect::dynamic");
+            const IDENT: &'static str = stringify!($ty);
+            const CRATE: Option<&'static str> = Some("zlim_reflect");
+            const MODULE: Option<&'static str> = Some("zlim_reflect::dynamic");
         }
     };
 }

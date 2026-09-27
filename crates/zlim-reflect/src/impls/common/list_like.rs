@@ -4,21 +4,17 @@ use core::hash::{Hash, Hasher};
 use zlim_utils::format_smol;
 
 use crate::Reflect;
-use crate::db::TypeDB;
 use crate::impls::CLONE_TYPE_ERROR;
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::ops::{ApplyError, List};
 
 /// Applies a reflected value to a list by draining and rebuilding it.
 ///
 /// 1. If the types are identical, clone-and-assign directly (fast path).
-/// 2. If the [`TypeDB`] has a conversion from `other`'s type to `Self`,
-///    clone-and-assign directly.
-/// 3. Require `other` to also be a [`List`]; fail with
+/// 2. Require `other` to also be a [`List`]; fail with
 ///    [`mismatched_kind`](ApplyError::mismatched_kind) otherwise.
-/// 4. Drain the destination, saving the removed elements for potential
+/// 3. Drain the destination, saving the removed elements for potential
 ///    recovery.
-/// 5. For each source element: clone it, then push it into the
+/// 4. For each source element: clone it, then push it into the
 ///    destination. On clone or push failure, restore the original
 ///    elements via the recovery function and return the error.
 #[inline(never)]
@@ -34,17 +30,7 @@ pub fn list_apply(this: &mut dyn List, other: &dyn Reflect) -> Result<(), ApplyE
         return Ok(());
     }
 
-    // Phase 2: fast path — TypeDB conversion exists, clone and assign.
-    if let Some(db) = TypeDB::get_by_type(other_type)
-        && db.contains_convertor(this_type)
-        && let Ok(cloned) = other.reflect_clone()
-        && let Ok(converted) = db.convert(cloned, this_type)
-    {
-        this.reflect_assign(converted).expect(CONVERT_TYPE_ERROR);
-        return Ok(());
-    }
-
-    // Phase 3: cast `other` to `&dyn List`.
+    // Phase 2: cast `other` to `&dyn List`.
     let other: &dyn List = other.reflect_ref().as_list().map_err(|e| {
         ::core::hint::cold_path();
         let src = this.reflect_type_path();
@@ -52,7 +38,7 @@ pub fn list_apply(this: &mut dyn List, other: &dyn Reflect) -> Result<(), ApplyE
         ApplyError::mismatched_kind(src, apply, e.expected, e.received)
     })?;
 
-    // Phase 4: drain destination; define recovery for rollback on failure.
+    // Phase 3: drain destination; define recovery for rollback on failure.
     let removed = this.drain_all();
 
     #[cold]
@@ -65,7 +51,7 @@ pub fn list_apply(this: &mut dyn List, other: &dyn Reflect) -> Result<(), ApplyE
         }
     }
 
-    // Phase 5: clone each source element and push into destination.
+    // Phase 4: clone each source element and push into destination.
     let other_len = other.item_len();
     for index in 0..other_len {
         const MSG: &str = "the length of list should be correct";

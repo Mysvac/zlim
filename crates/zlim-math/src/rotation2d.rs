@@ -2,7 +2,7 @@ use core::f32::consts::TAU;
 
 use glam::FloatExt;
 use serde::{Deserialize, Serialize};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::ops;
 use crate::prelude::{Mat2, Vec2};

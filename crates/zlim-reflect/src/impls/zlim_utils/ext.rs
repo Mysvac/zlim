@@ -1,4 +1,4 @@
-use super::impl_simple_type_path;
+use crate::impls::impl_simple_type_path;
 use crate::path::{PathCell, TypePath, concat};
 use zlim_utils::ext::ArrayDeque;
 use zlim_utils::ext::BlockList;
@@ -39,7 +39,7 @@ impl<T: TypePath, const N: usize> TypePath for ArrayDeque<T, N> {
         })
     }
 
-    const IDENT: &str = "ArrayDeque";
-    const CRATE: Option<&str> = Some("zlim_utils");
-    const MODULE: Option<&str> = Some("zlim_utils::ext");
+    const IDENT: &'static str = "ArrayDeque";
+    const CRATE: Option<&'static str> = Some("zlim_utils");
+    const MODULE: Option<&'static str> = Some("zlim_utils::ext");
 }

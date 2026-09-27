@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir3, InvalidDirectionError, Isometry3d, Mat3};
 use zlim_math::{Quat, Vec2, Vec3};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::Circle;
 use crate::measure::{Measured2d, Measured3d};

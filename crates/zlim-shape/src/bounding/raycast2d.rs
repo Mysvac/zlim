@@ -1,6 +1,6 @@
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir2, Vec2};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::{Aabb2d, BoundingCircle, IntersectsVolume};
 use crate::Ray2d;

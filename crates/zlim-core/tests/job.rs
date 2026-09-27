@@ -1,12 +1,11 @@
 //! Integration tests for the `job_fn` attribute macro and the
 //! `job!` macro.
 
+use zlim_core::job::{IntoJob, JobDB, JobGroup, JobGroupLabel, JobLabel};
+use zlim_core::job::{job, job_fn, job_group};
 use zlim_core::system::{In, IntoSystem};
 use zlim_core::world::World;
-use zlim_core::{job, job_fn, job_group};
-
-use job::{IntoJob, JobDB, JobGroup, JobGroupLabel, JobLabel};
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Attribute macro — non-generic

@@ -1,7 +1,7 @@
 //! The [`Component`] trait.
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use super::db::ComponentDB;
 use super::hook::ComponentHook;
@@ -30,7 +30,7 @@ use crate::utils::Dropper;
 /// validates options.
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use std::collections::BTreeSet;
 ///
@@ -96,7 +96,7 @@ pub trait Component: TypePath + Send + Sync + Sized {
     /// # Example
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Component, Clone)]

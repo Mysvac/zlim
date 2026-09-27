@@ -2,19 +2,15 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 
 use crate::Reflect;
-use crate::db::TypeDB;
 use crate::impls::CLONE_TYPE_ERROR;
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::ops::{ApplyError, Opaque};
 
 /// Applies a reflected value to an opaque value.
 ///
 /// 1. If the types are identical, clone-and-assign directly (fast path).
-/// 2. If the [`TypeDB`] has a conversion from `other`'s type to `Self`,
-///    clone-and-assign directly.
-/// 3. Require `other` to also be [`Opaque`]; fail with
+/// 2. Require `other` to also be [`Opaque`]; fail with
 ///    [`mismatched_kind`](ApplyError::mismatched_kind) otherwise.
-/// 4. Serialize the source via [`stringify`](Opaque::stringify) and apply the
+/// 3. Serialize the source via [`stringify`](Opaque::stringify) and apply the
 ///    resulting string via [`Opaque::apply_str`].
 #[inline(never)]
 pub fn opaque_apply(this: &mut dyn Opaque, other: &dyn Reflect) -> Result<(), ApplyError> {
@@ -29,19 +25,9 @@ pub fn opaque_apply(this: &mut dyn Opaque, other: &dyn Reflect) -> Result<(), Ap
         return Ok(());
     }
 
-    // Phase 2: fast path — TypeDB conversion exists, clone and assign.
-    if let Some(db) = TypeDB::get_by_type(other_type)
-        && db.contains_convertor(this_type)
-        && let Ok(cloned) = other.reflect_clone()
-        && let Ok(converted) = db.convert(cloned, this_type)
-    {
-        this.reflect_assign(converted).expect(CONVERT_TYPE_ERROR);
-        return Ok(());
-    }
-
     ::core::hint::cold_path();
 
-    // Phase 3: cast `other` to `&dyn Opaque`.
+    // Phase 2: cast `other` to `&dyn Opaque`.
     let other: &dyn Opaque = other.reflect_ref().as_opaque().map_err(|e| {
         ::core::hint::cold_path();
         let src = this.reflect_type_path();
@@ -49,7 +35,7 @@ pub fn opaque_apply(this: &mut dyn Opaque, other: &dyn Reflect) -> Result<(), Ap
         ApplyError::mismatched_kind(src, apply, e.expected, e.received)
     })?;
 
-    // Phase 4: serialize source and apply to destination.
+    // Phase 3: serialize source and apply to destination.
     this.apply_str(&other.stringify()).map_err(|error| {
         ::core::hint::cold_path();
         let src = this.reflect_type_path();

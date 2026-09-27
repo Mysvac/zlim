@@ -5,7 +5,7 @@ use core::future::Future;
 use core::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::hash::{HashMap, HashSet};
 
 use super::transformed::TransformedAsset;

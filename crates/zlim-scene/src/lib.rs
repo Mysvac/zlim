@@ -48,6 +48,59 @@ mod plugin;
 mod spawn;
 
 // -----------------------------------------------------------------------------
+// Exports
+
+pub use crate::children::{SceneChildren, SceneParent};
+pub use crate::compose::{InitTemplate, InsertTemplate, PatchFromTemplate, PatchTemplate};
+pub use crate::compose::{SceneFunction, SceneListScope, SceneScope, TemplatePatch};
+pub use crate::dependency::{SceneDependencies, SceneDependency};
+pub use crate::derive::{scn, scn_list};
+pub use crate::patch::{CachedSceneAsset, SceneListPatch, SceneListPatchHandle};
+pub use crate::patch::{ScenePatch, ScenePatchHandle};
+pub use crate::plugin::ScenePlugin;
+pub use crate::resolved::ResolvedScene;
+pub use crate::scene::{ResolveContext, Scene, SceneBox};
+pub use crate::scene_list::{EntityScene, SceneList, SceneListBox};
+pub use crate::spawn::{SceneListPatchInstance, ScenePatchInstance, WorldSceneQueueExt};
+pub use crate::world::WorldSceneExt;
+
+/// The scene jobs.
+pub mod jobs {
+    #[doc(inline)]
+    pub use crate::plugin::HandleSceneSpawn;
+}
+
+/// The scene macros.
+pub mod derive {
+    #[doc(inline)]
+    pub use zlim_scene_derive::{scn, scn_list};
+}
+
+/// The scene plugins.
+pub mod plugins {
+    #[doc(no_inline)]
+    pub use crate::ScenePlugin;
+}
+
+/// The scene preludes.
+pub mod prelude {
+    #[doc(no_inline)]
+    pub use crate::derive::{scn, scn_list};
+    #[doc(no_inline)]
+    pub use crate::patch::{SceneListPatch, ScenePatch};
+    #[doc(no_inline)]
+    pub use crate::resolved::ResolvedScene;
+    #[doc(no_inline)]
+    pub use crate::scene::Scene;
+    #[doc(no_inline)]
+    pub use crate::scene_list::SceneList;
+    #[doc(no_inline)]
+    pub use crate::spawn::WorldSceneQueueExt;
+    #[doc(no_inline)]
+    pub use crate::world::WorldSceneExt;
+}
+
+// -----------------------------------------------------------------------------
 // Macro Exports
 
 /// Internal module, public for derive macros.
@@ -87,48 +140,3 @@ pub mod __macro_exports__ {
 }
 
 // -----------------------------------------------------------------------------
-// Exports
-
-pub use crate::children::{SceneChildren, SceneParent};
-pub use crate::compose::{InitTemplate, InsertTemplate, PatchFromTemplate, PatchTemplate};
-pub use crate::compose::{SceneFunction, SceneListScope, SceneScope, TemplatePatch};
-pub use crate::dependency::{SceneDependencies, SceneDependency};
-pub use crate::patch::{CachedSceneAsset, SceneListPatch, SceneListPatchHandle};
-pub use crate::patch::{ScenePatch, ScenePatchHandle};
-pub use crate::plugin::ScenePlugin;
-pub use crate::resolved::ResolvedScene;
-pub use crate::scene::{ResolveContext, Scene, SceneBox};
-pub use crate::scene_list::{EntityScene, SceneList, SceneListBox};
-pub use crate::spawn::{SceneListPatchInstance, ScenePatchInstance, WorldSceneQueueExt};
-pub use crate::world::WorldSceneExt;
-pub use zlim_scene_derive::{scn, scn_list};
-
-pub mod jobs {
-    pub use crate::plugin::HandleSceneSpawn;
-}
-
-/// The scene prelude.
-pub mod prelude {
-    #[doc(hidden)]
-    pub use crate::children::{SceneChildren, SceneParent};
-    #[doc(hidden)]
-    pub use crate::compose::{InitTemplate, InsertTemplate, PatchFromTemplate};
-    #[doc(hidden)]
-    pub use crate::compose::{PatchTemplate, SceneFunction, SceneScope, TemplatePatch};
-    #[doc(hidden)]
-    pub use crate::dependency::{SceneDependencies, SceneDependency};
-    #[doc(hidden)]
-    pub use crate::patch::{CachedSceneAsset, SceneListPatch, ScenePatch};
-    #[doc(hidden)]
-    pub use crate::plugin::ScenePlugin;
-    #[doc(hidden)]
-    pub use crate::resolved::ResolvedScene;
-    #[doc(hidden)]
-    pub use crate::scene::{ResolveContext, Scene};
-    #[doc(hidden)]
-    pub use crate::scene_list::{EntityScene, SceneList};
-    #[doc(hidden)]
-    pub use crate::spawn::{SceneListPatchInstance, ScenePatchInstance, WorldSceneQueueExt};
-    #[doc(hidden)]
-    pub use crate::world::WorldSceneExt;
-}

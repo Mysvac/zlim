@@ -1125,7 +1125,7 @@ impl Schedule {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::schedule::AnonymousSchedule;
     ///
@@ -1203,7 +1203,7 @@ impl Schedule {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::schedule::AnonymousSchedule;
     ///
@@ -1282,7 +1282,7 @@ impl Schedule {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::schedule::AnonymousSchedule;
     ///

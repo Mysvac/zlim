@@ -22,11 +22,13 @@ mod macros;
 
 pub use tracing::span::EnteredSpan;
 pub use tracing::{Event, Level, Span};
+
 pub use tracing::{debug, debug_span};
 pub use tracing::{error, error_span};
 pub use tracing::{info, info_span};
 pub use tracing::{trace, trace_span};
 pub use tracing::{warn, warn_span};
+// pub macro: debug_once, info_once, warn_once, error_once.
 
 pub use tracing;
 pub use tracing_subscriber;
@@ -255,16 +257,15 @@ impl LogConfig {
 
 /// The log prelude.
 pub mod prelude {
-    // doc(hidden): keeps this path out of autocomplete suggestions.
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{debug, debug_once, debug_span};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{error, error_once, error_span};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{info, info_once, info_span};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{trace, trace_once, trace_span};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{warn, warn_once, warn_span};
 }
 

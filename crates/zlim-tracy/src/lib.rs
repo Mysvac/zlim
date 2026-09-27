@@ -44,6 +44,9 @@ pub use gpu::*;
 pub use plot::*;
 pub use span::*;
 
+// Do not re-export the macros, as it is ambiguous with zlim_log.
+// pub mod macros { /* .. */ }
+
 // -----------------------------------------------------------------------------
 // Internal
 
@@ -72,7 +75,7 @@ pub mod internal {
     /// the null terminator, so the profiler is never handed a string that runs past its end.
     #[must_use]
     #[track_caller]
-    pub const fn create_plot(name: &'static str) -> crate::PlotName {
+    pub const fn create_plot_name(name: &'static str) -> crate::PlotName {
         debug_assert!(
             matches!(name.as_bytes().last(), Some(&0)),
             "a plot name must be null-terminated",

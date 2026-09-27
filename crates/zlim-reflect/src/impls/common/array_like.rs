@@ -2,9 +2,7 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 
 use crate::Reflect;
-use crate::db::TypeDB;
 use crate::impls::CLONE_TYPE_ERROR;
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::ops::{ApplyError, Array};
 
 /// Applies a reflected value to an array, element by element.
@@ -26,16 +24,6 @@ pub fn array_apply(this: &mut dyn Array, other: &dyn Reflect) -> Result<(), Appl
         && let Ok(cloned) = other.reflect_clone()
     {
         this.reflect_assign(cloned).expect(CLONE_TYPE_ERROR);
-        return Ok(());
-    }
-
-    // Phase 2: fast path — TypeDB conversion exists, clone and assign.
-    if let Some(db) = TypeDB::get_by_type(other.type_id())
-        && db.contains_convertor(this_type)
-        && let Ok(cloned) = other.reflect_clone()
-        && let Ok(converted) = db.convert(cloned, this_type)
-    {
-        this.reflect_assign(converted).expect(CONVERT_TYPE_ERROR);
         return Ok(());
     }
 

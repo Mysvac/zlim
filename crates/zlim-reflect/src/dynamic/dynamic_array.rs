@@ -23,9 +23,8 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 ///
 /// `DynamicArray` can be constructed from any type that implements
 /// [`Array`](crate::ops::Array) via [`from_ref`](Self::from_ref), and
-/// can be converted back to a concrete type via
-/// [`from_reflect`](crate::Reflect::from_reflect). Array conversion is
-/// **strict** — the element count must match exactly.
+/// can be converted back to a concrete type via [`from_reflect`]. Array
+/// conversion is **strict** — the element count must match exactly.
 ///
 /// # Examples
 ///
@@ -42,6 +41,8 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 /// assert_eq!(dynamic.item_len(), 3);
 /// assert!(dynamic.item(1).is_some());
 /// ```
+///
+/// [`from_reflect`]: crate::Reflect::from_reflect
 #[derive(Default)]
 pub struct DynamicArray {
     values: Vec<Box<dyn Reflect>>,

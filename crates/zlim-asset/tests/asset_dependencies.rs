@@ -23,7 +23,7 @@ use zlim_asset::plugin::{AppAssetExt, AssetPlugin};
 use zlim_asset::server::{AssetServer, LoadState};
 use zlim_asset::source::AssetSourceBuilder;
 use zlim_core::error::ZlimError;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::mpmc::Sender;
 
 // -----------------------------------------------------------------------------

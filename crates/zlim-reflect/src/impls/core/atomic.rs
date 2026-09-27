@@ -1,4 +1,3 @@
-use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use core::hash::BuildHasher;
 use core::sync::atomic::*;
@@ -7,13 +6,14 @@ use zlim_utils::hash::FixedState;
 
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::CONVERT_TYPE_ERROR;
+use crate::impls::impl_simple_type_path;
 use crate::info::{OpaqueInfo, TypeInfo, Typed};
 use crate::ops::{ApplyError, CloneError, Opaque};
 use crate::path::TypePath;
 
+impl_simple_type_path!(Ordering: "core", "sync::atomic", "Ordering");
+
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "core::sync::atomic::Ordering"]
     #[reflect(Clone, Debug, Hash, Eq)]
     pub enum Ordering {
         Relaxed,
@@ -78,18 +78,7 @@ macro_rules! impl_reflect_for_atomic {
             }
 
             fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-                let value = match value.downcast::<Self>() {
-                    Ok(ret) => return Ok(ret),
-                    Err(e) => e,
-                };
-
-                match TypeDB::get_by_type((*value).type_id()) {
-                    Some(db) => {
-                        let converted = db.convert(value, TypeId::of::<Self>())?;
-                        Ok(converted.downcast::<Self>().expect(CONVERT_TYPE_ERROR))
-                    }
-                    None => Err(value),
-                }
+                value.downcast::<Self>()
             }
         }
 
@@ -111,11 +100,9 @@ macro_rules! impl_reflect_for_atomic {
 
         impl TypeDatabase for $ty {
             fn on_register(db: &'static TypeDB) {
-                db.insert_defaultor(Self::default);
-                db.insert_deserializer::<Self>();
+                db.insert_defaultor::<Self>();
                 db.insert_serializer::<Self>();
-                db.insert_convertor(Self::new);
-                db.insert_convertor(<Self as Into<$ty>>::into);
+                db.insert_deserializer::<Self>();
             }
 
             fn register_dependencies() {}

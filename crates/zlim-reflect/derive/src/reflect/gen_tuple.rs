@@ -18,7 +18,17 @@ pub(crate) fn gen_tuple(info: &ReflectStruct) -> TokenStream {
         field_count,
     } = info.field_accessors();
 
-    let members: Vec<_> = info.active_fields().map(|f| f.to_member()).collect();
+    // Moving a field out hands out its *reflected* form: a remote field becomes its wrapper, since
+    // a `Box<dyn Reflect>` cannot borrow the remote value it stands for. The remote value of a
+    // remote wrapper is not reflected at all, so it is not part of the unpacked fields.
+    let field_takes: Vec<TokenStream> = info
+        .active_fields()
+        .map(|field| {
+            let member = field.to_member();
+            let value = quote!(self.#member);
+            field.reflected_take(&value)
+        })
+        .collect();
 
     let real_ident = meta.ident();
     let (impl_generics, ty_generics, where_clause) = meta.split_generics();
@@ -52,7 +62,7 @@ pub(crate) fn gen_tuple(info: &ReflectStruct) -> TokenStream {
 
             fn unpack(self: ::std::boxed::Box<Self>) -> ::std::vec::Vec<::std::boxed::Box<dyn #reflect_>> {
                 ::std::vec![
-                    #( Box::new( self.#members ), )*
+                    #( Box::new( #field_takes ), )*
                 ]
             }
         }

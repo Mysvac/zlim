@@ -10,7 +10,7 @@ use core::fmt::{Debug, Formatter};
 use std::path::PathBuf;
 
 use zlim_core::derive::Message;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use crate::asset::Asset;
 use crate::error::AssetLoadError;
@@ -261,7 +261,7 @@ impl<A: Asset> From<&AssetLoadFailedEvent<A>> for ErasedAssetLoadFailedEvent {
 
 #[cfg(test)]
 mod tests {
-    use zlim_path::derive::TypePath;
+    use zlim_reflect::derive::TypePath;
 
     use super::*;
     use crate::asset::VisitAssetDependencies;

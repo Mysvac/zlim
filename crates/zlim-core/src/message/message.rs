@@ -2,7 +2,7 @@
 
 //! Marker trait for ECS message payload types.
 
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 /// Marker trait for ECS message payload types.
 ///
@@ -19,12 +19,12 @@ use zlim_path::TypePath;
 /// update via [`MessageQueue::update`].
 ///
 /// [`MessageQueue::update`]: crate::message::MessageQueue::update
-/// [`TypePath`]: zlim_path::TypePath
+/// [`TypePath`]: zlim_reflect::TypePath
 ///
 /// # Using MessageQueue In World
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Message)]
@@ -50,7 +50,7 @@ use zlim_path::TypePath;
 /// so one system reading messages does not consume them for another system.
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Message)]

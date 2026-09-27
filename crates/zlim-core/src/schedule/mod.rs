@@ -69,7 +69,7 @@
 //! # Example
 //!
 //! ```rust
-//! use zlim_path::TypePath;
+//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //! use zlim_core::job::JobDB;
 //!
@@ -144,6 +144,6 @@ pub use schedule::Schedule;
 pub use schedules::{MissingSchedule, Schedules};
 pub use stage::ScheduleStage;
 
-pub use zlim_core_derive::{ScheduleLabel, ScheduleStage};
+pub use crate::derive::{ScheduleLabel, ScheduleStage};
 
 // -----------------------------------------------------------------------------

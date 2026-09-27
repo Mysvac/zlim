@@ -21,8 +21,7 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 ///
 /// `DynamicTuple` can be constructed from any type that implements
 /// [`Tuple`](crate::ops::Tuple) via [`from_ref`](Self::from_ref), and
-/// can be converted back to a concrete type via
-/// [`from_reflect`](crate::Reflect::from_reflect).
+/// can be converted back to a concrete type via [`from_reflect`].
 ///
 /// # Examples
 ///
@@ -42,6 +41,8 @@ use super::{impl_dynamic_reflect_cast, impl_dynamic_type_info, impl_dynamic_type
 /// // let t: &dyn Tuple = &my_tuple_struct;
 /// // let cloned = DynamicTuple::from_ref(t).unwrap();
 /// ```
+///
+/// [`from_reflect`]: crate::Reflect::from_reflect
 #[derive(Default)]
 pub struct DynamicTuple {
     pub(super) fields: Vec<Box<dyn Reflect>>,

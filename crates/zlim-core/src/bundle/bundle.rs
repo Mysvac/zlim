@@ -57,7 +57,7 @@ use crate::component::{Component, ComponentCollector, ComponentWriter, Component
 /// # Derive macro
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -90,7 +90,7 @@ use crate::component::{Component, ComponentCollector, ComponentWriter, Component
 /// inline component lists:
 ///
 /// ```rust, no_run
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]

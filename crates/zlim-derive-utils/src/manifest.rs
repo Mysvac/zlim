@@ -124,10 +124,13 @@ struct Package {
 
 #[derive(Deserialize)]
 struct Dependencies {
+    // Package name, keep as is.
     #[serde(default)]
     package: Package,
+    /// The deps list that removed the `zlim-` prefix.
     #[serde(default)]
     dependencies: TableKeys,
+    /// The dev-deps list that removed the `zlim-` prefix.
     #[serde(rename = "dev-dependencies", default)]
     dev_dependencies: TableKeys,
 }
@@ -192,6 +195,10 @@ struct Manifest {
 /// let core_path = zlim_derive_utils::crate_path("zlim_core");
 /// ```
 pub fn crate_path(path: &'static str) -> syn::Path {
+    debug_assert!(
+        !path.contains('-'),
+        "The crate name `{path}` contains `-`, use `_` instead."
+    );
     Manifest::shared(|manifest| manifest.find_crate_path(path))
 }
 

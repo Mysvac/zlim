@@ -21,7 +21,7 @@ use crate::world::{World, WorldCell};
 /// # Example
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Message)]

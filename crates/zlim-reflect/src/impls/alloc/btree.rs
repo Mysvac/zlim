@@ -1,42 +1,18 @@
-use core::any::TypeId;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::Reflect;
-use crate::TypePath;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR, CONVERT_TYPE_ERROR, is_convertable};
-use crate::info::{
-    GenericInfo, Generics, InfoCell, MapInfo, SetInfo, TypeInfo, TypeParamInfo, Typed,
-};
-use crate::ops::{ApplyError, CloneError, Map, Set};
-use crate::path::{PathCell, concat};
+use crate::impls::impl_simple_type_path;
+use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR};
+use crate::info::{GenericInfo, TypeInfo, TypeParamInfo, Typed};
+use crate::info::{Generics, InfoCell, MapInfo, SetInfo};
+use crate::ops::{ApplyError, CloneError, Map, ReflectRef, Set};
 
 // -----------------------------------------------------------------------------
 // BTreeSet<T>
 // -----------------------------------------------------------------------------
 
-impl<T: TypePath> TypePath for BTreeSet<T> {
-    fn type_path() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&[
-                "alloc::collections::btree::set::BTreeSet",
-                "<",
-                <T>::type_path(),
-                ">",
-            ])
-        })
-    }
-
-    fn type_name() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| concat(&["BTreeSet", "<", <T>::type_name(), ">"]))
-    }
-
-    const IDENT: &str = "BTreeSet";
-    const CRATE: Option<&str> = Some("alloc");
-    const MODULE: Option<&str> = Some("alloc::collections::btree::set");
-}
+impl_simple_type_path!(@BTreeSet<T>: "alloc", "collections::btree::set", "BTreeSet");
 
 impl<T: Reflect + Typed + Ord> Typed for BTreeSet<T> {
     fn type_info() -> &'static TypeInfo {
@@ -116,39 +92,26 @@ impl<T: Reflect + Typed + Ord> Reflect for BTreeSet<T> {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
 
-        if let Some(db) = value.type_db() {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => {
-                    let r = ret.downcast::<Self>().expect(CONVERT_TYPE_ERROR);
-                    return Ok(r);
-                }
-                Err(e) => value = e,
-            }
-        }
+        let ReflectRef::Set(v) = value.reflect_ref() else {
+            return Err(value);
+        };
 
-        if value.reflect_kind() != crate::info::ReflectKind::Set {
+        if v.iter_values().any(|item| !item.is::<T>()) {
             return Err(value);
         }
 
         let mut set_v = value.reflect_owned().into_set().unwrap();
-
-        if !set_v
-            .iter_values()
-            .all(|item| is_convertable(item, TypeId::of::<T>()))
-        {
-            return Err(set_v);
-        }
-
         let items: Vec<Box<dyn Reflect>> = set_v.drain_all();
 
         let mut set = Self::new();
+
         for item in items {
-            set.insert(*T::from_reflect(item).expect(COMPATIBLE_ERROR));
+            set.insert(item.take::<T>().expect(COMPATIBLE_ERROR));
         }
 
         Ok(Box::new(set))
@@ -157,7 +120,7 @@ impl<T: Reflect + Typed + Ord> Reflect for BTreeSet<T> {
 
 impl<T: TypeDatabase + Ord> TypeDatabase for BTreeSet<T> {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
     }
 
     fn register_dependencies() {
@@ -169,43 +132,12 @@ impl<T: TypeDatabase + Ord> TypeDatabase for BTreeSet<T> {
 // BTreeMap<K, V>
 // -----------------------------------------------------------------------------
 
-impl<K: TypePath, V: TypePath> TypePath for BTreeMap<K, V> {
-    fn type_path() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&[
-                "alloc::collections::btree::map::BTreeMap",
-                "<",
-                <K>::type_path(),
-                ", ",
-                <V>::type_path(),
-                ">",
-            ])
-        })
-    }
-
-    fn type_name() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&[
-                "BTreeMap",
-                "<",
-                <K>::type_name(),
-                ", ",
-                <V>::type_name(),
-                ">",
-            ])
-        })
-    }
-
-    const IDENT: &str = "BTreeMap";
-    const CRATE: Option<&str> = Some("alloc");
-    const MODULE: Option<&str> = Some("alloc::collections::btree::map");
-}
+impl_simple_type_path!(@BTreeMap<K, V>: "alloc", "collections::btree::map", "BTreeMap");
 
 impl<K: Reflect + Typed + Ord, V: Reflect + Typed> Typed for BTreeMap<K, V> {
     fn type_info() -> &'static TypeInfo {
         static CELL: InfoCell = InfoCell::new();
+
         CELL.get_or_init::<Self>(|| {
             TypeInfo::Map(MapInfo::new::<Self, K, V>().with_generics(Generics::new(&[
                 GenericInfo::Type(TypeParamInfo::new::<K>("K")),
@@ -308,47 +240,26 @@ impl<K: Reflect + Typed + Ord, V: Reflect + Typed> Reflect for BTreeMap<K, V> {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
 
-        if let Some(db) = value.type_db() {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => {
-                    let r = ret.downcast::<Self>().expect(CONVERT_TYPE_ERROR);
-                    return Ok(r);
-                }
-                Err(e) => value = e,
-            }
-        }
+        let ReflectRef::Map(v) = value.reflect_ref() else {
+            return Err(value);
+        };
 
-        if value.reflect_kind() != crate::info::ReflectKind::Map {
+        if v.iter_entries().any(|(k, v)| !k.is::<K>() || !v.is::<V>()) {
             return Err(value);
         }
 
         let mut map_v = value.reflect_owned().into_map().unwrap();
-        {
-            let key_type_id = TypeId::of::<K>();
-            let val_type_id = TypeId::of::<V>();
-            let mut ok = true;
-            for (k, v) in map_v.iter_entries() {
-                if !is_convertable(k, key_type_id) || !is_convertable(v, val_type_id) {
-                    ok = false;
-                    break;
-                }
-            }
-            if !ok {
-                return Err(map_v);
-            }
-        }
-
         let entries: Vec<(Box<dyn Reflect>, Box<dyn Reflect>)> = map_v.drain_all();
 
         let mut map = Self::new();
         for (k, v) in entries {
-            let key = *K::from_reflect(k).expect(COMPATIBLE_ERROR);
-            let val = *V::from_reflect(v).expect(COMPATIBLE_ERROR);
+            let key = k.take::<K>().expect(COMPATIBLE_ERROR);
+            let val = v.take::<V>().expect(COMPATIBLE_ERROR);
             map.insert(key, val);
         }
 
@@ -358,7 +269,7 @@ impl<K: Reflect + Typed + Ord, V: Reflect + Typed> Reflect for BTreeMap<K, V> {
 
 impl<K: TypeDatabase + Ord, V: TypeDatabase> TypeDatabase for BTreeMap<K, V> {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
     }
 
     fn register_dependencies() {

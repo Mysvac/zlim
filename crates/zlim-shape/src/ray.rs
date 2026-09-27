@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::ops;
 use zlim_math::{Dir2, Dir3, Vec2, Vec3};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::{InfinitePlane3d, Plane2d};
 

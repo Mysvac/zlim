@@ -7,7 +7,7 @@ use atomicow::CowArc;
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 use zlim_core::derive::Error;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 use zlim_utils::str::SmolStr;
 
 // -----------------------------------------------------------------------------

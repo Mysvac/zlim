@@ -9,7 +9,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Vec2, VectorSpace};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // CubicBezier

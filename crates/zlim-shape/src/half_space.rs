@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::ops;
 use zlim_math::{Vec3, Vec3A, Vec4, Vec4Swizzles};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 /// A region of 3D space, specifically an open set whose border is a bisecting 2D plane.
 ///

@@ -12,7 +12,7 @@
 //! [`AssetReader`]: crate::io::AssetReader
 
 use zlim_app::{App, MainSchedulePlugin, Plugin, PluginExt};
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 #[cfg(feature = "http")]
 use crate::plugin::AppAssetExt;

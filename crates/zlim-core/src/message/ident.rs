@@ -21,7 +21,7 @@ crate::utils::define_ident!(
     /// # Example
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Message)]
@@ -53,7 +53,7 @@ crate::utils::define_ident!(
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageQueue};
-/// use zlim_path::derive::TypePath;
+/// use zlim_reflect::derive::TypePath;
 ///
 /// #[derive(TypePath, Message)]
 /// struct Ping;

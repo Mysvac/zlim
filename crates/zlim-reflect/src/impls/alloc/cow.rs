@@ -1,9 +1,7 @@
-use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use std::borrow::Cow;
 
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::info::{OpaqueInfo, ReflectKind, TypeInfo, Typed};
 use crate::ops::{ApplyError, CloneError, Opaque};
 use crate::path::{PathCell, concat};
@@ -20,9 +18,9 @@ impl<T: TypePath + ToOwned + ?Sized> TypePath for Cow<'static, T> {
         CELL.get_or_init::<Self>(|| concat(&["Cow", "<", T::type_name(), ">"]))
     }
 
-    const IDENT: &str = "Cow";
-    const CRATE: Option<&str> = Some("alloc");
-    const MODULE: Option<&str> = Some("alloc::borrow");
+    const IDENT: &'static str = "Cow";
+    const CRATE: Option<&'static str> = Some("alloc");
+    const MODULE: Option<&'static str> = Some("alloc::borrow");
 }
 
 impl Typed for Cow<'static, str> {
@@ -72,20 +70,10 @@ impl Reflect for Cow<'static, str> {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
-
-        if let Some(db) = TypeDB::get_by_type(value.type_id()) {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => {
-                    let converted = ret.downcast::<Self>();
-                    return Ok(converted.expect(CONVERT_TYPE_ERROR));
-                }
-                Err(v) => value = v,
-            }
-        }
 
         if value.reflect_kind() != ReflectKind::Opaque {
             return Err(value);
@@ -99,7 +87,7 @@ impl Reflect for Cow<'static, str> {
 
 impl TypeDatabase for Cow<'static, str> {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
         db.insert_serializer::<Self>();
         db.insert_deserializer::<Self>();
     }

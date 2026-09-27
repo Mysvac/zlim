@@ -5,7 +5,7 @@ use core::fmt::{Display, Formatter};
 
 use itertools::Either;
 use serde::{Deserialize, Serialize};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // Interval

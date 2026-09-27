@@ -50,4 +50,14 @@ impl zlim_app::Plugin for DiagnosticsPlugin {
     }
 }
 
+/// The diagnotic plugins.
+pub mod plugins {
+    #[doc(no_inline)]
+    pub use crate::{DiagnosticsPlugin, LogDiagnosticsPlugin};
+    #[doc(no_inline)]
+    pub use crate::{EntityCountDiagnosticsPlugin, EntityCountPlugin};
+    #[doc(no_inline)]
+    pub use crate::{FrameCountDiagnosticsPlugin, FrameCountPlugin};
+}
+
 // -----------------------------------------------------------------------------

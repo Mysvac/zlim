@@ -1,15 +1,17 @@
 use uuid::{NonNilUuid, Uuid};
 
+use crate::impls::impl_simple_type_path;
 use crate::ops::Opaque;
 
+impl_simple_type_path!(Uuid: "uuid", "Uuid");
+impl_simple_type_path!(NonNilUuid: "uuid", "NonNilUuid");
+
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "uuid::Uuid"]
     #[reflect(Opaque, Default, Debug, Clone, Hash, Eq, Serialize, Deserialize)]
     pub struct Uuid;
 }
 
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "uuid::Uuid"]
     #[reflect(Opaque, Debug, Clone, Hash, Eq, Serialize, Deserialize)]
     pub struct NonNilUuid;
 }
@@ -39,7 +41,7 @@ impl Opaque for NonNilUuid {
                 *self = non_nil;
                 Ok(())
             }
-            None => Err("NonNilUuid cannot be nil".to_string()),
+            None => Err("NonNilUuid cannot be nil".into()),
         }
     }
 

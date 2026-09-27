@@ -5,6 +5,7 @@ use syn::Expr;
 use syn::Token;
 use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 
 // -----------------------------------------------------------------------------
 // TypeAttrs
@@ -22,10 +23,29 @@ pub(crate) struct TypeAttrs {
     pub(crate) has_serialize: bool,
     pub(crate) has_deserialize: bool,
     pub(crate) custom_attrs: Vec<Expr>,
-    pub(crate) override_is_compatible: Option<Expr>,
     pub(crate) override_from_reflect: Option<Expr>,
     pub(crate) override_reflect_apply: Option<Expr>,
     pub(crate) addtional_on_register: Option<Expr>,
+    /// The traits opted out of through `#[reflect(Trait = false)]`.
+    ///
+    /// The macro generates no implementation for them, so the user is expected
+    /// to write their own.
+    pub(crate) skips: TypeSkips,
+}
+
+/// The `#[reflect(Trait = false)]` opt-outs, one flag per generated trait.
+///
+/// `Opaque` is deliberately absent: the type-level `#[reflect(Opaque)]` already
+/// claims that name, and it does the same thing from the other side — it says
+/// the type is opaque and that the `Opaque` impl is the user's to write.
+#[derive(Debug, Default)]
+pub(crate) struct TypeSkips {
+    pub(crate) reflect: bool,
+    pub(crate) typed: bool,
+    pub(crate) enum_: bool,
+    pub(crate) struct_: bool,
+    pub(crate) tuple: bool,
+    pub(crate) type_database: bool,
 }
 
 impl TypeAttrs {
@@ -67,6 +87,8 @@ impl TypeAttrs {
             return Err(duplicate_flag("Deserialize"));
         }
 
+        self.skips.merge(&other.skips, duplicate_flag)?;
+
         self.is_opaque |= other.is_opaque;
         self.has_clone |= other.has_clone;
         self.has_eq |= other.has_eq;
@@ -77,12 +99,6 @@ impl TypeAttrs {
         self.has_deserialize |= other.has_deserialize;
         self.custom_attrs.extend(other.custom_attrs);
 
-        if let Some(v) = other.override_is_compatible {
-            if self.override_is_compatible.is_some() {
-                return Err(duplicate_override("is_compatible"));
-            }
-            self.override_is_compatible = Some(v);
-        }
         if let Some(v) = other.override_from_reflect {
             if self.override_from_reflect.is_some() {
                 return Err(duplicate_override("from_reflect"));
@@ -106,6 +122,87 @@ impl TypeAttrs {
 }
 
 // -----------------------------------------------------------------------------
+// TypeSkips
+// -----------------------------------------------------------------------------
+
+/// The `#[reflect(Trait = false)]` names, each paired with its flag.
+const SKIP_FLAGS: &[(&str, fn(&mut TypeSkips) -> &mut bool)] = &[
+    ("Reflect", |s| &mut s.reflect),
+    ("Typed", |s| &mut s.typed),
+    ("Enum", |s| &mut s.enum_),
+    ("Struct", |s| &mut s.struct_),
+    ("Tuple", |s| &mut s.tuple),
+    ("TypeDatabase", |s| &mut s.type_database),
+];
+
+impl TypeSkips {
+    /// Applies `#[reflect(name = false)]`, if `name` is one of the opt-outs.
+    ///
+    /// Returns `false` when `name` is an ordinary override and the caller should
+    /// keep looking.
+    fn set(&mut self, name: &syn::Ident, expr: &Expr) -> syn::Result<bool> {
+        let name_str = name.to_string();
+        let Some((_, flag)) = SKIP_FLAGS.iter().find(|(n, _)| *n == name_str) else {
+            return Ok(false);
+        };
+
+        let value = match expr {
+            Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Bool(b),
+                ..
+            }) => b.value,
+            _ => {
+                let msg = format!(
+                    "`{name}` is an opt-out; write `#[reflect({name} = false)]` to skip \
+                     generating the implementation"
+                );
+                return Err(syn::Error::new(expr.span(), msg));
+            }
+        };
+
+        let slot = flag(self);
+        if *slot {
+            return Err(duplicate_flag(&name.to_string()));
+        }
+        // `= true` is the default: the impl is generated.
+        *slot = !value;
+
+        Ok(true)
+    }
+
+    /// Combines two parsed attribute sets, rejecting a flag set twice.
+    fn merge(&mut self, other: &TypeSkips, dup: fn(&str) -> syn::Error) -> syn::Result<()> {
+        if self.reflect && other.reflect {
+            return Err(dup("Reflect"));
+        }
+        if self.typed && other.typed {
+            return Err(dup("Typed"));
+        }
+        if self.enum_ && other.enum_ {
+            return Err(dup("Enum"));
+        }
+        if self.struct_ && other.struct_ {
+            return Err(dup("Struct"));
+        }
+        if self.tuple && other.tuple {
+            return Err(dup("Tuple"));
+        }
+        if self.type_database && other.type_database {
+            return Err(dup("TypeDatabase"));
+        }
+
+        self.reflect |= other.reflect;
+        self.typed |= other.typed;
+        self.enum_ |= other.enum_;
+        self.struct_ |= other.struct_;
+        self.tuple |= other.tuple;
+        self.type_database |= other.type_database;
+
+        Ok(())
+    }
+}
+
+// -----------------------------------------------------------------------------
 // FieldAttrs
 // -----------------------------------------------------------------------------
 
@@ -115,7 +212,11 @@ pub(crate) struct FieldAttrs {
     pub(crate) is_ignored: bool,
     pub(crate) has_default: bool,
     pub(crate) has_clone: bool,
+    pub(crate) has_serialize: bool,
+    pub(crate) has_deserialize: bool,
     pub(crate) custom_attrs: Vec<Expr>,
+    /// The reflected wrapper of this field's type, from `#[reflect(remote = ...)]`.
+    pub(crate) remote: Option<Expr>,
 }
 
 impl FieldAttrs {
@@ -141,11 +242,26 @@ impl FieldAttrs {
         if other.has_clone && self.has_clone {
             return Err(duplicate_flag("clone"));
         }
+        if other.has_serialize && self.has_serialize {
+            return Err(duplicate_flag("serialize"));
+        }
+        if other.has_deserialize && self.has_deserialize {
+            return Err(duplicate_flag("deserialize"));
+        }
 
         self.is_ignored |= other.is_ignored;
         self.has_default |= other.has_default;
         self.has_clone |= other.has_clone;
+        self.has_serialize |= other.has_serialize;
+        self.has_deserialize |= other.has_deserialize;
         self.custom_attrs.extend(other.custom_attrs);
+
+        if let Some(v) = other.remote {
+            if self.remote.is_some() {
+                return Err(duplicate_flag("remote"));
+            }
+            self.remote = Some(v);
+        }
 
         Ok(())
     }
@@ -276,17 +392,22 @@ fn set_flag(attrs: &mut TypeAttrs, name: &syn::Ident, span: proc_macro2::Span) -
     Ok(())
 }
 
-const VALID_OVERRIDES: &str = "is_compatible, from_reflect, reflect_apply, on_register";
+const VALID_OVERRIDES: &str = "from_reflect, reflect_apply, on_register";
+const VALID_SKIPS: &str = "Reflect, Typed, Enum, Struct, Tuple, TypeDatabase";
 
 fn set_expr(attrs: &mut TypeAttrs, name: &syn::Ident, expr: Expr) -> syn::Result<()> {
+    if attrs.skips.set(name, &expr)? {
+        return Ok(());
+    }
+
     let slot = match name.to_string().as_str() {
-        "is_compatible" => &mut attrs.override_is_compatible,
         "from_reflect" => &mut attrs.override_from_reflect,
         "reflect_apply" => &mut attrs.override_reflect_apply,
         "on_register" => &mut attrs.addtional_on_register,
         _ => {
             let msg = format!(
                 "unknown override `{name}`; valid overrides are: {VALID_OVERRIDES}. \
+                 Valid opt-outs are: {VALID_SKIPS}. \
                  Use `#[reflect({name} = your_fn)]` syntax."
             );
             return Err(syn::Error::new(name.span(), msg));
@@ -310,6 +431,11 @@ enum FieldMetaItem {
         name: syn::Ident,
         span: proc_macro2::Span,
     },
+    /// `name = expr`, for the options that carry a value rather than being a flag.
+    Value {
+        name: syn::Ident,
+        value: Expr,
+    },
 }
 
 impl syn::parse::Parse for FieldMetaItem {
@@ -319,6 +445,13 @@ impl syn::parse::Parse for FieldMetaItem {
             return Ok(Self::CustomAttr(input.parse()?));
         }
         let ident: syn::Ident = input.parse()?;
+        if input.peek(Token![=]) {
+            input.parse::<Token![=]>()?;
+            return Ok(Self::Value {
+                name: ident,
+                value: input.parse()?,
+            });
+        }
         Ok(Self::Flag {
             span: ident.span(),
             name: ident,
@@ -348,13 +481,33 @@ impl syn::parse::Parse for FieldAttrsContent {
     }
 }
 
-const VALID_FIELD_FLAGS: &str = "ignore, default, clone";
+const VALID_FIELD_FLAGS: &str = "ignore, default, clone, serialize, deserialize, remote";
 
 fn apply_field_item(attrs: &mut FieldAttrs, item: FieldMetaItem) -> syn::Result<()> {
     match item {
         FieldMetaItem::CustomAttr(expr) => attrs.custom_attrs.push(expr),
         FieldMetaItem::Flag { name, span } => set_field_flag(attrs, &name, span)?,
+        FieldMetaItem::Value { name, value } => set_field_value(attrs, &name, value)?,
     }
+    Ok(())
+}
+
+fn set_field_value(attrs: &mut FieldAttrs, name: &syn::Ident, value: Expr) -> syn::Result<()> {
+    let slot = match name.to_string().as_str() {
+        "remote" => &mut attrs.remote,
+        _ => {
+            let msg = format!(
+                "unknown field option `{name}`; the field attributes that take a value are: remote"
+            );
+            return Err(syn::Error::new(name.span(), msg));
+        }
+    };
+    if slot.is_some() {
+        let msg = format!("duplicate `{name}`; each option can only be set once");
+        return Err(syn::Error::new(name.span(), msg));
+    }
+    *slot = Some(value);
+
     Ok(())
 }
 
@@ -367,6 +520,8 @@ fn set_field_flag(
         "ignore" => &mut attrs.is_ignored,
         "default" => &mut attrs.has_default,
         "clone" => &mut attrs.has_clone,
+        "serialize" => &mut attrs.has_serialize,
+        "deserialize" => &mut attrs.has_deserialize,
         _ => {
             let msg = format!(
                 "unknown field attribute `{name}`; valid field attributes are: {VALID_FIELD_FLAGS}"

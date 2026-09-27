@@ -3,10 +3,10 @@ use core::time::Duration;
 use zlim_app::{App, MainSchedulePlugin, Plugin, PluginExt, PostUpdate};
 use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
-use zlim_core::job_fn;
+use zlim_core::job::job_fn;
 use zlim_core::time::{Real, Time, Timer, TimerMode};
 use zlim_log::info;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 use zlim_utils::hash::HashSet;
 
 use crate::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsPlugin};

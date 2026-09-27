@@ -46,7 +46,7 @@ pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'stat
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Resource)]
@@ -129,7 +129,7 @@ impl ResourceDB {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Resource)]
@@ -185,7 +185,7 @@ impl ResourceDB {
     /// (e.g., `"my_crate::MyResource"`). Returns `None` if no resource with
     /// the given path has been registered.
     ///
-    /// [`TypePath::type_path`]: zlim_path::TypePath::type_path
+    /// [`TypePath::type_path`]: zlim_reflect::TypePath::type_path
     pub fn get_by_path(path: &str) -> Option<&'static ResourceDB> {
         PATH_REGISTRY
             .read()

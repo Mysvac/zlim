@@ -22,7 +22,6 @@ use ::core::any::TypeId;
 use ::zlim_utils::hash::FixedState;
 use ::zlim_utils::hash::hasher::FixedHasher;
 
-use crate::db::TypeDB;
 use crate::ops::{CloneError, Reflect};
 
 // -----------------------------------------------------------------------------
@@ -34,12 +33,14 @@ mod core;
 mod features;
 mod primitive;
 mod std;
+mod type_path;
 mod zlim_utils;
 
 // -----------------------------------------------------------------------------
 // Helper
 
 pub use common::*;
+pub(crate) use type_path::impl_simple_type_path;
 
 /// A Fixed Hasher for [`reflect_hash`] implementation.
 ///
@@ -49,23 +50,16 @@ pub const fn reflect_hasher() -> FixedHasher {
     FixedState::HASHER
 }
 
+/// Returns `true` when `value`'s type is exactly `to`.
+#[inline(always)]
+pub fn is_convertable(value: &dyn Reflect, to: TypeId) -> bool {
+    value.type_id() == to
+}
+
 #[inline(never)]
 pub fn reflect_clone_field<T: Reflect>(field: &T) -> Result<T, CloneError> {
     let cloned = field.reflect_clone()?;
     Ok(cloned.take::<T>().expect(CLONE_TYPE_ERROR))
-}
-
-#[inline(never)]
-pub fn is_convertable(value: &dyn Reflect, to: TypeId) -> bool {
-    let this_id = value.type_id();
-    if to == this_id {
-        return true;
-    }
-
-    match TypeDB::get_by_type(this_id) {
-        Some(db) => db.contains_convertor(to),
-        None => false,
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -74,8 +68,6 @@ pub fn is_convertable(value: &dyn Reflect, to: TypeId) -> bool {
 const UNPACK_ERROR: &str = "`unpack` and `drain` must preserve the child element structure.";
 const CLONE_TYPE_ERROR: &str = "`reflect_clone` must return a value of the same type";
 const COMPATIBLE_ERROR: &str = "`from_reflect` must succeed for any compatible reflected value.";
-const CONVERT_TYPE_ERROR: &str =
-    "If TypeDB::convert succeeds, it must return a correct type value.";
 
 macro_rules! impl_reflect_kind {
     ($kind:ident) => {
@@ -84,8 +76,14 @@ macro_rules! impl_reflect_kind {
             &mut self,
             value: Box<dyn $crate::ops::Reflect>,
         ) -> Result<(), Box<dyn $crate::ops::Reflect>> {
-            *self = *<dyn $crate::Reflect>::downcast::<Self>(value)?;
-            Ok(()) // ↑ Faster than default implementation.
+            // ↓ Faster than default implementation.
+            match <dyn $crate::Reflect>::downcast::<Self>(value) {
+                Ok(v) => {
+                    *self = *v;
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
         }
 
         #[inline]

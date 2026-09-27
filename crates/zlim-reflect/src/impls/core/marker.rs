@@ -4,28 +4,13 @@ use core::marker::PhantomData;
 
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
+use crate::impls::impl_simple_type_path;
 use crate::info::{GenericInfo, Generics, InfoCell, OpaqueInfo};
-use crate::info::{ReflectKind, TypeInfo, TypeParamInfo, Typed};
-use crate::ops::{ApplyError, CloneError, Opaque};
-use crate::path::{PathCell, TypePath, concat};
+use crate::info::{TypeInfo, TypeParamInfo, Typed};
+use crate::ops::{ApplyError, CloneError, Opaque, ReflectRef};
+use crate::path::TypePath;
 
-impl<T: TypePath> TypePath for PhantomData<T> {
-    fn type_path() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&["core::marker::PhantomData", "<", T::type_path(), ">"])
-        })
-    }
-
-    fn type_name() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| concat(&["PhantomData", "<", T::type_name(), ">"]))
-    }
-
-    const IDENT: &str = "PhantomData";
-    const CRATE: Option<&str> = Some("core");
-    const MODULE: Option<&str> = Some("core::marker");
-}
+impl_simple_type_path!(@PhantomData<T>: "core", "marker", "PhantomData");
 
 impl<T: TypePath + Send + Sync> Typed for PhantomData<T> {
     fn type_info() -> &'static TypeInfo {
@@ -84,15 +69,6 @@ impl<T: TypePath + Send + Sync> Reflect for PhantomData<T> {
                 return Ok(());
             }
 
-            if let Some(db) = TypeDB::get_by_type(other_type)
-                && db.contains_convertor(this_type)
-                && let Ok(cloned) = other.reflect_clone()
-                && let Ok(_) = db.convert(cloned, this_type)
-            {
-                return Ok(());
-            }
-
-            // Phase 3: cast `other` to `&dyn Opaque`.
             let other: &dyn Opaque = other.reflect_ref().as_opaque().map_err(|e| {
                 ::core::hint::cold_path();
                 let src = this.reflect_type_path();
@@ -124,30 +100,21 @@ impl<T: TypePath + Send + Sync> Reflect for PhantomData<T> {
                 return Ok(());
             }
 
-            let mut value = value;
+            let value = value;
 
-            if let Some(db) = TypeDB::get_by_type(other_type) {
-                match db.convert(value, id) {
-                    Ok(_) => return Ok(()),
-                    Err(e) => value = e,
-                }
-            }
-
-            if value.reflect_kind() != ReflectKind::Opaque {
+            let ReflectRef::Opaque(v) = value.reflect_ref() else {
                 return Err(value);
-            }
+            };
 
-            if value.reflect_type_ident() == "PhantomData" {
+            if v.reflect_type_ident() == "PhantomData" {
                 return Ok(());
             }
-
-            let v = value.reflect_owned().into_opaque().unwrap();
 
             if v.stringify() == "PhantomData" {
                 return Ok(());
             }
 
-            Err(v)
+            Err(value)
         }
 
         internal(TypeId::of::<Self>(), value).map(|_| Box::new(Self))
@@ -156,7 +123,7 @@ impl<T: TypePath + Send + Sync> Reflect for PhantomData<T> {
 
 impl<T: TypePath + Send + Sync> TypeDatabase for PhantomData<T> {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
         db.insert_serializer::<Self>();
         db.insert_deserializer::<Self>();
     }

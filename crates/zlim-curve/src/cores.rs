@@ -10,7 +10,7 @@ use core::fmt::{Debug, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 use zlim_math::ops;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::interval::Interval;
 

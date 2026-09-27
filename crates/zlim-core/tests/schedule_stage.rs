@@ -2,8 +2,8 @@
 
 use zlim_core::derive::ScheduleStage;
 use zlim_core::schedule::ScheduleStage as ScheduleStageTrait;
-use zlim_path::TypePath as TypePathTrait;
-use zlim_path::derive::TypePath;
+use zlim_reflect::TypePath as TypePathTrait;
+use zlim_reflect::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // Unit struct

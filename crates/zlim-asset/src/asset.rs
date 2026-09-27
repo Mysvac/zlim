@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use zlim_core::component::Component;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::hash::{HashMap, HashSet};
 
 use crate::handle::{ErasedHandle, Handle};

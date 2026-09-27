@@ -1,4 +1,3 @@
-use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use core::hash::BuildHasher;
 use std::path::{Path, PathBuf};
@@ -7,16 +6,16 @@ use zlim_utils::hash::FixedState;
 
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::CONVERT_TYPE_ERROR;
+use crate::impls::impl_simple_type_path;
 use crate::info::{OpaqueInfo, TypeInfo, Typed};
 use crate::ops::{ApplyError, CloneError, Opaque};
-use crate::path::TypePath;
 
 // -----------------------------------------------------------------------------
 // PathBuf
 
+impl_simple_type_path!(PathBuf: "std", "path", "PathBuf");
+
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "std::path::PathBuf"]
     #[reflect(Opaque, Default, Clone, Debug, Hash, Eq, Serialize, Deserialize)]
     pub struct PathBuf;
 }
@@ -35,20 +34,7 @@ impl Opaque for PathBuf {
 // -----------------------------------------------------------------------------
 // Path TypePath
 
-impl TypePath for Path {
-    #[inline]
-    fn type_path() -> &'static str {
-        "std::path::Path"
-    }
-    #[inline]
-    fn type_name() -> &'static str {
-        "Path"
-    }
-
-    const IDENT: &str = "Path";
-    const CRATE: Option<&str> = Some("std");
-    const MODULE: Option<&str> = Some("std::path");
-}
+impl_simple_type_path!(Path: "std", "path", "Path");
 
 // -----------------------------------------------------------------------------
 // Typed
@@ -80,11 +66,7 @@ impl Reflect for &'static Path {
     crate::impls::impl_reflect_kind!(Opaque);
 
     fn reflect_eq(&self, other: &dyn Reflect) -> bool {
-        if let Some(this) = other.downcast_ref::<Self>() {
-            *self == *this
-        } else {
-            false
-        }
+        other.downcast_ref::<Self>().is_some_and(|p| *self == *p)
     }
 
     fn reflect_hash(&self) -> u64 {
@@ -104,18 +86,7 @@ impl Reflect for &'static Path {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let value = match value.downcast::<Self>() {
-            Ok(ret) => return Ok(ret),
-            Err(e) => e,
-        };
-
-        match TypeDB::get_by_type((*value).type_id()) {
-            Some(db) => {
-                let converted = db.convert(value, TypeId::of::<Self>())?;
-                Ok(converted.downcast::<Self>().expect(CONVERT_TYPE_ERROR))
-            }
-            None => Err(value),
-        }
+        value.downcast::<Self>()
     }
 }
 
@@ -125,7 +96,6 @@ impl Reflect for &'static Path {
 impl TypeDatabase for &'static Path {
     fn on_register(db: &'static TypeDB) {
         db.insert_serializer::<Self>();
-        db.insert_convertor(<Self as Into<PathBuf>>::into);
     }
 
     fn register_dependencies() {}

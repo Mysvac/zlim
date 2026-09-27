@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Mat4, Vec3};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::HalfSpace;
 

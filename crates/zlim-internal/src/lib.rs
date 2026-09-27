@@ -9,7 +9,7 @@ pub use zlim_log as log;
 pub use zlim_os as os;
 pub use zlim_utils as utils;
 
-pub use zlim_path as path;
+pub use zlim_reflect as reflect;
 pub use zlim_task as task;
 pub use zlim_tracy as tracy;
 
@@ -39,43 +39,69 @@ pub use zlim_sample as sample;
 #[cfg(feature = "zlim-sysinfo")]
 pub use zlim_sysinfo as sysinfo;
 
-/// zlim macros
+/// Zlim macros.
+///
+/// The macro related to the log has not been re exported.
+/// Please use `log::xxx!` directly, such as `log::warn!()`.
+///
+/// Some macros used internally also has not be re-exported
+/// here (such as `into_owning!` in `zlim_ptr`).
 pub mod derive {
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_app::derive::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_asset::derive::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_core::derive::*;
-    #[doc(hidden)]
-    pub use zlim_path::derive::*;
+    #[doc(no_inline)]
+    pub use zlim_reflect::derive::*;
+    #[doc(no_inline)]
+    pub use zlim_scene::derive::*;
 }
 
-/// zlim preludes
+/// Zlim plugins.
+pub mod plugins {
+    #[doc(no_inline)]
+    pub use zlim_app::plugins::*;
+    #[doc(no_inline)]
+    pub use zlim_asset::plugins::*;
+    #[doc(no_inline)]
+    pub use zlim_diagnostic::plugins::*;
+    #[doc(no_inline)]
+    pub use zlim_scene::plugins::*;
+    #[doc(no_inline)]
+    pub use zlim_transform::plugins::*;
+
+    #[doc(no_inline)]
+    #[cfg(feature = "zlim-sysinfo")]
+    pub use zlim_sysinfo::plugins::*;
+}
+
+/// Zlim preludes.
 pub mod prelude {
     // doc(hidden): keeps this path out of autocomplete suggestions.
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_app::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_asset::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_color::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_core::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_log::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_math::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_os::prelude::*;
-    #[doc(hidden)]
-    pub use zlim_path::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
+    pub use zlim_reflect::prelude::*;
+    #[doc(no_inline)]
     pub use zlim_scene::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_shape::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_task::prelude::*;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use zlim_transform::prelude::*;
 }

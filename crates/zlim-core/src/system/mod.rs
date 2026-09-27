@@ -154,6 +154,6 @@ pub use params::*;
 pub use registry::SystemHandle;
 pub use system::System;
 
-pub use zlim_core_derive::SystemParam;
+pub use crate::derive::SystemParam;
 
 pub(crate) use registry::SystemCache;

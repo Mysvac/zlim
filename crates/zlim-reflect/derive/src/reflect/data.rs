@@ -36,8 +36,92 @@ impl<'a> StructField<'a> {
         self.attrs.has_default
     }
 
+    #[inline]
+    pub fn serializable(&self) -> bool {
+        self.attrs.has_serialize
+    }
+
+    #[inline]
+    pub fn deserializable(&self) -> bool {
+        self.attrs.has_deserialize
+    }
+
     pub fn ty(&self) -> &syn::Type {
         &self.data.ty
+    }
+
+    /// The reflected wrapper of this field's type, from `#[reflect(remote = ...)]`.
+    ///
+    /// The field holds the *remote* type; everything the reflection hands out goes through this
+    /// wrapper. See `zlim_reflect::remote::ReflectRemote`.
+    fn remote(&self) -> Option<&syn::Expr> {
+        self.attrs.remote.as_ref()
+    }
+
+    /// Whether this is the remote field of a remote wrapper: the field of a wrapper holds the
+    /// remote value, and the wrapper itself is the type reflection reaches it through.
+    pub(crate) fn is_reflected(&self) -> bool {
+        !self.attrs.is_ignored
+    }
+
+    /// The wrapper this field's reflection goes through, if the field is a remote field.
+    ///
+    /// That is `#[reflect(remote = ...)]` on the field itself: the field holds the remote type, and
+    /// reflection reaches it by borrowing the field as the wrapper named there.
+    pub(crate) fn reflected_wrapper(&self) -> Option<TokenStream> {
+        self.remote().map(|remote| remote.to_token_stream())
+    }
+
+    /// The type the reflection sees for this field.
+    ///
+    /// That is the field's own type, unless it is a remote field: then the field holds the remote
+    /// type and the reflection sees it through its wrapper, so every check and conversion has to
+    /// name the wrapper instead.
+    pub fn reflected_ty(&self) -> TokenStream {
+        match self.reflected_wrapper() {
+            Some(wrapper) => wrapper,
+            None => {
+                let ty = self.ty();
+                quote!(#ty)
+            }
+        }
+    }
+
+    /// The expression that reads this field for reflection, given a receiver.
+    ///
+    /// A remote field is handed out as its wrapper — reflection works on the wrapper, the field
+    /// holds the remote type — and any other field is taken as it is.
+    pub fn reflected_access(&self, this: &TokenStream) -> TokenStream {
+        let reflect_remote_ = crate::path::reflect_remote_trait(&crate::path::zlim_reflect_path());
+        let member = self.to_member();
+        match self.reflected_wrapper() {
+            Some(wrapper) => quote!(<#wrapper as #reflect_remote_>::as_wrapper(&#this.#member)),
+            None => quote!(&#this.#member),
+        }
+    }
+
+    /// The expression that produces this field's reflected form, out of a value of the field's own
+    /// type.
+    ///
+    /// A remote field is converted into its wrapper — which owns the value — because a `Box<dyn
+    /// Reflect>` cannot borrow. Any other field is moved as it is.
+    pub fn reflected_take(&self, member: &TokenStream) -> TokenStream {
+        let reflect_remote_ = crate::path::reflect_remote_trait(&crate::path::zlim_reflect_path());
+        match self.reflected_wrapper() {
+            Some(wrapper) => {
+                quote!(<#wrapper as #reflect_remote_>::into_wrapper(#member))
+            }
+            None => quote!(#member),
+        }
+    }
+
+    /// The expression that turns an unpacked field back into the field's own type.
+    pub fn reflected_untake(&self, value: &TokenStream) -> TokenStream {
+        let reflect_remote_ = crate::path::reflect_remote_trait(&crate::path::zlim_reflect_path());
+        match self.reflected_wrapper() {
+            Some(wrapper) => quote!(<#wrapper as #reflect_remote_>::into_remote(#value)),
+            None => quote!(#value),
+        }
     }
 
     /// Get the field name for the `field` function of `Struct/TupleStruct`.
@@ -74,7 +158,9 @@ impl<'a> StructField<'a> {
 
         let name: TokenStream = self.reflect_accessor();
 
-        let ty = &self.data.ty;
+        // The documented type of a field is the type reflection sees there, which for a remote
+        // field is its wrapper rather than the type the field holds.
+        let ty = self.reflected_ty();
 
         let with_attributes = self.with_attributes_expression(zlim_reflect_path);
 
@@ -123,7 +209,7 @@ impl<'a> ReflectStruct<'a> {
     fn new(mut meta: ReflectMeta<'a>, fields: Vec<StructField<'a>>) -> Self {
         meta.active_types.reserve(fields.len() << 1);
         for field in fields.iter() {
-            if !field.attrs.is_ignored {
+            if field.is_reflected() {
                 meta.active_types.insert(&field.data.ty);
             }
         }
@@ -138,16 +224,30 @@ impl<'a> ReflectStruct<'a> {
         &self.fields
     }
 
+    /// The fields reflection sees: the active ones, minus the remote field of a remote wrapper —
+    /// that field holds the remote value, which is not itself reflected.
     pub fn active_fields(&self) -> impl Iterator<Item = &StructField<'a>> {
-        self.fields.iter().filter(|f| !f.attrs.is_ignored)
+        self.fields.iter().filter(|f| f.is_reflected())
     }
 
     pub fn field_accessors(&self) -> StructFieldAccessors {
+        let zlim_reflect_path = self.meta.zlim_reflect();
+        let reflect_remote_ = crate::path::reflect_remote_trait(zlim_reflect_path);
+
         let (fields_ref, fields_mut): (Vec<_>, Vec<_>) = self
             .active_fields()
             .map(|field| {
                 let member = field.to_member();
-                (quote!(&self.#member), quote!(&mut self.#member))
+                match field.reflected_wrapper() {
+                    // A remote field holds the remote type, and reflection reaches it by borrowing
+                    // the field as its wrapper — the wrapper is the reflected type, the remote one
+                    // is not.
+                    Some(wrapper) => (
+                        quote!(<#wrapper as #reflect_remote_>::as_wrapper(&self.#member)),
+                        quote!(<#wrapper as #reflect_remote_>::as_wrapper_mut(&mut self.#member)),
+                    ),
+                    None => (quote!(&self.#member), quote!(&mut self.#member)),
+                }
             })
             .unzip();
 

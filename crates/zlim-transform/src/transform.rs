@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use zlim_core::derive::Component;
 use zlim_math::ops;
 use zlim_math::{Affine3A, Dir3, Isometry3d, Mat3, Mat4, Quat, Vec3, Vec3A};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // Transform

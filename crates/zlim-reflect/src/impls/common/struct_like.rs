@@ -2,9 +2,7 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 
 use crate::Reflect;
-use crate::db::TypeDB;
 use crate::impls::CLONE_TYPE_ERROR;
-use crate::impls::CONVERT_TYPE_ERROR;
 use crate::ops::{ApplyError, Struct};
 
 /// Applies a reflected value to a struct with loose field matching.
@@ -14,11 +12,9 @@ use crate::ops::{ApplyError, Struct};
 /// by name only.
 ///
 /// 1. If the types are identical, clone-and-assign directly (fast path).
-/// 2. If the [`TypeDB`] has a conversion from `other`'s type to `Self`,
-///    clone-and-assign directly.
-/// 3. Require `other` to also be a [`Struct`]; fail with
+/// 2. Require `other` to also be a [`Struct`]; fail with
 ///    [`mismatched_kind`](ApplyError::mismatched_kind) otherwise.
-/// 4. For each field in `this` (in declaration order), look it up by
+/// 3. For each field in `this` (in declaration order), look it up by
 ///    name in `other`. If present, apply recursively; if absent, skip.
 ///    Mismatched field types propagate as errors from the inner apply.
 #[inline(never)]
@@ -34,17 +30,7 @@ pub fn struct_apply(this: &mut dyn Struct, other: &dyn Reflect) -> Result<(), Ap
         return Ok(());
     }
 
-    // Phase 2: fast path — TypeDB conversion exists, clone and assign.
-    if let Some(db) = TypeDB::get_by_type(other_type)
-        && db.contains_convertor(this_type)
-        && let Ok(cloned) = other.reflect_clone()
-        && let Ok(converted) = db.convert(cloned, this_type)
-    {
-        this.reflect_assign(converted).expect(CONVERT_TYPE_ERROR);
-        return Ok(());
-    }
-
-    // Phase 3: cast `other` to `&dyn Struct`.
+    // Phase 2: cast `other` to `&dyn Struct`.
     let other: &dyn Struct = other.reflect_ref().as_struct().map_err(|e| {
         ::core::hint::cold_path();
         let src = this.reflect_type_path();
@@ -52,7 +38,7 @@ pub fn struct_apply(this: &mut dyn Struct, other: &dyn Reflect) -> Result<(), Ap
         ApplyError::mismatched_kind(src, apply, e.expected, e.received)
     })?;
 
-    // Phase 4: iterate `this`'s fields; apply matching fields from `other` by name.
+    // Phase 3: iterate `this`'s fields; apply matching fields from `other` by name.
     for index in 0..this.field_len() {
         const MSG: &str = "the length of struct should be correct";
         let name = this.name_at(index).expect(MSG);

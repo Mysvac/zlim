@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use zlim_core::derive::Resource;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::EMBEDDED;
 use crate::io::ErasedAssetReader;

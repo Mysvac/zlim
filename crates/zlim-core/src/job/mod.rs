@@ -210,10 +210,10 @@ pub use ident::JobId;
 pub use into_job::{IntoJob, IntoJobResult};
 pub use job::Job;
 
+pub use crate::derive::{job, job_fn, job_group};
+
 #[doc(hidden)]
 pub use db::__JobReg__;
 
 #[doc(hidden)]
 pub use group::__JobGroupReg__;
-
-pub use zlim_core_derive::{job, job_fn, job_group};

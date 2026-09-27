@@ -3,7 +3,7 @@ use core::any::TypeId;
 
 use atomicow::CowArc;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::hash::{HashMap, HashSet};
 
 use crate::asset::Asset;

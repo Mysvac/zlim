@@ -89,35 +89,31 @@ pub mod bounding;
 // Prelude
 
 /// The shape prelude.
-///
-/// This includes all primitive shape types in this crate, re-exported for
-/// your convenience.
 pub mod prelude {
-    // just re-export everything, it's just shape definitions anyways
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{Measured2d, Measured3d, Primitive2d, Primitive3d, WindingOrder};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::bounding::*;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::dim2::*;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::dim3::*;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::half_space::HalfSpace;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::inset::Inset;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::ray::{Ray2d, Ray3d};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::view_frustum::ViewFrustum;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::polygon::is_polygon_simple;
 }

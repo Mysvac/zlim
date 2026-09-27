@@ -211,8 +211,12 @@ impl __JobReg__ {
 
 /// Registers one or more [`JobLabel`] types in the CTOR registry.
 ///
-/// The types are registered eagerly, before `main`, and become visible in
-/// [`JobDB::get`] once [`JobDB::collect`] has run at startup.
+/// The types are registered eagerly, before `main`, and become visible
+/// in [`JobDB::get`] once [`JobDB::collect`] has run at startup.
+///
+/// Jobs without generics will automatically add this macro by `job!` / `job_fn`
+/// macro. Even if it contains generics, the job will automatically register when
+/// it is first added. Users usually do not need to use this macro.
 ///
 /// ```no_run
 /// use zlim_core::prelude::*;

@@ -23,12 +23,6 @@ pub mod cfg {
 extern crate self as zlim_core;
 
 // -----------------------------------------------------------------------------
-// Macros
-
-pub use zlim_core_derive as derive;
-pub use zlim_core_derive::{job, job_fn, job_group};
-
-// -----------------------------------------------------------------------------
 // Modules
 
 pub mod borrow;
@@ -62,9 +56,9 @@ pub mod world;
 pub mod __macro_exports__ {
     pub use serde::Deserialize as __Deserialize;
     pub use serde::Serialize as __Serialize;
-    pub use zlim_path::TypePath as __TypePath;
-    pub use zlim_path::derive::TypePath as __TypePathDerive;
     pub use zlim_ptr::OwningPtr as __OwningPtr;
+    pub use zlim_reflect::TypePath as __TypePath;
+    pub use zlim_reflect::derive::TypePath as __TypePathDerive;
     pub use zlim_reg::submit as __submit;
     pub use zlim_utils::debug::DebugLocation as __DebugLocation;
     pub use zlim_utils::str::intern_str as __intern_str;
@@ -73,113 +67,140 @@ pub mod __macro_exports__ {
 // -----------------------------------------------------------------------------
 // Jobs
 
-/// the zlim-core jobs
+/// zlim-core jobs
 pub mod jobs {
+    #[doc(inline)]
     pub use crate::message::jobs::UpdateMessagesSignal;
+    #[doc(inline)]
     pub use crate::time::jobs::OptimizeDelayedCommands;
+}
+
+// -----------------------------------------------------------------------------
+// macros
+
+/// zlim-core macros
+pub mod derive {
+    #[doc(no_inline)]
+    pub use crate::register_component;
+    #[doc(no_inline)]
+    pub use crate::register_job;
+    #[doc(no_inline)]
+    pub use crate::register_job_group;
+    #[doc(no_inline)]
+    pub use crate::register_resource;
+    #[doc(inline)]
+    pub use zlim_core_derive::{Bundle, Error, FromTemplate};
+    #[doc(inline)]
+    pub use zlim_core_derive::{Component, Message, Resource};
+    #[doc(inline)]
+    pub use zlim_core_derive::{EntityLabel, QueryData, SystemParam};
+    #[doc(inline)]
+    pub use zlim_core_derive::{ScheduleLabel, ScheduleStage};
+    #[doc(inline)]
+    pub use zlim_core_derive::{job, job_fn, job_group};
 }
 
 // -----------------------------------------------------------------------------
 // Prelude
 
-/// the zlim-core preludes
+/// zlim-core preludes
 pub mod prelude {
     // doc(hidden): keeps this path out of autocomplete suggestions.
 
-    #[doc(hidden)]
-    pub use zlim_core_derive::{job, job_fn, job_group};
+    #[doc(no_inline)]
+    pub use crate::derive::{job, job_fn, job_group};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::tick::{DetectChanges, DetectChangesMut, Tick};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::world::{DeferredWorld, World, WorldCell};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::world::{FromWorld, NonSendWorld, WorldId};
 
     // implicit use zlim_core_derive::Error
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::error::{Error, Severity, ZlimError};
 
     // implicit use zlim_core_derive::Resource
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::resource::{Resource, ResourceDB, ResourceId};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::entity::{EntityId, EntityMap, EntityMapper};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::entity::{EntityLabel, MapEntities};
 
     // implicit use zlim_core_derive::Component
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::component::{Component, ComponentDB, ComponentId};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::component::{ComponentHook, HookContext};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::ops::{Entity, EntityMut, EntityOwned, EntityRef};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::borrow::{Mut, Ref, SliceMut, SliceRef};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::borrow::{NonSend, NonSendMut, Res, ResMut};
 
     // implicit use zlim_core_derive::Bundle
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::bundle::Bundle;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::command::{Command, EntityCommand};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::command::{Commands, EntityCommands};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::clone::EntityCloner;
 
     // implicit use zlim_core_derive::FromTemplate
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::template::{EntityTemplate, FromTemplate, Template, TemplateContext};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::job::{IntoJob, Job, JobDB, JobId};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::job::{JobGroup, JobGroupLabel, JobLabel};
 
     // implicit use zlim_core_derive::Message
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::message::MessageCursor;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::message::{Message, MessageId, MessageKey, MessageQueue};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::message::{MessageMutator, MessageReader, MessageWriter};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::message::{ClampTickSignal, ReparentSignal};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
+    pub use crate::derive::QueryData;
+    #[doc(no_inline)]
     pub use crate::query::{Added, And, Changed, Children, Or, Parent, With, Without};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::query::{Query, QueryIter, QuerySlice, QuerySliceIter, Single};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::query::{QuerySingleError, QueryState, ReadOnlyQueryData};
-    #[doc(hidden)]
-    pub use zlim_core_derive::QueryData;
 
     // implicit use zlim_core_derive::{ScheduleLabel, ScheduleStage}
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::schedule::{Schedule, ScheduleLabel, ScheduleStage, Schedules};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
+    pub use crate::derive::SystemParam;
+    #[doc(no_inline)]
     pub use crate::system::{ExclusiveMarker, If, Local, NonSendMarker};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::system::{In, InMut, InRef, IntoSystem, System};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::system::{SystemError, SystemHandle, SystemId};
-    #[doc(hidden)]
-    pub use zlim_core_derive::SystemParam;
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::time::{Fixed, Moment, Real, Time, TimeState, Virtual};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::time::{TimeSnapshot, TimeUpdateStrategy, Timer, TimerMode};
 }

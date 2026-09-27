@@ -1,9 +1,11 @@
 use core::time::Duration;
 
+use crate::impls::impl_simple_type_path;
 use crate::ops::Opaque;
 
+impl_simple_type_path!(Duration: "core", "time", "Duration");
+
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "core::time::Duration"]
     #[reflect(Opaque, Serialize, Deserialize, Default, Debug, Hash, Eq)]
     pub struct Duration;
 }

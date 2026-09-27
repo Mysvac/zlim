@@ -1,7 +1,7 @@
 use core::any::TypeId;
-use core::panic::Location;
 
 use zlim_log as log;
+use zlim_utils::debug::DebugLocation;
 use zlim_utils::mem::Global;
 use zlim_utils::vec::SmallVec;
 
@@ -44,7 +44,7 @@ pub struct AttributesBuilder {
 }
 
 impl AttributesBuilder {
-    /// Appends a copy of `value` to the attribute set.
+    /// Appends a `value` to the attribute set.
     ///
     /// The value is stored in a `'static` allocation so it can outlive the
     /// builder and be shared immutably.
@@ -53,8 +53,8 @@ impl AttributesBuilder {
     ///
     /// Logs a warning when an attribute with the same [`TypeId`] has
     /// already been added.
-    #[track_caller]
-    pub fn with<T: Reflect + TypePath + Copy>(mut self, value: T) -> Self {
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn with<T: Reflect + TypePath>(mut self, value: T) -> Self {
         let id: TypeId = TypeId::of::<T>();
 
         if self.buffer.iter().any(|&r| r.type_id() == id) {
@@ -62,11 +62,11 @@ impl AttributesBuilder {
             log::warn!(
                 "Duplicate attributes: `{}`.\n\t`{}`",
                 T::IDENT,
-                Location::caller()
+                DebugLocation::caller()
             );
         }
 
-        self.buffer.push(Global::alloc_value(value));
+        self.buffer.push(Global::alloc_static(value));
 
         self
     }
@@ -75,7 +75,7 @@ impl AttributesBuilder {
     ///
     /// The internal slice is promoted to a `'static` allocation so the
     /// resulting [`Attributes`] is cheaply [`Copy`].
-    // #[inline(never)] // `alloc_slice` is `#[inline(never)]`
+    #[inline(never)]
     pub fn finish(self) -> Attributes {
         Attributes {
             attributes: Global::alloc_slice(&self.buffer),
@@ -121,7 +121,7 @@ impl Attributes {
     ///
     /// The builder uses a stack-allocated buffer with room for 2 attributes
     /// before spilling to the heap.
-    #[inline(always)]
+    #[inline(always)] // inline: const fn
     pub const fn builder() -> AttributesBuilder {
         AttributesBuilder {
             buffer: SmallVec::new(),

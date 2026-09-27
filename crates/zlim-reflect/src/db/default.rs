@@ -2,23 +2,15 @@ use core::any::TypeId;
 use core::panic::Location;
 
 use zlim_log as log;
-use zlim_utils::mem::Global;
 
-use super::{CtorFunc, TypeDB, TypeDatabase};
+use super::{TypeDB, TypeDatabase};
 use crate::ops::Reflect;
 
 /// Logs a message when the same constructor is registered more than once.
-///
-/// Uses `debug!` in release mode and `info!` in debug mode.  The original
-/// registration is kept; this is purely informational.
 #[cold]
 #[inline(never)]
 fn warn_defaultor_dup(ty: &'static str, l: &'static Location<'static>) {
-    #[cfg(not(feature = "debug"))]
-    log::debug!("{l}: constructor `fn() -> {ty}` registered repeatedly; ignored.");
-    // Upgrade the message level in debug mode.
-    #[cfg(feature = "debug")]
-    log::info!("{l}: constructor `fn() -> {ty}` registered repeatedly; ignored.");
+    log::trace!("{l}: constructor `fn() -> {ty}` registered repeatedly; ignored.");
 }
 
 impl TypeDB {
@@ -36,9 +28,11 @@ impl TypeDB {
         self.ctor_func.get().is_some()
     }
 
-    /// Inserts a default constructor for type `T` into `self`.
+    /// Inserts the [`Default`] constructor for type `T` into `self`.
     ///
-    /// The constructor is stored and can be invoked via [`TypeDB::default`].
+    /// Nothing is stored beyond a monomorphized function pointer — the whole
+    /// constructor is `<T as Default>::default`, exactly as `insert_serializer`
+    /// stores an instantiation of `Serialize` — so no allocation is needed.
     ///
     /// # Panics
     ///
@@ -52,10 +46,9 @@ impl TypeDB {
     #[cold]
     #[track_caller]
     #[inline(never)]
-    pub fn insert_defaultor<T, F>(&self, f: F) -> bool
+    pub fn insert_defaultor<T>(&self) -> bool
     where
-        T: TypeDatabase,
-        F: Copy + Sync + 'static + Fn() -> T,
+        T: TypeDatabase + Default,
     {
         #[cold]
         #[inline(never)]
@@ -70,10 +63,11 @@ impl TypeDB {
             panicked(self.type_path, T::type_path(), Location::caller());
         }
 
-        let func = move || Box::new(f()) as Box<dyn Reflect>;
-        let fun: CtorFunc = Global::alloc_value(func);
-
-        if self.ctor_func.set(fun).is_err() {
+        if self
+            .ctor_func
+            .set(|| Box::new(T::default()) as Box<dyn Reflect>)
+            .is_err()
+        {
             warn_defaultor_dup(T::type_path(), Location::caller());
             false
         } else {
@@ -90,12 +84,11 @@ impl TypeDB {
     /// already registered.
     #[cold]
     #[track_caller]
-    pub fn register_defaultor<T, F>(f: F) -> bool
+    pub fn register_defaultor<T>() -> bool
     where
-        T: TypeDatabase,
-        F: Copy + Sync + 'static + Fn() -> T,
+        T: TypeDatabase + Default,
     {
         let db = TypeDB::of::<T>();
-        db.insert_defaultor(f)
+        db.insert_defaultor::<T>()
     }
 }

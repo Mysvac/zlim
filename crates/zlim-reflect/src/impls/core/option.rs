@@ -1,7 +1,10 @@
 use core::option::Option;
 
+use crate::impls::impl_simple_type_path;
+
+impl_simple_type_path!(@Option<T>: "core", "option", "Option");
+
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "core::option::Option"]
     #[reflect(Default)]
     pub enum Option<T> {
         /// No value.

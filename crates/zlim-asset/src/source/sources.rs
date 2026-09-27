@@ -4,7 +4,7 @@ use core::time::Duration;
 use std::sync::Arc;
 
 use zlim_core::derive::Resource;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 use zlim_utils::hash::HashMap;
 use zlim_utils::mpmc::{self, Receiver, Sender};
 use zlim_utils::str::SmolStr;

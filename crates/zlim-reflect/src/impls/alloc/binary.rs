@@ -1,7 +1,6 @@
 use std::collections::BinaryHeap;
 
-use super::impl_simple_type_path;
-use crate::path::{PathCell, TypePath, concat};
+use crate::impls::impl_simple_type_path;
 
 impl_simple_type_path!(@BinaryHeap<T>: "alloc", "collections", "BinaryHeap");
 

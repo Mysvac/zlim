@@ -1,12 +1,10 @@
-use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use core::hash::BuildHasher;
 use core::panic::Location;
 
 use zlim_utils::hash::FixedState;
 
-use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::CONVERT_TYPE_ERROR;
+use crate::db::TypeDatabase;
 use crate::info::{OpaqueInfo, TypeInfo, Typed};
 use crate::ops::{Opaque, Reflect};
 use crate::path::TypePath;
@@ -22,9 +20,9 @@ impl TypePath for &'static Location<'static> {
         "Location"
     }
 
-    const IDENT: &str = "Location";
-    const CRATE: Option<&str> = Some("core");
-    const MODULE: Option<&str> = Some("core::panic");
+    const IDENT: &'static str = "Location";
+    const CRATE: Option<&'static str> = Some("core");
+    const MODULE: Option<&'static str> = Some("core::panic");
 }
 
 impl Typed for &'static Location<'static> {
@@ -63,26 +61,13 @@ impl Reflect for &'static Location<'static> {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let value = match value.downcast::<Self>() {
-            Ok(ret) => return Ok(ret),
-            Err(e) => e,
-        };
-
-        match TypeDB::get_by_type((*value).type_id()) {
-            Some(db) => {
-                let converted = db.convert(value, TypeId::of::<Self>())?;
-                Ok(converted.downcast::<Self>().expect(CONVERT_TYPE_ERROR))
-            }
-            None => Err(value),
-        }
+        value.downcast::<Self>()
     }
 }
 
 impl Opaque for &'static Location<'static> {
     fn apply_str(&mut self, _: &str) -> Result<(), String> {
-        Err(String::from(
-            "`&'static Location` cannot be converted from str",
-        ))
+        Err("`&'static Location` cannot be converted from str".into())
     }
 
     fn stringify(&self) -> String {

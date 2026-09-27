@@ -1,23 +1,33 @@
+//! [`TypePath`] for the reference-counted pointer.
+//!
+//! `Arc<T>` is named but not reflected, the same as [`Box<T>`]: the value behind the pointer is
+//! shared, so reflection has no way to hand out the `&mut` every reflective operation works
+//! through.
+//!
+//! [`TypePath`]: crate::path::TypePath
+//! [`Box<T>`]: super::boxed
+
 use std::sync::Arc;
 
-use crate::{TypePath, ops::Opaque};
+use crate::impls::impl_simple_type_path;
 
-zlim_reflect_derive::impl_reflect! {
-    #[type_path = "alloc::sync::Arc"]
-    #[reflect(Opaque, Clone)]
-    pub struct Arc<T: Send + Sync + ?Sized>;
-}
+impl_simple_type_path!(@Arc<T>: "alloc", "sync", "Arc");
 
-impl<T: TypePath + Send + Sync + ?Sized> Opaque for Arc<T> {
-    fn apply_str(&mut self, _: &str) -> Result<(), String> {
-        Err(String::from("`Arc` cannot apply_str"))
-    }
+// -----------------------------------------------------------------------------
+// tests
 
-    fn stringify(&self) -> String {
-        format!(
-            "{}({:?})",
-            Self::type_path(),
-            &**self as *const T as *const ()
-        )
+#[cfg(test)]
+mod tests {
+    use crate::path::TypePath;
+    use std::sync::Arc;
+
+    #[test]
+    #[rustfmt::skip]
+    fn arc() {
+        assert_eq!(<Arc<u8>>::type_path(), "alloc::sync::Arc<u8>");
+        assert_eq!(<Arc<u8>>::type_name(), "Arc<u8>");
+        assert_eq!(<Arc<u8>>::IDENT, "Arc");
+        assert_eq!(<Arc<u8>>::CRATE, Some("alloc"));
+        assert_eq!(<Arc<u8>>::MODULE, Some("alloc::sync"));
     }
 }

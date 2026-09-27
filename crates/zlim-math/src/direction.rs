@@ -2,7 +2,7 @@ use core::f32::consts::FRAC_1_SQRT_2;
 use core::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4};
 

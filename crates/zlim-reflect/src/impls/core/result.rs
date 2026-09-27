@@ -1,7 +1,10 @@
 use core::result::Result;
 
+use crate::impls::impl_simple_type_path;
+
+impl_simple_type_path!(@Result<T, E>: "core", "result", "Result");
+
 zlim_reflect_derive::impl_reflect! {
-    #[type_path = "core::result::Result"]
     pub enum Result<T, E> {
         /// Contains the success value
         Ok(T),

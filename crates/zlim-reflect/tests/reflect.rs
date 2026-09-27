@@ -1,26 +1,26 @@
-use zlim_reflect::Reflect;
 use zlim_reflect::info::ReflectKind;
 use zlim_reflect::ops::{Struct, Tuple};
+use zlim_reflect::{Reflect, TypePath};
 
 // -----------------------------------------------------------------------------
 // Test types — plain (no Hash/Eq since f32 doesn't impl them)
 // -----------------------------------------------------------------------------
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct Named {
     x: i32,
     y: f32,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct TupleStruct(i32, f32);
 
-#[derive(Reflect, Debug, PartialEq)]
+#[derive(Reflect, TypePath, Debug, PartialEq)]
 struct Unit;
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct WithIgnore {
     x: i32,
@@ -29,7 +29,7 @@ struct WithIgnore {
     y: f32,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct WithIgnoreDefault {
     x: i32,
@@ -38,7 +38,7 @@ struct WithIgnoreDefault {
     y: f32,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct WithDefault {
     x: i32,
@@ -46,7 +46,7 @@ struct WithDefault {
     y: f32,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct AllDefault {
     #[reflect(default)]
@@ -55,7 +55,7 @@ struct AllDefault {
     y: f32,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct WithCloneField {
     #[reflect(clone)]
@@ -65,7 +65,7 @@ struct WithCloneField {
 
 // No type-level `#[reflect(Clone)]` — tests field-level `#[reflect(clone)]`
 // in field-by-field `reflect_clone`.
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Debug, Default)]
 struct FieldCloneOnly {
     #[reflect(clone)]
@@ -74,7 +74,7 @@ struct FieldCloneOnly {
     b: String,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct Nested {
     inner: Named,
@@ -85,11 +85,11 @@ struct Nested {
 // Tuples with ignore
 // -----------------------------------------------------------------------------
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct TupleWithIgnore(#[reflect(ignore)] String, i32);
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct TupleWithIgnoreDefault(#[reflect(ignore, default)] u64, i32);
 
@@ -97,7 +97,7 @@ struct TupleWithIgnoreDefault(#[reflect(ignore, default)] u64, i32);
 // Enum types (no Default derive — enums need #[default] on a variant)
 // -----------------------------------------------------------------------------
 
-#[derive(Reflect, Debug, PartialEq, Clone)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone)]
 #[reflect(Clone, Debug)]
 enum SimpleEnum {
     A,
@@ -105,7 +105,7 @@ enum SimpleEnum {
     C { x: f32 },
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone)]
 #[reflect(Clone, Debug)]
 enum EnumWithIgnore {
     A,
@@ -378,15 +378,15 @@ fn tuple_unpack_respects_ignore() {
 // Edge cases: empty struct / tuple
 // -----------------------------------------------------------------------------
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct EmptyStruct {}
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct EmptyTuple();
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct AllIgnored {
     #[reflect(ignore, default)]
@@ -395,7 +395,7 @@ struct AllIgnored {
     _b: String,
 }
 
-#[derive(Reflect, Debug, PartialEq, Clone, Default)]
+#[derive(Reflect, TypePath, Debug, PartialEq, Clone, Default)]
 #[reflect(Clone, Debug, Default)]
 struct AllIgnoredTuple(
     #[reflect(ignore, default)] i32,

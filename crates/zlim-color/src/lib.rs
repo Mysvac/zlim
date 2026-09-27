@@ -138,19 +138,19 @@ pub use xyza::*;
 
 /// The color prelude.
 pub mod prelude {
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{color::*, color_ops::*};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{linear_rgba::*, srgba::*, xyza::*};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{hsla::*, hsva::*, hwba::*};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{laba::*, lcha::*};
 
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{okhsla::*, okhsva::*, okhwba::*, oklaba::*, oklcha::*};
 }
 

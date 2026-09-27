@@ -13,3 +13,7 @@ mod slice;
 
 pub use crate::ptr::{OwningPtr, Ptr, PtrMut};
 pub use crate::slice::{ThinSlice, ThinSliceMut};
+
+// pub macro: into_owning!
+
+// -----------------------------------------------------------------------------

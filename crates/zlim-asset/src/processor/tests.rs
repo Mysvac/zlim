@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use futures_lite::AsyncWriteExt;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 use zlim_utils::mpmc::Sender;
 
 // `block_on` here is `zlim_task`'s rather than `futures_lite`'s: the importer hands its work to the
@@ -235,7 +235,7 @@ fn a_processor_is_found_by_its_default_extension_and_by_its_type_path() {
 
     processors.push(TestProcessor::new(AppendTransformer, DstSaver));
 
-    let type_path = <TestProcessor as zlim_path::TypePath>::type_path();
+    let type_path = <TestProcessor as zlim_reflect::TypePath>::type_path();
 
     // Registered but not a default: the type path and the type name find it, while the
     // extension alone does not.
@@ -248,7 +248,7 @@ fn a_processor_is_found_by_its_default_extension_and_by_its_type_path() {
     );
     assert_eq!(
         processors
-            .get_by_name(<TestProcessor as zlim_path::TypePath>::type_name())
+            .get_by_name(<TestProcessor as zlim_reflect::TypePath>::type_name())
             .expect("the processor should be found by its type name")
             .type_path(),
         type_path
@@ -325,7 +325,7 @@ fn the_pipeline_loads_transforms_and_saves() {
     let path = AssetPath::parse("thing.src").into_owned();
 
     let processor = process_server
-        .get_processor_by_path(<TestProcessor as zlim_path::TypePath>::type_path())
+        .get_processor_by_path(<TestProcessor as zlim_reflect::TypePath>::type_path())
         .expect("the processor is registered");
 
     // The driver would hand the processor a reader of its own; the context owns it.
@@ -359,7 +359,7 @@ fn the_pipeline_loads_transforms_and_saves() {
     let meta = AssetMeta::<(), ()>::deserialize(&meta.serialize()).expect("meta");
     match meta.asset_config {
         AssetConfig::Load { loader, .. } => {
-            assert_eq!(loader, <DstLoader as zlim_path::TypePath>::type_path());
+            assert_eq!(loader, <DstLoader as zlim_reflect::TypePath>::type_path());
         }
         _ => panic!("the processed output is a load config naming its loader"),
     }
@@ -406,7 +406,7 @@ fn process_asset_writes_the_processed_side() {
 
     match meta.asset_config {
         AssetConfig::Load { loader, .. } => {
-            assert_eq!(loader, <DstLoader as zlim_path::TypePath>::type_path());
+            assert_eq!(loader, <DstLoader as zlim_reflect::TypePath>::type_path());
         }
         _ => panic!("the processed output is a load config naming its loader"),
     }
@@ -907,7 +907,7 @@ fn an_asset_without_a_processor_is_copied_over() {
 
     match meta.asset_config {
         AssetConfig::Load { loader, .. } => {
-            assert_eq!(loader, <SrcLoader as zlim_path::TypePath>::type_path());
+            assert_eq!(loader, <SrcLoader as zlim_reflect::TypePath>::type_path());
         }
         _ => panic!("a copied asset is a load config naming its loader"),
     }
@@ -1184,7 +1184,7 @@ fn a_default_meta_names_the_processor_or_the_loader() {
             // happen to be unambiguous.
             assert_eq!(
                 processor,
-                <TestProcessor as zlim_path::TypePath>::type_path()
+                <TestProcessor as zlim_reflect::TypePath>::type_path()
             );
         }
         _ => panic!("a processor default meta is a process config naming that processor"),
@@ -1223,7 +1223,7 @@ fn a_default_meta_names_the_processor_or_the_loader() {
 
     match meta.asset_config {
         AssetConfig::Load { loader, .. } => {
-            assert_eq!(loader, <SrcLoader as zlim_path::TypePath>::type_path());
+            assert_eq!(loader, <SrcLoader as zlim_reflect::TypePath>::type_path());
         }
         _ => panic!("a loader default meta is a load config naming that loader"),
     }

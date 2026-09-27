@@ -24,7 +24,7 @@ use core::ptr::NonNull;
 use zlim_core::borrow::ResMut;
 use zlim_core::derive::Resource;
 use zlim_core::entity::EntityId;
-use zlim_core::job_fn;
+use zlim_core::job::job_fn;
 use zlim_core::message::{ClampTickSignal, MessageReader};
 use zlim_core::query::QueryFilter;
 use zlim_core::resource::ResourceDB;
@@ -32,7 +32,7 @@ use zlim_core::system::{AccessTable, ComponentAccess, FilterParamBuilder, If};
 use zlim_core::table::{Table, TableRow};
 use zlim_core::tick::Tick;
 use zlim_core::world::{World, WorldCell};
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::hash::HashMap;
 
 use crate::asset::{Asset, AssetComponent};
@@ -283,7 +283,7 @@ mod tests {
     use zlim_core::component::Component;
     use zlim_core::tick::Tick;
     use zlim_core::world::World;
-    use zlim_path::TypePath;
+    use zlim_reflect::TypePath;
 
     use super::{AssetChanged, AssetChanges};
     use crate::asset::AssetComponent;

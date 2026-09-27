@@ -19,7 +19,7 @@
 //! # Example
 //!
 //! ```rust
-//! use zlim_path::TypePath;
+//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
 //! #[derive(TypePath, Message)]
@@ -115,7 +115,7 @@ pub use queue::MessageQueue;
 pub use reader::MessageReader;
 pub use writer::MessageWriter;
 
-pub use zlim_core_derive::Message;
+pub use crate::derive::Message;
 
 pub(crate) use messages::{enable_manual_update, update_messages};
 pub(crate) mod jobs {
@@ -136,7 +136,7 @@ pub use signals::*;
 mod signals {
     use super::Message;
     use crate::{entity::EntityId, tick::Tick};
-    use zlim_path::derive::TypePath;
+    use zlim_reflect::derive::TypePath;
 
     /// A predefined message sent when an entity is reparented.
     ///

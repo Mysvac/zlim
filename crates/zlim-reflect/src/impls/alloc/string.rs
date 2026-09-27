@@ -1,27 +1,12 @@
-use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 
+use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::CONVERT_TYPE_ERROR;
+use crate::impls::impl_simple_type_path;
 use crate::info::{OpaqueInfo, ReflectKind, TypeInfo, Typed};
 use crate::ops::{ApplyError, CloneError, Opaque};
-use crate::{Reflect, TypePath};
 
-impl TypePath for String {
-    #[inline]
-    fn type_path() -> &'static str {
-        "alloc::string::String"
-    }
-
-    #[inline]
-    fn type_name() -> &'static str {
-        "String"
-    }
-
-    const IDENT: &str = "String";
-    const CRATE: Option<&str> = Some("alloc");
-    const MODULE: Option<&str> = Some("alloc::string");
-}
+impl_simple_type_path!(String: "alloc", "string", "String");
 
 impl Typed for String {
     #[inline]
@@ -72,20 +57,10 @@ impl Reflect for String {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
-
-        if let Some(db) = TypeDB::get_by_type(value.type_id()) {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => {
-                    let converted = ret.downcast::<Self>();
-                    return Ok(converted.expect(CONVERT_TYPE_ERROR));
-                }
-                Err(v) => value = v,
-            }
-        }
 
         if value.reflect_kind() != ReflectKind::Opaque {
             return Err(value);
@@ -99,11 +74,9 @@ impl Reflect for String {
 
 impl TypeDatabase for String {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
         db.insert_serializer::<Self>();
         db.insert_deserializer::<Self>();
-        // All Opaque can be directly converted to
-        // String without a conversion function.
     }
 
     fn register_dependencies() {}

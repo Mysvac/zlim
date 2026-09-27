@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir2, InvalidDirectionError, Isometry2d};
 use zlim_math::{Rot2, Vec2};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::WindingOrder;
 use super::polygon::is_polygon_simple;

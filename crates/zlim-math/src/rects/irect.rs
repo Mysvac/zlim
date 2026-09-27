@@ -1,7 +1,7 @@
 use crate::{IVec2, Rect, URect};
 
 use serde::{Deserialize, Serialize};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 /// A rectangle defined by two opposite corners.
 ///

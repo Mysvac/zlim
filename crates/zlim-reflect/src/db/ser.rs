@@ -75,22 +75,66 @@ use crate::ops::ReflectRef;
 // Register
 // -----------------------------------------------------------------------------
 
-/// Logs a message when the same serializer is registered more than once.
+/// A trait for types that support dynamic serialization through reflection.
 ///
-/// Uses `debug!` in release mode and `info!` in debug mode.  The original
-/// registration is kept; this is purely informational.
+/// Implementors serialize data by combining runtime type information
+/// ([`&dyn Reflect`]), the type registry, and a [`serde::Serializer`].
+///
+/// ## Return Value Semantics
+///
+/// The trait returns `Result<Result<T, S::Error>, S>` with three distinct outcomes:
+///
+/// - **`Ok(Ok(serialized))`** → Successful serialization
+/// - **`Ok(Err(error))`** → Type is supported but serialization failed (e.g., invalid data)
+/// - **`Err(serializer)`** → Type is not supported; serializer is returned for alternative strategies
+///
+/// ## Default Implementation
+///
+/// The trait is implemented for `()` as a default processor that always returns `Err(serializer)`
+/// (indicating no support for any type).
+///
+/// This does not mean that serialization is not supported, [`TypeDB`] will still
+/// try using reflect based serialization and default serialization methods.
+///
+/// [`&dyn Reflect`]: crate::Reflect
+/// [`serde::Serializer`]: serde_core::Serializer
+pub trait SerializeProcessor {
+    fn try_serialize<S: Serializer>(
+        &self,
+        value: &dyn Reflect,
+        serializer: S,
+    ) -> Result<Result<S::Ok, S::Error>, S>;
+}
+
+impl SerializeProcessor for () {
+    #[inline(always)]
+    fn try_serialize<S: Serializer>(
+        &self,
+        _: &dyn Reflect,
+        serializer: S,
+    ) -> Result<Result<S::Ok, S::Error>, S> {
+        Err(serializer)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Register
+// -----------------------------------------------------------------------------
+
+/// Logs a message when the same serializer is registered more than once.
 #[cold]
 #[inline(never)]
 fn warn_serializer_dup(ty: &'static str, l: &'static Location<'static>) {
-    #[cfg(not(feature = "debug"))]
-    log::debug!("{l}: `{ty}`'s serializer registered repeatedly; ignored.");
-
-    // Upgrade the message level in debug mode.
-    #[cfg(feature = "debug")]
-    log::info!("{l}: `{ty}`'s serializer registered repeatedly; ignored.");
+    log::trace!("{l}: `{ty}`'s serializer registered repeatedly; ignored.");
 }
 
 impl TypeDB {
+    /// Returns `true` if a serializer has been registered for this type.
+    #[inline]
+    pub fn contains_serializer(&self) -> bool {
+        self.serialize.get().is_some()
+    }
+
     /// Registers a `SerdFunc` wrapper for type `T` into this `TypeDB`.
     ///
     /// The wrapper downcasts the `&dyn Reflect` to `&T` and returns it as
@@ -204,7 +248,7 @@ impl TypeDB {
     where
         S: Serializer,
     {
-        TypePathReflectSer(value).serialize(serializer)
+        TypePathReflectSer::<()>(value, None).serialize(serializer)
     }
 
     /// Serializes a reflected value directly, **without** type path wrapping.
@@ -253,7 +297,57 @@ impl TypeDB {
     where
         S: Serializer,
     {
-        ReflectSer(value).serialize(serializer)
+        ReflectSer::<()>(value, None).serialize(serializer)
+    }
+
+    /// Self-describing serializer with specific processor for reflected types.
+    #[inline]
+    pub fn reflect_serialize_with<S, P>(
+        value: &dyn Reflect,
+        serializer: S,
+        processor: &P,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        P: SerializeProcessor,
+    {
+        TypePathReflectSer::<P>(value, Some(processor)).serialize(serializer)
+    }
+
+    /// Serializes a reflected value directly with specific processor, **without** type path wrapping.
+    #[inline]
+    pub fn serialize_with<S, P>(
+        value: &dyn Reflect,
+        serializer: S,
+        processor: &P,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        P: SerializeProcessor,
+    {
+        ReflectSer::<P>(value, Some(processor)).serialize(serializer)
+    }
+
+    #[inline]
+    pub fn reflect_serialize_driver<'a, P>(
+        value: &'a dyn Reflect,
+        processor: Option<&'a P>,
+    ) -> impl Serialize + 'a
+    where
+        P: SerializeProcessor,
+    {
+        TypePathReflectSer::<P>(value, processor)
+    }
+
+    #[inline]
+    pub fn serialize_driver<'a, P>(
+        value: &'a dyn Reflect,
+        processor: Option<&'a P>,
+    ) -> impl Serialize + 'a
+    where
+        P: SerializeProcessor,
+    {
+        ReflectSer::<P>(value, processor)
     }
 }
 
@@ -331,9 +425,9 @@ fn invalid_info<E: Error>(ty: &'static str, error: ReflectKindError) -> E {
 /// Produces `{ "type_path": <payload> }` by delegating the payload to
 /// `ReflectSer`.  This is the counterpart to
 /// [`TypePathReflectDeser`](super::des::TypePathReflectDeser).
-struct TypePathReflectSer<'a>(&'a dyn Reflect);
+struct TypePathReflectSer<'a, P: SerializeProcessor = ()>(&'a dyn Reflect, Option<&'a P>);
 
-impl Serialize for TypePathReflectSer<'_> {
+impl<P: SerializeProcessor> Serialize for TypePathReflectSer<'_, P> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -341,7 +435,7 @@ impl Serialize for TypePathReflectSer<'_> {
         let mut s = serializer.serialize_map(Some(1))?;
 
         let type_path = self.0.reflect_type_path();
-        s.serialize_entry(type_path, &ReflectSer(self.0))?;
+        s.serialize_entry(type_path, &ReflectSer(self.0, self.1))?;
 
         s.end()
     }
@@ -362,13 +456,20 @@ impl Serialize for TypePathReflectSer<'_> {
 ///    …, `serialize_enum`).
 ///
 /// Used internally for recursive serialization of nested values.
-struct ReflectSer<'a>(&'a dyn Reflect);
+struct ReflectSer<'a, P: SerializeProcessor = ()>(&'a dyn Reflect, Option<&'a P>);
 
-impl Serialize for ReflectSer<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl<P: SerializeProcessor> Serialize for ReflectSer<'_, P> {
+    fn serialize<S>(&self, mut serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
+        if let Some(processor) = self.1 {
+            match processor.try_serialize(self.0, serializer) {
+                Ok(v) => return v,
+                Err(ser) => serializer = ser,
+            }
+        }
+
         let type_id = self.0.type_id();
 
         if let Some(db) = TypeDB::get_by_type(type_id)
@@ -383,13 +484,13 @@ impl Serialize for ReflectSer<'_> {
 
         let returne_value: Result<S::Ok, S::Error> = match self.0.reflect_ref() {
             ReflectRef::Opaque(r) => serialize_opaque(r, serializer),
-            ReflectRef::Struct(r) => serialize_struct(r, serializer),
-            ReflectRef::Tuple(r) => serialize_tuple(r, serializer),
-            ReflectRef::Array(r) => serialize_array(r, serializer),
-            ReflectRef::List(r) => serialize_list(r, serializer),
-            ReflectRef::Map(r) => serialize_map(r, serializer),
-            ReflectRef::Set(r) => serialize_set(r, serializer),
-            ReflectRef::Enum(r) => serialize_enum(r, serializer),
+            ReflectRef::Struct(r) => serialize_struct(r, serializer, self.1),
+            ReflectRef::Tuple(r) => serialize_tuple(r, serializer, self.1),
+            ReflectRef::Array(r) => serialize_array(r, serializer, self.1),
+            ReflectRef::List(r) => serialize_list(r, serializer, self.1),
+            ReflectRef::Map(r) => serialize_map(r, serializer, self.1),
+            ReflectRef::Set(r) => serialize_set(r, serializer, self.1),
+            ReflectRef::Enum(r) => serialize_enum(r, serializer, self.1),
         };
 
         crate::cfg::debug! {
@@ -428,16 +529,21 @@ where
 
 /// Serializes a fixed-size array as a serde tuple.
 #[inline(never)]
-fn serialize_array<S>(value: &dyn crate::ops::Array, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_array<S, P>(
+    value: &dyn crate::ops::Array,
+    serializer: S,
+    processor: Option<&P>,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    P: SerializeProcessor,
 {
     let len = value.item_len();
     let mut s = serializer.serialize_tuple(len).map_err(maperr)?;
 
     for i in 0..len {
         let item = value.item(i).expect("valid index");
-        s.serialize_element(&ReflectSer(item))?;
+        s.serialize_element(&ReflectSer(item, processor))?;
     }
 
     s.end().map_err(maperr)
@@ -449,16 +555,21 @@ where
 
 /// Serializes a growable list as a serde sequence.
 #[inline(never)]
-fn serialize_list<S>(value: &dyn crate::ops::List, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_list<S, P>(
+    value: &dyn crate::ops::List,
+    serializer: S,
+    processor: Option<&P>,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    P: SerializeProcessor,
 {
     let len = value.item_len();
     let mut s = serializer.serialize_seq(Some(len)).map_err(maperr)?;
 
     for i in 0..len {
         let item = value.item(i).expect("valid index");
-        s.serialize_element(&ReflectSer(item))?;
+        s.serialize_element(&ReflectSer(item, processor))?;
     }
 
     s.end().map_err(maperr)
@@ -470,14 +581,19 @@ where
 
 /// Serializes a set as a serde sequence.
 #[inline(never)]
-fn serialize_set<S>(value: &dyn crate::ops::Set, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_set<S, P>(
+    value: &dyn crate::ops::Set,
+    serializer: S,
+    processor: Option<&P>,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    P: SerializeProcessor,
 {
     let len = value.value_len();
     let mut s = serializer.serialize_seq(Some(len)).map_err(maperr)?;
     for v in value.iter_values() {
-        s.serialize_element(&ReflectSer(v))?;
+        s.serialize_element(&ReflectSer(v, processor))?;
     }
     s.end().map_err(maperr)
 }
@@ -488,14 +604,19 @@ where
 
 /// Serializes a map as a serde map.
 #[inline(never)]
-fn serialize_map<S>(value: &dyn crate::ops::Map, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_map<S, P>(
+    value: &dyn crate::ops::Map,
+    serializer: S,
+    processor: Option<&P>,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    P: SerializeProcessor,
 {
     let len = value.entry_len();
     let mut s = serializer.serialize_map(Some(len)).map_err(maperr)?;
     for (k, v) in value.iter_entries() {
-        s.serialize_entry(&ReflectSer(k), &ReflectSer(v))?;
+        s.serialize_entry(&ReflectSer(k, processor), &ReflectSer(v, processor))?;
     }
     s.end().map_err(maperr)
 }
@@ -516,9 +637,14 @@ where
 ///
 /// All paths use `ReflectSer` for recursive field serialization.
 #[inline(never)]
-fn serialize_tuple<S>(value: &dyn crate::ops::Tuple, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_tuple<S, P>(
+    value: &dyn crate::ops::Tuple,
+    serializer: S,
+    processor: Option<&P>,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    P: SerializeProcessor,
 {
     let len = value.field_len();
     let name = value.reflect_type_ident();
@@ -527,19 +653,19 @@ where
         let mut s = serializer.serialize_tuple(len).map_err(maperr)?;
         for i in 0..len {
             let field = value.field(i).expect("valid index");
-            s.serialize_element(&ReflectSer(field))?;
+            s.serialize_element(&ReflectSer(field, processor))?;
         }
         s.end().map_err(maperr)
     } else if len == 1 {
         let field = value.field(0).expect("valid index");
-        serializer.serialize_newtype_struct(name, &ReflectSer(field))
+        serializer.serialize_newtype_struct(name, &ReflectSer(field, processor))
     } else {
         let mut s = serializer
             .serialize_tuple_struct(name, len)
             .map_err(maperr)?;
         for i in 0..len {
             let field = value.field(i).expect("valid index");
-            s.serialize_field(&ReflectSer(field))?;
+            s.serialize_field(&ReflectSer(field, processor))?;
         }
         s.end().map_err(maperr)
     }
@@ -558,9 +684,14 @@ where
 ///
 /// [`StructInfo`]: crate::info::StructInfo
 #[inline(never)]
-fn serialize_struct<S>(value: &dyn crate::ops::Struct, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_struct<S, P>(
+    value: &dyn crate::ops::Struct,
+    serializer: S,
+    processor: Option<&P>,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    P: SerializeProcessor,
 {
     use crate::info::StructInfo;
 
@@ -592,7 +723,7 @@ where
                 struct_info.type_path(),
             )));
         };
-        s.serialize_field(name, &ReflectSer(field))?;
+        s.serialize_field(name, &ReflectSer(field, processor))?;
     }
 
     s.end().map_err(maperr)
@@ -627,9 +758,14 @@ where
 /// [`EnumInfo`]: crate::info::EnumInfo
 /// [`VariantKind`]: crate::info::VariantKind
 #[inline(never)]
-fn serialize_enum<S>(value: &dyn crate::ops::Enum, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_enum<S, P>(
+    value: &dyn crate::ops::Enum,
+    serializer: S,
+    processor: Option<&P>,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
+    P: SerializeProcessor,
 {
     use crate::info::{EnumInfo, VariantInfo};
 
@@ -692,7 +828,7 @@ where
         VariantInfo::Tuple(_) if is_option => {
             let field = value.field_at(0).expect("valid index");
             debug_assert_eq!(field_len, 1, "Option + Tuple, must be Some(x)");
-            serializer.serialize_some(&ReflectSer(field))
+            serializer.serialize_some(&ReflectSer(field, processor))
         }
         VariantInfo::Tuple(_) if is_new_type => {
             let field = value.field_at(0).expect("valid index");
@@ -700,7 +836,7 @@ where
                 name,
                 variant_index,
                 variant_name,
-                &ReflectSer(field),
+                &ReflectSer(field, processor),
             )
         }
         VariantInfo::Tuple(_) => {
@@ -710,7 +846,7 @@ where
 
             for i in 0..field_len {
                 let field = value.field_at(i).expect("valid index");
-                s.serialize_field(&ReflectSer(field))?;
+                s.serialize_field(&ReflectSer(field, processor))?;
             }
 
             s.end().map_err(maperr)
@@ -723,7 +859,7 @@ where
             for i in 0..field_len {
                 let field = value.field_at(i).expect("valid index");
                 let fname = info.name_at(i).unwrap();
-                s.serialize_field(fname, &ReflectSer(field))?;
+                s.serialize_field(fname, &ReflectSer(field, processor))?;
             }
 
             s.end().map_err(maperr)

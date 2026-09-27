@@ -89,12 +89,12 @@ mod normal_impls {
     use zlim_app::{Plugin, PluginExt, Startup, Update};
     use zlim_core::borrow::{Res, ResMut};
     use zlim_core::command::Commands;
+    use zlim_core::derive::{Resource, job_fn};
     use zlim_core::system::If;
     use zlim_core::world::World;
-    use zlim_core::{derive::Resource, job_fn};
     use zlim_diagnostic::{Diagnostic, Diagnostics, DiagnosticsPlugin};
     use zlim_os::time::Instant;
-    use zlim_path::derive::TypePath;
+    use zlim_reflect::derive::TypePath;
     use zlim_task::AsyncTaskPool;
     use zlim_utils::sync::ArrayQueue;
 

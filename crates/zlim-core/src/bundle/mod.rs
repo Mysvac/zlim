@@ -29,7 +29,7 @@
 //! spawn calls without defining a struct:
 //!
 //! ```rust
-//! use zlim_path::TypePath;
+//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
 //! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -53,7 +53,7 @@
 //! The recommended way to define a bundle is via `#[derive(Bundle)]`:
 //!
 //! ```rust, no_run
-//! use zlim_path::TypePath;
+//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
 //! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
@@ -93,7 +93,7 @@
 //! them with the [`BundleWriter`] it hands out:
 //!
 //! ```rust
-//! use zlim_path::TypePath;
+//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //! use zlim_core::bundle::BundleScratch;
 //!
@@ -137,4 +137,4 @@ pub use bundle::Bundle;
 pub use info::{BundleId, BundleInfo, Bundles};
 pub use writer::{BundleScratch, BundleWriter};
 
-pub use zlim_core_derive::Bundle;
+pub use crate::derive::Bundle;

@@ -184,9 +184,17 @@ fn gen_struct_clone(info: &ReflectStruct<'_>) -> TokenStream {
                 let member = field.to_member();
                 Some(quote! { __new_value__.#member = ::core::clone::Clone::clone(&self.#member); })
             } else if !field.is_ignore() {
-                let field_ty = field.ty();
                 let member = field.to_member();
-                Some(quote! { __new_value__.#member = #reflect_clone_field::<#field_ty>(&self.#member)?; })
+                let field_ty = field.reflected_ty();
+                let access = field.reflected_access(&quote!(self));
+                // As below: the clone is the field's own type, so a remote field converts the
+                // wrapper it is handed back into the remote value.
+                let cloned = Ident::new("__cloned_field_", Span::call_site());
+                let untake = field.reflected_untake(&quote!(#cloned));
+                Some(quote! {
+                    let #cloned = #reflect_clone_field::<#field_ty>(#access)?;
+                    __new_value__.#member = #untake;
+                })
             } else {
                 None
             }
@@ -222,12 +230,22 @@ fn gen_struct_clone(info: &ReflectStruct<'_>) -> TokenStream {
     }
 
     let tokens = info.fields().iter().map(|field| {
-        let field_ty = &field.data.ty;
+        let field_ty = field.reflected_ty();
         let member = field.to_member();
+        let access = field.reflected_access(&quote!(self));
         if field.cloneable() {
             quote! { #member: ::core::clone::Clone::clone(&self.#member), }
         } else if !field.is_ignore() {
-            quote! { #member: #reflect_clone_field::<#field_ty>(&self.#member)?, }
+            // The clone is built as the field's own type: a remote field is cloned as its wrapper,
+            // which the field then holds as the remote value it was wrapped around.
+            let cloned = Ident::new("__cloned_field_", Span::call_site());
+            let untake = field.reflected_untake(&quote!(#cloned));
+            quote! {
+                #member: {
+                    let #cloned = #reflect_clone_field::<#field_ty>(#access)?;
+                    #untake
+                },
+            }
         } else {
             debug_assert!(
                 field.defaultable(),
@@ -516,7 +534,6 @@ fn gen_from_reflect(derive: &ReflectDerive<'_>) -> TokenStream {
     let meta = derive.meta();
     let zlim_reflect = meta.zlim_reflect();
     let reflect_ = crate::path::reflect_trait(zlim_reflect);
-    let type_db_ = crate::path::type_db(zlim_reflect);
 
     if let Some(custom) = &meta.attrs().override_from_reflect {
         return quote! {
@@ -543,25 +560,10 @@ fn gen_from_reflect(derive: &ReflectDerive<'_>) -> TokenStream {
             where
                 Self: Sized
             {
-                // Phase 1: same type → downcast
-                let mut value = match <dyn #reflect_>::downcast::<Self>(value) {
-                    ::core::result::Result::Ok(ret) => return ::core::result::Result::Ok(ret),
-                    ::core::result::Result::Err(e) => e,
-                };
-
-                // Phase 2: TypeDB conversion
-                if let ::core::option::Option::Some(db) = <dyn #reflect_>::type_db(&*value) {
-                    match #type_db_::convert(db, value, ::core::any::TypeId::of::<Self>()) {
-                        ::core::result::Result::Ok(ret) => {
-                            return ::core::result::Result::Ok(
-                                <dyn #reflect_>::downcast::<Self>(ret).unwrap()
-                            );
-                        }
-                        ::core::result::Result::Err(v) => value = v,
-                    }
+                match <dyn #reflect_>::downcast::<Self>(value) {
+                    ::core::result::Result::Ok(ret) => ::core::result::Result::Ok(ret),
+                    ::core::result::Result::Err(value) => ::core::result::Result::Err(value),
                 }
-
-                ::core::result::Result::Err(value)
             }
         };
     }
@@ -573,33 +575,20 @@ fn gen_from_reflect(derive: &ReflectDerive<'_>) -> TokenStream {
         _ => unreachable!(),
     }
 }
-
 fn gen_struct_from_reflect(info: &ReflectStruct) -> TokenStream {
     let meta = info.meta();
     let zlim_reflect = meta.zlim_reflect();
     let reflect_ = crate::path::reflect_trait(zlim_reflect);
     let reflect_kind_ = crate::path::reflect_kind(zlim_reflect);
-    let type_db_ = crate::path::type_db(zlim_reflect);
     let struct_ = crate::path::struct_trait(zlim_reflect);
     let is_convertable_ = crate::path::is_convertable(zlim_reflect);
 
     // ------------------------- Some Type Checker ------------------------
     let phase_1_2 = quote! {
-        let mut value = match <dyn #reflect_>::downcast::<Self>(value) {
+        let value = match <dyn #reflect_>::downcast::<Self>(value) {
             ::core::result::Result::Ok(ret) => return ::core::result::Result::Ok(ret),
             ::core::result::Result::Err(e) => e,
         };
-
-        if let ::core::option::Option::Some(db) = <dyn #reflect_>::type_db(&*value) {
-            match #type_db_::convert(db, value, ::core::any::TypeId::of::<Self>()) {
-                ::core::result::Result::Ok(ret) => {
-                    return ::core::result::Result::Ok(
-                        ::core::result::Result::unwrap(<dyn #reflect_>::downcast::<Self>(ret))
-                    );
-                }
-                ::core::result::Result::Err(v) => value = v,
-            }
-        }
     };
 
     // ------------------------- Fail Path --------------------------
@@ -641,7 +630,9 @@ fn gen_struct_from_reflect(info: &ReflectStruct) -> TokenStream {
     // ------------------------- Construct Self --------------------------------
 
     let convert_checks = info.active_fields().map(|field| {
-        let field_ty = field.ty();
+        // What the struct hands out is the *reflected* form: a remote field arrives as its wrapper,
+        // not as the remote type the field holds.
+        let field_ty = field.reflected_ty();
         let field_name = field.data.ident.as_ref().unwrap().to_string();
 
         if field.defaultable() {
@@ -679,13 +670,15 @@ fn gen_struct_from_reflect(info: &ReflectStruct) -> TokenStream {
         };
 
         let assignments = info.active_fields().map(|field| {
-            let field_ty = field.ty();
+            let field_ty = field.reflected_ty();
             let member = field.to_member();
             let field_name = field.data.ident.as_ref().unwrap().to_string();
+            let untake = field.reflected_untake(&quote!(__field_value_));
 
             quote! {
                 #field_name => {
-                    #this_val.#member = * ::core::result::Result::unwrap(<#field_ty as #reflect_>::from_reflect(#field_kv_val));
+                    let __field_value_ = * ::core::result::Result::unwrap(<#field_ty as #reflect_>::from_reflect(#field_kv_val));
+                    #this_val.#member = #untake;
                 },
             }
         });
@@ -733,7 +726,8 @@ fn gen_struct_from_reflect(info: &ReflectStruct) -> TokenStream {
     }
 
     let def_active_fields = info.active_fields().map(|field| {
-        let field_ty = field.ty();
+        // The stored value is the reflected form — for a remote field, its wrapper.
+        let field_ty = field.reflected_ty();
 
         let item_ident = get_item_ident(field.field_index);
 
@@ -747,7 +741,7 @@ fn gen_struct_from_reflect(info: &ReflectStruct) -> TokenStream {
     let field_kv_val = Ident::new("__kv_val_", Span::call_site());
 
     let assignments = info.active_fields().map(|field| {
-        let field_ty = field.ty();
+        let field_ty = field.reflected_ty();
         let field_name = field.data.ident.as_ref().unwrap().to_string();
 
         let item_ident = get_item_ident(field.field_index);
@@ -783,11 +777,22 @@ fn gen_struct_from_reflect(info: &ReflectStruct) -> TokenStream {
         }
 
         let item_ident = get_item_ident(field.field_index);
+        let untake = field.reflected_untake(&quote!(__field_value_));
 
         if field.defaultable() {
-            quote! { #member: ::core::option::Option::unwrap_or_default(#item_ident), }
+            quote! {
+                #member: {
+                    let __field_value_ = ::core::option::Option::unwrap_or_default(#item_ident);
+                    #untake
+                },
+            }
         } else {
-            quote! { #member: ::core::option::Option::unwrap(#item_ident), }
+            quote! {
+                #member: {
+                    let __field_value_ = ::core::option::Option::unwrap(#item_ident);
+                    #untake
+                },
+            }
         }
     });
 
@@ -818,29 +823,15 @@ fn gen_tuple_from_reflect(info: &ReflectStruct) -> TokenStream {
     let zlim_reflect = meta.zlim_reflect();
     let reflect_ = crate::path::reflect_trait(zlim_reflect);
     let reflect_kind_ = crate::path::reflect_kind(zlim_reflect);
-    let type_db_ = crate::path::type_db(zlim_reflect);
     let tuple_ = crate::path::tuple_trait(zlim_reflect);
     let is_convertable_ = crate::path::is_convertable(zlim_reflect);
 
-    // Phase 1 & 2 — shared for both paths.
+    // The same declaraction, shared for both paths.
     let phase_1_2 = quote! {
-        // Phase 1: same type → downcast
-        let mut value = match <dyn #reflect_>::downcast::<Self>(value) {
+        let value = match <dyn #reflect_>::downcast::<Self>(value) {
             ::core::result::Result::Ok(ret) => return ::core::result::Result::Ok(ret),
             ::core::result::Result::Err(e) => e,
         };
-
-        // Phase 2: TypeDB conversion
-        if let ::core::option::Option::Some(db) = <dyn #reflect_>::type_db(&*value) {
-            match #type_db_::convert(db, value, ::core::any::TypeId::of::<Self>()) {
-                ::core::result::Result::Ok(ret) => {
-                    return ::core::result::Result::Ok(
-                        <dyn #reflect_>::downcast::<Self>(ret).unwrap()
-                    );
-                }
-                ::core::result::Result::Err(v) => value = v,
-            }
-        }
     };
 
     if info
@@ -875,7 +866,8 @@ fn gen_tuple_from_reflect(info: &ReflectStruct) -> TokenStream {
     };
 
     let convert_checks = info.active_fields().map(|field| {
-        let field_ty = field.ty();
+        // What the tuple hands out is the *reflected* form, as in `gen_struct_from_reflect`.
+        let field_ty = field.reflected_ty();
         let index = field.reflect_index;
         quote! {
             match #tuple_::field(&*#value_item, #index) {
@@ -895,7 +887,7 @@ fn gen_tuple_from_reflect(info: &ReflectStruct) -> TokenStream {
     }
 
     let def_active_fields = info.active_fields().map(|field| {
-        let field_ty = field.ty();
+        let field_ty = field.reflected_ty();
         let item_ident = get_item_ident(field.field_index);
 
         quote!{ let mut #item_ident: ::core::option::Option<#field_ty> = ::core::option::Option::None; }
@@ -906,7 +898,7 @@ fn gen_tuple_from_reflect(info: &ReflectStruct) -> TokenStream {
     let field_val = Ident::new("__field_val_", Span::call_site());
 
     let assignments = info.active_fields().map(|field| {
-        let field_ty = field.ty();
+        let field_ty = field.reflected_ty();
         let field_index = field.reflect_index;
 
         let item_ident = get_item_ident(field.field_index);
@@ -944,9 +936,15 @@ fn gen_tuple_from_reflect(info: &ReflectStruct) -> TokenStream {
         }
 
         let item_ident = get_item_ident(field.field_index);
+        let untake = field.reflected_untake(&quote!(__field_value_));
 
         // fields do not support default.
-        quote! { #member: ::core::option::Option::unwrap(#item_ident), }
+        quote! {
+            #member: {
+                let __field_value_ = ::core::option::Option::unwrap(#item_ident);
+                #untake
+            },
+        }
     });
 
     quote! {
@@ -976,27 +974,15 @@ fn gen_enum_from_reflect(info: &ReflectEnum) -> TokenStream {
     let zlim_reflect = meta.zlim_reflect();
     let reflect_ = crate::path::reflect_trait(zlim_reflect);
     let reflect_kind_ = crate::path::reflect_kind(zlim_reflect);
-    let type_db_ = crate::path::type_db(zlim_reflect);
     let enum_ = crate::path::enum_trait(zlim_reflect);
     let variant_kind_ = crate::path::variant_kind(zlim_reflect);
     let is_convertable_ = crate::path::is_convertable(zlim_reflect);
 
     let phase_1_2 = quote! {
-        let mut value = match <dyn #reflect_>::downcast::<Self>(value) {
+        let value = match <dyn #reflect_>::downcast::<Self>(value) {
             ::core::result::Result::Ok(ret) => return ::core::result::Result::Ok(ret),
             ::core::result::Result::Err(e) => e,
         };
-
-        if let ::core::option::Option::Some(db) = <dyn #reflect_>::type_db(&*value) {
-            match #type_db_::convert(db, value, ::core::any::TypeId::of::<Self>()) {
-                ::core::result::Result::Ok(ret) => {
-                    return ::core::result::Result::Ok(
-                        ::core::result::Result::unwrap(<dyn #reflect_>::downcast::<Self>(ret))
-                    );
-                }
-                ::core::result::Result::Err(v) => value = v,
-            }
-        }
     };
 
     let value_item = Ident::new("__val_xy_", Span::call_site());

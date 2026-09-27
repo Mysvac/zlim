@@ -257,7 +257,7 @@ fn register_asset_processor_impl<P: AssetProcessor>(world: &mut World, processor
                 "`register_asset_processor` needs an `AssetProcessServer`, which `AssetPlugin` \
                  only builds in `AssetServerMode::Processed` with the importer enabled; the \
                  processor `{}` is ignored.",
-                <P as zlim_path::TypePath>::type_path()
+                <P as zlim_reflect::TypePath>::type_path()
             );
         }
     }

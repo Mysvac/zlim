@@ -1,7 +1,7 @@
 //! The [`Resource`] trait.
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use super::db::ResourceDB;
 use super::register::register_base;
@@ -41,7 +41,7 @@ use crate::utils::Dropper;
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Resource)]
@@ -104,7 +104,7 @@ pub trait Resource: TypePath + Sized {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Resource)]

@@ -1,4 +1,5 @@
 mod atomic;
+mod cell;
 mod hash;
 mod marker;
 mod num;

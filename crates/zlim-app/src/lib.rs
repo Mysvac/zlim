@@ -18,9 +18,6 @@ mod shutdown;
 // -----------------------------------------------------------------------------
 // Exports
 
-pub use zlim_app_derive as derive;
-pub use zlim_app_derive::AppLabel;
-
 pub use app::{App, ExtractFn, RunnerFn, SubApp};
 pub use exit::{AppExit, AppExitStage};
 pub use label::{AppLabel, InternedAppLabel};
@@ -39,13 +36,37 @@ pub use main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, SpawnScene, S
 
 pub use schedule_runner::{RunMode, ScheduleRunnerPlugin};
 
+pub use crate::derive::{AppLabel, zlim_main};
+
 // -----------------------------------------------------------------------------
 // jobs
 
 /// The app jobs.
 pub mod jobs {
+    #[doc(inline)]
     pub use crate::main_schedule::{RunFixedMainJob, RunFixedMainLoopJob, RunMainJob};
+    #[doc(inline)]
     pub use crate::shutdown::HandleExitSignal;
+}
+
+// -----------------------------------------------------------------------------
+// macros
+
+/// The app macros.
+pub mod derive {
+    #[doc(inline)]
+    pub use zlim_app_derive::{AppLabel, zlim_main};
+}
+
+// -----------------------------------------------------------------------------
+// plugins
+
+/// The app plugins.
+pub mod plugins {
+    #[doc(no_inline)]
+    pub use crate::MainSchedulePlugin;
+    #[doc(no_inline)]
+    pub use crate::{PanicHandlerPlugin, ScheduleRunnerPlugin, ShutdownPlugin};
 }
 
 // -----------------------------------------------------------------------------
@@ -53,24 +74,24 @@ pub mod jobs {
 
 /// The app preludes.
 pub mod prelude {
-    #[doc(hidden)]
-    pub use crate::app::{App, SubApp};
-    #[doc(hidden)]
-    pub use crate::exit::AppExit;
-    #[doc(hidden)]
-    pub use crate::main_schedule::{First, Last, PostUpdate, PreUpdate, Update};
-    #[doc(hidden)]
-    pub use crate::main_schedule::{FixedFirst, FixedLast, FixedMainLoopStage};
-    #[doc(hidden)]
-    pub use crate::main_schedule::{FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder};
-    #[doc(hidden)]
-    pub use crate::main_schedule::{FixedPostUpdate, FixedPreUpdate, FixedUpdate, Startup};
-    #[doc(hidden)]
-    pub use crate::main_schedule::{PostStartup, PreStartup, RunFixedMainLoop, SpawnScene};
-    #[doc(hidden)]
-    pub use crate::plugin::{Plugin, PluginExt, PluginGroup};
-    #[doc(hidden)]
-    pub use zlim_app_derive::{AppLabel, zlim_main};
+    #[doc(no_inline)]
+    pub use crate::AppExit;
+    #[doc(no_inline)]
+    pub use crate::derive::{AppLabel, zlim_main};
+    #[doc(no_inline)]
+    pub use crate::{App, SubApp};
+    #[doc(no_inline)]
+    pub use crate::{First, Last, PostUpdate, PreUpdate, Update};
+    #[doc(no_inline)]
+    pub use crate::{FixedFirst, FixedLast, FixedMainLoopStage};
+    #[doc(no_inline)]
+    pub use crate::{FixedMain, FixedMainScheduleOrder, Main, MainScheduleOrder};
+    #[doc(no_inline)]
+    pub use crate::{FixedPostUpdate, FixedPreUpdate, FixedUpdate, Startup};
+    #[doc(no_inline)]
+    pub use crate::{Plugin, PluginExt, PluginGroup};
+    #[doc(no_inline)]
+    pub use crate::{PostStartup, PreStartup, RunFixedMainLoop, SpawnScene};
 }
 
 // -----------------------------------------------------------------------------

@@ -136,11 +136,11 @@ pub mod handler;
 // -----------------------------------------------------------------------------
 // Exports
 
+pub use crate::derive::Error;
 pub use context::ErrorContext;
 pub use handler::{ErrorHandler, default_error_handler};
 pub use payload::PanicPayload;
 pub use result::{IntoZlimResult, ZlimResult};
-pub use zlim_core_derive::Error;
 pub use zlim_error::{Severity, ZlimError};
 
 // -----------------------------------------------------------------------------

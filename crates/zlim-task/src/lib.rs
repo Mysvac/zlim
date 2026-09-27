@@ -38,13 +38,11 @@ pub use futures_lite::future::yield_now;
 
 /// The tasks prelude.
 pub mod prelude {
-    // doc(hidden): keeps this path out of autocomplete suggestions.
-
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{AsyncTaskPool, IoTaskPool, MainTaskPool};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{ParallelSlice, block_on};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::{TaskPoolConfig, TaskPoolConfigs};
 }
 

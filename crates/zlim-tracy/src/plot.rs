@@ -101,7 +101,7 @@ impl PlotName {
 
     /// Constructs a `PlotName` from a null-terminated literal.
     ///
-    /// Only [`crate::internal::create_plot`], which the [`plot_name!`](crate::plot_name) macro
+    /// Only `create_plot_name`, which the [`plot_name!`](crate::plot_name) macro
     /// expands to, calls this function, and it checks that the literal is null-terminated.
     #[cfg(feature = "tracy")]
     #[inline(always)]
@@ -308,7 +308,7 @@ impl Client {
 #[macro_export]
 #[cfg(feature = "tracy")]
 macro_rules! plot_name {
-    ($name: expr) => {{ $crate::internal::create_plot(concat!($name, "\0")) }};
+    ($name: expr) => {{ $crate::internal::create_plot_name(concat!($name, "\0")) }};
 }
 
 /// Constructs a [`PlotName`] from a literal name.

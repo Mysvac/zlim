@@ -607,6 +607,10 @@ impl __JobGroupReg__ {
 /// The types are registered eagerly, before `main`, and become visible in
 /// [`JobGroup::get`] once [`JobGroup::collect`] has run at startup.
 ///
+/// JobGroups without generics will automatically add this macro by `job_group!`
+/// macro. Even if it contains generics, the job group will automatically register
+/// when it is first added to schedule. Users usually do not need to use this macro.
+///
 /// ```no_run
 /// use zlim_core::prelude::*;
 /// use zlim_core::register_job_group;

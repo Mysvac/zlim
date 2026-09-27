@@ -35,7 +35,7 @@ use super::resource::Resource;
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::resource::register_base;
 ///
@@ -78,7 +78,7 @@ pub fn register_base<R: Resource>() -> &'static ResourceDB {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::resource::register_serializable;
 /// use serde::{Deserialize, Serialize};

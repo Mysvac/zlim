@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use zlim_core::derive::Resource;
 use zlim_diagnostic::DiagnosticPath;
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use super::builder::{LoadBuilder, SaveBuilder};
 use super::config::{AssetMetaCheckMode, UnapprovedPathMode};
@@ -922,7 +922,7 @@ pub(crate) mod jobs {
     use core::task::Waker;
     use std::path::PathBuf;
     use zlim_core::borrow::{Res, ResMut};
-    use zlim_core::job_fn;
+    use zlim_core::job::job_fn;
     use zlim_core::system::If;
     use zlim_core::world::World;
     use zlim_diagnostic::Diagnostics;

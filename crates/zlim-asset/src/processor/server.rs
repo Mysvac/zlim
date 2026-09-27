@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use zlim_core::derive::Resource;
 use zlim_core::error::Error;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_task::IoTaskPool;
 use zlim_utils::ext::CachePadded;
 use zlim_utils::mpmc;

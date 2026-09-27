@@ -24,7 +24,7 @@ impl ResourceDB {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_path::TypePath;
+    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
     /// #[derive(TypePath, Resource)]
@@ -148,7 +148,7 @@ pub mod __internal__ {
 /// # Examples
 ///
 /// ```no_run
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// #[derive(TypePath, Resource)]

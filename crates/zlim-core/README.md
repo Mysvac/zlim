@@ -19,7 +19,7 @@ Components are **plain Rust structs**, associated with entities via
 `#[derive(Component)]`:
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -44,7 +44,7 @@ engines: it carries no data itself, it is just a "container id" for
 components.
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -78,7 +78,7 @@ its Rust type — at most one value of a given resource type exists in a
 world.
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Resource)]
@@ -127,7 +127,7 @@ system. System instances are **cached** by default to speed up repeated
 calls (caching internal data such as `Local` parameters and query state).
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -283,7 +283,7 @@ enable ordering constraints between stages:
   commands are **not** guaranteed visible
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(ScheduleLabel, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -358,7 +358,7 @@ For how component data is stored, see the `table` module docs; here we only
 show how queries are used:
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -394,7 +394,7 @@ read buffer for consumption, and the old read buffer is cleared.
 its own independent cursor, without interfering with the others.
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Message)]
@@ -438,7 +438,7 @@ only sees changes that happened **after that Job's previous run (not
 including the previous run itself)**.
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]
@@ -481,7 +481,7 @@ improves parallelism.
 deferred commands when needed, guaranteeing visibility.
 
 ```rust
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
 #[derive(TypePath, Component, Clone)]

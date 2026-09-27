@@ -34,8 +34,7 @@ pub mod time;
 
 /// The zlim-os prelude.
 pub mod prelude {
-    // doc(hidden): keeps this path out of autocomplete suggestions.
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::time::{Instant, SystemTime};
 }
 

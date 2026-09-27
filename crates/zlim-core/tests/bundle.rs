@@ -3,7 +3,7 @@
 use zlim_core::derive::{Bundle, Component};
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Components

@@ -1,6 +1,6 @@
 # zlim-reflect
 
-A runtime reflection system designed for the Zlim Engine, which can be divided into four parts:
+A runtime reflection system designed for the Zlim Engine.
 
 ## Modules
 
@@ -9,9 +9,10 @@ A runtime reflection system designed for the Zlim Engine, which can be divided i
 | `path` | Compile-time type paths, providing stable unique type identifiers |
 | `info` | Compile-time type metadata, e.g. field lists, custom attributes, generic parameters |
 | `ops` | Core reflection traits, plus kind-specific data-operation subtraits |
-| `db` | Global type registry |
+| `db` | Global type registry, plus reflection-based serialization support |
 | `dynamic` | Dynamically constructed, type-erased containers, typically used for reflection-based serialization |
 | `impls` | Helper functions for implementing reflection, plus reflection impls for common types |
+| `remote` | Reflecting a type that lives in another crate, through a local wrapper |
 | `derive` | Reflection-related macros |
 
 ## Type Paths
@@ -40,10 +41,10 @@ assert_eq!(Foo::type_name(), "Foo");
 The `Reflect` macro generates all the code needed for reflection, which includes the `TypePath` part:
 
 ```rust
-use zlim_reflect::Reflect;
+use zlim_reflect::{Reflect, TypePath};
 use zlim_reflect::info::Typed;
 
-#[derive(Reflect)]
+#[derive(Reflect, TypePath)]
 struct Position {
     x: f32,
     y: f32,
@@ -78,23 +79,22 @@ The `Reflect` trait defines a set of common reflection operations, roughly as fo
 - `reflect_hash`: hashing in the type-erased state.
 
 - `from_reflect`: tries to construct itself from a reflected value. Not fully weak-typed.
-  If the types are equal, it always succeeds. If the type database provides a conversion function, it also always succeeds.
-  Otherwise, for basic data types, it tries to convert to a string and then deserialize itself from the string.
-  For composite types, it tries to construct itself field by field, but each field must be directly compatible
-  (equal type or a provided conversion function); it does not recurse further.
+  If the types are equal, it always succeeds. Otherwise, for basic data types, it tries to convert to a string
+  and then deserialize itself from the string. For composite types, it tries to construct itself field by field,
+  but each field must be exactly the expected type; it does not recurse further and performs no conversion.
 
 `reflect_apply` is usually more lenient than `from_reflect`: the former is fully weak-typed and can assign as long
 as the structures are similar; the latter only allows the type itself to differ, while fields and other subtypes
-must be directly compatible (equal type or a provided conversion function).
+must be exactly the expected type.
 
-Conversely, `from_reflect` is usually more efficient than `reflect_apply`, because it converts types directly
-without copying values.
+On the other hand, `from_reflect` is usually more efficient than `reflect_apply`, because it converts types
+directly without copying values.
 
 ```rust
-use zlim_reflect::Reflect;
+use zlim_reflect::{Reflect, TypePath};
 use zlim_reflect::dynamic::DynamicStruct;
 
-#[derive(Reflect, Clone, Debug, Default)]
+#[derive(Reflect, TypePath, Clone, Debug, Default)]
 struct Point { x: i32, y: f32 }
 
 let mut dyn_struct = DynamicStruct::new();
@@ -129,9 +129,10 @@ Note that `struct T` is Opaque, `struct T{}` is Struct, and `struct T()` is Tupl
 A reflected value can be converted to a subtype for more dynamic operations, such as field access.
 
 ```rust
-use zlim_reflect::ops::{Reflect, Struct};
+use zlim_reflect::{Reflect, TypePath};
+use zlim_reflect::ops::Struct;
 
-#[derive(Reflect, Debug, Default)]
+#[derive(Reflect, TypePath, Debug, Default)]
 struct Point { x: i32, y: f32 }
 
 let mut pt: Point = Point::default();
@@ -146,7 +147,7 @@ assert_eq!(pt.x, 5);
 ## Type Database
 
 `TypeDB` is the "type database" for all reflected types: it stores each type's type info, along with optional
-constructors, conversion functions, and serialization/deserialization function pointers.
+constructors and serialization/deserialization function pointers.
 
 Composite types automatically register their subtypes when registered — for example, registering
 `struct A(Vec<i32>)` also registers `Vec<i32>`.
@@ -159,9 +160,9 @@ Generic types are not registered automatically, because `zlim_reg` can only coll
 register them explicitly with the `register_reflect!` macro; duplicate registration is safe:
 
 ```rust
-use zlim_reflect::{Reflect, register_reflect};
+use zlim_reflect::{Reflect, TypePath, register_reflect};
 
-#[derive(Reflect)]
+#[derive(Reflect, TypePath)]
 struct Foo<T>(T);
 
 register_reflect!(Foo<u32>, Foo<i32>);
@@ -183,11 +184,15 @@ on `TypeDB`, in two formats:
 
 Processing priority:
 
-1. **Registered functions first**: if a type has `SerdFunc`/`DeseFunc` registered in its `TypeDB`
-   (set via `insert_serializer`/`insert_deserializer`), they are called directly — this is the fast path
-   for types with serde implementations.
+1. **Explicit processor first**: if an explicit processor is provided through functions such as
+   `serialize_with`, it is used first. If it succeeds or fails, that result is returned directly;
+   if it does not support the type, the next two steps are tried.
 
-2. **Reflection fallback**: otherwise, dispatch to the kind-specific serialization function or
+2. **Registered functions**: if a type has `SerdFunc`/`DeseFunc` registered in its `TypeDB`
+   (set via `insert_serializer`/`insert_deserializer`), they are called directly — this is the fast
+   path for types with serde implementations, and is usually more efficient.
+
+3. **Reflection fallback**: otherwise, dispatch to the kind-specific serialization function or
    deserialization visitor (Opaque, Struct, Tuple, Array, List, Map, Set, Enum).
 
 In addition, even if an Opaque type has no serialization function registered, it is stringified via
@@ -196,23 +201,23 @@ just with different efficiency.
 
 Deserialization uses a two-phase strategy: if the type has a default constructor, construct an empty value
 and modify its fields in place (fast); otherwise, build a `Dynamic*` value and convert it to the target type
-via `TypeDB::from_reflect` (always works, but slower).
+via `TypeDB::from_reflect` (usually succeeds, but slower).
 
 ## Code Generation
 
 Reflection implementations mostly don't need to be written by hand — the `derive` macros handle it.
-The macros live in `zlim-reflect/derive`, mainly two of them:
+The macros live in `zlim-reflect/derive`, mainly two of them, and they are **independent**:
 
 - `#[derive(TypePath)]`: generates the `TypePath` implementation.
   By default it builds the path from `module_path!()` plus the type name; you can also specify it yourself
   with `#[type_path = "..."]`. Generic parameters are automatically appended to the path (cached via `PathCell`).
 
-- `#[derive(Reflect)]`: generates all the code needed for reflection at once:
+- `#[derive(Reflect)]`: generates all the code reflection needs, in one go:
   - The core `Reflect` trait (`reflect_clone`, `reflect_apply`, `reflect_eq`, `reflect_hash`,
     `reflect_debug`, `from_reflect`)
-  - `TypePath` and `Typed` (for runtime type info)
+  - `Typed` (for runtime type info)
   - The kind-specific subtrait (structs get `Struct`, enums get `Enum`, and so on)
-  - `TypeDatabase` (type registration, conversion, and auto-discovery)
+  - `TypeDatabase` (type registration and auto-discovery)
 
 For non-generic types, the macro additionally emits a `register_reflect!` call, so the type is
 auto-discovered and registered by `TypeDB::collect` at startup.

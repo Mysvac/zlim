@@ -23,7 +23,7 @@ use zlim_asset::server::{AssetServer, AssetServerMode};
 use zlim_asset::source::AssetSourceBuilder;
 use zlim_asset::transformer::IdentityTransformer;
 use zlim_core::world::FromWorld;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 /// Builds an app with `AssetPlugin` and no extra source, then runs one frame.
 #[test]

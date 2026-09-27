@@ -2,12 +2,14 @@ use core::str::FromStr;
 
 use zlim_utils::num::*;
 
+use crate::impls::impl_simple_type_path;
 use crate::ops::Opaque;
 
-macro_rules! impl_zon_zero {
+macro_rules! impl_non_max {
     ($ty:ty, $path:literal) => {
+        impl_simple_type_path!($ty: "zlim_utils", "num", $path);
+
         zlim_reflect_derive::impl_reflect! {
-            #[type_path = $path]
             #[reflect(Opaque, Default, Clone, Debug, Hash, Eq, Serialize, Deserialize)]
             pub struct $ty;
         }
@@ -31,15 +33,15 @@ macro_rules! impl_zon_zero {
     };
 }
 
-impl_zon_zero!(NonMaxU8, "zlim_utils::num::NonMaxU8");
-impl_zon_zero!(NonMaxU16, "zlim_utils::num::NonMaxU16");
-impl_zon_zero!(NonMaxU32, "zlim_utils::num::NonMaxU32");
-impl_zon_zero!(NonMaxU64, "zlim_utils::num::NonMaxU64");
-impl_zon_zero!(NonMaxU128, "zlim_utils::num::NonMaxU128");
-impl_zon_zero!(NonMaxUsize, "zlim_utils::num::NonMaxUsize");
-impl_zon_zero!(NonMaxI8, "zlim_utils::num::NonMaxI8");
-impl_zon_zero!(NonMaxI16, "zlim_utils::num::NonMaxI16");
-impl_zon_zero!(NonMaxI32, "zlim_utils::num::NonMaxI32");
-impl_zon_zero!(NonMaxI64, "zlim_utils::num::NonMaxI64");
-impl_zon_zero!(NonMaxI128, "zlim_utils::num::NonMaxI128");
-impl_zon_zero!(NonMaxIsize, "zlim_utils::num::NonMaxIsize");
+impl_non_max!(NonMaxU8, "NonMaxU8");
+impl_non_max!(NonMaxU16, "NonMaxU16");
+impl_non_max!(NonMaxU32, "NonMaxU32");
+impl_non_max!(NonMaxU64, "NonMaxU64");
+impl_non_max!(NonMaxU128, "NonMaxU128");
+impl_non_max!(NonMaxUsize, "NonMaxUsize");
+impl_non_max!(NonMaxI8, "NonMaxI8");
+impl_non_max!(NonMaxI16, "NonMaxI16");
+impl_non_max!(NonMaxI32, "NonMaxI32");
+impl_non_max!(NonMaxI64, "NonMaxI64");
+impl_non_max!(NonMaxI128, "NonMaxI128");
+impl_non_max!(NonMaxIsize, "NonMaxIsize");

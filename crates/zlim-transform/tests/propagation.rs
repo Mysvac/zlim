@@ -3,8 +3,7 @@
 
 use zlim_core::borrow::Ref;
 use zlim_core::entity::EntityId;
-use zlim_core::job::{JobId, JobLabel};
-use zlim_core::job_fn;
+use zlim_core::job::{JobId, JobLabel, job_fn};
 use zlim_core::query::Query;
 use zlim_core::schedule::{AnonymousSchedule, Schedule};
 use zlim_core::system::Local;

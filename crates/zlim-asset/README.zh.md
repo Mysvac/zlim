@@ -8,7 +8,7 @@
 
 ```rust, no_run
 use zlim_asset::prelude::Asset;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 #[derive(Asset, TypePath)]
 pub struct MyAsset { /* ... */ }

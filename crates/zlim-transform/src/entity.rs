@@ -50,6 +50,7 @@ fn reparent_in_place<'a, 'b>(
     Ok(entity)
 }
 
+/// Provides `reparent_in_place` methods for `EntityOwned`.
 pub trait EntityTransformExt {
     fn reparent_in_place(&mut self, parent: Option<EntityId>) -> Result<&mut Self, EntityError>;
 }
@@ -83,6 +84,7 @@ fn reparent_command(parent: Option<EntityId>) -> impl EntityCommand {
     }
 }
 
+/// Provides `reparent_in_place` methods for `EntityCommands`.
 pub trait EntityCommandsTransformExt {
     fn reparent_in_place(&mut self, parent: Option<EntityId>) -> &mut Self;
 

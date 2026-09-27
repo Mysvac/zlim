@@ -27,7 +27,7 @@ cargo fmt --all -- --check
 cargo test --workspace
 
 # 5. Doc-tests + verify doc links
-cargo doc -p zlim --no-deps
+cargo doc -p zlim-internal --no-deps
 ```
 
 Quick check for a single crate (substitute the crate name):
@@ -73,9 +73,8 @@ zlim (root facade crate, src/lib.rs)
     ├── zlim-os         (platform abstraction layer, crates/zlim-os/)
     ├── zlim-utils      (foundational utilities, crates/zlim-utils/)
     ├── zlim-log        (tracing-based logging, crates/zlim-log/)
-    ├── zlim-path       (stable type path, crates/zlim-path/)
     ├── zlim-task       (async task pool, crates/zlim-task/)
-    ├── zlim-reflect    (reflection system, crates/zlim-reflect/)
+    ├── zlim-reflect    (reflection system & stable type paths, crates/zlim-reflect/)
     ├── zlim-math       (math library on glam, crates/zlim-math/)
     ├── zlim-shape      (shape primitives, crates/zlim-shape/)
     ├── zlim-curve      (curves & interpolation, crates/zlim-curve/)
@@ -131,19 +130,19 @@ Auxiliary:
   - **Purpose**: tracing-based logging: `LogConfig`, subscriber setup, `log` bridge.
   - **Dependencies**: tracing, tracing-subscriber, tracing-error, tracing-log.
 
-- **`zlim-path`**
-  - **Purpose**: stable type paths: the `TypePath` trait, `#[derive(TypePath)]`, the `concat` helper
-    and `PathCell`. Types are named by their type path and their short type name, which is what the
-    registries and the `.meta` format identify them by, instead of `std::any::type_name`.
-  - **Dependencies**: `zlim-utils`, `zlim-path-derive`, optional glam, optional uuid.
-
 - **`zlim-task`**
   - **Purpose**: async task pool: work-stealing thread pool, Scope, global singleton pool.
   - **Dependencies**: `zlim-cfg`, `zlim-os`, `zlim-utils`, async-task, futures-lite.
 
 - **`zlim-reflect`**
-  - **Purpose**: runtime reflection: `Reflect` trait, `TypeInfo`, type operations.
-  - **Dependencies**: `zlim-utils`, serde_core, erased-serde.
+  - **Purpose**: runtime reflection: `Reflect` trait, `TypeInfo`, type operations — and the stable
+    type paths the whole engine names types by: the `TypePath` trait, `#[derive(TypePath)]`, the
+    `concat` helper and `PathCell`. Types are named by their type path and their short type name,
+    which is what the registries and the `.meta` format identify them by, instead of
+    `std::any::type_name`. The two derives are independent: `#[derive(Reflect)]` does not implement
+    `TypePath`, so a type that is only named derives `TypePath` alone.
+  - **Dependencies**: `zlim-reflect-derive`, `zlim-utils`, serde_core, erased-serde, and the optional
+    glam and uuid.
 
 - **`zlim-math`**
   - **Purpose**: math types (glam-based re-exports for transforms).
@@ -191,7 +190,7 @@ Auxiliary:
     transformer pipelines with their registries, the `.meta` format, and the plugin that wires all of
     it into an app.
   - **Dependencies**: `zlim-asset-derive`, `zlim-cfg`, `zlim-ptr`, `zlim-reg`, `zlim-os`, `zlim-log`,
-    `zlim-utils`, `zlim-path`, `zlim-task`, `zlim-core`, `zlim-app`, `zlim-diagnostic`, serde, ron,
+    `zlim-utils`, `zlim-reflect`, `zlim-task`, `zlim-core`, `zlim-app`, `zlim-diagnostic`, serde, ron,
     blake3, uuid, bitflags, futures-lite, async-broadcast, async-lock, atomicow, and the optional
     `ureq` (`http` / `https`) and `notify-debouncer-full` (`watch`).
 
@@ -202,7 +201,7 @@ Auxiliary:
     resolved once and applied many times — the copy-on-write that lets one scene build on a cached
     one, and the queued form that builds a scene later in the `SpawnScene` schedule
     (`ScenePatchInstance` / `SceneListPatchInstance`).
-  - **Dependencies**: `zlim-core`, `zlim-utils`, `zlim-path`, `zlim-log`, `zlim-app`, `zlim-asset`.
+  - **Dependencies**: `zlim-core`, `zlim-utils`, `zlim-reflect`, `zlim-log`, `zlim-app`, `zlim-asset`.
 
 - **`zlim-sysinfo-dylib`**
   - **Purpose**: dynamic-library isolation layer embedding `sysinfo`; keeps `sysinfo` objects out of the engine cdylib (Windows LNK1189). Depends on no zlim workspace crate. Enabled with `feature = "dylib"`.
@@ -235,9 +234,6 @@ Auxiliary:
 - `zlim-reflect/derive`
   - `#[derive(TypePath)]` macro
   - `#[derive(Reflect)]` macro
-
-- `zlim-path/derive`
-  - `#[derive(TypePath)]` macro
 
 - `zlim-asset/derive`
   - `#[derive(Asset)]` macro

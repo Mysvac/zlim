@@ -1,27 +1,11 @@
-use core::any::TypeId;
-
+use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR, CONVERT_TYPE_ERROR, is_convertable};
+use crate::impls::impl_simple_type_path;
+use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR};
 use crate::info::{GenericInfo, Generics, InfoCell, ListInfo, TypeInfo, TypeParamInfo, Typed};
 use crate::ops::{ApplyError, CloneError, List, ListItemIter, ReflectRef};
-use crate::path::{PathCell, concat};
-use crate::{Reflect, TypePath};
 
-impl<T: TypePath> TypePath for Vec<T> {
-    fn type_path() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| concat(&["alloc::vec::Vec", "<", <T>::type_path(), ">"]))
-    }
-
-    fn type_name() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| concat(&["Vec", "<", <T>::type_name(), ">"]))
-    }
-
-    const IDENT: &str = "Vec";
-    const CRATE: Option<&str> = Some("alloc");
-    const MODULE: Option<&str> = Some("alloc::vec");
-}
+impl_simple_type_path!(@Vec<T>: "alloc", "vec", "Vec");
 
 impl<T: Reflect + Typed> Typed for Vec<T> {
     fn type_info() -> &'static TypeInfo {
@@ -111,29 +95,16 @@ impl<T: Reflect + Typed> Reflect for Vec<T> {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
-
-        if let Some(db) = value.type_db() {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => {
-                    let r = ret.downcast::<Self>().expect(CONVERT_TYPE_ERROR);
-                    return Ok(r);
-                }
-                Err(e) => value = e,
-            }
-        }
 
         let ReflectRef::List(v) = value.reflect_ref() else {
             return Err(value);
         };
 
-        if !v
-            .iter_items()
-            .all(|item| is_convertable(item, TypeId::of::<T>()))
-        {
+        if v.iter_items().any(|item| !item.is::<T>()) {
             return Err(value);
         }
 
@@ -142,7 +113,7 @@ impl<T: Reflect + Typed> Reflect for Vec<T> {
 
         let mut buf = Self::with_capacity(items.len());
         for item in items {
-            buf.push(*T::from_reflect(item).expect(COMPATIBLE_ERROR));
+            buf.push(item.take::<T>().expect(COMPATIBLE_ERROR));
         }
 
         Ok(Box::new(buf))
@@ -151,7 +122,7 @@ impl<T: Reflect + Typed> Reflect for Vec<T> {
 
 impl<T: TypeDatabase> TypeDatabase for Vec<T> {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
     }
 
     fn register_dependencies() {

@@ -3,30 +3,17 @@ use core::fmt::{Debug, Formatter};
 
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR, CONVERT_TYPE_ERROR, UNPACK_ERROR};
-use crate::info::{InfoCell, ReflectKind, TupleInfo, TypeInfo, Typed, UnnamedField};
-use crate::ops::{ApplyError, CloneError, Tuple, TupleFieldIter};
+use crate::impls::impl_simple_type_path;
+use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR, UNPACK_ERROR};
+use crate::info::{InfoCell, TupleInfo, TypeInfo, Typed, UnnamedField};
+use crate::ops::{ApplyError, CloneError, ReflectRef, Tuple, TupleFieldIter};
 use crate::path::{PathCell, TypePath, concat};
 
 // -----------------------------------------------------------------------------
 // Unit Tuple
 // -----------------------------------------------------------------------------
 
-impl TypePath for () {
-    #[inline]
-    fn type_path() -> &'static str {
-        "()"
-    }
-
-    #[inline]
-    fn type_name() -> &'static str {
-        "()"
-    }
-
-    const IDENT: &str = "()";
-    const CRATE: Option<&str> = None;
-    const MODULE: Option<&str> = None;
-}
+impl_simple_type_path!((): "()");
 
 impl Typed for () {
     #[inline]
@@ -91,15 +78,6 @@ impl Reflect for () {
             return Ok(());
         }
 
-        if let Some(db) = TypeDB::get_by_type(value.type_id())
-            && db.contains_convertor(TypeId::of::<Self>())
-            && let Ok(cloned) = value.reflect_clone()
-            // The convertor may have side effects and needs to be executed.
-            && let Ok(_) = db.convert(cloned, TypeId::of::<Self>())
-        {
-            return Ok(());
-        }
-
         // Phase 3: cast `other` to `&dyn Tuple`.
         let other: &dyn Tuple = value.reflect_ref().as_tuple().map_err(|e| {
             ::core::hint::cold_path();
@@ -126,22 +104,11 @@ impl Reflect for () {
             return Ok(Box::new(()));
         }
 
-        let mut value = value;
-
-        if let Some(db) = TypeDB::get_by_type(value.type_id()) {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(_x) => return Ok(Box::new(())),
-                Err(e) => value = e,
-            }
-        }
-
-        if value.reflect_kind() != ReflectKind::Tuple {
+        let ReflectRef::Tuple(v) = value.reflect_ref() else {
             return Err(value);
-        }
+        };
 
-        let value = value.reflect_owned().into_tuple().unwrap();
-
-        if value.field_len() == 0 {
+        if v.field_len() == 0 {
             Ok(Box::new(()))
         } else {
             Err(value)
@@ -151,7 +118,7 @@ impl Reflect for () {
 
 impl TypeDatabase for () {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
         db.insert_serializer::<Self>();
         db.insert_deserializer::<Self>();
     }
@@ -187,9 +154,9 @@ macro_rules! impl_tuple_type_path {
                 CELL.get_or_init::<Self>(|| concat(&["(" , <$name>::type_name() , ",)"]))
             }
 
-            const IDENT: &str = "(_,)";
-            const CRATE: Option<&str> = None;
-            const MODULE: Option<&str> = None;
+            const IDENT: &'static str = "(_,)";
+            const CRATE: Option<&'static str> = None;
+            const MODULE: Option<&'static str> = None;
         }
     };
     ($_:literal: [$zero_index:tt : $zero_name:ident , $($index:tt : $name:ident),*]) => {
@@ -209,9 +176,9 @@ macro_rules! impl_tuple_type_path {
                 })
             }
 
-            const IDENT: &str = concat!( "(_", $( to_erased_type!{ $name } , )* ")" );
-            const CRATE: Option<&str> = None;
-            const MODULE: Option<&str> = None;
+            const IDENT: &'static str = concat!( "(_", $( to_erased_type!{ $name } , )* ")" );
+            const CRATE: Option<&'static str> = None;
+            const MODULE: Option<&'static str> = None;
         }
     };
 }
@@ -320,36 +287,22 @@ macro_rules! impl_tuple_reflect {
                 where
                     Self: Sized
                 {
-                    let mut value = match value.downcast::<Self>() {
+                    let value = match value.downcast::<Self>() {
                         Ok(ret) => return Ok(ret),
                         Err(e) => e,
                     };
 
-                    if let Some(db) = TypeDB::get_by_type((&*value).type_id()) {
-                        match db.convert(value, TypeId::of::<Self>()) {
-                            Ok(ret) => {
-                                let r = ret.downcast::<Self>().expect(CONVERT_TYPE_ERROR);
-                                return Ok(r);
-                            },
-                            Err(e) => value = e,
-                        }
-                    }
-
-                    if value.reflect_kind() != ReflectKind::Tuple {
+                    let ReflectRef::Tuple(v) = value.reflect_ref() else {
                         return Err(value);
-                    }
+                    };
 
-                    let value: Box<dyn Tuple> = value.reflect_owned().into_tuple().unwrap();
-                    if value.field_len() != $len {
-                        return Err(value);
-                    }
-
-                    $({
-                        let field =  value.field($index).expect("valid index");
-                        if !crate::impls::is_convertable(field, TypeId::of::<$name>()) {
+                    $(
+                        if !v.field($index).expect("valid index").is::<$name>() {
                             return Err(value);
                         }
-                    })*
+                    )*
+
+                    let value: Box<dyn Tuple> = value.reflect_owned().into_tuple().unwrap();
 
                     let items: Vec<Box<dyn Reflect>> = value.unpack();
 
@@ -360,7 +313,7 @@ macro_rules! impl_tuple_reflect {
                     ]: [Box<dyn Reflect>; $len] = items.try_into().expect(UNPACK_ERROR);
 
                     Ok(Box::new((
-                        $( *<$name>::from_reflect( $name ).expect(COMPATIBLE_ERROR), )*
+                        $( $name.take::<$name>().expect(COMPATIBLE_ERROR), )*
                     )))
                 }
             }

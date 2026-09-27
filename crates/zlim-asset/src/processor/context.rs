@@ -1,7 +1,7 @@
 //! The context a processor runs with: the source reader, the asset path, and the [`ProcessedInfo`]
 //! being built.
 
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use crate::error::{AssetLoadError, MissingAssetLoader, MissingBuilder};
 use crate::io::Reader;

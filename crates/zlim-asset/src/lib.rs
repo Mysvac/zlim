@@ -32,6 +32,7 @@ pub use zlim_asset_derive as derive;
 
 pub use futures_lite::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 pub use uuid;
+pub use uuid::Uuid;
 
 // -----------------------------------------------------------------------------
 // Modules
@@ -59,43 +60,52 @@ pub mod transformer;
 pub mod utils;
 
 // -----------------------------------------------------------------------------
-// jobs re-exports
+// prelude
 
 /// The asset jobs.
 pub mod jobs {
+    #[doc(inline)]
     pub use crate::assets::jobs::HandleAssetDropEvents;
+    #[doc(inline)]
     pub use crate::assets::jobs::HandleAssetEvents;
+    #[doc(inline)]
     pub use crate::server::jobs::AssetServerDiagnostic;
+    #[doc(inline)]
     pub use crate::server::jobs::ClearFinishedAssetTask;
+    #[doc(inline)]
     pub use crate::server::jobs::HandleAssetSaveCommands;
+    #[doc(inline)]
     pub use crate::server::jobs::HandleAssetSeverEvents;
 }
 
-// -----------------------------------------------------------------------------
-// jobs re-exports
+/// The asset plugins.
+pub mod plugins {
+    #[doc(no_inline)]
+    pub use crate::plugin::{AssetPlugin, WebAssetPlugin};
+}
 
-/// The asset prelude.
+/// The asset preludes.
 pub mod prelude {
     // implicit use zlim_asset_derive::Asset;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::asset::Asset;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::assets::{AssetMut, Assets};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::change::AssetChanged;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::event::AssetEvent;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::handle::{ErasedHandle, Handle};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::ident::{AssetId, AssetSourceId};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::path::AssetPath;
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::plugin::{AppAssetExt, WorldAssetExt};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::plugin::{AssetDiagnosticsPlugin, AssetPlugin, WebAssetPlugin};
-    #[doc(hidden)]
+    #[doc(no_inline)]
     pub use crate::server::{AssetServer, AssetServerMode};
 }
 

@@ -1,4 +1,3 @@
-use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use core::hash::BuildHasher;
 
@@ -6,28 +5,14 @@ use zlim_utils::hash::FixedState;
 
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::CONVERT_TYPE_ERROR;
+use crate::impls::impl_simple_type_path;
 use crate::info::{OpaqueInfo, TypeInfo, Typed};
 use crate::ops::{ApplyError, CloneError, Opaque};
-use crate::path::TypePath;
 
 // -----------------------------------------------------------------------------
 // TypePath
 
-impl TypePath for str {
-    #[inline]
-    fn type_path() -> &'static str {
-        "str"
-    }
-    #[inline]
-    fn type_name() -> &'static str {
-        "str"
-    }
-
-    const IDENT: &str = "str";
-    const CRATE: Option<&str> = None;
-    const MODULE: Option<&str> = None;
-}
+impl_simple_type_path!(str: "str");
 
 // -----------------------------------------------------------------------------
 // Typed
@@ -86,18 +71,7 @@ impl Reflect for &'static str {
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let value = match value.downcast::<Self>() {
-            Ok(ret) => return Ok(ret),
-            Err(e) => e,
-        };
-
-        match TypeDB::get_by_type((*value).type_id()) {
-            Some(db) => {
-                let converted = db.convert(value, TypeId::of::<Self>())?;
-                Ok(converted.downcast::<Self>().expect(CONVERT_TYPE_ERROR))
-            }
-            None => Err(value),
-        }
+        value.downcast::<Self>()
     }
 }
 
@@ -106,9 +80,8 @@ impl Reflect for &'static str {
 
 impl TypeDatabase for &'static str {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
         db.insert_serializer::<Self>();
-        db.insert_convertor(<Self as Into<String>>::into);
     }
 
     fn register_dependencies() {}

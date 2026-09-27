@@ -6,7 +6,7 @@ use zlim_core::derive::Component;
 use zlim_core::entity::EntityError;
 use zlim_core::tick::DetectChanges;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Components

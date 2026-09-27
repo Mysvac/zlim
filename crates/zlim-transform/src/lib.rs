@@ -15,20 +15,26 @@ pub use crate::transform::{GlobalTransform, Transform};
 
 /// The transform jobs.
 pub mod jobs {
+    #[doc(inline)]
     pub use crate::propagate::TransformChangeDetection;
+    #[doc(inline)]
     pub use crate::propagate::TransformPropagation;
 }
 
-/// The transform prelude.
+/// The transform preludes.
 pub mod prelude {
-    #[doc(hidden)]
-    pub use crate::entity::{EntityCommandsTransformExt, EntityTransformExt};
-    #[doc(hidden)]
-    pub use crate::plugin::TransformPlugin;
-    #[doc(hidden)]
-    pub use crate::propagate::TransformPropagateStrategy;
-    #[doc(hidden)]
-    pub use crate::traits::TransformPoint;
-    #[doc(hidden)]
-    pub use crate::transform::{GlobalTransform, Transform};
+    #[doc(no_inline)]
+    pub use crate::TransformPoint;
+    #[doc(no_inline)]
+    pub use crate::TransformPropagateStrategy;
+    #[doc(no_inline)]
+    pub use crate::{EntityCommandsTransformExt, EntityTransformExt};
+    #[doc(no_inline)]
+    pub use crate::{GlobalTransform, Transform};
+}
+
+/// The transform plugins.
+pub mod plugins {
+    #[doc(no_inline)]
+    pub use crate::TransformPlugin;
 }

@@ -12,7 +12,7 @@ use zlim_core::entity::EntityId;
 use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::ops::EntityOwned;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use crate::dependency::SceneDependencies;
 use crate::resolved::ResolvedScene;

@@ -83,7 +83,7 @@ pub struct TableRow(pub u32);
 /// # Example
 ///
 /// ```rust
-/// use zlim_path::TypePath;
+/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::table::TableCol;
 ///

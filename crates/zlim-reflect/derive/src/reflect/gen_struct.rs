@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 
 use crate::reflect::data::{ReflectStruct, StructFieldAccessors};
 
@@ -17,6 +17,18 @@ pub(crate) fn gen_struct(info: &ReflectStruct) -> TokenStream {
         .collect();
 
     let field_names: Vec<String> = field_members.iter().map(ToString::to_string).collect();
+
+    // Moving a field out hands out its *reflected* form: a remote field becomes its wrapper, since
+    // a `Box<dyn Reflect>` cannot borrow the remote value it stands for. The remote value of a
+    // remote wrapper is not reflected at all, so it is not part of the unpacked fields.
+    let field_takes: Vec<TokenStream> = info
+        .active_fields()
+        .map(|field| {
+            let member = field.to_member().to_token_stream();
+            let value = quote!(self.#member);
+            field.reflected_take(&value)
+        })
+        .collect();
 
     let StructFieldAccessors {
         fields_ref,
@@ -85,7 +97,7 @@ pub(crate) fn gen_struct(info: &ReflectStruct) -> TokenStream {
 
             fn unpack(self: ::std::boxed::Box<Self>) -> ::std::vec::Vec<(::std::borrow::Cow<'static, str>, ::std::boxed::Box<dyn #reflect_>)> {
                 ::std::vec![
-                    #( ( ::std::borrow::Cow::Borrowed(#field_names) , Box::new( self.#field_members )), )*
+                    #( ( ::std::borrow::Cow::Borrowed(#field_names) , Box::new( #field_takes )), )*
                 ]
             }
         }

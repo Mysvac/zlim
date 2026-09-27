@@ -1,5 +1,7 @@
 //! Global application initialization (startup collection).
 
+use zlim_reflect::TypeDB;
+
 use crate::component::ComponentDB;
 use crate::job::JobDB;
 use crate::job::JobGroup;
@@ -16,23 +18,14 @@ fn init_internal() {
     // to avoid triggering the lock on multi-threaded tasks.
     zlim_utils::mem::Global::alloc_str("core");
 
-    zlim_task::cfg::single_thread! {
-        ResourceDB::collect();
-        ComponentDB::collect();
-        JobDB::collect();
-        JobGroup::collect();
-    }
-
-    // Do we really need multi-threaded collecting?
-    zlim_task::cfg::multi_thread! {
-        zlim_task::MainTaskPool::get().scope(|s| {
-            s.spawn(async { ResourceDB::collect(); });
-            s.spawn(async { ComponentDB::collect(); });
-            s.spawn(async { JobDB::collect(); });
-        });
-
-        JobGroup::collect();
-    }
+    // Multithreaded collection is unnecessary and offers no speedup.
+    // The only computational overhead lies in JobGroup initialization,
+    // which is already multithreaded internally.
+    TypeDB::collect();
+    ResourceDB::collect();
+    ComponentDB::collect();
+    JobDB::collect();
+    JobGroup::collect();
 
     zlim_log::debug!("Engine CoreInit finished: {:?}", start.elapsed());
 }

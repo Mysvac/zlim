@@ -46,7 +46,7 @@ use crate::table::{TableId, TableRow};
 ///
 /// [`to_bits`]: Self::to_bits
 #[repr(C, align(8))]
-#[derive(zlim_path::derive::TypePath, Clone, Copy)]
+#[derive(zlim_reflect::derive::TypePath, Clone, Copy)]
 #[type_path = "zlim_core::entity::EntityId"]
 pub struct EntityId {
     #[cfg(target_endian = "little")]

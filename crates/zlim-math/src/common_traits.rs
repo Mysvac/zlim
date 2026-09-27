@@ -5,7 +5,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Add, Div, Mul, Neg, Sub};
 
 use serde::{Deserialize, Serialize};
-use zlim_path::derive::TypePath;
+use zlim_reflect::derive::TypePath;
 
 use crate::{DVec2, DVec3, DVec4, Dir2, Dir3, Dir3A};
 use crate::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4, ops};

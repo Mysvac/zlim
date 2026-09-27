@@ -30,6 +30,7 @@ macro_rules! def_path_fn {
 def_path_fn!(type_path_trait, path::TypePath);
 def_path_fn!(path_cell, path::PathCell);
 def_path_fn!(concat_fn, path::concat);
+def_path_fn!(reflect_remote_trait, remote::ReflectRemote);
 
 // -----------------------------------------------------------------------------
 // Info

@@ -403,7 +403,10 @@ impl Generics {
     ///
     /// The slice is promoted to a `'static` allocation so the resulting
     /// [`Generics`] is cheaply [`Copy`].
-    // #[inline(never)] // `alloc_slice` is `#[inline(never)]`
+    ///
+    /// Do not repeatedly call this function on the same data, otherwise
+    /// the memory usage will continue to increase.
+    #[inline(never)]
     pub fn new(generics: &[GenericInfo]) -> Self {
         Self(Global::alloc_slice(generics))
     }

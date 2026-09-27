@@ -28,9 +28,10 @@ use super::Reflect;
 /// ## Accessing fields by name and index
 ///
 /// ```
-/// use zlim_reflect::ops::{Struct, Reflect};
+/// use zlim_reflect::{Reflect, TypePath};
+/// use zlim_reflect::ops::Struct;
 ///
-/// #[derive(Reflect)]
+/// #[derive(Reflect, TypePath)]
 /// struct Point {
 ///     x: f32,
 ///     y: f32,
@@ -51,9 +52,10 @@ use super::Reflect;
 /// ## Mutating fields
 ///
 /// ```
-/// use zlim_reflect::ops::{Struct, Reflect};
+/// use zlim_reflect::{Reflect, TypePath};
+/// use zlim_reflect::ops::Struct;
 ///
-/// #[derive(Reflect)]
+/// #[derive(Reflect, TypePath)]
 /// struct Point {
 ///     x: f32,
 ///     y: f32,
@@ -73,9 +75,10 @@ use super::Reflect;
 ///
 /// ```
 /// use std::borrow::Cow;
-/// use zlim_reflect::ops::{Struct, Reflect};
+/// use zlim_reflect::{Reflect, TypePath};
+/// use zlim_reflect::ops::Struct;
 ///
-/// #[derive(Reflect)]
+/// #[derive(Reflect, TypePath)]
 /// struct Point {
 ///     x: f32,
 ///     y: f32,

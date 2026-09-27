@@ -6,120 +6,23 @@ use zlim_utils::hash::{HashMap, HashSet};
 
 use crate::Reflect;
 use crate::db::{TypeDB, TypeDatabase};
-use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR, CONVERT_TYPE_ERROR, is_convertable};
+use crate::impls::impl_simple_type_path;
+use crate::impls::{CLONE_TYPE_ERROR, COMPATIBLE_ERROR, is_convertable};
 use crate::info::{GenericInfo, Generics, InfoCell, MapInfo};
 use crate::info::{SetInfo, TypeInfo, TypeParamInfo, Typed};
-use crate::ops::{ApplyError, CloneError, Map, Set};
-use crate::path::{PathCell, TypePath, concat};
+use crate::ops::{ApplyError, CloneError, Map, ReflectRef, Set};
+use crate::path::TypePath;
 
 // -----------------------------------------------------------------------------
-// TypePath - Hash State
+// TypePath
 // -----------------------------------------------------------------------------
 
-impl TypePath for FixedState {
-    fn type_path() -> &'static str {
-        "zlim_utils::hash::hasher::FixedState"
-    }
-    fn type_name() -> &'static str {
-        "FixedState"
-    }
-    const IDENT: &str = "FixedState";
-    const CRATE: Option<&str> = Some("zlim_utils");
-    const MODULE: Option<&str> = Some("zlim_utils::hash::hasher");
-}
+impl_simple_type_path!(FixedState:  "zlim_utils", "hash", "FixedState");
+impl_simple_type_path!(NoopState:   "zlim_utils", "hash", "NoopState");
+impl_simple_type_path!(SparseState: "zlim_utils", "hash", "SparseState");
 
-impl TypePath for NoopState {
-    fn type_path() -> &'static str {
-        "zlim_utils::hash::hasher::NoopState"
-    }
-    fn type_name() -> &'static str {
-        "NoopState"
-    }
-    const IDENT: &str = "NoopState";
-    const CRATE: Option<&str> = Some("zlim_utils");
-    const MODULE: Option<&str> = Some("zlim_utils::hash::hasher");
-}
-
-impl TypePath for SparseState {
-    fn type_path() -> &'static str {
-        "zlim_utils::hash::hasher::SparseState"
-    }
-    fn type_name() -> &'static str {
-        "SparseState"
-    }
-    const IDENT: &str = "SparseState";
-    const CRATE: Option<&str> = Some("zlim_utils");
-    const MODULE: Option<&str> = Some("zlim_utils::hash::hasher");
-}
-
-// -----------------------------------------------------------------------------
-// TypePath - HashSet<K, S>
-// -----------------------------------------------------------------------------
-
-impl<K: TypePath, S: TypePath> TypePath for HashSet<K, S> {
-    fn type_path() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&[
-                "zlim_utils::hash::HashSet",
-                "<",
-                K::type_path(),
-                ", ",
-                S::type_path(),
-                ">",
-            ])
-        })
-    }
-    fn type_name() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&["HashSet", "<", K::type_name(), ", ", S::type_name(), ">"])
-        })
-    }
-    const IDENT: &str = "HashSet";
-    const CRATE: Option<&str> = Some("zlim_utils");
-    const MODULE: Option<&str> = Some("zlim_utils::hash");
-}
-
-// -----------------------------------------------------------------------------
-// TypePath - HashMap<K, V, S>
-// -----------------------------------------------------------------------------
-
-impl<K: TypePath, V: TypePath, S: TypePath> TypePath for HashMap<K, V, S> {
-    fn type_path() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&[
-                "zlim_utils::hash::HashMap",
-                "<",
-                K::type_path(),
-                ", ",
-                V::type_path(),
-                ", ",
-                S::type_path(),
-                ">",
-            ])
-        })
-    }
-    fn type_name() -> &'static str {
-        static CELL: PathCell = PathCell::new();
-        CELL.get_or_init::<Self>(|| {
-            concat(&[
-                "HashMap",
-                "<",
-                K::type_name(),
-                ", ",
-                V::type_name(),
-                ", ",
-                S::type_name(),
-                ">",
-            ])
-        })
-    }
-    const IDENT: &str = "HashMap";
-    const CRATE: Option<&str> = Some("zlim_utils");
-    const MODULE: Option<&str> = Some("zlim_utils::hash");
-}
+impl_simple_type_path!(@HashSet<K, S>:    "zlim_utils", "hash", "HashSet");
+impl_simple_type_path!(@HashMap<K, V, S>: "zlim_utils", "hash", "HashMap");
 
 // -----------------------------------------------------------------------------
 // HashSet — Typed
@@ -228,30 +131,25 @@ where
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
-        if let Some(db) = value.type_db() {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => return Ok(ret.downcast::<Self>().expect(CONVERT_TYPE_ERROR)),
-                Err(e) => value = e,
-            }
-        }
-        if value.reflect_kind() != crate::info::ReflectKind::Set {
+
+        let ReflectRef::Set(v) = value.reflect_ref() else {
+            return Err(value);
+        };
+
+        if v.iter_values().any(|v| !v.is::<T>()) {
             return Err(value);
         }
+
         let mut set_v = value.reflect_owned().into_set().unwrap();
-        if !set_v
-            .iter_values()
-            .all(|i| is_convertable(i, TypeId::of::<T>()))
-        {
-            return Err(set_v);
-        }
+
         let items: Vec<Box<dyn Reflect>> = set_v.drain_all();
         let mut set = Self::with_capacity_and_hasher(items.len(), S::default());
         for item in items {
-            set.insert(*T::from_reflect(item).expect(COMPATIBLE_ERROR));
+            set.insert(item.take::<T>().expect(COMPATIBLE_ERROR));
         }
         Ok(Box::new(set))
     }
@@ -265,8 +163,9 @@ impl<T: TypeDatabase + Eq + Hash, S: TypePath + BuildHasher + Default + Send + S
     for HashSet<T, S>
 {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
     }
+
     fn register_dependencies() {
         TypeDB::register::<T>();
     }
@@ -409,39 +308,27 @@ where
     }
 
     fn from_reflect(value: Box<dyn Reflect>) -> Result<Box<Self>, Box<dyn Reflect>> {
-        let mut value = match value.downcast::<Self>() {
+        let value = match value.downcast::<Self>() {
             Ok(ret) => return Ok(ret),
             Err(e) => e,
         };
-        if let Some(db) = value.type_db() {
-            match db.convert(value, TypeId::of::<Self>()) {
-                Ok(ret) => return Ok(ret.downcast::<Self>().expect(CONVERT_TYPE_ERROR)),
-                Err(e) => value = e,
-            }
-        }
-        if value.reflect_kind() != crate::info::ReflectKind::Map {
+
+        let ReflectRef::Map(v) = value.reflect_ref() else {
+            return Err(value);
+        };
+
+        if v.iter_entries().any(|(k, v)| !k.is::<K>() || !v.is::<V>()) {
             return Err(value);
         }
+
         let mut map_v = value.reflect_owned().into_map().unwrap();
-        {
-            let key_type_id = TypeId::of::<K>();
-            let val_type_id = TypeId::of::<V>();
-            let mut ok = true;
-            for (k, v) in map_v.iter_entries() {
-                if !is_convertable(k, key_type_id) || !is_convertable(v, val_type_id) {
-                    ok = false;
-                    break;
-                }
-            }
-            if !ok {
-                return Err(map_v);
-            }
-        }
+
         let entries: Vec<(Box<dyn Reflect>, Box<dyn Reflect>)> = map_v.drain_all();
+
         let mut map = Self::with_capacity_and_hasher(entries.len(), S::default());
         for (k, v) in entries {
-            let key = *K::from_reflect(k).expect(COMPATIBLE_ERROR);
-            let val = *V::from_reflect(v).expect(COMPATIBLE_ERROR);
+            let key = k.take::<K>().expect(COMPATIBLE_ERROR);
+            let val = v.take::<V>().expect(COMPATIBLE_ERROR);
             map.insert(key, val);
         }
         Ok(Box::new(map))
@@ -459,8 +346,9 @@ where
     S: TypePath + BuildHasher + Default + Send + Sync,
 {
     fn on_register(db: &'static TypeDB) {
-        db.insert_defaultor(Self::default);
+        db.insert_defaultor::<Self>();
     }
+
     fn register_dependencies() {
         TypeDB::register::<K>();
         TypeDB::register::<V>();

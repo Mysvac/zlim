@@ -17,7 +17,7 @@ written this way — children nest, and a name reaches across the whole descript
 use zlim_core::derive::{Component, FromTemplate};
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_scene::{WorldSceneExt, scn};
 
 #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
@@ -76,7 +76,7 @@ in either order:
 ```rust
 use zlim_core::derive::Component;
 use zlim_core::world::World;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_scene::{WorldSceneExt, scn_list};
 
 #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
@@ -232,7 +232,7 @@ land in. That is what makes the two forms of an entry different:
 
 ```rust
 use zlim_core::derive::Component;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_scene::{ResolveContext, ResolvedScene, Scene, scn};
 
 #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
@@ -450,7 +450,7 @@ asset.
 # use zlim_app::App;
 # use zlim_asset::plugin::AssetPlugin;
 # use zlim_core::derive::Component;
-# use zlim_path::TypePath;
+# use zlim_reflect::TypePath;
 # use zlim_scene::{ScenePlugin, WorldSceneQueueExt, scn};
 # #[derive(TypePath, Component, Clone, Default)]
 # struct Scale(f32);

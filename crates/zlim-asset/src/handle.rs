@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 use zlim_core::derive::Error;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 use zlim_utils::hash::Equivalent;
 use zlim_utils::sync::SegQueue;
 

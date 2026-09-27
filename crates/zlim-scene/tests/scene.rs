@@ -4,7 +4,7 @@ use core::any::TypeId;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use zlim_asset::assets::Assets;
 use zlim_asset::handle::{ErasedHandle, Handle};

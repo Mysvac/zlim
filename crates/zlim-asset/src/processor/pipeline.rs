@@ -4,7 +4,7 @@
 use core::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 use super::{AssetProcessor, ProcessContext};
 use crate::error::AssetProcessError;

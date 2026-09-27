@@ -1,5 +1,4 @@
-use super::impl_simple_type_path;
-use crate::path::{PathCell, TypePath, concat};
+use crate::impls::impl_simple_type_path;
 use std::boxed::Box;
 
 impl_simple_type_path!(@Box<T>: "alloc", "boxed", "Box");

@@ -26,7 +26,7 @@ use zlim_asset::saver::{AssetSaver, SavedAsset};
 use zlim_asset::server::{AssetServer, LoadState};
 use zlim_asset::source::AssetSourceBuilder;
 use zlim_core::message::MessageQueue;
-use zlim_path::TypePath;
+use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Harness
