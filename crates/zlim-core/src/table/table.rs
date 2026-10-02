@@ -231,8 +231,15 @@ impl Table {
             let type_id = info.type_id;
             let layout = info.layout;
             let dropper = info.dropper;
+
+            let mut column = unsafe { Column::new(layout, dropper) };
+            if info.summary_tick {
+                column = column.with_summary();
+            }
+
             mapper.insert(type_id, TableCol(index as u32));
-            columns.push(unsafe { Column::new(layout, dropper) });
+            columns.push(column);
+
             if let Some(hk) = info.on_add {
                 on_add.push((id, hk));
             }
@@ -544,6 +551,17 @@ impl Table {
             let col = self.get_column_mut(table_col);
             col.get_data_mut(table_row.0 as usize)
         }
+    }
+
+    /// Returns the summary tick for a component at the specified column.
+    ///
+    /// Returns `None` if the component does not support summary tick.
+    ///
+    /// # Safety
+    /// - `table_col` must be a valid column index
+    #[inline(always)]
+    pub unsafe fn get_summary(&self, table_col: TableCol) -> Option<Tick> {
+        unsafe { self.get_column(table_col).get_summary() }
     }
 
     /// Returns the added tick for a component at the specified row and column.

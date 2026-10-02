@@ -97,8 +97,13 @@ unsafe impl<T: Component> QueryFilter for Without<T> {
         true
     }
 
-    unsafe fn update_table<'w>(state: &Self::State, cache: &mut Self::Cache<'w>, table: &'w Table) {
+    unsafe fn update_table<'w>(
+        state: &Self::State,
+        cache: &mut Self::Cache<'w>,
+        table: &'w Table,
+    ) -> bool {
         *cache = !table.contains_component(*state);
+        *cache
     }
 
     #[inline(always)]
@@ -174,8 +179,9 @@ macro_rules! impl_tuple {
                 state: &Self::State,
                 cache: &mut Self::Cache<'w>,
                 table: &'w Table,
-            ) {
+            ) -> bool {
                 *cache = !table.contains_component(*state);
+                *cache
             }
 
             #[inline(always)]
@@ -235,8 +241,9 @@ macro_rules! impl_tuple {
                 state: &Self::State,
                 cache: &mut Self::Cache<'w>,
                 table: &'w Table,
-            ) {
+            ) -> bool {
                 *cache = true $( && !table.contains_component(state.$index) )*;
+                *cache
             }
 
             #[inline(always)]

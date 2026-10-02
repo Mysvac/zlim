@@ -26,10 +26,12 @@
 //!
 //! The systems that manually runned, use world's Tick directly.
 
-// -----------------------------------------------------------------------------
-// Configuration
+use core::sync::atomic::{AtomicU32, Ordering};
 
 use zlim_ptr::{ThinSlice, ThinSliceMut};
+
+// -----------------------------------------------------------------------------
+// Configuration
 
 /// Check cycle for component age validation (prevents overflow issues)
 pub const CHECK_CYCLE: u32 = 1 << 29;
@@ -184,6 +186,91 @@ impl core::hash::Hash for Tick {
 }
 
 // -----------------------------------------------------------------------------
+// AtomicTick
+
+/// A tick that can be updated from multiple threads.
+///
+/// This holds the *summary* tick of a column: the newest change tick among all
+/// items in it. A query reads that single value to decide whether an entire
+/// table can be skipped, which is why the write has to be cheap enough to run on
+/// every component write — it takes `&self` and uses relaxed ordering, so a
+/// summary bump is a relaxed load plus (on change) a relaxed store.
+///
+/// It is only a *summary*: it may report a change that a per-item tick no longer
+/// confirms, never the other way round. `clamp` keeps the same direction — an
+/// old summary is moved forward, so it can only over-report.
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct AtomicTick(AtomicU32);
+
+impl AtomicTick {
+    /// Creates a new `AtomicTick`.
+    pub const fn new(tick: u32) -> Self {
+        Self(AtomicU32::new(tick))
+    }
+
+    /// Returns the current value of the tick.
+    pub fn get(&self) -> Tick {
+        Tick(self.0.load(Ordering::Relaxed))
+    }
+
+    /// Sets a new value for the tick.
+    ///
+    /// Note that this method takes `&self` and can therefore be called from
+    /// multiple threads. The tick is updated using relaxed ordering and is
+    /// therefore cheap to update on common architectures (x86-64, ARMv6 and
+    /// newer).
+    pub fn set(&self, tick: Tick) {
+        // Do an unsynchronized read first.
+        // Avoid same-value writes, which would otherwise trigger cache invalidation.
+        //
+        // This is important on x86-64 (both Intel and AMD) to avoid a performance
+        // cliff. It has much smaller effects on AArch64, but it's still worth doing
+        // on e.g. Apple M2 in parallel mode, so I'm leaving it in.
+        if self.0.load(Ordering::Relaxed) != tick.get() {
+            self.0.store(tick.get(), Ordering::Relaxed);
+        }
+    }
+
+    /// Returns a mutable reference of internal value.
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut u32 {
+        self.0.get_mut()
+    }
+
+    /// Clamps a single tick value if it is older than `MAX_TICK_AGE`.
+    ///
+    /// If the tick is too old, it is moved to the fallback value `now - Tick::MAX_AGE`.
+    #[inline]
+    pub fn clamp(&mut self, now: Tick) {
+        let age = now.relative_to(Tick(*self.0.get_mut()));
+        let fallback = now.relative_to(Tick::MAX_AGE);
+        if age.0 > MAX_TICK_AGE {
+            *self.0.get_mut() = fallback.0;
+        }
+    }
+
+    /// Try set a new value for the tick.
+    #[inline]
+    pub fn try_set(v: Option<&Self>, tick: Tick) {
+        if let Some(x) = v
+            && x.0.load(Ordering::Relaxed) != tick.get()
+        {
+            ::core::hint::cold_path();
+            x.0.store(tick.get(), Ordering::Relaxed);
+        }
+    }
+
+    /// Try mutate a atomic tick.
+    #[inline]
+    pub fn try_mutate(v: &mut Option<Self>, tick: Tick) {
+        if let Some(x) = v {
+            *x.0.get_mut() = tick.get();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // DetectChanges
 
 /// Change-detection trait for components and resources.
@@ -306,6 +393,8 @@ pub struct TicksMut<'w> {
     /// Mutable reference to the tick recording when this data was most recently
     /// modified.
     pub changed: &'w mut Tick,
+    /// The summary tick for the column, optional.
+    pub summary: Option<&'w AtomicTick>,
     /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
     /// The tick of the current system run.
@@ -357,6 +446,8 @@ pub struct TicksSliceRef<'w> {
     pub added: ThinSlice<'w, Tick>,
     /// Immutable slice of last-modification ticks, one per element.
     pub changed: ThinSlice<'w, Tick>,
+    /// The summary tick for the column, optional.
+    pub summary: Option<&'w AtomicTick>,
     /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
     /// The tick of the current system run.
@@ -390,6 +481,8 @@ pub struct TicksSliceMut<'w> {
     pub added: ThinSliceMut<'w, Tick>,
     /// Mutable slice of last-modification ticks, one per element.
     pub changed: ThinSliceMut<'w, Tick>,
+    /// The summary tick for the column, optional.
+    pub summary: Option<&'w AtomicTick>,
     /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,
     /// The tick of the current system run.
@@ -413,6 +506,7 @@ impl<'w> From<TicksSliceMut<'w>> for TicksSliceRef<'w> {
             length: this.length,
             added: this.added.into(),
             changed: this.changed.into(),
+            summary: this.summary,
             last_run: this.last_run,
             this_run: this.this_run,
         }

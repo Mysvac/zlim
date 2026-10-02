@@ -2,6 +2,7 @@
 //! during spawn and insert operations.
 
 use core::any::TypeId;
+use core::ptr::NonNull;
 
 use zlim_log as log;
 use zlim_ptr::OwningPtr;
@@ -31,12 +32,20 @@ impl Drop for AbortOnPanic {
 // -----------------------------------------------------------------------------
 // ComponentWriter
 
+/// One component column's slot in the row being written.
+///
+/// The slot keeps its column alive rather than borrowing the individual ticks,
+/// so every tick write can go through [`Column::mark_added_and_changed`] and
+/// keep the column's summary tick in step with the per-item ticks.
 struct Slot<'a> {
     data: OwningPtr<'a>,
     size: usize,
     dropper: Option<Dropper>,
-    added: &'a mut Tick,
-    changed: &'a mut Tick,
+    /// The column this slot belongs to, together with the row index within it.
+    column: NonNull<Column>,
+    /// Index of this slot's row inside `column`.
+    index: usize,
+    /// Whether `write_raw` has already stored a value here.
     initialized: bool,
 }
 
@@ -114,15 +123,19 @@ impl ComponentWriter<'_> {
 
         let slot = unsafe { self.mapper.get_mut(ty).debug_checked_unwrap() };
 
-        if slot.initialized {
-            if let Some(dropper) = slot.dropper {
-                unsafe { dropper.call(slot.data.borrow_mut().promote()) };
-            }
+        // SAFETY: the slot was built from the same table, and the writer holds
+        // the table mutably, so the column pointer is valid and unaliased.
+        unsafe {
+            let column = slot.column.as_ptr();
+            if slot.initialized {
+                if let Some(dropper) = slot.dropper {
+                    dropper.call(slot.data.borrow_mut().promote());
+                }
 
-            *slot.changed = self.now;
-        } else {
-            *slot.added = self.now;
-            *slot.changed = self.now;
+                (*column).mark_changed(slot.index, self.now);
+            } else {
+                (*column).mark_added_and_changed(slot.index, self.now);
+            }
         }
 
         unsafe {
@@ -206,16 +219,16 @@ impl<'a> ComponentWriter<'a> {
                 let data = (&mut *column).get_data_mut(index).promote();
                 let size = (&*column).item_layout().size();
                 let dropper = (&*column).dropper();
-                let added = (&mut *column).get_added_mut(index);
-                let changed = (&mut *column).get_changed_mut(index);
                 mapper.insert(
                     ty,
                     Slot {
                         data,
                         size,
                         dropper,
-                        added,
-                        changed,
+                        // SAFETY: `column` points into `table`, which outlives
+                        // the writer's `'a` borrow.
+                        column: NonNull::new_unchecked(column),
+                        index,
                         initialized: false,
                     },
                 );

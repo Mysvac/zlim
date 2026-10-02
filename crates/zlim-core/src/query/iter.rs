@@ -87,11 +87,14 @@ impl<D: QueryData, F: QueryFilter> QueryIter<'_, '_, D, F> {
             let ptr = table as *mut Table;
             self.entities = unsafe { (&*ptr).entities() };
             if !self.entities.is_empty() {
+                let mut matched = true;
                 unsafe {
-                    D::update_table(&self.state.d_state, &mut self.d_cache, &mut *ptr);
-                    F::update_table(&self.state.f_state, &mut self.f_cache, &*ptr);
+                    matched &= D::update_table(&self.state.d_state, &mut self.d_cache, &mut *ptr);
+                    matched &= F::update_table(&self.state.f_state, &mut self.f_cache, &*ptr);
                 }
-                return Some(());
+                if matched {
+                    return Some(());
+                }
             }
         }
     }
@@ -218,11 +221,14 @@ impl<D: QuerySlice, F: ArchetypeFilter> QuerySliceIter<'_, '_, D, F> {
             let ptr = table as *mut Table;
             self.entities = unsafe { (&*ptr).entities() };
             if !self.entities.is_empty() {
+                let mut matched = true;
                 unsafe {
-                    D::update_table(&self.state.d_state, &mut self.d_cache, &mut *ptr);
-                    F::update_table(&self.state.f_state, &mut self.f_cache, &*ptr);
+                    matched &= D::update_table(&self.state.d_state, &mut self.d_cache, &mut *ptr);
+                    matched &= F::update_table(&self.state.f_state, &mut self.f_cache, &*ptr);
                 }
-                return Some(());
+                if matched {
+                    return Some(());
+                }
             }
         }
     }

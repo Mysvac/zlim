@@ -101,6 +101,7 @@ fn register_impl<C: Component>(
         dropper: Dropper::of::<C>(),
         cloner: C::CLONER,
         required: C::REQUIRED,
+        summary_tick: C::SUMMARY_TICK,
         serialize,
         type_db,
         reflect: None,

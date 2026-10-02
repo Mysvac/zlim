@@ -191,6 +191,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// | `on_despawn = path::fn` | `on_despawn` lifecycle hook. |
 /// | `reflect` | Register with reflection support. |
 /// | `serialize` | Register with serialization support (requires `reflect`). |
+/// | `summary_tick` | Enable summary tick to accelerate change query. |
 ///
 /// # Field attributes
 ///

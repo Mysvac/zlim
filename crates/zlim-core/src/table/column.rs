@@ -13,7 +13,7 @@ use zlim_ptr::{OwningPtr, Ptr, PtrMut, ThinSlice};
 
 use crate::borrow::{UntypedMut, UntypedRef};
 use crate::borrow::{UntypedSliceMut, UntypedSliceRef};
-use crate::tick::{Tick, TicksMut, TicksRef};
+use crate::tick::{AtomicTick, Tick, TicksMut, TicksRef};
 use crate::tick::{TicksSliceMut, TicksSliceRef};
 use crate::utils::Dropper;
 
@@ -38,6 +38,7 @@ pub struct Column {
     data: BlobArray,
     added: TickArray,
     changed: TickArray,
+    summary: Option<AtomicTick>,
 }
 
 // -----------------------------------------------------------------------------
@@ -55,7 +56,18 @@ impl Column {
             data: unsafe { BlobArray::new(item_layout, dropper) },
             added: TickArray::new(),
             changed: TickArray::new(),
+            summary: None,
         }
+    }
+
+    /// Adds SummaryTick
+    #[inline(always)]
+    pub const fn with_summary(mut self) -> Self {
+        // It is feasible to use `Tick(0)` because it is an empty table
+        // at this time. When elements are inserted later, the Summary
+        // will be reset to the correct value.
+        self.summary = Some(AtomicTick::new(0));
+        self
     }
 
     /// Returns the layout of individual items stored in this column.
@@ -135,6 +147,16 @@ impl Column {
         unsafe { self.data.get_mut(index) }
     }
 
+    /// Returns the `summary` tick if exists.
+    ///
+    /// # Safety
+    /// - `index` must be within bounds (0..capacity)
+    /// - The item at `index` must be properly initialized
+    #[inline(always)]
+    pub fn get_summary(&self) -> Option<Tick> {
+        self.summary.as_ref().map(|s| s.get())
+    }
+
     /// Returns the `added` tick at `index`.
     ///
     /// # Safety
@@ -175,6 +197,40 @@ impl Column {
         unsafe { self.changed.get_mut(index) }
     }
 
+    /// Marks the item at `index` as changed at `tick`, leaving `added` alone.
+    ///
+    /// Together with [`Self::mark_added_and_changed`] this is the write path
+    /// taken by the spawn/insert writer; both of them update the column summary,
+    /// which is what lets a query skip a whole table that nothing touched.
+    ///
+    /// # Safety
+    /// - `index` must be within bounds (0..capacity)
+    /// - The item at `index` must be properly initialized
+    #[inline(always)]
+    pub unsafe fn mark_changed(&mut self, index: usize, tick: Tick) {
+        unsafe { *self.changed.get_mut(index) = tick };
+        AtomicTick::try_mutate(&mut self.summary, tick);
+    }
+
+    /// Marks the item at `index` as added and changed at `tick`.
+    ///
+    /// This is the write path taken by the spawn/clone writers, which hold the
+    /// tick pointers directly instead of going through [`Self::init_item`]. Use
+    /// it — rather than writing [`Self::get_added_mut`] / [`Self::get_changed_mut`]
+    /// by hand — so the column summary stays in step with the per-item ticks.
+    ///
+    /// # Safety
+    /// - `index` must be within bounds (0..capacity)
+    /// - The item at `index` must be properly initialized
+    #[inline(always)]
+    pub unsafe fn mark_added_and_changed(&mut self, index: usize, tick: Tick) {
+        unsafe {
+            *self.added.get_mut(index) = tick;
+            *self.changed.get_mut(index) = tick;
+        }
+        AtomicTick::try_mutate(&mut self.summary, tick);
+    }
+
     /// Returns a thin slice of all added ticks.
     ///
     /// # Safety
@@ -205,6 +261,7 @@ impl Column {
             self.data.init_item(index, data);
             self.added.set(index, tick);
             self.changed.set(index, tick);
+            AtomicTick::try_mutate(&mut self.summary, tick);
         }
     }
 
@@ -219,6 +276,7 @@ impl Column {
         unsafe {
             self.data.replace_item(index, data);
             self.changed.set(index, tick);
+            AtomicTick::try_mutate(&mut self.summary, tick);
         }
     }
 
@@ -322,6 +380,7 @@ impl Column {
             other.data.init_item(dst, self.data.remove_item(src));
             other.added.set(dst, self.added.get(src));
             other.changed.set(dst, self.changed.get(src));
+            AtomicTick::try_mutate(&mut other.summary, self.changed.get(src));
         }
     }
 
@@ -333,6 +392,7 @@ impl Column {
     pub unsafe fn clamp_ticks(&mut self, len: usize, now: Tick) {
         use crate::utils::clamp_tick_slice;
         unsafe {
+            let _ = self.summary.as_mut().map(|s| s.clamp(now));
             clamp_tick_slice(self.added.get_slice_mut().as_mut(len), now);
             clamp_tick_slice(self.changed.get_slice_mut().as_mut(len), now);
         }
@@ -376,6 +436,7 @@ impl Column {
                 ticks: TicksMut {
                     added: self.added.get_mut(index),
                     changed: self.changed.get_mut(index),
+                    summary: self.summary.as_ref(),
                     last_run,
                     this_run,
                 },
@@ -402,6 +463,7 @@ impl Column {
                     length: len,
                     added: self.added.get_slice(),
                     changed: self.changed.get_slice(),
+                    summary: self.summary.as_ref(),
                     last_run,
                     this_run,
                 },
@@ -428,6 +490,7 @@ impl Column {
                     length: len,
                     added: self.added.get_slice_mut(),
                     changed: self.changed.get_slice_mut(),
+                    summary: self.summary.as_ref(),
                     last_run,
                     this_run,
                 },

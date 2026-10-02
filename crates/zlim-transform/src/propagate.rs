@@ -42,6 +42,42 @@
 //! [`Transform`]: crate::Transform
 //! [`GlobalTransform`]: crate::GlobalTransform
 //! [`ReparentSignal`]: zlim_core::message::ReparentSignal
+//!
+//! # Complexity and un-changed tables
+//!
+//! The costs above are written in terms of the entities the query yields, but
+//! neither stage has to visit all of them.  A [`Table`] whose [`Transform`]
+//! column has not changed at all since the system last ran is skipped whole, so
+//! the N in stage 1-2 is the number of entities in *touched* tables rather than
+//! the size of the scene, and a transform written within the same frame is
+//! skipped for free.
+//!
+//! The check is the column's summary tick: every write — a single component
+//! through [`DetectChangesMut`], or a whole slice through `SliceMut` — bumps a
+//! per-column summary, and stage 1 reads that single tick to decide whether the
+//! table holds anything worth looking at.  Reading one word per table is what
+//! makes the "best case" above hold for a frozen scene: stage 1-2 costs a
+//! handful of atomic loads instead of a full sequential scan.
+//!
+//! This applies to **both** strategies, since it filters tables before stage 1
+//! ever inspects an entity:
+//!
+//! - [`Default`] — stages 1-2, 1-3 and 1-4 all operate inside the tables that
+//!   survived the check, so an unchanged table contributes nothing and a
+//!   table touched in one entity never pays for the rest of the scene.
+//! - [`PropagateUp`] — the ancestor walk only starts from tables that changed,
+//!   so the O(N×depth) worst case above counts the entities of changed tables,
+//!   not the entities of the world.
+//!
+//! [`PropagateAll`] is unaffected by design: it propagates the whole tree, so a
+//! table-level skip would be a lie.  Its stage 1 still filters tables through the
+//! same check before collecting roots, but stage 2 remains O(N) over the scene.
+//!
+//! [`Table`]: zlim_core::table::Table
+//! [`DetectChangesMut`]: zlim_core::tick::DetectChangesMut
+//! [`Default`]: TransformPropagateStrategy::Default
+//! [`PropagateUp`]: TransformPropagateStrategy::PropagateUp
+//! [`PropagateAll`]: TransformPropagateStrategy::PropagateAll
 
 // -----------------------------------------------------------------------------
 // Types
@@ -91,6 +127,23 @@ pub use transform_change_root::TransformChangeRoot;
 /// but when the whole scene needs updating, many of stage 1's operations are
 /// unnecessary.
 ///
+/// # Skipping unchanged tables
+///
+/// Those bounds count the entities the query *yields*, and for this strategy
+/// that is only the entities of tables that changed at least once since the
+/// system last ran: [`Transform`]'s column carries a summary tick, and stage 1
+/// dereferences a table without that summary firing no further.  A table that
+/// did not change costs one summary read, not one visit per entity, and an
+/// entity whose transform was written earlier in the same frame costs nothing
+/// here either.
+///
+/// So for this strategy the N in stages 1-2 is "entities in changed tables",
+/// and stage 1 as a whole is a no-op for a frozen scene.  The full reasoning,
+/// including how the check interacts with the other two strategies, is in the
+/// [module documentation](crate#complexity-and-un-changed-tables).
+///
+/// [`Transform`]: crate::Transform
+///
 /// [`TransformPropagateStrategy`] therefore controls the logic of stage 1:
 ///
 /// - [`Default`] — the default operations described above.
@@ -102,7 +155,10 @@ pub use transform_change_root::TransformChangeRoot;
 ///   is a root of a changed subtree.  Each changed node pays one O(depth)
 ///   parent-chain query instead of marking its whole subtree, which suits
 ///   sparse, shallow changes; deep hierarchies can degrade toward
-///   O(N×depth) in the worst case.
+///   O(N×depth) in the worst case — where N counts the entities of tables that
+///   changed, since an unchanged table is skipped before any ancestor walk
+///   starts (see the
+///   [module documentation](crate#complexity-and-un-changed-tables)).
 ///
 /// - [`PropagateAll`] — simplifies stage 1: it directly collects every entity
 ///   that is a root (no parent, or whose parent lacks a `Transform` component),
@@ -250,6 +306,11 @@ zlim_task::cfg::single_thread! {
                 let q2 = unsafe { &mut *ptr.as_ptr() };
 
                 for (transforms, entities) in query.iter_slice_mut() {
+                    // Quickly skip the unchanged table.
+                    if transforms.detect_summary() == Some(false) {
+                        continue;
+                    }
+
                     debug_assert_eq!(transforms.len(), entities.len());
 
                     'out: for (transform, entity) in transforms.into_iter().zip(entities) {
@@ -288,6 +349,11 @@ zlim_task::cfg::single_thread! {
             // Step-1: Collect all changed "root" nodes, and collect all
             // child nodes that need change propagation detection.
             for (transforms, entities) in query.iter_slice_mut() {
+                // Quickly skip the unchanged table.
+                if transforms.detect_summary() == Some(false) {
+                    continue;
+                }
+
                 debug_assert_eq!(transforms.len(), entities.len());
                 for (transform, entity) in transforms.into_iter().zip(entities) {
                     if !transform.is_changed() {
@@ -590,6 +656,11 @@ zlim_task::cfg::multi_thread! {
                     let tcroot_ref: &ThreadLocal<RefCell<Vec<(EntityId, Option<EntityId>)>>> = tcroot;
 
                     for (mut transforms, mut entities) in query.iter_slice_mut() {
+                        // Quickly skip the unchanged table.
+                        if transforms.detect_summary() == Some(false) {
+                            continue;
+                        }
+
                         // split large blocks
                         while entities.len() > ONE_HALF_CHUNK {
                             let (t1, t2) = transforms.split_at(CHUNK_SIZE);
@@ -681,6 +752,11 @@ zlim_task::cfg::multi_thread! {
                 let tcroot_buf_ref: &ThreadLocal<RefCell<Vec<(EntityId, Option<EntityId>)>>> =
                     tcroot_buf;
                 for (mut transforms, mut entities) in query.iter_slice_mut() {
+                    // Quickly skip the unchanged table.
+                    if transforms.detect_summary() == Some(false) {
+                        continue;
+                    }
+
                     while entities.len() > ONE_HALF_CHUNK {
                         let (t1, t2) = transforms.split_at(CHUNK_SIZE);
                         let (e1, e2) = unsafe { entities.split_at_unchecked(CHUNK_SIZE) };

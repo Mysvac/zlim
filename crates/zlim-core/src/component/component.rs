@@ -131,6 +131,15 @@ pub trait Component: Send + Sync + 'static + Sized {
     /// Defaults to `false` for manual implementations.
     const NO_ENTITY: bool = false;
 
+    /// Does the component need to use SummaryTick.
+    ///
+    /// The default is false.
+    ///
+    /// This is used to quickly skip unchanged tables during change detection,
+    /// reducing traversal overhead. But there are additional costs when enabled,
+    /// and component changes require triggering atomic operations.
+    const SUMMARY_TICK: bool = false;
+
     /// The cloning strategy for this component.
     ///
     /// `#[derive(Component)]` sets this to `clonable::<Self>()` by default;

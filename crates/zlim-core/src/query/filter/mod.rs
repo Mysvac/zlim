@@ -184,10 +184,18 @@ pub unsafe trait QueryFilter {
     /// Called when the query begins processing a new table. The filter
     /// can pre-compute table-level information to speed up later filtering.
     ///
+    /// # Returns
+    /// Returns `false` if the current table does not match this query and can be
+    /// skipped directly.
+    ///
     /// # Safety
     /// - The table must remain valid for the duration of the query
     /// - Cache updates must not invalidate existing data
-    unsafe fn update_table<'w>(state: &Self::State, cache: &mut Self::Cache<'w>, table: &'w Table);
+    unsafe fn update_table<'w>(
+        state: &Self::State,
+        cache: &mut Self::Cache<'w>,
+        table: &'w Table,
+    ) -> bool;
 
     /// Performs per-entity filtering.
     ///
@@ -254,7 +262,9 @@ unsafe impl QueryFilter for () {
     }
 
     #[inline(always)]
-    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w Table) {}
+    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w Table) -> bool {
+        true
+    }
 
     #[inline(always)]
     unsafe fn filter<'w>(

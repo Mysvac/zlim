@@ -52,7 +52,7 @@ macro_rules! impl_tuple {
                 _state: &Self::State,
                 _cache: &mut Self::Cache<'w>,
                 _table: &'w mut Table,
-            ) {}
+            ) -> bool { true }
 
             #[inline(always)]
             unsafe fn fetch<'w>(
@@ -119,8 +119,8 @@ macro_rules! impl_tuple {
                 state: &Self::State,
                 cache: &mut Self::Cache<'w>,
                 table: &'w mut Table,
-            ) {
-                unsafe { <$name>::update_table(state, cache, table); }
+            ) -> bool {
+                unsafe { <$name>::update_table(state, cache, table) }
             }
 
             unsafe fn fetch<'w>(
@@ -196,11 +196,13 @@ macro_rules! impl_tuple {
                 state: &Self::State,
                 cache: &mut Self::Cache<'w>,
                 table: &'w mut Table,
-            ) {
+            ) -> bool {
+                let mut filter = true;
                 unsafe {
                     let ptr = table as *mut Table;
-                    $( <$name>::update_table(&state.$index, &mut cache.$index, &mut *ptr); )*
+                    $( filter &= <$name>::update_table(&state.$index, &mut cache.$index, &mut *ptr); )*
                 }
+                filter
             }
 
             unsafe fn fetch<'w>(

@@ -202,6 +202,10 @@ pub unsafe trait QueryData {
     /// Called when the query begins processing a new table. The implementation
     /// can pre-compute table-specific information to speed up later fetching.
     ///
+    /// # Returns
+    /// Returns `false` if the current table does not match this query and can be
+    /// skipped directly.
+    ///
     /// # Safety
     /// - The table must remain valid for the duration of the query
     /// - Cache updates must not invalidate existing data
@@ -211,7 +215,7 @@ pub unsafe trait QueryData {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    );
+    ) -> bool;
 
     /// Fetches data for a single entity.
     ///

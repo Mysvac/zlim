@@ -67,12 +67,14 @@ unsafe impl<T: Component> QueryData for &T {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column(col) };
             *cache = Some(NonNull::from_ref(column));
+            true
         } else {
             *cache = None;
+            false
         }
     }
 
@@ -153,12 +155,14 @@ unsafe impl<T: Component> QueryData for Option<&T> {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column(col) };
             *cache = Some(NonNull::from_ref(column));
+            true
         } else {
             *cache = None;
+            true // `Option<T>`, always returns `true`
         }
     }
 
@@ -249,12 +253,14 @@ unsafe impl<T: Component> QueryData for Ref<'_, T> {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column(col) };
             cache.data = Some(NonNull::from_ref(column));
+            true
         } else {
             cache.data = None;
+            false
         }
     }
 
@@ -341,12 +347,14 @@ unsafe impl<T: Component> QueryData for Option<Ref<'_, T>> {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column(col) };
             cache.data = Some(NonNull::from_ref(column));
+            true
         } else {
             cache.data = None;
+            true // Option<T>, always returns `true`
         }
     }
 
@@ -436,12 +444,14 @@ unsafe impl<T: Component> QueryData for &mut T {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column_mut(col) };
             cache.data = Some(NonNull::from_mut(column));
+            true
         } else {
             cache.data = None;
+            false
         }
     }
 
@@ -526,12 +536,14 @@ unsafe impl<T: Component> QueryData for Option<&mut T> {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column_mut(col) };
             cache.data = Some(NonNull::from_mut(column));
+            true
         } else {
             cache.data = None;
+            true // Option<T>, always returns `true`
         }
     }
 
@@ -620,12 +632,14 @@ unsafe impl<T: Component> QueryData for Mut<'_, T> {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column_mut(col) };
             cache.data = Some(NonNull::from_mut(column));
+            true
         } else {
             cache.data = None;
+            false
         }
     }
 
@@ -710,12 +724,14 @@ unsafe impl<T: Component> QueryData for Option<Mut<'_, T>> {
         state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         if let Some(col) = table.get_table_col(*state) {
             let column = unsafe { table.get_column_mut(col) };
             cache.data = Some(NonNull::from_mut(column));
+            true
         } else {
             cache.data = None;
+            true // Option<T>, always returns `true`
         }
     }
 

@@ -118,8 +118,8 @@ macro_rules! impl_tuple {
                 state: &Self::State,
                 cache: &mut Self::Cache<'w>,
                 table: &'w Table,
-            ) {
-                unsafe { <$name>::update_table(state, cache, table) };
+            ) -> bool {
+                unsafe { <$name>::update_table(state, cache, table) }
             }
 
             unsafe fn filter<'w>(
@@ -195,7 +195,6 @@ macro_rules! impl_tuple {
                     ok &= <$name>::modify_access_table(&state.$index, table, strict);
                     strict &= ok;
                 )*
-
                 ok
             }
 
@@ -203,10 +202,13 @@ macro_rules! impl_tuple {
                 state: &Self::State,
                 cache: &mut Self::Cache<'w>,
                 table: &'w Table,
-            ) {
+            ) -> bool {
+                let mut filter = true;
                 unsafe {
-                    $( <$name>::update_table(&state.$index, &mut cache.$index, table); )*
+                    // Note: cannot use `&&`, `cache` must be fully updated.
+                    $( filter &= <$name>::update_table(&state.$index, &mut cache.$index, table); )*
                 }
+                filter
             }
 
             unsafe fn filter<'w>(

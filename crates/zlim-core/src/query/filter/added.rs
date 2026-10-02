@@ -6,6 +6,7 @@ use crate::entity::EntityId;
 use crate::system::{AccessTable, ComponentAccess, FilterParamBuilder};
 use crate::table::{Table, TableRow};
 use crate::tick::Tick;
+use crate::utils::DebugCheckedUnwrap;
 use crate::world::{World, WorldCell};
 
 // -----------------------------------------------------------------------------
@@ -94,15 +95,28 @@ unsafe impl<T: Component> QueryFilter for Added<T> {
         true
     }
 
-    unsafe fn update_table<'w>(state: &Self::State, cache: &mut Self::Cache<'w>, table: &'w Table) {
+    unsafe fn update_table<'w>(
+        state: &Self::State,
+        cache: &mut Self::Cache<'w>,
+        table: &'w Table,
+    ) -> bool {
         let Some(col) = table.get_table_col(*state) else {
             cache.ticks = None;
-            return;
+            return false;
         };
 
         // SAFETY: `col` is a valid table column for this table (obtained from
         // `get_table_col`), and the returned slice borrows from `table`.
         cache.ticks = Some(unsafe { table.get_added_slice(col) });
+
+        if T::SUMMARY_TICK {
+            let summary = unsafe { table.get_summary(col).debug_checked_unwrap() };
+            if !summary.is_newer_than(cache.last_run, cache.this_run) {
+                return false;
+            }
+        }
+
+        true
     }
 
     unsafe fn filter<'w>(

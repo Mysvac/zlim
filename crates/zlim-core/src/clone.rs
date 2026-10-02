@@ -928,8 +928,7 @@ impl<'w> EntityCloner<'w> {
 
                 // set added and changed
                 unsafe {
-                    *column.get_added_mut(dst_index) = this_run;
-                    *column.get_changed_mut(dst_index) = this_run;
+                    column.mark_added_and_changed(dst_index, this_run);
                 }
 
                 let column_p = column as *mut Column;

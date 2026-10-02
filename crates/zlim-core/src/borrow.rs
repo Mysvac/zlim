@@ -59,7 +59,7 @@ use core::ptr::NonNull;
 use zlim_ptr::{Ptr, PtrMut};
 use zlim_ptr::{ThinSlice, ThinSliceMut};
 
-use crate::tick::{DetectChanges, DetectChangesMut};
+use crate::tick::{AtomicTick, DetectChanges, DetectChangesMut};
 use crate::tick::{Tick, TicksMut, TicksRef};
 use crate::tick::{TicksSliceMut, TicksSliceRef};
 
@@ -250,7 +250,7 @@ impl<'w> UntypedMut<'w> {
     /// The tick metadata is discarded; only the raw pointer to the
     /// component data is returned.
     ///
-    /// This function does not set the changed flag.
+    /// This function does **not** set the changed flag.
     ///
     /// [`PtrMut`]: zlim_ptr::PtrMut
     #[inline(always)]
@@ -272,6 +272,7 @@ impl<'w> UntypedMut<'w> {
             ticks: TicksMut {
                 added: self.ticks.added,
                 changed: self.ticks.changed,
+                summary: self.ticks.summary,
                 last_run: self.ticks.last_run,
                 this_run: self.ticks.this_run,
             },
@@ -333,8 +334,8 @@ impl<'w> UntypedSliceMut<'w> {
     /// The tick metadata and slice length are discarded; only the raw
     /// pointer to the component data is returned.
     ///
-    /// Unlike the typed [`SliceMut::into_inner`], this function does not mark
-    /// any element as changed.
+    /// Unlike the typed [`SliceMut::into_inner`], this function does **not**
+    /// mark any element as changed.
     ///
     /// [`PtrMut`]: zlim_ptr::PtrMut
     #[inline]
@@ -437,11 +438,13 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
     #[inline(always)]
     fn set_added(&mut self) {
         *self.ticks.added = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 
     #[inline(always)]
     fn set_changed(&mut self) {
         *self.ticks.changed = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 }
 
@@ -980,7 +983,7 @@ where
 
     #[inline(always)]
     fn into_iter(self) -> Self::IntoIter {
-        *self.ticks.changed = self.ticks.this_run;
+        self.set_changed();
         self.value.into_iter()
     }
 }
@@ -1005,8 +1008,8 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// assert_eq!(*value, Score(6.0));
     /// ```
     #[inline]
-    pub fn into_inner(self) -> &'w mut T {
-        *self.ticks.changed = self.ticks.this_run;
+    pub fn into_inner(mut self) -> &'w mut T {
+        self.set_changed();
         self.value
     }
 
@@ -1041,6 +1044,7 @@ impl<'w, T: ?Sized> Mut<'w, T> {
             ticks: TicksMut {
                 added: self.ticks.added,
                 changed: self.ticks.changed,
+                summary: self.ticks.summary,
                 last_run: self.ticks.last_run,
                 this_run: self.ticks.this_run,
             },
@@ -1145,11 +1149,13 @@ impl<'w, T: ?Sized> DetectChangesMut for Mut<'w, T> {
     #[inline(always)]
     fn set_added(&mut self) {
         *self.ticks.added = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 
     #[inline(always)]
     fn set_changed(&mut self) {
         *self.ticks.changed = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 }
 
@@ -1178,6 +1184,20 @@ impl<'w, T> SliceRef<'w, T> {
         }
     }
 
+    /// Checks whether the summary tick for this array has triggered, which is used to
+    /// quickly skip over the entire table.
+    ///
+    /// - Returns `Some(true)` if any element inside may have changed.
+    /// - Returns `Some(false)` if no element inside has changed.
+    /// - Returns `None` if this component does not have a summary tick enabled.
+    #[inline]
+    pub fn detect_summary(&self) -> Option<bool> {
+        self.ticks.summary.map(|s| {
+            let tick = s.get();
+            tick.is_newer_than(self.ticks.last_run, self.ticks.this_run)
+        })
+    }
+
     /// Split a slice into two parts.
     ///
     /// # Panic
@@ -1185,7 +1205,7 @@ impl<'w, T> SliceRef<'w, T> {
     /// Panic if the `mid > self.length`.
     #[inline]
     pub fn split_at(mut self, mid: usize) -> (Self, Self) {
-        assert!(self.len() >= mid, "mid > len");
+        assert!(mid <= self.len(), "`mid` must be <= `len`");
         unsafe {
             let p = self.value.into_inner().add(mid);
             let pa = self.ticks.added.into_inner().add(mid);
@@ -1193,6 +1213,7 @@ impl<'w, T> SliceRef<'w, T> {
             let value = ThinSlice::from_raw(p);
             let added = ThinSlice::from_raw(pa);
             let changed = ThinSlice::from_raw(pc);
+            let summary = self.ticks.summary;
             let length = self.ticks.length - mid;
             let last_run = self.ticks.last_run;
             let this_run = self.ticks.this_run;
@@ -1203,6 +1224,7 @@ impl<'w, T> SliceRef<'w, T> {
                 ticks: TicksSliceRef {
                     length,
                     added,
+                    summary,
                     changed,
                     last_run,
                     this_run,
@@ -1314,6 +1336,7 @@ impl<'w, T> IntoIterator for SliceRef<'w, T> {
 
 impl<'w, T> SliceMut<'w, T> {
     fn mark_all_changed(&mut self) {
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
         let this_run = self.ticks.this_run;
         let slice = unsafe { self.ticks.changed.as_mut(self.ticks.length) };
         slice.iter_mut().for_each(|it| *it = this_run);
@@ -1342,6 +1365,7 @@ impl<'w, T> SliceMut<'w, T> {
                 length: self.ticks.length,
                 added: self.ticks.added.reborrow(),
                 changed: self.ticks.changed.reborrow(),
+                summary: self.ticks.summary,
                 last_run: self.ticks.last_run,
                 this_run: self.ticks.this_run,
             },
@@ -1354,6 +1378,20 @@ impl<'w, T> SliceMut<'w, T> {
         unsafe { self.value.deref(self.ticks.length) }
     }
 
+    /// Checks whether the summary tick for this array has triggered, which is used to
+    /// quickly skip over the entire table.
+    ///
+    /// - Returns `Some(true)` if any element inside may have changed.
+    /// - Returns `Some(false)` if no element inside has changed.
+    /// - Returns `None` if this component does not have a summary tick enabled.
+    #[inline]
+    pub fn detect_summary(&self) -> Option<bool> {
+        self.ticks.summary.map(|s| {
+            let tick = s.get();
+            tick.is_newer_than(self.ticks.last_run, self.ticks.this_run)
+        })
+    }
+
     /// Split a slice into two parts.
     ///
     /// # Panic
@@ -1361,7 +1399,7 @@ impl<'w, T> SliceMut<'w, T> {
     /// Panic if the `mid > self.length`.
     #[inline]
     pub fn split_at(mut self, mid: usize) -> (Self, Self) {
-        assert!(self.len() >= mid, "mid > len");
+        assert!(mid <= self.len(), "`mid` must be <= `len`");
         unsafe {
             let p = self.value.reborrow().into_inner().add(mid);
             let pa = self.ticks.added.reborrow().into_inner().add(mid);
@@ -1369,6 +1407,7 @@ impl<'w, T> SliceMut<'w, T> {
             let value = ThinSliceMut::from_raw(p);
             let added = ThinSliceMut::from_raw(pa);
             let changed = ThinSliceMut::from_raw(pc);
+            let summary = self.ticks.summary;
             let length = self.ticks.length - mid;
             let last_run = self.ticks.last_run;
             let this_run = self.ticks.this_run;
@@ -1380,6 +1419,7 @@ impl<'w, T> SliceMut<'w, T> {
                     length,
                     added,
                     changed,
+                    summary,
                     last_run,
                     this_run,
                 },
@@ -1445,6 +1485,7 @@ pub struct SliceMutIter<'w, T> {
     value: NonNull<T>,
     added: NonNull<Tick>,
     changed: NonNull<Tick>,
+    summary: Option<&'w AtomicTick>,
     last_run: Tick,
     this_run: Tick,
     _marker: PhantomData<&'w [T]>,
@@ -1465,6 +1506,7 @@ impl<'w, T> Iterator for SliceMutIter<'w, T> {
                 ticks: TicksMut {
                     added: self.added.as_mut(),
                     changed: self.changed.as_mut(),
+                    summary: self.summary,
                     last_run: self.last_run,
                     this_run: self.this_run,
                 },
@@ -1498,6 +1540,7 @@ impl<'w, T> IntoIterator for SliceMut<'w, T> {
             value: self.value.into_inner(),
             added: self.ticks.added.into_inner(),
             changed: self.ticks.changed.into_inner(),
+            summary: self.ticks.summary,
             last_run: self.ticks.last_run,
             this_run: self.ticks.this_run,
             _marker: PhantomData,
@@ -1844,6 +1887,7 @@ macro_rules! impl_resource_mut_methods {
                     ticks: TicksMut {
                         added: self.ticks.added,
                         changed: self.ticks.changed,
+                        summary: self.ticks.summary,
                         last_run: self.ticks.last_run,
                         this_run: self.ticks.this_run,
                     },
@@ -1959,11 +2003,13 @@ impl<'w, T: Resource + Send> DetectChangesMut for ResMut<'w, T> {
     #[inline(always)]
     fn set_added(&mut self) {
         *self.ticks.added = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 
     #[inline(always)]
     fn set_changed(&mut self) {
         *self.ticks.changed = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 }
 
@@ -1981,11 +2027,13 @@ impl<'w, T: Resource> DetectChangesMut for NonSendMut<'w, T> {
     #[inline(always)]
     fn set_added(&mut self) {
         *self.ticks.added = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 
     #[inline(always)]
     fn set_changed(&mut self) {
         *self.ticks.changed = self.ticks.this_run;
+        AtomicTick::try_set(self.ticks.summary, self.ticks.this_run);
     }
 }
 

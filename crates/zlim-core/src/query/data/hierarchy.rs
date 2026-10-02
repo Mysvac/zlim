@@ -94,7 +94,9 @@ unsafe impl QueryData for Parent {
     }
 
     #[inline(always)]
-    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) {}
+    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) -> bool {
+        true
+    }
 
     #[cfg_attr(not(debug_assertions), inline)]
     unsafe fn fetch<'w>(
@@ -247,7 +249,9 @@ unsafe impl QueryData for Children<'_> {
     }
 
     #[inline(always)]
-    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) {}
+    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) -> bool {
+        true
+    }
 
     #[cfg_attr(not(debug_assertions), inline)]
     unsafe fn fetch<'w>(

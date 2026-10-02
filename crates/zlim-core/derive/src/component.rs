@@ -31,8 +31,7 @@ struct ComponentAttrs {
     on_despawn: Option<syn::ExprPath>,
     reflect: bool,
     serialize: bool,
-    /// `#[require(A, B)]`: required components, stored in the
-    /// `Component::REQUIRED` constant.
+    summary_tick: bool,
     required: Vec<Type>,
 }
 
@@ -61,6 +60,7 @@ fn parse_component_attrs(attrs: &[syn::Attribute]) -> syn::Result<ComponentAttrs
         on_despawn: None,
         reflect: false,
         serialize: false,
+        summary_tick: false,
         required: Vec::new(),
     };
 
@@ -137,6 +137,9 @@ fn parse_component_attrs(attrs: &[syn::Attribute]) -> syn::Result<ComponentAttrs
                 Ok(())
             } else if meta.path.is_ident("reflect") {
                 ret.reflect = true;
+                Ok(())
+            } else if meta.path.is_ident("summary_tick") {
+                ret.summary_tick = true;
                 Ok(())
             } else {
                 Err(meta.error("unsupported component attribute"))
@@ -280,6 +283,10 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     // skip remapping entirely.
     let no_entity = entity_fields.is_empty() && attrs.map_entities.is_none();
 
+    // --- SUMMARY_TICK -----------------------------------------------------
+
+    let summary_tick = attrs.summary_tick;
+
     // --- cloner --------------------------------------------------------
     let cloner_tokens = match &attrs.cloner {
         Cloner::Cloneable => {
@@ -418,6 +425,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                 #required_tokens
 
                 const NO_ENTITY: bool = #no_entity;
+                const SUMMARY_TICK: bool = #summary_tick;
 
                 #cloner_tokens
 

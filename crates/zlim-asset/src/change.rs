@@ -212,12 +212,18 @@ unsafe impl<A: AssetComponent> QueryFilter for AssetChanged<A> {
         table.register_reading_res(id, strict)
     }
 
-    unsafe fn update_table<'w>(state: &Self::State, cache: &mut Self::Cache<'w>, table: &'w Table) {
+    unsafe fn update_table<'w>(
+        state: &Self::State,
+        cache: &mut Self::Cache<'w>,
+        table: &'w Table,
+    ) -> bool {
         if let Some(col) = table.get_table_col(state.component) {
             let column = unsafe { table.get_column(col) };
             cache.data = Some(NonNull::from_ref(column));
+            true
         } else {
             cache.data = None;
+            false
         }
     }
 

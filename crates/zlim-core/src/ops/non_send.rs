@@ -238,6 +238,7 @@ impl NonSendWorld {
                 ticks: TicksMut {
                     added: &mut guard.added,
                     changed: &mut guard.changed,
+                    summary: None,
                     last_run,
                     this_run,
                 },

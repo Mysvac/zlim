@@ -196,6 +196,7 @@ impl ResourceCell {
         let ticks = TicksMut {
             added: &mut self.added,
             changed: &mut self.changed,
+            summary: None,
             last_run,
             this_run,
         };

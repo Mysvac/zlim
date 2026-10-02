@@ -40,7 +40,9 @@ unsafe impl QueryData for EntityId {
     }
 
     #[inline(always)]
-    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) {}
+    unsafe fn update_table<'w>(_: &Self::State, _: &mut Self::Cache<'w>, _: &'w mut Table) -> bool {
+        true
+    }
 
     #[inline(always)]
     unsafe fn fetch<'w>(
@@ -121,8 +123,9 @@ unsafe impl QueryData for EntityRef<'_> {
         _state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         cache.table = Some(NonNull::from_ref(table));
+        true
     }
 
     unsafe fn fetch<'w>(
@@ -192,8 +195,9 @@ unsafe impl QueryData for EntityMut<'_> {
         _state: &Self::State,
         cache: &mut Self::Cache<'w>,
         table: &'w mut Table,
-    ) {
+    ) -> bool {
         cache.table = Some(NonNull::from_mut(table));
+        true
     }
 
     unsafe fn fetch<'w>(

@@ -326,11 +326,13 @@ fn generate_query_slice(
                 state: &Self::State,
                 cache: &mut Self::Cache<'__w>,
                 table: &'__w mut #table_,
-            ) {
+            ) -> bool {
+                let mut filter = true;
                 unsafe {
                     let ptr = table as *mut #table_;
-                    #( <#static_field_types as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
+                    #( filter &= <#static_field_types as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
                 }
+                filter
             }
 
             #fetch_stub
@@ -418,11 +420,13 @@ fn generate_query_slice(
                     state: &Self::State,
                     cache: &mut Self::Cache<'__w>,
                     table: &'__w mut #table_,
-                ) {
+                ) -> bool {
+                    let mut filter = true;
                     unsafe {
                         let ptr = table as *mut #table_;
-                        #( <#ro_delegate_tys as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
+                        #( filter &= <#ro_delegate_tys as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
                     }
+                    filter
                 }
 
                 #fetch_stub
@@ -798,11 +802,13 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                     state: &Self::State,
                     cache: &mut Self::Cache<'__w>,
                     table: &'__w mut #table_,
-                ) {
+                ) -> bool {
+                    let mut filter = true;
                     unsafe {
                         let ptr = table as *mut #table_;
-                        #( <#readonly_delegate_tys as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
+                        #( filter &= <#readonly_delegate_tys as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
                     }
+                    filter
                 }
 
                 unsafe fn fetch<'__w>(
@@ -885,13 +891,15 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
     let update_table_body = if has_fields {
         quote! {
+            let mut filter = true;
             unsafe {
                 let ptr = table as *mut #table_;
-                #( <#static_field_types as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
+                #( filter &= <#static_field_types as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
             }
+            filter
         }
     } else {
-        quote! {}
+        quote! { true }
     };
 
     // `#[query_data(query_slice(type = Name))]`: generate the slice-item
@@ -967,7 +975,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
                     state: &Self::State,
                     cache: &mut Self::Cache<'__w>,
                     table: &'__w mut #table_,
-                ) {
+                ) -> bool {
                     #update_table_body
                 }
 

@@ -63,6 +63,10 @@ pub struct ComponentDB {
     pub required: Option<Required>,
 
     // --------------------------------
+    // Change Detection
+    pub summary_tick: bool,
+
+    // --------------------------------
     // Reflect
     /// Does the component need serialization.
     pub serialize: bool,

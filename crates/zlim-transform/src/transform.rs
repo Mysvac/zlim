@@ -84,7 +84,7 @@ impl Default for GlobalTransform {
 #[derive(Debug, PartialEq, Clone, Copy, Component)]
 #[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_transform::Transform"]
-#[component(copy, reflect, serialize)] // Transform should be serialized, but GlobalTransform does not.
+#[component(copy, summary_tick, reflect, serialize)] // Transform should be serialized, but GlobalTransform does not.
 #[require(GlobalTransform)]
 pub struct Transform {
     /// Position of the entity. In 2d, the last value of the `Vec3` is used for z-ordering.

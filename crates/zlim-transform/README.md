@@ -68,7 +68,9 @@ resource.
    `Transform.is_changed()` is true as a "root candidate" (together with its
    parent), written into a temporary buffer, while collecting its direct
    children into a pending queue. This step is **O(N) sequential access**
-   with an excellent cache hit rate.
+   with an excellent cache hit rate. Fully unchanged tables are skipped,
+   so in the best case the complexity can be reduced to the number of archetypes
+   rather than the number of entities.
 
 3. **Pollution pass (downward marking)**: pop nodes from the pending queue;
    mark unmarked nodes with `set_changed()` and enqueue their children;
