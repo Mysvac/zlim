@@ -57,8 +57,7 @@ impl TimeContext for () {}
 ///     let _ = time.delta_secs();
 /// }
 /// ```
-#[derive(TypePath, Resource, Debug, Copy, Clone, PartialEq)]
-#[type_path = "zlim_core::time::Time"]
+#[derive(Resource, Debug, Copy, Clone, PartialEq)]
 pub struct Time<T: TimeContext = ()> {
     // additional data
     context: T,

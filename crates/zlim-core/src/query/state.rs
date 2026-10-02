@@ -131,14 +131,13 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::query::QueryState;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Position { x: f32, y: f32 }
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Player;
     ///
     /// let mut world = World::alloc();

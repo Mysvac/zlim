@@ -19,10 +19,9 @@
 //! # Example
 //!
 //! ```rust
-//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
-//! #[derive(TypePath, Message)]
+//! #[derive(Message)]
 //! struct Ping;
 //!
 //! let mut world = World::alloc();
@@ -136,13 +135,12 @@ pub use signals::*;
 mod signals {
     use super::Message;
     use crate::{entity::EntityId, tick::Tick};
-    use zlim_reflect::derive::TypePath;
 
     /// A predefined message sent when an entity is reparented.
     ///
     /// It is only emitted for reparenting operations; it does
     /// **not** cover entity spawning or despawning.
-    #[derive(Debug, TypePath, Message, Clone, Copy)]
+    #[derive(Debug, Message, Clone, Copy)]
     pub struct ReparentSignal {
         pub entity: EntityId,
     }
@@ -153,7 +151,7 @@ mod signals {
     /// [`CHECK_CYCLE`] to prevent [`Tick`] values from growing without bound.
     ///
     /// [`CHECK_CYCLE`]: crate::tick::CHECK_CYCLE
-    #[derive(Debug, TypePath, Message, Clone, Copy)]
+    #[derive(Debug, Message, Clone, Copy)]
     pub struct ClampTickSignal {
         pub now: Tick,
     }

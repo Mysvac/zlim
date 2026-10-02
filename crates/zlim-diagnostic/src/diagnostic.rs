@@ -6,7 +6,6 @@ use std::collections::VecDeque;
 use zlim_app::{App, SubApp};
 use zlim_core::derive::Resource;
 use zlim_os::time::Instant;
-use zlim_reflect::derive::TypePath;
 use zlim_utils::hash::{HashMap, NoopState};
 
 // -----------------------------------------------------------------------------
@@ -403,7 +402,7 @@ impl Diagnostic {
 ///
 /// [`Res<Diagnostics>`]: zlim_core::borrow::Res
 /// [`ResMut<Diagnostics>`]: zlim_core::borrow::ResMut
-#[derive(TypePath, Resource, Default)]
+#[derive(Resource, Default)]
 pub struct Diagnostics {
     diagnostics: HashMap<DiagnosticPath, Diagnostic, NoopState>,
 }

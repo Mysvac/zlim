@@ -5,7 +5,6 @@ use core::fmt::{Debug, Formatter};
 use core::time::Duration;
 
 use zlim_core_derive::job_fn;
-use zlim_reflect::derive::TypePath;
 use zlim_utils::debug::DebugLocation;
 use zlim_utils::hash::HashMap;
 
@@ -21,12 +20,12 @@ use super::Time;
 // DelayedCommandQueue
 
 /// A delayed command queue that should be submitted at `submit_at`.
-#[derive(TypePath, Debug)]
+#[derive(Debug)]
 pub struct DelayedCommandQueue {
     /// Absolute time (in `Time::elapsed`) at which the queue is due.
     pub submit_at: Duration,
     /// The command queue to apply once due.
-    pub queue: CommandQueue, // reduce type size
+    pub queue: CommandQueue,
 }
 
 // -----------------------------------------------------------------------------
@@ -201,7 +200,7 @@ impl<'w, 's> Commands<'w, 's> {
 ///
 /// [`World::refresh_metadata`]: crate::world::World::refresh_metadata
 /// [`World::flush`]: crate::world::World::flush
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 pub struct DelayedCommandQueues {
     queues: Vec<DelayedCommandQueue>,
     sorted: bool,

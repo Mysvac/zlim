@@ -7,10 +7,9 @@
 //! Usually defined through `#[derive(Resource)]`.
 //!
 //! ```rust, no_run
-//! # use zlim_reflect::TypePath;
 //! # use zlim_core::prelude::*;
 //! #
-//! #[derive(TypePath, Resource)]
+//! #[derive(Resource)]
 //! struct GlobalInstant(std::time::Instant);
 //! ```
 //!
@@ -19,10 +18,9 @@
 //! in the per-world [`Resources`] storage.
 //!
 //! ```rust
-//! # use zlim_reflect::TypePath;
 //! # use zlim_core::prelude::*;
 //! #
-//! #[derive(TypePath, Resource)]
+//! #[derive(Resource)]
 //! struct GlobalInstant(std::time::Instant);
 //!
 //! // Look up (and lazily register) the resource's metadata:
@@ -33,11 +31,10 @@
 //! # Examples
 //!
 //! ```rust
-//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
 //! // Any `TypePath` type becomes a resource with the derive macro.
-//! #[derive(TypePath, Resource)]
+//! #[derive(Resource)]
 //! struct Score(u32);
 //!
 //! let mut world = World::alloc();
@@ -66,10 +63,10 @@
 // Modules
 // -----------------------------------------------------------------------------
 
-pub mod alias;
 mod collect;
 mod db;
 mod id;
+mod reflect;
 mod register;
 mod resource;
 mod storage;
@@ -82,7 +79,8 @@ mod storage;
 pub use collect::__internal__;
 pub use db::ResourceDB;
 pub use id::ResourceId;
-pub use register::{register_base, register_serializable};
+pub use reflect::ReflectResource;
+pub use register::{register_base, register_reflect};
 pub use resource::Resource;
 pub use storage::{ResourceCell, Resources};
 

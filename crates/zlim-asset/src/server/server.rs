@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use zlim_core::derive::Resource;
 use zlim_diagnostic::DiagnosticPath;
-use zlim_reflect::derive::TypePath;
 
 use super::builder::{LoadBuilder, SaveBuilder};
 use super::config::{AssetMetaCheckMode, UnapprovedPathMode};
@@ -35,7 +34,7 @@ use crate::source::{AssetSource, AssetSources};
 /// Central coordinator for asset loading, caching, and lifecycle tracking.
 ///
 /// [`AssetServer`] is a cheaply-cloneable handle to a sealed `AssetServerData` instance.
-#[derive(TypePath, Resource, Clone)]
+#[derive(Resource, Clone)]
 #[repr(transparent)]
 pub struct AssetServer(pub(crate) Arc<AssetServerData>);
 

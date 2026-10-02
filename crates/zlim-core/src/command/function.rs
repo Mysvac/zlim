@@ -347,10 +347,9 @@ where
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);
 ///
 /// let mut world = World::alloc();

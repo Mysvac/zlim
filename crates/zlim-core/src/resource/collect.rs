@@ -24,10 +24,9 @@ impl ResourceDB {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Resource)]
+    /// #[derive(Resource)]
     /// struct Score(u32);
     ///
     /// // Force a registration so the collect pass has something to gather;
@@ -148,13 +147,12 @@ pub mod __internal__ {
 /// # Examples
 ///
 /// ```no_run
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct MyResource;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct AnotherResource;
 ///
 /// zlim_core::register_resource!(MyResource, AnotherResource);
@@ -172,7 +170,7 @@ macro_rules! register_resource {
     ($($ty:ty),* $(,)?) => {
         const _: () = {
             $(
-                $crate::__macro_exports__::__submit!(
+                $crate::__macro_exports__::submit!(
                     $crate::resource::__internal__::__ResourceReg__::of::<$ty>()
                     => $crate::resource::__internal__::__ResourceReg__
                 );

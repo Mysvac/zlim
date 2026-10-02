@@ -27,13 +27,12 @@ impl EntityOwned<'_> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// #[derive(Component, Clone, PartialEq, Debug)]
     /// struct Hp(u32);
     ///
-    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// #[derive(Component, Clone, PartialEq, Debug)]
     /// struct Mana(u32);
     ///
     /// let mut world = World::alloc();

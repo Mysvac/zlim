@@ -6,7 +6,6 @@ use zlim_asset::plugin::AssetPlugin;
 use zlim_core::component::Component;
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 use zlim_scene::{SceneListPatchInstance, ScenePatchInstance, ScenePlugin};
 use zlim_scene::{WorldSceneQueueExt, scn, scn_list};
@@ -15,7 +14,7 @@ use zlim_scene::{WorldSceneQueueExt, scn, scn_list};
 // Types
 
 /// A component that is `Clone + Default`, so it is its own template.
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Scale(f32);
 
 /// Builds an app with the asset system and the scene plugin, which is what a queued scene needs.

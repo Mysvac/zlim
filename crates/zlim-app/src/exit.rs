@@ -8,9 +8,7 @@ use zlim_reflect::TypePath;
 ///
 /// If one or more of these are present at the end of an update,
 /// the runner will end and (maybe) return control to the caller.
-#[derive(TypePath, Message)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[type_path = "zlim_app::AppExit"]
+#[derive(Message, Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum AppExit {
     #[default]
     Success,

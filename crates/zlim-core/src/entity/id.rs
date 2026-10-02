@@ -7,6 +7,8 @@ use core::mem;
 use core::num::NonZeroU32;
 
 use serde::{Deserialize, Serialize};
+use zlim_reflect::ops::Opaque;
+use zlim_reflect::{Reflect, TypePath};
 
 use crate::table::{TableId, TableRow};
 
@@ -46,7 +48,8 @@ use crate::table::{TableId, TableRow};
 ///
 /// [`to_bits`]: Self::to_bits
 #[repr(C, align(8))]
-#[derive(zlim_reflect::derive::TypePath, Clone, Copy)]
+#[derive(TypePath, Reflect, Clone, Copy)]
+#[reflect(Opaque, Debug, Clone, Eq, Hash, Serialize, Deserialize)]
 #[type_path = "zlim_core::entity::EntityId"]
 pub struct EntityId {
     #[cfg(target_endian = "little")]
@@ -227,6 +230,25 @@ impl Display for EntityId {
         } else {
             write!(f, "{}v{}", self.index, self.generation)
         }
+    }
+}
+
+impl Opaque for EntityId {
+    fn apply_str(&mut self, v: &str) -> Result<(), String> {
+        match v.parse::<u64>() {
+            Ok(bits) => match EntityId::from_bits(bits) {
+                Some(val) => {
+                    *self = val;
+                    Ok(())
+                }
+                None => Err("The EntityGeneration cannot be zero.".into()),
+            },
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn stringify(&self) -> String {
+        self.to_bits().to_string()
     }
 }
 

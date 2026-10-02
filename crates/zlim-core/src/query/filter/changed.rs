@@ -24,10 +24,9 @@ use crate::world::{World, WorldCell};
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Velocity(f32);
 ///
 /// fn changed_velocity(query: Query<EntityId, Changed<Velocity>>) {

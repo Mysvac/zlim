@@ -54,14 +54,14 @@ pub mod world;
 /// Internal module, public for derive macros.
 #[doc(hidden)]
 pub mod __macro_exports__ {
-    pub use serde::Deserialize as __Deserialize;
-    pub use serde::Serialize as __Serialize;
-    pub use zlim_ptr::OwningPtr as __OwningPtr;
-    pub use zlim_reflect::TypePath as __TypePath;
-    pub use zlim_reflect::derive::TypePath as __TypePathDerive;
-    pub use zlim_reg::submit as __submit;
-    pub use zlim_utils::debug::DebugLocation as __DebugLocation;
-    pub use zlim_utils::str::intern_str as __intern_str;
+    pub use zlim_ptr::OwningPtr;
+    pub use zlim_reflect::Reflect;
+    pub use zlim_reflect::TypePath;
+    pub use zlim_reflect::db::TypeDatabase;
+    pub use zlim_reflect::derive::TypePath as TypePathDerive;
+    pub use zlim_reg::submit;
+    pub use zlim_utils::debug::DebugLocation;
+    pub use zlim_utils::str::intern_str;
 }
 
 // -----------------------------------------------------------------------------

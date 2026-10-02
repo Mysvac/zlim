@@ -233,10 +233,9 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Position { x: f32, y: f32 }
     ///
     /// let mut world = World::alloc();
@@ -271,10 +270,9 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Player { health: u32 }
     ///
     /// let mut world = World::alloc();
@@ -312,10 +310,9 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Position { x: f32, y: f32 }
     ///
     /// let mut world = World::alloc();
@@ -354,10 +351,9 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Player { health: u32 }
     ///
     /// let mut world = World::alloc();

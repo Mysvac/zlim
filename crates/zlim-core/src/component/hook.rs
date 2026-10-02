@@ -60,7 +60,7 @@ pub struct HookContext {
 ///     INSERTS.fetch_add(1, Ordering::Relaxed);
 /// }
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// #[component(on_insert = on_insert)]
 /// struct Health {
 ///     value: f32,

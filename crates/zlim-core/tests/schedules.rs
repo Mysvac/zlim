@@ -6,7 +6,6 @@ use zlim_core::derive::Resource;
 use zlim_core::job::{JobDB, job_fn};
 use zlim_core::schedule::{Schedule, ScheduleLabel, Schedules};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Labels & jobs
@@ -17,7 +16,7 @@ struct Update;
 #[derive(ScheduleLabel, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 struct Render;
 
-#[derive(TypePath, Resource, Debug, PartialEq)]
+#[derive(Resource, Debug, PartialEq)]
 struct Counter(u32);
 
 #[job_fn(type = IncCounter, name = "test::sched_inc_counter")]

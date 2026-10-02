@@ -24,10 +24,9 @@ use crate::world::{World, WorldCell};
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Health(u32);
 ///
 /// fn only_new_health(query: Query<EntityId, Added<Health>>) {

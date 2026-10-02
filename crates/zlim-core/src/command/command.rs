@@ -40,10 +40,9 @@ use crate::world::World;
 ///
 /// ```rust
 /// use zlim_core::command::CommandQueue;
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Health(u32);
 ///
 /// let mut world = World::alloc();
@@ -177,10 +176,9 @@ pub trait Command: Send + Sized + 'static {
 /// Closures over an [`EntityOwned`] are [`EntityCommand`]s automatically:
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);
 ///
 /// // `Output = ()`, so this can be wrapped and queued directly.
@@ -224,10 +222,9 @@ pub trait EntityCommand: Send + Sized + 'static {
     ///
     /// ```rust
     /// use zlim_core::command::CommandQueue;
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// #[derive(Component, Clone, Debug, PartialEq)]
     /// struct Health(u32);
     ///
     /// let mut world = World::alloc();

@@ -9,10 +9,9 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// #[derive(Component, Clone, PartialEq, Debug)]
     /// struct Tag;
     ///
     /// let mut world = World::alloc();

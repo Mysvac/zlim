@@ -6,53 +6,78 @@ use zlim_core::resource::Resource as ResourceTrait;
 use zlim_core::resource::ResourceDB;
 use zlim_core::tick::DetectChanges;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
-
-use serde::{Deserialize, Serialize};
+use zlim_reflect::{Reflect, TypePath};
 
 // -----------------------------------------------------------------------------
 // Test types
 // -----------------------------------------------------------------------------
 
-#[derive(TypePath, Resource, Debug, PartialEq, Eq)]
+#[derive(Resource, Debug, PartialEq, Eq)]
 struct Health {
     value: u32,
 }
 
-#[derive(TypePath, Resource, Debug, PartialEq, Eq)]
+#[derive(Resource, Debug, PartialEq, Eq)]
 struct Score {
     points: u64,
 }
 
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 struct GenericRes<T: Send + Sync + 'static> {
     _data: T,
+}
+
+/// A resource registered with reflection support.
+#[derive(TypePath, Reflect, Resource, Debug, PartialEq, Eq)]
+#[resource(reflect)]
+struct ReflectedRes {
+    value: u32,
 }
 
 // -----------------------------------------------------------------------------
 // Derive macro tests
 // -----------------------------------------------------------------------------
 
-/// A resource registered with serialization support.
-#[derive(TypePath, Resource, Serialize, Deserialize)]
-#[resource(serialize)]
-struct SerializeRes(u32);
-
-/// The serialization flag on the resource attribute has to reach both the
-/// registry entry and the type-level constant, while an unmarked resource
-/// stays non-serializable.
+/// `#[resource(reflect)]` has to fill the reflection pointers and file the type
+/// under its *stable* type path, while an unmarked resource gets neither: with
+/// no type database its names come from `core::any::type_name`, which is not a
+/// reliable lookup key.
 #[test]
-fn derive_serialize_flag() {
-    let db = ResourceDB::of::<SerializeRes>();
-    assert!(db.serialize.is_some());
-    assert!(db.deserialize.is_some());
-    const {
-        assert!(SerializeRes::SERIALIZE);
-    }
-    // The default is `false` for unmarked resources.
-    const {
-        assert!(!Health::SERIALIZE);
-    }
+fn derive_reflect_flag() {
+    let db = ResourceDB::of::<ReflectedRes>();
+    assert!(!db.serialize);
+    assert!(db.type_db.is_some());
+    assert!(db.reflect.is_some());
+    assert!(core::ptr::eq(
+        ResourceDB::get_by_path(db.type_path).unwrap(),
+        db,
+    ));
+
+    // An unmarked resource is registered the same way but stays unreflected.
+    let plain = ResourceDB::of::<Health>();
+    assert!(plain.type_db.is_none());
+    assert!(plain.reflect.is_none());
+    assert!(ResourceDB::get_by_path(plain.type_path).is_none());
+}
+
+/// The reflection pointers reach the value sitting in the world.
+#[test]
+fn reflected_resource_is_reachable_through_reflect() {
+    let mut world = World::alloc();
+    world.insert_resource(ReflectedRes { value: 7 });
+
+    let db = ResourceDB::of::<ReflectedRes>();
+    let reflect = db.reflect.unwrap();
+    let value: &dyn Reflect = (reflect.reflect)(&world).unwrap();
+    assert_eq!(value.downcast_ref::<ReflectedRes>().unwrap().value, 7);
+
+    let mut value = (reflect.reflect_mut)(&mut world).unwrap();
+    value.downcast_mut::<ReflectedRes>().unwrap().value = 42;
+    assert_eq!(world.resource::<ReflectedRes>().value, 42);
+
+    let removed = (reflect.remove)(&mut world).unwrap();
+    assert!(removed.is::<ReflectedRes>());
+    assert!(!world.contains_resource::<ReflectedRes>());
 }
 
 #[test]

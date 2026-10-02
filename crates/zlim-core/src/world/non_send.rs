@@ -31,12 +31,11 @@ use crate::world::World;
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// // `Cell` is `Send` but not `Sync`, so this resource can only be touched
 /// // from the main thread.
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct FrameStats {
 ///     frames: core::cell::Cell<u32>,
 /// }
@@ -94,7 +93,7 @@ impl World {
     /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Resource)]
+    /// #[derive(Resource)]
     /// struct FrameStats {
     ///     frames: core::cell::Cell<u32>,
     /// }
@@ -134,7 +133,7 @@ impl World {
     /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Resource)]
+    /// #[derive(Resource)]
     /// struct FrameStats {
     ///     frames: core::cell::Cell<u32>,
     /// }

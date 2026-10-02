@@ -2,7 +2,6 @@
 
 use zlim_app::Plugin;
 use zlim_core::derive::Resource;
-use zlim_reflect::derive::TypePath;
 
 /// Static system information for diagnostics and profiling UI.
 ///
@@ -12,7 +11,7 @@ use zlim_reflect::derive::TypePath;
 /// (see the crate-level documentation).
 ///
 /// [`sysinfo`]: https://crates.io/crates/sysinfo
-#[derive(Debug, TypePath, Resource)]
+#[derive(Debug, Resource)]
 pub struct SystemInfo {
     /// OS name and version.
     pub os: &'static str,

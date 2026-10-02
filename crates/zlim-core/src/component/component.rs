@@ -1,15 +1,12 @@
 //! The [`Component`] trait.
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use zlim_reflect::TypePath;
-
 use super::db::ComponentDB;
 use super::hook::ComponentHook;
 use super::register::register_base;
 use super::required::Required;
 use crate::clone::ComponentCloner;
 use crate::entity::EntityMapper;
-use crate::utils::Dropper;
 
 // -----------------------------------------------------------------------------
 // Component
@@ -30,13 +27,12 @@ use crate::utils::Dropper;
 /// validates options.
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use std::collections::BTreeSet;
 ///
 /// // Basic usage. Deriving also auto-submits the type for bulk
 /// // registration (see `register_component!`).
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Position {
 ///     x: f32,
 ///     y: f32,
@@ -44,16 +40,16 @@ use crate::utils::Dropper;
 ///
 /// // Declare *required* components: `Visibility` is registered, collected,
 /// // and written automatically whenever `Transform3D` is spawned/inserted.
-/// #[derive(TypePath, Component, Clone, Default)]
+/// #[derive(Component, Clone, Default)]
 /// struct Visibility;
 ///
-/// #[derive(TypePath, Component, Clone, Default)]
+/// #[derive(Component, Clone, Default)]
 /// #[require(Visibility)]
 /// struct Transform3D;
 ///
 /// // Components containing entities are remapped when cloned into another
 /// // world; `#[entities]` generates the remapping code for you:
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Linked {
 ///     #[entities]
 ///     linked_entities: BTreeSet<EntityId>,
@@ -68,19 +64,13 @@ use crate::utils::Dropper;
 ///
 /// See the [Component derive macro] documentation for details.
 ///
-/// # Safety
-///
-/// Implementing this trait promises that the type can be stored behind the
-/// ECS' type-erased component storage. If you override [`Self::DROPPER`],
-/// it must match the implementor's actual layout and drop behavior.
-///
 /// [Component derive macro]: crate::derive::Component
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a `Component`",
     label = "invalid `Component`",
     note = "consider annotating `{Self}` with `#[derive(Component)]`"
 )]
-pub trait Component: TypePath + Send + Sync + Sized {
+pub trait Component: Send + Sync + 'static + Sized {
     /// Registers this component type in the global registry, returning its
     /// `&'static` [`ComponentDB`].
     ///
@@ -88,18 +78,21 @@ pub trait Component: TypePath + Send + Sync + Sized {
     /// type, and every subsequent call returns the same [`ComponentDB`]
     /// without creating a duplicate.
     ///
-    /// Defaults to a base registration **without** serialization support
-    /// ([`register_base`]).  Components derived with `#[component(serialize)]`
-    /// instead use [`register_serializable`] and additionally require the
-    /// component to implement `Serialize` and `Deserialize`.
+    /// Defaults to a base registration **without** reflect support ([`register_base`]).
+    ///
+    /// - Components derived with `#[component(reflect)]` instead use [`register_reflect`]
+    ///   and additionally require the component to implement `Reflect`.
+    ///
+    /// - Components derived with `#[component(reflect, serialize)]` instead use
+    ///   [`register_serialize`], then this component will be serialized during the
+    ///   scene serialization.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Position;
     ///
     /// let db = Position::REGISTER();
@@ -108,7 +101,8 @@ pub trait Component: TypePath + Send + Sync + Sized {
     /// assert!(core::ptr::eq(db, Position::REGISTER()));
     /// ```
     ///
-    /// [`register_serializable`]: crate::component::register_serializable
+    /// [`register_reflect`]: crate::component::register_reflect
+    /// [`register_serialize`]: crate::component::register_serialize
     const REGISTER: fn() -> &'static ComponentDB = register_base::<Self>;
 
     /// Required components that must be present on any entity with this
@@ -126,16 +120,6 @@ pub trait Component: TypePath + Send + Sync + Sized {
     /// [`RequiredComponents`]: crate::component::RequiredComponents
     const REQUIRED: Option<Required> = None;
 
-    /// When `true`, this component is registered with serialization support.
-    ///
-    /// Set by `#[derive(Component)]` when annotated with
-    /// `#[component(serialize)]`; the registration then fills the
-    /// [`ComponentDB::serialize`] / [`ComponentDB::deserialize`] function
-    /// pointers so the component can be serialized into scenes.
-    ///
-    /// Defaults to `false`.
-    const SERIALIZE: bool = false;
-
     /// When `true`, this component contains no entity references, so entity
     /// remapping ([`map_entities`](Self::map_entities)) can be skipped when
     /// the component is cloned into another world.
@@ -146,11 +130,6 @@ pub trait Component: TypePath + Send + Sync + Sized {
     ///
     /// Defaults to `false` for manual implementations.
     const NO_ENTITY: bool = false;
-
-    /// An optional function pointer to drop the component when it is deallocated.
-    ///
-    /// Defaults to `Some(Dropper::of::<Self>())` which calls [`drop`] on `Self`.
-    const DROPPER: Option<Dropper> = Dropper::of::<Self>();
 
     /// The cloning strategy for this component.
     ///

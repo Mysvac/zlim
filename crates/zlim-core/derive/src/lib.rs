@@ -154,10 +154,10 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 /// # Examples
 ///
 /// ```ignore
-/// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+/// #[derive(Component, Clone)]
 /// struct Position { x: f32, y: f32 }
 ///
-/// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+/// #[derive(Component, Clone)]
 /// struct Velocity { dx: f32, dy: f32 }
 ///
 /// #[derive(Bundle)]
@@ -176,7 +176,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 ///
 /// This macro automatically implements the `Component` trait for your struct.
 ///
-/// # Attributes (type-level, inside `#[component(...)]`)
+/// # Type Attributes (type-level, inside `#[component(...)]`)
 ///
 /// | Attribute | Description |
 /// |-----------|-------------|
@@ -189,24 +189,21 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// | `on_remove = path::fn` | `on_remove` lifecycle hook. |
 /// | `on_discard = path::fn` | `on_discard` lifecycle hook. |
 /// | `on_despawn = path::fn` | `on_despawn` lifecycle hook. |
-/// | `serialize` | Register with serialization support (requires the type to implement `Serialize` and `Deserialize`) and set `SERIALIZE` to `true`. See below. |
+/// | `reflect` | Register with reflection support. |
+/// | `serialize` | Register with serialization support (requires `reflect`). |
 ///
-/// - `copy` and `cloner = …` are mutually exclusive.
-/// - `map_entities = …` conflicts with `#[entities]` field annotations.
+/// # Field attributes
 ///
-/// # Required components
-///
-/// `#[require(A, B)]` declares components that must be present on any entity
-/// with this component.  They are stored in the `Component::REQUIRED`
-/// constant, auto-registered with this component, added to the entity's
-/// table on spawn/insert, and initialised with their [`Default`] values when
-/// not provided explicitly.  Every required component must implement
-/// `Default`; transitive requirements are followed recursively.
+/// - `#[entities]` — mark a field as containing entities; auto-generates
+///   `map_entities` and sets `NO_ENTITY = false`.  The field type must
+///   implement `MapEntities`.
 ///
 /// ```ignore
-/// #[derive(TypePath, Component, Clone, Default)]
-/// #[require(GlobalTransform)]
-/// struct Transform { /* ... */ }
+/// #[derive(Component, Clone)]
+/// struct Relationship {
+///     #[entities]
+///     target: EntityId,
+/// }
 /// ```
 ///
 /// # `map_entities`
@@ -216,58 +213,43 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// generated `Component` impl forwards its `map_entities` call to that
 /// function and sets `NO_ENTITY = false`.
 ///
-/// # Field attributes
+/// `map_entities` conflicts with `#[entities]` field annotations.
 ///
-/// - `#[entities]` — mark a field as containing entities; auto-generates
-///   `map_entities` and sets `NO_ENTITY = false`.  The field type must
-///   implement `MapEntities`.
 ///
 /// # Cloner
 ///
 /// By default, uses `ComponentCloner::clonable::<Self>()`, which requires
-/// `Clone`.  Use `copy` for `Copy` types or `cloner = …` for custom
-/// logic.
-///
-/// # Serialization
-///
-/// The `Component` trait itself does **not** require serialization — plain
-/// components are registered without serialization support, so types holding
-/// non-serializable data (raw pointers, `Rc`, closures, …) can be used
-/// directly.
-///
-/// To make a component serializable (e.g. for scene saving), add
-/// `#[component(serialize)]` and derive `Serialize` / `Deserialize`:
+/// `Clone`.  Use `copy` for `Copy` types or `cloner = …` for custom logic.
 ///
 /// ```ignore
-/// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
-/// #[component(serialize)]
-/// struct Transform { x: f32, y: f32 }
+/// #[derive(Component, Clone)]
+/// #[component(copy)]
+/// struct Position { x: f32, t: f32 }
 /// ```
 ///
-/// The derive then points `Component::REGISTER` at `register_serializable`,
-/// filling the serialization function pointers in the component's
-/// `ComponentDB`, and sets `Component::SERIALIZE` to `true`.
+/// - `copy` and `cloner = …` are mutually exclusive.
 ///
-/// # Required traits
+/// # Required components
 ///
-/// The `Component` trait requires `TypePath`, `Send`, and `Sync`.  The
-/// cloner additionally requires `Clone` (default) or `Copy` (with `copy`).
-/// Components annotated with `serialize` must also implement `Serialize`
-/// and `Deserialize`.  The recommended derive list for serializable
-/// components is `#[derive(TypePath, Component, Clone, Serialize,
-/// Deserialize)]`.
+/// `#[require(A, B)]` declares components that must be present on any entity
+/// with this component.  They are stored in the `Component::REQUIRED`
+/// constant, auto-registered with this component, added to the entity's
+/// table on spawn/insert, and initialised with their [`Default`] values when
+/// not provided explicitly.
 ///
-/// # Generic types and limitations
+/// Every required component must implement `Default`; transitive requirements
+/// are followed recursively.
 ///
-/// For generic types the generated impl adds
-/// `Self: Clone + TypePath + Serialize + for<'de> Deserialize<'de> + Send +
-/// Sync + Sized + 'static` (with `Copy` in place of `Clone` when `copy` is
-/// used).  Only structs are supported.
+/// ```ignore
+/// #[derive(Component, Clone)]
+/// #[require(GlobalTransform)]
+/// struct Transform { /* ... */ }
+/// ```
 ///
 /// # Examples
 ///
 /// ```ignore
-/// #[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+/// #[derive(Component, Clone)]
 /// #[component(on_add = Self::on_add)]
 /// struct Health {
 ///     value: u32,
@@ -289,25 +271,16 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 ///
 /// # Type attributes
 ///
-/// - `#[resource(serialize)]` — sets `Resource::SERIALIZE` to `true` and
-///   overrides the generated `register()` to use `register_serializable`,
-///   filling the serialization function pointers in the resource's
-///   `ResourceDB`.  The type must implement `Serialize` and `Deserialize`.
-///
-/// # TypePath
-///
-/// `TypePath` is **not** derived by this macro — apply `#[derive(TypePath)]`
-/// separately.  When the struct has generic parameters the generated impl
-/// requires `Self: TypePath`, which transitively constrains each param.
-/// Only structs are supported; enums and unions are rejected.
+/// | Attribute | Description |
+/// |-----------|-------------|
+/// | `reflect` | Register with reflection support |
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct Player {
 ///     name: String,
 ///     health: u32,
@@ -357,7 +330,7 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
 /// # Example
 ///
 /// ```ignore
-/// #[derive(Resource, TypePath)]
+/// #[derive(Resource)]
 /// struct Counter(u32);
 ///
 /// #[derive(SystemParam)]
@@ -795,7 +768,7 @@ pub fn derive_schedule_stage(input: TokenStream) -> TokenStream {
 /// The target type must satisfy the `Message` bounds: `Send`, `Sync`,
 /// `TypePath`, and `'static`.  `TypePath` is usually obtained through
 /// `#[derive(TypePath)]`, so the recommended derive list is
-/// `#[derive(TypePath, Message)]`.
+/// `#[derive(Message)]`.
 ///
 /// For generic types the generated impl adds the
 /// `Self: Send + Sync + TypePath + 'static` where-bound.
@@ -803,7 +776,7 @@ pub fn derive_schedule_stage(input: TokenStream) -> TokenStream {
 /// # Examples
 ///
 /// ```ignore
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Collision {
 ///     lhs: u32,
 ///     rhs: u32,

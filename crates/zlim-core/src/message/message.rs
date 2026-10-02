@@ -1,22 +1,16 @@
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-//! Marker trait for ECS message payload types.
-
-use zlim_reflect::TypePath;
-
 /// Marker trait for ECS message payload types.
 ///
 /// A `Message` type is a short-lived payload sent between systems through
 /// [`MessageQueue<M>`]. The trait has no methods: it only encodes the bounds
-/// required by message storage and cross-system usage (`Send`, `Sync`,
-/// [`TypePath`], and `'static`).
+/// required by message storage and cross-system usage (`Send`, `Sync`, and `'static`).
 ///
-/// For user code, the recommended path is `#[derive(TypePath, Message)]`,
-/// which implements both the [`TypePath`] and [`Message`] traits.
+/// For user code, the recommended path is `#[derive(Message)]`.
 ///
 /// To participate in lifecycle rotation, register the type with
-/// [`World::register_message`] and rotate its [`MessageQueue<M>`] once per
-/// update via [`MessageQueue::update`].
+/// [`World::register_message`] and rotate its [`MessageQueue<M>`]
+/// once per update via [`MessageQueue::update`].
 ///
 /// [`MessageQueue::update`]: crate::message::MessageQueue::update
 /// [`TypePath`]: zlim_reflect::TypePath
@@ -24,10 +18,9 @@ use zlim_reflect::TypePath;
 /// # Using MessageQueue In World
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Collision;
 ///
 /// let mut world = World::alloc();
@@ -35,7 +28,7 @@ use zlim_reflect::TypePath;
 ///
 /// world.write_message(Collision);
 ///
-/// let queue = world.get_resource::<MessageQueue<Collision>>().unwrap();
+/// let queue = world.resource::<MessageQueue<Collision>>();
 /// assert_eq!(queue.len(), 1);
 /// ```
 ///
@@ -50,10 +43,9 @@ use zlim_reflect::TypePath;
 /// so one system reading messages does not consume them for another system.
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Damage {
 ///     amount: u32,
 /// }
@@ -75,8 +67,8 @@ use zlim_reflect::TypePath;
 /// }
 ///
 /// // The system parameters above wrap a `MessageQueue<Damage>` plus a
-/// // per-system `MessageCursor`. Drive the same machinery directly to verify
-/// // the writer/mutator/reader roles:
+/// // per-system `MessageCursor`. Drive the same machinery directly to
+/// // verify the writer/mutator/reader roles:
 /// let mut queue = MessageQueue::<Damage>::default();
 ///
 /// queue.write(Damage { amount: 120 });
@@ -103,8 +95,8 @@ use zlim_reflect::TypePath;
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a message",
     label = "invalid message",
-    note = "Consider annotating `{Self}` with `#[derive(TypePath, Message)]`."
+    note = "Consider annotating `{Self}` with `#[derive(Message)]`."
 )]
-pub trait Message: Send + Sync + TypePath + 'static {}
+pub trait Message: Send + Sync + 'static {}
 
 // -----------------------------------------------------------------------------

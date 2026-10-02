@@ -34,13 +34,12 @@ pub trait InWithout {}
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Position { x: f32, y: f32 }
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Static;
 ///
 /// // Only entities without `Static` are visited.

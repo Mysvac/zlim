@@ -76,11 +76,10 @@ impl<'a> ComponentCollector<'a> {
     /// # Example
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::component::ComponentCollector;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Position;
     ///
     /// let mut collector = ComponentCollector::new(None);

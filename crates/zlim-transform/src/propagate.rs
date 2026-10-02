@@ -136,14 +136,12 @@ zlim_task::cfg::single_thread! {
     mod transform_change_root {
         use zlim_core::derive::Resource;
         use zlim_core::entity::EntityId;
-        use zlim_reflect::derive::TypePath;
 
         /// Internal data pipeline for Transform Propagation. Users should not use this.
         ///
         /// Please do not remove this resource; otherwise, the Transform jobs will not run
         /// (and will output warnings).
-        #[derive(TypePath, Resource, Default)]
-        #[type_path = "zlim_transform::TransformChangeRoot"]
+        #[derive(Resource, Default)]
         #[repr(transparent)]
         pub struct TransformChangeRoot(pub(crate) Vec<(EntityId, Option<EntityId>)>);
     }
@@ -434,15 +432,14 @@ zlim_task::cfg::multi_thread! {
         use core::cell::RefCell;
         use zlim_core::derive::Resource;
         use zlim_core::entity::EntityId;
-        use zlim_reflect::derive::TypePath;
+
         use zlim_utils::ext::ThreadLocal;
 
         /// Internal data pipeline for Transform Propagation. Users should not use this.
         ///
         /// Please do not remove this resource; otherwise, the Transform jobs will not run
         /// (and will output warnings).
-        #[derive(TypePath, Resource, Default)]
-        #[type_path = "zlim_transform::TransformChangeRoot"]
+        #[derive(Resource, Default)]
         #[repr(transparent)]
         pub struct TransformChangeRoot(
             pub(crate) ThreadLocal<RefCell<Vec<(EntityId, Option<EntityId>)>>>,

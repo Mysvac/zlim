@@ -3,7 +3,6 @@
 use std::path::Path;
 
 use zlim_core::derive::Resource;
-use zlim_reflect::derive::TypePath;
 
 use super::EMBEDDED;
 use crate::io::ErasedAssetReader;
@@ -21,13 +20,13 @@ crate::cfg::watch! {
 
 crate::cfg::watch! {
     if {
-        #[derive(TypePath, Resource, Default)]
+        #[derive(Resource, Default)]
         pub struct EmbeddedAssetRegistry {
             dir: Dir,
             root_paths: Arc<RwLock<HashMap<Box<Path>, PathBuf>>>,
         }
     } else {
-        #[derive(TypePath, Resource, Default)]
+        #[derive(Resource, Default)]
         pub struct EmbeddedAssetRegistry {
             dir: Dir,
         }

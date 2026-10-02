@@ -18,10 +18,9 @@ use crate::world::{World, WorldCell};
 /// Use this when your system semantics require one and only one target.
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Player { health: u32 }
 ///
 /// fn update_player(player: Single<&mut Player>) {
@@ -44,10 +43,9 @@ use crate::world::{World, WorldCell};
 /// condition is not satisfied, wrap the parameter in an `Option` or `If`:
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Player { health: u32 }
 ///
 /// fn update_player(player: Option<Single<&mut Player>>) {
@@ -157,10 +155,9 @@ impl<'w, D: QueryData, F: QueryFilter> Single<'w, D, F> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Player { health: u32 }
     ///
     /// fn read_health(player: Single<&Player>) -> u32 {

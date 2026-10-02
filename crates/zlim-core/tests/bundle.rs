@@ -3,24 +3,23 @@
 use zlim_core::derive::{Bundle, Component};
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Components
 
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Position {
     x: f32,
     y: f32,
 }
 
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Velocity {
     dx: f32,
     dy: f32,
 }
 
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Health(u32);
 
 // -----------------------------------------------------------------------------

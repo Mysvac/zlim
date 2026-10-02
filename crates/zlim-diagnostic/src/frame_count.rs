@@ -10,7 +10,6 @@ use zlim_core::borrow::{Res, ResMut};
 use zlim_core::derive::Resource;
 use zlim_core::job::job_fn;
 use zlim_core::time::{Real, Time};
-use zlim_reflect::derive::TypePath;
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -29,7 +28,7 @@ use crate::{Diagnostic, DiagnosticPath, Diagnostics};
 /// Both the increment and the load use [`Ordering::Relaxed`] — no stronger
 /// ordering is required, because the schedule orders the write (in `Last`)
 /// before any reader of the same or a later frame.
-#[derive(TypePath, Resource, Debug, Default)]
+#[derive(Resource, Debug, Default)]
 pub struct FrameCount(AtomicU32);
 
 impl FrameCount {

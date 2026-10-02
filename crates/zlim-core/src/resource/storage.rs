@@ -40,10 +40,9 @@ use crate::utils::Dropper;
 /// # Access
 ///
 /// A slot is *present* when its data pointer is non-null and *absent*
-/// otherwise ([`is_present`](Self::is_present) /
-/// [`is_absent`](Self::is_absent)).  All access is mediated by
-/// [`Resources`], which upholds the shared/exclusive discipline through
-/// `&self` / `&mut self`.
+/// otherwise ([`is_present`](Self::is_present) / [`is_absent`](Self::is_absent)).
+/// All access is mediated by [`Resources`], which upholds the shared/exclusive
+/// discipline through `&self` / `&mut self`.
 ///
 /// # Safety
 ///

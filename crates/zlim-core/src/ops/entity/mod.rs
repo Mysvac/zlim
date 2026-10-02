@@ -63,10 +63,9 @@ use crate::world::{DeferredWorld, World};
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Hp(u32);
 ///
 /// let mut world = World::alloc();
@@ -102,10 +101,9 @@ pub struct Entity<'w> {
 /// [`World::entity_ref`] / [`World::get_entity_ref`].
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Name(&'static str);
 ///
 /// let mut world = World::alloc();
@@ -160,10 +158,9 @@ pub struct EntityRef<'w> {
 /// [`World::get_entity_mut`].
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Hp(u32);
 ///
 /// let mut world = World::alloc();
@@ -227,13 +224,12 @@ pub struct EntityMut<'w> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Hp(u32);
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Speed(f32);
 ///
 /// let mut world = World::alloc();

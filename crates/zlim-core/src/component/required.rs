@@ -30,22 +30,21 @@ use super::{Component, ComponentCollector, ComponentWriter};
 ///
 /// ```rust
 /// use core::any::TypeId;
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::component::Required;
 ///
-/// #[derive(TypePath, Component, Clone, Default)]
+/// #[derive(Component, Clone, Default)]
 /// struct Health {
 ///     value: f32,
 /// }
 ///
-/// #[derive(TypePath, Component, Clone, Default)]
+/// #[derive(Component, Clone, Default)]
 /// struct Armor {
 ///     value: f32,
 /// }
 ///
 /// // The derive builds the v-table from `#[require(...)]`:
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// #[require(Health, Armor)]
 /// struct Player;
 ///

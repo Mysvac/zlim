@@ -126,13 +126,12 @@ pub mod __internal__ {
 /// # Example
 ///
 /// ```no_run
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Transform;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Velocity;
 ///
 /// zlim_core::register_component!(Transform, Velocity);
@@ -146,7 +145,7 @@ macro_rules! register_component {
     ($($ty:ty),* $(,)?) => {
         const _: () = {
             $(
-                $crate::__macro_exports__::__submit!(
+                $crate::__macro_exports__::submit!(
                     $crate::component::__internal__::__ComponentReg__::of::<$ty>()
                     => $crate::component::__internal__::__ComponentReg__
                 );

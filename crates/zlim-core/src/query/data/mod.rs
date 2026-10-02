@@ -41,12 +41,11 @@ use crate::world::{World, WorldCell};
 /// ```rust
 /// use zlim_core::borrow::Mut;
 /// use zlim_core::derive::{Component, QueryData};
-/// use zlim_reflect::derive::TypePath;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Position { x: f32, y: f32 }
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Velocity { x: f32, y: f32 }
 ///
 /// #[derive(QueryData)]

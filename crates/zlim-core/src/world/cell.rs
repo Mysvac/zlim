@@ -181,7 +181,7 @@ impl<'a> WorldCell<'a> {
     /// ```ignore
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(Component, TypePath, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Health(f32);
     ///
     /// let mut world = World::alloc();

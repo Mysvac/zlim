@@ -57,13 +57,12 @@ use crate::world::{World, WorldCell};
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Health(u32);
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Enemy;
 ///
 /// // `With<Enemy>` restricts the query to entities that have `Enemy`.

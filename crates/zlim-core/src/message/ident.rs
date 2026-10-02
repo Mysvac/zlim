@@ -21,10 +21,9 @@ crate::utils::define_ident!(
     /// # Example
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Message)]
+    /// #[derive(Message)]
     /// struct Ping;
     ///
     /// let mut world = World::alloc();
@@ -53,9 +52,8 @@ crate::utils::define_ident!(
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageQueue};
-/// use zlim_reflect::derive::TypePath;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Ping;
 ///
 /// let mut messages = MessageQueue::<Ping>::default();
@@ -105,7 +103,7 @@ impl<M: Message> Clone for MessageKey<M> {
 
 impl<M: Message> Display for MessageKey<M> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "message<{}>#{}", M::type_name(), self.index)
+        write!(f, "message<{}>#{}", DebugName::type_name::<M>(), self.index)
     }
 }
 

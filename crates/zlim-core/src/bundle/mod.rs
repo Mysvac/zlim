@@ -29,13 +29,12 @@
 //! spawn calls without defining a struct:
 //!
 //! ```rust
-//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
-//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! #[derive(Component, Clone, Debug, PartialEq)]
 //! struct Position { x: f32, y: f32 }
 //!
-//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! #[derive(Component, Clone, Debug, PartialEq)]
 //! struct Velocity { dx: f32, dy: f32 }
 //!
 //! let mut world = World::alloc();
@@ -53,13 +52,12 @@
 //! The recommended way to define a bundle is via `#[derive(Bundle)]`:
 //!
 //! ```rust, no_run
-//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
-//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! #[derive(Component, Clone, Debug, PartialEq)]
 //! struct Position { x: f32, y: f32 }
 //!
-//! #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+//! #[derive(Component, Clone, Debug, PartialEq)]
 //! struct Velocity { dx: f32, dy: f32 }
 //!
 //! #[derive(Bundle)]
@@ -93,11 +91,10 @@
 //! them with the [`BundleWriter`] it hands out:
 //!
 //! ```rust
-//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //! use zlim_core::bundle::BundleScratch;
 //!
-//! #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+//! #[derive(Component, Clone, PartialEq, Debug)]
 //! struct Position { x: f32, y: f32 }
 //!
 //! let mut world = World::alloc();

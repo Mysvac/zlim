@@ -163,7 +163,7 @@ impl<K, V: VisitAssetDependencies> VisitAssetDependencies for BTreeMap<K, V> {
 /// This is the handle-to-id protocol used by [`AssetChanged`]:
 ///
 /// ```rust, ignore
-/// #[derive(TypePath, Component)]
+/// #[derive(Component)]
 /// struct MaterialRef(Handle<Material>);
 ///
 /// impl AssetComponent for MaterialRef {

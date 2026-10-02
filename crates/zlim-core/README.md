@@ -19,13 +19,12 @@ Components are **plain Rust structs**, associated with entities via
 `#[derive(Component)]`:
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Health { current: f32, max: f32 }
 ```
 
@@ -44,10 +43,9 @@ engines: it carries no data itself, it is just a "container id" for
 components.
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
 let mut world = World::alloc();
@@ -78,10 +76,9 @@ its Rust type — at most one value of a given resource type exists in a
 world.
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 struct Score(u32);
 
 let mut world = World::alloc();
@@ -127,13 +124,12 @@ system. System instances are **cached** by default to speed up repeated
 calls (caching internal data such as `Local` parameters and query state).
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Velocity { x: f32, y: f32 }
 
 // System parameters are fully declared by the signature:
@@ -358,13 +354,12 @@ For how component data is stored, see the `table` module docs; here we only
 show how queries are used:
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Player;
 
 // Iterate the `Position` of every entity that has a `Player` component
@@ -394,10 +389,9 @@ read buffer for consumption, and the old read buffer is cleared.
 its own independent cursor, without interfering with the others.
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Message)]
+#[derive(Message)]
 struct Ping;
 
 let mut world = World::alloc();
@@ -438,10 +432,9 @@ only sees changes that happened **after that Job's previous run (not
 including the previous run itself)**.
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Health { current: f32, max: f32 }
 
 // Query filters: only handle components that were added /
@@ -481,10 +474,9 @@ improves parallelism.
 deferred commands when needed, guaranteeing visibility.
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
 // Collect commands, apply them all at once later

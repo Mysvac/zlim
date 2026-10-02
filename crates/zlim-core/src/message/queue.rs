@@ -11,7 +11,7 @@ use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
-use zlim_reflect::TypePath;
+use zlim_utils::debug::DebugName;
 
 use crate::message::MessageKeyIter;
 use crate::message::{Message, MessageKey};
@@ -84,9 +84,8 @@ impl<M: Message> DerefMut for MessageSequence<M> {
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageQueue};
-/// use zlim_reflect::derive::TypePath;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Hit {
 ///     value: u32,
 /// }
@@ -103,8 +102,6 @@ impl<M: Message> DerefMut for MessageSequence<M> {
 /// messages.update();
 /// assert_eq!(messages.len(), 0);
 /// ```
-#[derive(TypePath)]
-#[type_path = "zlim_core::message::MessageQueue"]
 pub struct MessageQueue<M: Message> {
     /// Holds the oldest still active messages.
     /// Note that `a.start_id + a.len()` should always be equal to `messages_b.start_id`.
@@ -235,9 +232,8 @@ impl<M: Message> MessageQueue<M> {
     ///
     /// ```rust
     /// use zlim_core::message::{Message, MessageQueue};
-    /// use zlim_reflect::derive::TypePath;
     ///
-    /// #[derive(TypePath, Message)]
+    /// #[derive(Message)]
     /// struct Ping;
     ///
     /// let mut messages = MessageQueue::<Ping>::default();
@@ -261,9 +257,8 @@ impl<M: Message> MessageQueue<M> {
     ///
     /// ```rust
     /// use zlim_core::message::{Message, MessageQueue};
-    /// use zlim_reflect::derive::TypePath;
     ///
-    /// #[derive(TypePath, Message)]
+    /// #[derive(Message)]
     /// struct Ping(u32);
     ///
     /// let mut messages = MessageQueue::<Ping>::default();
@@ -307,9 +302,8 @@ impl<M: Message> MessageQueue<M> {
     ///
     /// ```rust
     /// use zlim_core::message::{Message, MessageQueue};
-    /// use zlim_reflect::derive::TypePath;
     ///
-    /// #[derive(TypePath, Message)]
+    /// #[derive(Message)]
     /// struct Hit;
     ///
     /// let mut messages = MessageQueue::<Hit>::default();
@@ -336,7 +330,7 @@ impl<M: Message> MessageQueue<M> {
             self.messages_a.start_id + self.messages_a.len(),
             self.messages_b.start_id,
             "mismatched message start_id for type :{}",
-            Self::type_path()
+            DebugName::type_name::<Self>(),
         );
     }
 
@@ -369,7 +363,7 @@ impl<M: Message> MessageQueue<M> {
             self.messages_a.start_id + self.messages_a.len(),
             self.messages_b.start_id,
             "mismatched message start_id for type :{}",
-            Self::type_path()
+            DebugName::type_name::<Self>(),
         );
 
         iter.map(|e| e.1)

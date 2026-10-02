@@ -234,7 +234,7 @@ macro_rules! register_job {
     ($($ty:ty),* $(,)?) => {
         const _: () = {
             $(
-                $crate::__macro_exports__::__submit!(
+                $crate::__macro_exports__::submit!(
                     $crate::job::__JobReg__::of::<$ty>()
                     => $crate::job::__JobReg__
                 );

@@ -8,15 +8,14 @@ use zlim_core::message::MessageReader;
 use zlim_core::message::MessageWriter;
 use zlim_core::system::{IntoSystem, System};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Message types
 
-#[derive(TypePath, Message, Clone, Copy, Debug, PartialEq)]
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
 struct Payload(u32);
 
-#[derive(TypePath, Message, Clone, Debug, PartialEq)]
+#[derive(Message, Clone, Debug, PartialEq)]
 struct GenericMsg<T: Send + Sync + 'static>(T);
 
 // -----------------------------------------------------------------------------

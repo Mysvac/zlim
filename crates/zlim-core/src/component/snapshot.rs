@@ -62,10 +62,9 @@ impl Components {
     /// # Example
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Position;
     ///
     /// let world = World::alloc();

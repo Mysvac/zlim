@@ -16,13 +16,12 @@ Zlim Engine 的核心层：一个类 ECS 架构的游戏引擎实现，改自 Be
 组件是**标准的 Rust 结构体**，通过 `#[derive(Component)]` 定义：
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Health { current: f32, max: f32 }
 ```
 
@@ -37,10 +36,9 @@ struct Health { current: f32, max: f32 }
 实体是一个**薄句柄**，类似传统游戏引擎中的 GameObject：它本身不携带数据，只是组件的一个"容器标识"。
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
 let mut world = World::alloc();
@@ -67,10 +65,9 @@ assert_eq!(entity.get::<Position>().unwrap().x, 1.0);
 资源**不属于任何实体**，由它的 Rust 类型唯一标识——同一个世界内一个资源类型最多只有一个值。
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 struct Score(u32);
 
 let mut world = World::alloc();
@@ -108,13 +105,12 @@ world.insert_resource(Score(0));
 系统实例默认会被**缓存**，以加速多次调用（缓存内部数据，例如 `Local` 参数与查询状态）。
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Velocity { x: f32, y: f32 }
 
 // 系统参数完全由签名声明：`Query` 查询组件，`Res` 读取资源……
@@ -307,13 +303,12 @@ Query 是一个极其重要的系统参数，用于高效地访问**实体与组
 组件的数据存储方式请查看 `table` 模块的模块文档，这里只展示 query 用法：
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Player;
 
 // 遍历所有拥有 `Player` 组件的实体上的 `Position`
@@ -339,10 +334,9 @@ MessageQueue 是一个**双缓冲区轮转**的消息队列：
 **单一消息可以被多消费者读取**，多个消费者各自维护独立的游标，互不干扰。
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Message)]
+#[derive(Message)]
 struct Ping;
 
 let mut world = World::alloc();
@@ -377,10 +371,9 @@ zlim-core 对**所有资源**和**组件**数据都追踪了变更，包含 **Ad
 通过 Job 进行的变更检测只会检测**此 Job 上一次运行之后（不包括上一次运行时）**发生的变更。
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Health { current: f32, max: f32 }
 
 // 查询过滤器：只处理新增 / 自上次运行以来变更过的组件
@@ -414,10 +407,9 @@ fn check_time(time: Res<Time>) {
 **Schedule 会自动插入同步点**，在需要的时候执行这些延迟命令，以保证可见性。
 
 ```rust
-use zlim_reflect::TypePath;
 use zlim_core::prelude::*;
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Position { x: f32, y: f32 }
 
 // 收集命令，稍后统一应用

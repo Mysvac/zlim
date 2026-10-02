@@ -351,12 +351,11 @@ impl CloneContext {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// #[component(cloner = clone_link)]
     /// struct Link { target: EntityId }
     ///
@@ -422,11 +421,10 @@ impl CloneContext {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::clone::ComponentCloner;
 ///
-/// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+/// #[derive(Component, Clone, Copy, PartialEq, Debug)]
 /// #[component(copy)]
 /// struct Position { x: f32, y: f32 }
 ///
@@ -436,8 +434,9 @@ impl CloneContext {
 /// // The strategy is selected per component; clone an entity to see the
 /// // copy in action.
 /// let mut world = World::alloc();
-/// let src = world.spawn((Position { x: 1.0, y: 2.0 },), None).id();
+/// let src = world.spawn(Position { x: 1.0, y: 2.0 }, None).id();
 /// let dst = world.entity_cloner().spawn_clone(src, false);
+///
 /// assert_eq!(
 ///     world.entity_ref(dst).get::<Position>(),
 ///     Some(&Position { x: 1.0, y: 2.0 }),
@@ -493,11 +492,10 @@ impl ComponentCloner {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::ComponentCloner;
     ///
-    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// #[derive(Component, Clone, PartialEq, Debug)]
     /// struct Name(String);
     ///
     /// // Non-`Copy` components clone by calling `Clone::clone` — the
@@ -507,6 +505,7 @@ impl ComponentCloner {
     /// let mut world = World::alloc();
     /// let src = world.spawn((Name("Ada".into()),), None).id();
     /// let dst = world.entity_cloner().spawn_clone(src, false);
+    ///
     /// assert_eq!(
     ///     world.entity_ref(dst).get::<Name>(),
     ///     Some(&Name("Ada".into())),
@@ -550,12 +549,11 @@ impl ComponentCloner {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     /// use zlim_core::clone::{CloneContext, CloneSource, CloneTarget};
     /// use zlim_core::clone::ComponentCloner;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// #[component(cloner = clone_link)]
     /// struct Link {
     ///     #[entities]
@@ -585,6 +583,7 @@ impl ComponentCloner {
     ///
     /// // Cloning both entities in one run remaps `target` to its twin.
     /// let clones = world.entity_cloner().spawn_clone_batch(&[src, target], false);
+    ///
     /// assert_eq!(
     ///     world.entity_ref(clones[0]).get::<Link>().unwrap().target,
     ///     clones[1],
@@ -628,10 +627,9 @@ impl ComponentCloner {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+/// #[derive(Component, Clone, Copy, PartialEq, Debug)]
 /// struct Position { x: f32, y: f32 }
 ///
 /// let mut world = World::alloc();
@@ -703,10 +701,9 @@ impl<'w> EntityCloner<'w> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+    /// #[derive(Component, Clone, Copy, PartialEq, Debug)]
     /// struct Position { x: f32, y: f32 }
     ///
     /// let mut world = World::alloc();
@@ -746,10 +743,9 @@ impl<'w> EntityCloner<'w> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Copy, PartialEq, Debug)]
+    /// #[derive(Component, Clone, Copy, PartialEq, Debug)]
     /// struct Health { value: u32 }
     ///
     /// let mut world = World::alloc();
@@ -1103,7 +1099,6 @@ mod tests {
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     use serde::{Deserialize, Serialize};
-    use zlim_reflect::TypePath;
 
     use crate::world::World;
     use crate::{derive::Component, entity::EntityId};
@@ -1116,7 +1111,7 @@ mod tests {
         ($n:ident, $t:ident) => {
             static $n: AtomicUsize = AtomicUsize::new(0);
 
-            #[derive(Debug, TypePath, Component, Clone, Serialize, Deserialize)]
+            #[derive(Debug, Component, Clone, Serialize, Deserialize)]
             struct $t;
 
             impl Drop for $t {
@@ -1131,14 +1126,14 @@ mod tests {
     // Test components
     // -------------------------------------------------------------------------
 
-    #[derive(Debug, TypePath, Component, Clone, Copy)]
+    #[derive(Debug, Component, Clone, Copy)]
     #[derive(PartialEq, Eq, Serialize, Deserialize)]
     struct Pos {
         x: i32,
         y: i32,
     }
 
-    #[derive(Debug, TypePath, Component, Clone)]
+    #[derive(Debug, Component, Clone)]
     #[derive(PartialEq, Eq, Serialize, Deserialize)]
     struct Name(String);
 

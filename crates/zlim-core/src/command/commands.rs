@@ -34,10 +34,9 @@ use crate::world::{DeferredWorld, FromWorld, World, WorldCell, WorldId};
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Tag;
 ///
 /// // `Commands` is a system parameter; queued work is applied later.
@@ -80,10 +79,9 @@ impl Debug for Commands<'_, '_> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Hp(u32);
 ///
 /// let mut world = World::alloc();
@@ -287,10 +285,9 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// #[derive(Component, Clone, Debug, PartialEq)]
     /// struct Health(u32);
     ///
     /// let mut world = World::alloc();
@@ -692,10 +689,9 @@ impl<'a> EntityCommands<'a> {
     ///
     /// ```rust
     /// use zlim_core::derive::Component;
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// #[derive(Component, Clone, Debug, PartialEq)]
     /// struct Hp(u32);
     ///
     /// let mut world = World::alloc();

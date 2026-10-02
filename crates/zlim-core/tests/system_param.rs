@@ -12,15 +12,14 @@ use zlim_core::system::SystemParam as SystemParamTrait;
 use zlim_core::system::SystemTick;
 use zlim_core::system::{AccessTable, ExclusiveMarker, IntoSystem, Local, NonSendMarker};
 use zlim_core::world::{NonSendWorld, World};
-use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Resources
 
-#[derive(TypePath, Resource, Debug, PartialEq)]
+#[derive(Resource, Debug, PartialEq)]
 struct Score(u32);
 
-#[derive(TypePath, Resource, Debug, PartialEq)]
+#[derive(Resource, Debug, PartialEq)]
 struct Delta(i32);
 
 // -----------------------------------------------------------------------------
@@ -171,7 +170,7 @@ fn world_mut_param_runs() {
 // -----------------------------------------------------------------------------
 // NonSendWorld access params
 
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 struct NonSendCounter(core::cell::Cell<u32>);
 
 #[derive(SystemParam)]

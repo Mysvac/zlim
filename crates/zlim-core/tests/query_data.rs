@@ -5,17 +5,16 @@ use zlim_core::component::Component;
 use zlim_core::derive::QueryData;
 use zlim_core::query::{Query, Single};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+#[derive(Component, Clone, Serialize, Deserialize)]
 struct Score(u32);
 
-#[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+#[derive(Component, Clone, Serialize, Deserialize)]
 struct Name(String);
 
-#[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+#[derive(Component, Clone, Serialize, Deserialize)]
 struct Tag;
 
 // -----------------------------------------------------------------------------

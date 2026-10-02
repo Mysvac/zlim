@@ -4,8 +4,6 @@ use core::any::TypeId;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use zlim_reflect::TypePath;
-
 use zlim_asset::assets::Assets;
 use zlim_asset::handle::{ErasedHandle, Handle};
 use zlim_asset::path::AssetPath;
@@ -27,12 +25,12 @@ use zlim_scene::{
 // Types
 
 /// A component that a scene describes.
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Marker(u32);
 
 /// A component that is `Clone + Default`, so it is its own template, and whose `FromTemplate` comes
 /// from the blanket implementation.
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Scale(f32);
 
 /// A scene that describes one [`Marker`].
@@ -74,7 +72,7 @@ impl Template for Count {
 
 /// A component required by [`NeedsIt`], with a `Default` that is easy to tell apart from zeroed
 /// memory.
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Needed(u32);
 
 impl Default for Needed {
@@ -84,7 +82,7 @@ impl Default for Needed {
 }
 
 /// A component that requires [`Needed`], so that a bundle carrying it still initialises both.
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 #[require(Needed)]
 struct NeedsIt(u32);
 
@@ -911,7 +909,7 @@ fn dependencies_of_a_composition_are_forwarded() {
 // Failure
 
 /// A component that reports whether it was dropped.
-#[derive(TypePath, Component, Clone, Debug)]
+#[derive(Component, Clone, Debug)]
 struct Tracked(Arc<AtomicBool>);
 
 impl Drop for Tracked {

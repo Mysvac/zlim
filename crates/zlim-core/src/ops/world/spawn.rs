@@ -157,10 +157,9 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// #[derive(Component, Clone, PartialEq, Debug)]
     /// struct Health(u32);
     ///
     /// let mut world = World::alloc();
@@ -381,10 +380,9 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+    /// #[derive(Component, Clone, PartialEq, Debug)]
     /// struct X(f32);
     ///
     /// let mut world = World::alloc();
@@ -457,16 +455,14 @@ impl World {
 mod tests {
     use crate::component::Component;
     use crate::world::World;
-    use serde::{Deserialize, Serialize};
-    use zlim_reflect::TypePath;
 
-    #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Component, Clone, Debug, PartialEq)]
     struct Foo;
 
-    #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Component, Clone, Debug, PartialEq)]
     struct Bar(u64);
 
-    #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Component, Clone, Debug, PartialEq)]
     struct Baz(String);
 
     #[test]

@@ -8,14 +8,13 @@ use syn::{DeriveInput, parse_quote};
 pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     let zlim_core = crate::path::zlim_core_path();
     let message_ = crate::path::message_(&zlim_core);
-    let type_path_ = crate::path::type_path_(&zlim_core);
 
     let type_ident = ast.ident;
 
     let mut generics = ast.generics;
     if generics.type_params().next().is_some() {
         generics.make_where_clause().predicates.push(parse_quote! {
-            Self: ::core::marker::Send + ::core::marker::Sync + #type_path_ + 'static
+            Self: ::core::marker::Send + ::core::marker::Sync + 'static
         });
     } else if generics.lifetimes().next().is_some() {
         generics

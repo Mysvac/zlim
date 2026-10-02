@@ -2,10 +2,6 @@
 
 Foundation utilities for the zlim engine.
 
-## num
-
-- `NonMax*` integer wrappers for niche-value optimization, analogous to `NonZero*`.
-
 ## str
 
 - `SmolStr` — small-buffer-optimized, immutable string; wraps the `smol_str` crate.

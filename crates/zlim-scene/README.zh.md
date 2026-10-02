@@ -9,16 +9,15 @@
 ```rust
 # use zlim_core::derive::FromTemplate;
 # use zlim_core::prelude::*;
-# use zlim_reflect::TypePath;
 # use zlim_scene::{WorldSceneExt, Scene, SceneList};
 #
-# #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+# #[derive(Component, Clone, Default, Debug, PartialEq)]
 # struct Scale(f32);
 #
-# #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+# #[derive(Component, Clone, Default, Debug, PartialEq)]
 # struct Health { current: u32, max: u32 }
 #
-# #[derive(TypePath, Component, Clone, FromTemplate)]
+# #[derive(Component, Clone, FromTemplate)]
 # struct Target { to: EntityId }
 /// 生成单个场景（根实体唯一，子实体任意）
 fn scene() -> impl Scene {
@@ -343,9 +342,8 @@ app.build();
 # use zlim_app::App;
 # use zlim_asset::plugin::AssetPlugin;
 # use zlim_core::derive::Component;
-# use zlim_reflect::TypePath;
 # use zlim_scene::{ScenePlugin, WorldSceneQueueExt, scn};
-# #[derive(TypePath, Component, Clone, Default)]
+# #[derive(Component, Clone, Default)]
 # struct Scale(f32);
 let mut app = App::new();
 app.add_plugins(AssetPlugin {

@@ -13,10 +13,9 @@ crate::utils::define_ident!(
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Resource)]
+    /// #[derive(Resource)]
     /// struct Score(u32);
     ///
     /// // The id is assigned during registration:

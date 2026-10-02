@@ -46,7 +46,7 @@ use crate::ident::AssetId;
 /// The table is filled by the `asset_events` job and consumed by [`AssetChanged`].
 /// `last_change` records the tick of the most recent insertion, so the filter can reject a whole
 /// table in one comparison before looking up the individual ids.
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 pub(crate) struct AssetChanges<A: Asset> {
     changed: HashMap<AssetId<A>, Tick>,
     last_change: Tick,
@@ -169,7 +169,7 @@ unsafe impl<A: AssetComponent> QueryFilter for AssetChanged<A> {
                 `AssetChanges<{}>` resource does not exist, which causes this query to always \
                 fail. This may be because the asset type was not registered, or the query was \
                 invoked before registration.",
-                <A as TypePath>::type_name(),
+                ::core::any::type_name::<A>(),
                 <A::Asset as TypePath>::type_name(),
             );
         }
@@ -248,7 +248,7 @@ unsafe impl<A: AssetComponent> QueryFilter for AssetChanged<A> {
                     "The `AssetChanged<{}>` query filter was used, but the corresponding \
                     `AssetChanges<{}>` resource was removed after being inserted, which will \
                     cause subsequent queries to always fail.",
-                    <A as TypePath>::type_name(),
+                    ::core::any::type_name::<A>(),
                     <A::Asset as TypePath>::type_name(),
                 );
                 return false;
@@ -283,16 +283,15 @@ mod tests {
     use zlim_core::component::Component;
     use zlim_core::tick::Tick;
     use zlim_core::world::World;
-    use zlim_reflect::TypePath;
 
     use super::{AssetChanged, AssetChanges};
     use crate::asset::AssetComponent;
     use crate::ident::AssetId;
 
-    #[derive(TypePath, Component, Clone)]
+    #[derive(Component, Clone)]
     struct Unrelated;
 
-    #[derive(TypePath, Component, Clone)]
+    #[derive(Component, Clone)]
     struct TestHandle(AssetId<()>);
 
     impl AssetComponent for TestHandle {

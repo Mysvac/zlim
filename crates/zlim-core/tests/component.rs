@@ -3,22 +3,18 @@
 use core::num::NonZeroU32;
 
 use zlim_core::component::Component as ComponentTrait;
-use zlim_core::component::ComponentDB;
 use zlim_core::component::HookContext;
 use zlim_core::derive::Component;
 use zlim_core::entity::EntityId;
 use zlim_core::entity::EntityMapper;
 use zlim_core::world::DeferredWorld;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
-
-use serde::{Deserialize, Serialize};
 
 // -----------------------------------------------------------------------------
 // Basic component
 // -----------------------------------------------------------------------------
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct Health {
     _value: u32,
 }
@@ -39,7 +35,7 @@ fn component_cloner_default_is_clonable() {
 
 fn on_add_hook(_world: DeferredWorld, _ctx: HookContext) {}
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 #[component(on_add = on_add_hook)]
 struct HookedComp {
     _x: f32,
@@ -61,7 +57,7 @@ fn component_hook_const_is_set() {
 // Component with #[entities]
 // -----------------------------------------------------------------------------
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 struct WithEntities {
     #[entities]
     targets: Vec<EntityId>,
@@ -112,7 +108,7 @@ fn remap_payload<M: EntityMapper>(comp: &mut CustomMapped, mapper: &mut M) {
     comp.calls += 1;
 }
 
-#[derive(TypePath, Component, Clone)]
+#[derive(Component, Clone)]
 #[component(map_entities = remap_payload)]
 struct CustomMapped {
     target: EntityId,
@@ -166,7 +162,7 @@ fn component_with_custom_map_entities_is_called() {
 // Component with copy and hooks
 // -----------------------------------------------------------------------------
 
-#[derive(TypePath, Component, Clone, Copy)]
+#[derive(Component, Clone, Copy)]
 #[component(copy, on_clone = Self::on_clone)]
 struct CopyComp {
     _x: i32,
@@ -184,77 +180,29 @@ fn copy_component_compiles() {
 }
 
 // -----------------------------------------------------------------------------
-// Serialization opt-in
-// -----------------------------------------------------------------------------
-
-/// A component that does **not** implement serialization.
-#[derive(TypePath, Component, Clone)]
-struct NoSerde(u32);
-
-/// A component registered with serialization support.
-#[derive(TypePath, Component, Clone, Serialize, Deserialize)]
-#[component(serialize)]
-struct SerdeComp(u32);
-
-/// Serialization support is opt-in, so a component that never asks for it must
-/// register with empty serializer slots and a false associated constant, while
-/// still being usable as an ordinary component.
-#[test]
-fn non_serializable_component_registers_without_serializer() {
-    let db = ComponentDB::of::<NoSerde>();
-    assert!(db.serialize.is_none());
-    assert!(db.deserialize.is_none());
-    const {
-        assert!(!NoSerde::SERIALIZE);
-    }
-
-    // The component still works in a world.
-    let mut world = World::alloc();
-    world.spawn((NoSerde(1),), None);
-
-    let probe = NoSerde(7);
-    assert_eq!(probe.0, 7);
-}
-
-/// The `serialize` attribute is the other half of the opt-in: it has to fill
-/// both registry slots and flip the associated constant that callers test.
-#[test]
-fn serializable_component_registers_with_serializer() {
-    let db = ComponentDB::of::<SerdeComp>();
-    assert!(db.serialize.is_some());
-    assert!(db.deserialize.is_some());
-    const {
-        assert!(SerdeComp::SERIALIZE);
-    }
-
-    let probe = SerdeComp(9);
-    assert_eq!(probe.0, 9);
-}
-
-// -----------------------------------------------------------------------------
 // Required components
 // -----------------------------------------------------------------------------
 
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Default, Debug, PartialEq, Eq)]
 struct Global(u32);
 
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Default, Debug, PartialEq, Eq)]
 struct Local(u32);
 
-#[derive(TypePath, Component, Clone, Default)]
+#[derive(Component, Clone, Default)]
 #[require(Global)]
 struct Transform;
 
-#[derive(TypePath, Component, Clone, Default)]
+#[derive(Component, Clone, Default)]
 #[require(Global, Local)]
 struct RigidBody;
 
 // Nested chain: `Node` requires `Anchor`, which requires `Global`.
-#[derive(TypePath, Component, Clone, Default)]
+#[derive(Component, Clone, Default)]
 #[require(Anchor)]
 struct Node;
 
-#[derive(TypePath, Component, Clone, Default)]
+#[derive(Component, Clone, Default)]
 #[require(Global)]
 struct Anchor;
 

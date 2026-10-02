@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 use zlim_core::derive::{Error, Resource};
-use zlim_reflect::TypePath;
 use zlim_utils::hash::HashMap;
 use zlim_utils::hash::map::Entry as MapEntry;
 use zlim_utils::sync::SpinLock;
@@ -238,7 +237,7 @@ pub enum InvalidGenerationError {
 ///
 /// [`get_mut`]: Self::get_mut
 /// [`get_mut_untracked`]: Self::get_mut_untracked
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 pub struct Assets<A: Asset> {
     table: AssetTable<A>,
     hash_map: HashMap<Uuid, A>,
@@ -913,7 +912,7 @@ mod tests {
     impl Asset for Tracked {}
 
     /// A component that points at a `Tracked` asset, which is what the filter matches on.
-    #[derive(TypePath, Component, Clone)]
+    #[derive(Component, Clone)]
     struct TrackedRef(Handle<Tracked>);
 
     impl AssetComponent for TrackedRef {
@@ -925,7 +924,7 @@ mod tests {
     }
 
     /// How many entities the filter matched in the frame that just ran.
-    #[derive(TypePath, Resource, Default)]
+    #[derive(Resource, Default)]
     struct Matches(usize);
 
     #[job_fn(type = CountChangedRefs)]

@@ -634,7 +634,7 @@ macro_rules! register_job_group {
     ($($ty:ty),* $(,)?) => {
         const _: () = {
             $(
-                $crate::__macro_exports__::__submit!(
+                $crate::__macro_exports__::submit!(
                     $crate::job::__JobGroupReg__::of::<$ty>()
                     => $crate::job::__JobGroupReg__
                 );

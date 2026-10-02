@@ -209,10 +209,9 @@ where
 /// use zlim_scene::{PatchTemplate, ResolveContext, ResolvedScene, Scene};
 /// use zlim_core::template::{Template, TemplateContext};
 /// use zlim_core::error::ZlimResult;
-/// use zlim_reflect::TypePath;
 /// use zlim_core::derive::Component;
 ///
-/// #[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+/// #[derive(Component, Clone, Default, Debug, PartialEq)]
 /// struct Scale(f32);
 ///
 /// let mut scene = ResolvedScene::new();
@@ -246,10 +245,9 @@ where
 ///
 /// ```rust
 /// use zlim_scene::{PatchFromTemplate, ResolveContext, ResolvedScene, Scene};
-/// use zlim_reflect::TypePath;
 /// use zlim_core::derive::Component;
 ///
-/// #[derive(TypePath, Component, Clone, Default)]
+/// #[derive(Component, Clone, Default)]
 /// struct Scale(f32);
 ///
 /// let mut scene = ResolvedScene::new();

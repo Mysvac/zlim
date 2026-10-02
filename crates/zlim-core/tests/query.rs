@@ -4,17 +4,16 @@
 use zlim_core::component::Component;
 use zlim_core::query::{Query, Single, With};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+#[derive(Component, Clone, Serialize, Deserialize)]
 struct Pos {
     x: f32,
     y: f32,
 }
 
-#[derive(TypePath, Component, Clone, Serialize, Deserialize)]
+#[derive(Component, Clone, Serialize, Deserialize)]
 struct Vel {
     x: f32,
     y: f32,

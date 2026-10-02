@@ -94,7 +94,7 @@ mod normal_impls {
     use zlim_core::world::World;
     use zlim_diagnostic::{Diagnostic, Diagnostics, DiagnosticsPlugin};
     use zlim_os::time::Instant;
-    use zlim_reflect::derive::TypePath;
+
     use zlim_task::AsyncTaskPool;
     use zlim_utils::sync::ArrayQueue;
 
@@ -109,7 +109,7 @@ mod normal_impls {
     // resource; per-frame jobs wake the task (`WakeDiagnosticsTask` in `First`)
     // and drain the queue into `Diagnostics` (`ReadDiagnosticsTask` in `Update`).
 
-    #[derive(TypePath, Resource)]
+    #[derive(Resource)]
     struct SysinfoTask {
         _task: zlim_task::Task<()>,
         queue: Arc<ArrayQueue<SysinfoRefreshData>>,
@@ -263,7 +263,7 @@ mod normal_impls {
     /// Drains any fresh samples from the background task into `Diagnostics`
     /// (`Update`).
     #[job_fn(type = ReadDiagnosticsTask, name = "zlim_sysinfo::ReadDiagnosticsTask")]
-    fn read_diagnostic_task(mut diagnostics: If<ResMut<Diagnostics>>, task: Res<SysinfoTask>) {
+    fn read_diagnostic_task(mut diagnostics: If<ResMut<Diagnostics>>, task: If<Res<SysinfoTask>>) {
         while let Some(data) = task.queue.pop() {
             let diagnostics: &mut Diagnostics = diagnostics.0.as_mut();
             diagnostics.add_measurement(&SystemInfoDiagnosticsPlugin::SYSTEM_CPU_USAGE, || {

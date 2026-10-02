@@ -67,10 +67,9 @@ impl SystemParamError {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct Missing;
 ///
 /// fn needs_resource(_: Res<Missing>) {}

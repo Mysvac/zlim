@@ -468,10 +468,9 @@ impl<'w> DetectChangesMut for UntypedMut<'w> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);
 ///
 /// fn report(health: Ref<Health>) -> u32 {
@@ -521,10 +520,9 @@ pub struct Ref<'w, T: ?Sized> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Health(u32);
 ///
 /// let mut world = World::alloc();
@@ -567,10 +565,9 @@ pub struct Mut<'w, T: ?Sized> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Velocity(f32);
 ///
 /// let mut world = World::alloc();
@@ -621,10 +618,9 @@ unsafe impl<T: Send> Send for SliceRef<'_, T> {}
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Velocity(f32);
 ///
 /// let mut world = World::alloc();
@@ -872,10 +868,9 @@ impl<'w, T: ?Sized> Ref<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// #[derive(Component, Clone, Debug, PartialEq)]
     /// struct Health(u32);
     ///
     /// let mut world = World::alloc();
@@ -910,10 +905,9 @@ impl<'w, T: ?Sized> Ref<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// #[derive(Component, Clone, Debug, PartialEq)]
     /// struct Outer {
     ///     inner: f32,
     /// }
@@ -998,10 +992,9 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// #[derive(Component, Clone, Debug, PartialEq)]
     /// struct Score(f32);
     ///
     /// let mut world = World::alloc();
@@ -1025,10 +1018,9 @@ impl<'w, T: ?Sized> Mut<'w, T> {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+    /// #[derive(Component, Clone, Debug, PartialEq)]
     /// struct Counter(u32);
     ///
     /// let mut world = World::alloc();
@@ -1529,10 +1521,9 @@ impl<'w, T> IntoIterator for SliceMut<'w, T> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct Logger;
 ///
 /// let mut world = World::alloc();
@@ -1565,10 +1556,9 @@ pub struct Res<'w, T: Resource + Sync> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct Logger;
 ///
 /// let mut world = World::alloc();
@@ -1603,12 +1593,11 @@ pub struct ResMut<'w, T: Resource + Send> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
 /// // `Cell` is `Send` but not `Sync`, so this type cannot be shared across
 /// // threads — exactly the case `NonSend` is designed for.
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct ThreadLocalState {
 ///     counter: core::cell::Cell<u32>,
 /// }
@@ -1654,10 +1643,9 @@ pub struct NonSend<'w, T: Resource> {
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct RngState(u64);
 ///
 /// let mut world = World::alloc();
@@ -2005,6 +1993,16 @@ impl<'w, T: Resource> DetectChangesMut for NonSendMut<'w, T> {
 // From conversions
 // -----------------------------------------------------------------------------
 
+impl<'w, T: Resource + Send + Sync> From<Res<'w, T>> for Ref<'w, T> {
+    #[inline]
+    fn from(other: Res<'w, T>) -> Self {
+        Ref {
+            value: other.value,
+            ticks: other.ticks,
+        }
+    }
+}
+
 impl<'w, T: Resource + Send + Sync> From<ResMut<'w, T>> for Res<'w, T> {
     #[inline]
     fn from(other: ResMut<'w, T>) -> Self {
@@ -2015,12 +2013,42 @@ impl<'w, T: Resource + Send + Sync> From<ResMut<'w, T>> for Res<'w, T> {
     }
 }
 
+impl<'w, T: Resource + Send + Sync> From<ResMut<'w, T>> for Mut<'w, T> {
+    #[inline]
+    fn from(other: ResMut<'w, T>) -> Self {
+        Mut {
+            value: other.value,
+            ticks: other.ticks,
+        }
+    }
+}
+
+impl<'w, T: Resource> From<NonSend<'w, T>> for Ref<'w, T> {
+    #[inline]
+    fn from(other: NonSend<'w, T>) -> Self {
+        Ref {
+            value: other.value,
+            ticks: other.ticks,
+        }
+    }
+}
+
 impl<'w, T: Resource> From<NonSendMut<'w, T>> for NonSend<'w, T> {
     #[inline]
     fn from(other: NonSendMut<'w, T>) -> Self {
         NonSend {
             value: other.value,
             ticks: other.ticks.into(),
+        }
+    }
+}
+
+impl<'w, T: Resource> From<NonSendMut<'w, T>> for Mut<'w, T> {
+    #[inline]
+    fn from(other: NonSendMut<'w, T>) -> Self {
+        Mut {
+            value: other.value,
+            ticks: other.ticks,
         }
     }
 }

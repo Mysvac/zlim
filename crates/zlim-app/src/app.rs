@@ -133,10 +133,9 @@ pub struct App {
 ///
 /// ```rust
 /// # use zlim_app::SubApp;
-/// # use zlim_reflect::TypePath;
 /// # use zlim_core::prelude::*;
 /// #
-/// #[derive(TypePath, Resource, Clone, Copy)]
+/// #[derive(Resource, Clone, Copy)]
 /// struct Score(u32);
 ///
 /// let mut sub_app = SubApp::new();

@@ -249,7 +249,6 @@ impl<T: Clone + Default + Unpin> FromTemplate for T {
 
 #[cfg(test)]
 mod tests {
-    use zlim_reflect::derive::TypePath;
 
     use crate::derive::Resource;
     use crate::entity::EntityId;
@@ -271,7 +270,7 @@ mod tests {
     struct Scale(f32);
 
     /// A resource that a template reads through its context.
-    #[derive(TypePath, Resource, Debug, PartialEq)]
+    #[derive(Resource, Debug, PartialEq)]
     struct Offset(f32);
 
     // -----------------------------------------------------------------------------

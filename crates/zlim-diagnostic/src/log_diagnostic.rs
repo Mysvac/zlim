@@ -6,13 +6,12 @@ use zlim_core::derive::Resource;
 use zlim_core::job::job_fn;
 use zlim_core::time::{Real, Time, Timer, TimerMode};
 use zlim_log::info;
-use zlim_reflect::derive::TypePath;
 use zlim_utils::hash::HashSet;
 
 use crate::{Diagnostic, DiagnosticPath, Diagnostics, DiagnosticsPlugin};
 
 /// Mutable logging state used by [`LogDiagnosticsPlugin`].
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 pub struct LogDiagnosticsState {
     timer: Timer,
     filter: Option<HashSet<DiagnosticPath>>,

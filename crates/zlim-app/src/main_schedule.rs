@@ -121,7 +121,7 @@ pub enum FixedMainLoopStage {
 /// This can only be adjusted after `App::build` (`MainSchedulePlugin::apply`)
 /// and before `App::run`. Once the `App` starts running, this resource is
 /// temporarily taken out, so job logic cannot access it.
-#[derive(TypePath, Resource, Debug)]
+#[derive(Resource, Debug)]
 pub struct MainScheduleOrder {
     pub labels: Vec<InternedScheduleLabel>,
     pub startup_labels: Vec<InternedScheduleLabel>,
@@ -133,7 +133,7 @@ pub struct MainScheduleOrder {
 /// This can only be adjusted after `App::build` (`MainSchedulePlugin::apply`)
 /// and before `App::run`. Once the `App` starts running, this resource is
 /// temporarily taken out, so job logic cannot access it.
-#[derive(TypePath, Resource, Debug)]
+#[derive(Resource, Debug)]
 pub struct FixedMainScheduleOrder {
     pub labels: Vec<InternedScheduleLabel>,
 }

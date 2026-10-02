@@ -8,7 +8,6 @@ use zlim_core::derive::{Component, FromTemplate};
 use zlim_core::entity::EntityId;
 use zlim_core::error::ZlimResult;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 use zlim_scene::{ResolveContext, ResolvedScene, Scene, ScenePatch};
 use zlim_scene::{ScenePlugin, WorldSceneExt, scn, scn_list};
@@ -17,26 +16,24 @@ use zlim_scene::{ScenePlugin, WorldSceneExt, scn, scn_list};
 // Types
 
 /// A component that is `Clone + Default`, so it is its own template.
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Scale(f32);
 
 /// A component with two fields, so that a scene can edit one of them and leave the other alone.
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Health {
     current: u32,
     max: u32,
 }
 
 /// A component that points at another entity, described through a derived template.
-///
-/// It is deliberately not `Clone`, so that the derived [`FromTemplate`] stands on its own.
-#[derive(TypePath, Component, Clone, FromTemplate, Debug, PartialEq)]
+#[derive(Component, Clone, FromTemplate, Debug, PartialEq)]
 struct Link {
     to: EntityId,
 }
 
 /// A component with a constructor of its own, for the `Type::function(args)` form of an entry.
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Pair {
     left: u32,
     right: u32,

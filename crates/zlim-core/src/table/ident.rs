@@ -83,11 +83,10 @@ pub struct TableRow(pub u32);
 /// # Example
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::table::TableCol;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Position {
 ///     x: f32,
 /// }

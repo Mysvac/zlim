@@ -2,10 +2,6 @@
 
 zlim 引擎的基础工具库。
 
-## num
-
-- `NonMax*` 整型包装，用于 niche 值优化，类似于 `NonZero*`。
-
 ## str
 
 - `SmolStr` —— 小缓冲区优化的不可变字符串；封装自 `smol_str` crate。

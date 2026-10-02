@@ -145,7 +145,7 @@ pub(crate) fn expand(input: JobGroupInput) -> TokenStream {
     let job_group_label_ = crate::path::job_group_label_(&zlim_core);
     let job_group_reg_ = crate::path::job_group_reg_(&zlim_core);
     let submit_ = crate::path::submit_(&zlim_core);
-    let type_path_trait_ = crate::path::type_path_trait_(&zlim_core);
+    let type_path_trait_ = crate::path::type_path_(&zlim_core);
     let type_path_derive_ = crate::path::type_path_derive_(&zlim_core);
 
     let JobGroupInput {

@@ -173,16 +173,14 @@ mod tests {
     use crate::component::Component;
     use crate::world::World;
     use core::sync::atomic::{AtomicUsize, Ordering};
-    use serde::{Deserialize, Serialize};
-    use zlim_reflect::TypePath;
 
-    #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Component, Clone, Debug, PartialEq)]
     struct Foo;
 
-    #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Component, Clone, Debug, PartialEq)]
     struct Bar(u64);
 
-    #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Component, Clone, Debug, PartialEq)]
     struct Baz(String);
 
     /// Despawns an entity in each shape the API supports — a single component, a
@@ -194,7 +192,7 @@ mod tests {
     fn drop_entity() {
         static DROP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-        #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+        #[derive(Component, Clone)]
         struct DropTracker;
 
         impl Drop for DropTracker {
@@ -243,7 +241,7 @@ mod tests {
     fn drop_world() {
         static DROP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-        #[derive(TypePath, Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+        #[derive(Component, Clone)]
         struct DropTracker;
 
         impl Drop for DropTracker {

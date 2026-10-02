@@ -1,11 +1,8 @@
 //! The [`Resource`] trait.
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use zlim_reflect::TypePath;
-
 use super::db::ResourceDB;
 use super::register::register_base;
-use crate::utils::Dropper;
 
 // -----------------------------------------------------------------------------
 // Resource
@@ -17,8 +14,9 @@ use crate::utils::Dropper;
 /// At most one value of a given resource type can exist in a [`World`].
 /// Thread-safety determines which access APIs are available:
 ///
-/// - `Sync` resources can be read through [`Res`]; `Send` resources can be
-///   written through [`ResMut`].
+/// - `Sync` resources can be read through [`Res`];
+///
+/// - `Send` resources can be written through [`ResMut`].
 ///
 /// - `!Sync` resources must stay on the main thread and are read through
 ///   [`NonSend`].
@@ -32,7 +30,7 @@ use crate::utils::Dropper;
 ///
 /// ```ignore
 /// // Basic usage
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct Foo;
 /// ```
 ///
@@ -41,10 +39,9 @@ use crate::utils::Dropper;
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct Score(u32);
 ///
 /// let mut world = World::alloc();
@@ -55,12 +52,6 @@ use crate::utils::Dropper;
 /// // Read it back through the world.
 /// assert_eq!(world.get_resource::<Score>().unwrap().0, 100);
 /// ```
-///
-/// # Safety
-///
-/// Implementing this trait promises that the type can be stored behind the
-/// ECS' type-erased resource storage. If you override [`Self::DROPPER`], it
-/// must match the implementor's actual layout and drop behavior.
 ///
 /// [`World`]: crate::world::World
 /// [`Res`]: crate::borrow::Res
@@ -73,49 +64,34 @@ use crate::utils::Dropper;
     label = "invalid `Resource`",
     note = "consider annotating `{Self}` with `#[derive(Resource)]`"
 )]
-pub trait Resource: TypePath + Sized {
-    /// The dropper function for this type, if it is not trivially droppable.
-    ///
-    /// Set to `Some(...)` when the type [`needs_drop`].
-    ///
-    /// [`needs_drop`]: core::mem::needs_drop
-    const DROPPER: Option<Dropper> = Dropper::of::<Self>();
-
-    /// When `true`, this resource is registered with serialization support.
-    ///
-    /// Set by `#[derive(Resource)]` when annotated with
-    /// `#[resource(serialize)]`; the registration then fills the
-    /// [`ResourceDB::serialize`] / [`ResourceDB::deserialize`] function
-    /// pointers so the resource can be serialized into scenes.
-    ///
-    /// Defaults to `false`.
-    const SERIALIZE: bool = false;
-
+pub trait Resource: 'static + Sized {
     /// Registers this resource type in the global registry, returning its
     /// `&'static` [`ResourceDB`].
     ///
-    /// Registration is idempotent: calling it again returns the same
-    /// metadata.  Defaults to a base registration **without** serialization
-    /// support ([`register_base`]).  Resources derived with
-    /// `#[resource(serialize)]` instead use [`register_serializable`] and
-    /// additionally require the type to implement `Serialize` and
-    /// `Deserialize`.
+    /// Registration is lazy and idempotent: the first call registers the
+    /// type, and every subsequent call returns the same [`ResourceDB`]
+    /// without creating a duplicate.
+    ///
+    /// Defaults to a base registration **without** reflection support
+    /// ([`register_base`]).  Resources derived with `#[resource(reflect)]`
+    /// instead use [`register_reflect`], which additionally requires the
+    /// resource to implement [`Reflect`].
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Resource)]
+    /// #[derive(Resource)]
     /// struct Score(u32);
     ///
     /// let db = <Score as Resource>::REGISTER();
     /// assert_eq!(db.type_name, "Score");
     /// ```
     ///
+    /// [`Reflect`]: zlim_reflect::Reflect
     /// [`register_base`]: crate::resource::register_base
-    /// [`register_serializable`]: crate::resource::register_serializable
+    /// [`register_reflect`]: crate::resource::register_reflect
     /// [`ResourceDB`]: crate::resource::ResourceDB
     const REGISTER: fn() -> &'static ResourceDB = register_base::<Self>;
 }

@@ -100,8 +100,6 @@ impl HalfSpace {
 
 #[cfg(test)]
 mod half_space_tests {
-    use core::f32;
-
     use approx::assert_relative_eq;
     use zlim_math::{Vec3, Vec4};
 

@@ -3,9 +3,8 @@
 //! A component is any plain data type annotated with `#[derive(Component)]`.
 //!
 //! ```rust, no_run
-//! # use zlim_reflect::TypePath;
 //! # use zlim_core::prelude::*;
-//! #[derive(TypePath, Component, Clone)]
+//! #[derive(Component, Clone)]
 //! struct Position { x: f32, y: f32 }
 //! ```
 //!
@@ -15,9 +14,8 @@
 //! and stores them within a [`ComponentDB`].
 //!
 //! ```rust
-//! # use zlim_reflect::TypePath;
 //! # use zlim_core::prelude::*;
-//! #[derive(TypePath, Component, Clone)]
+//! #[derive(Component, Clone)]
 //! struct Position { x: f32, y: f32 }
 //!
 //! // Look up (and lazily register) the component's metadata:
@@ -55,13 +53,12 @@ crate::utils::define_ident!(
 // Modules
 // -----------------------------------------------------------------------------
 
-mod alias;
-
 mod collect;
 mod collector;
 mod component;
 mod db;
 mod hook;
+mod reflect;
 mod register;
 mod required;
 mod snapshot;
@@ -78,7 +75,8 @@ pub use collector::ComponentCollector;
 pub use component::Component;
 pub use db::ComponentDB;
 pub use hook::{ComponentHook, HookContext};
-pub use register::{register_base, register_serializable};
+pub use reflect::ReflectComponent;
+pub use register::{register_base, register_reflect, register_serialize};
 pub use required::{Required, RequiredComponents};
 pub use snapshot::Components;
 pub use writer::ComponentWriter;

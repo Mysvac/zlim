@@ -57,13 +57,12 @@
 //! # Examples
 //!
 //! ```rust
-//! use zlim_reflect::TypePath;
 //! use zlim_core::prelude::*;
 //!
-//! #[derive(TypePath, Component, Clone)]
+//! #[derive(Component, Clone)]
 //! struct Position { x: f32, y: f32 }
 //!
-//! #[derive(TypePath, Component, Clone)]
+//! #[derive(Component, Clone)]
 //! struct Player;
 //!
 //! // Iterate every `Position`, optionally restricted by a filter.

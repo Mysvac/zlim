@@ -12,7 +12,6 @@ pub mod hash;
 pub mod mem;
 pub mod mpmc;
 pub mod mpsc;
-pub mod num;
 pub mod str;
 pub mod sync;
 pub mod vec;

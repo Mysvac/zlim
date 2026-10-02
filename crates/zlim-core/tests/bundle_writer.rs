@@ -6,21 +6,20 @@ use zlim_core::derive::Component;
 use zlim_core::entity::EntityError;
 use zlim_core::tick::DetectChanges;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 // -----------------------------------------------------------------------------
 // Components
 
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Hp(u32);
 
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Armor(u32);
 
 /// The innermost required component. Its `Default` is deliberately not what
 /// zeroed memory looks like, so a column the writer never filled in is easy to
 /// tell apart from one that was default-initialised.
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 struct Inner(u32);
 
 impl Default for Inner {
@@ -30,7 +29,7 @@ impl Default for Inner {
 }
 
 /// Requires [`Inner`] directly, and is itself required by [`TwoLevels`].
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 #[require(Inner)]
 struct Outer(u32);
 
@@ -41,7 +40,7 @@ impl Default for Outer {
 }
 
 /// Requires only [`Outer`]: [`Inner`] is reachable through the chain.
-#[derive(TypePath, Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 #[require(Outer)]
 struct TwoLevels(u32);
 

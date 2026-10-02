@@ -76,14 +76,13 @@ struct ComponentCell {
 /// # Example
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::bundle::BundleScratch;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Hp(u32);
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Armor(u32);
 ///
 /// let mut world = World::alloc();
@@ -220,17 +219,16 @@ impl Drop for BundleScratch {
 /// the same bundle:
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::bundle::BundleScratch;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Hp(u32);
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Armor(u32);
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Name(String);
 ///
 /// let mut world = World::alloc();

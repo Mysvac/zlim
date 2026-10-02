@@ -10,7 +10,6 @@ use zlim_core::component::Component;
 use zlim_core::entity::EntityId;
 use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 
 use crate::patch::{SceneListPatch, ScenePatch};
 use crate::scene::Scene;
@@ -30,7 +29,7 @@ use crate::scene_list::SceneList;
 /// one: the entity is the root the scene describes.
 ///
 /// [`SpawnScene`]: zlim_app::SpawnScene
-#[derive(Component, TypePath, Clone, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct ScenePatchInstance {
     /// The patch to apply.
     pub handle: Handle<ScenePatch>,
@@ -59,7 +58,7 @@ impl ScenePatchInstance {
 /// as children of the entity that holds this component, once the list is loaded and resolved. The
 /// entity itself only serves as the parent — the list does not describe it — so this component is
 /// normally added to an empty entity created for the purpose.
-#[derive(Component, TypePath, Clone, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct SceneListPatchInstance {
     /// The list patch to spawn.
     pub handle: Handle<SceneListPatch>,

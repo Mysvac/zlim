@@ -2,8 +2,6 @@
 
 use core::time::Duration;
 
-use zlim_reflect::derive::TypePath;
-
 use crate::derive::Resource;
 
 use super::Time;
@@ -24,8 +22,7 @@ use super::fixed::Fixed;
 ///   `step_fixed`.
 ///
 /// [`World::alloc`]: crate::world::World::alloc
-#[derive(TypePath, Resource, Debug, Copy, Clone, PartialEq)]
-#[type_path = "zlim_core::time::TimeState"]
+#[derive(Resource, Debug, Copy, Clone, PartialEq)]
 pub struct TimeState {
     /// The last settled fixed-step state (interpolation start).
     pub prev: Time<Fixed>,
@@ -57,8 +54,7 @@ impl Default for TimeState {
 /// [`curr`](Self::curr) using [`alpha`](Self::alpha).
 ///
 /// [`World::step_fixed`]: crate::world::World::step_fixed
-#[derive(Default, TypePath, Resource, Debug, Copy, Clone, PartialEq)]
-#[type_path = "zlim_core::time::TimeSnapshot"]
+#[derive(Default, Resource, Debug, Copy, Clone, PartialEq)]
 pub struct TimeSnapshot {
     /// The last settled fixed-step state (interpolation start).
     pub prev: Time<Fixed>,

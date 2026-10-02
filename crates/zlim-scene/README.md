@@ -17,10 +17,9 @@ written this way — children nest, and a name reaches across the whole descript
 use zlim_core::derive::{Component, FromTemplate};
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 use zlim_scene::{WorldSceneExt, scn};
 
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Health {
     current: u32,
     max: u32,
@@ -28,7 +27,7 @@ struct Health {
 
 /// A component that points at another entity. `#[derive(FromTemplate)]` gives it a template whose
 /// field is an `EntityTemplate`, which is what a `#Name` resolves to.
-#[derive(TypePath, Component, Clone, FromTemplate)]
+#[derive(Component, Clone, FromTemplate)]
 struct Target {
     to: EntityId,
 }
@@ -76,10 +75,9 @@ in either order:
 ```rust
 use zlim_core::derive::Component;
 use zlim_core::world::World;
-use zlim_reflect::TypePath;
 use zlim_scene::{WorldSceneExt, scn_list};
 
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Scale(f32);
 
 let mut world = World::alloc();
@@ -232,10 +230,9 @@ land in. That is what makes the two forms of an entry different:
 
 ```rust
 use zlim_core::derive::Component;
-use zlim_reflect::TypePath;
 use zlim_scene::{ResolveContext, ResolvedScene, Scene, scn};
 
-#[derive(TypePath, Component, Clone, Default, Debug, PartialEq)]
+#[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Health {
     current: u32,
     max: u32,
@@ -450,9 +447,8 @@ asset.
 # use zlim_app::App;
 # use zlim_asset::plugin::AssetPlugin;
 # use zlim_core::derive::Component;
-# use zlim_reflect::TypePath;
 # use zlim_scene::{ScenePlugin, WorldSceneQueueExt, scn};
-# #[derive(TypePath, Component, Clone, Default)]
+# #[derive(Component, Clone, Default)]
 # struct Scale(f32);
 let mut app = App::new();
 app.add_plugins(AssetPlugin {

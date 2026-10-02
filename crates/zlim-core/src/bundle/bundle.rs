@@ -57,13 +57,12 @@ use crate::component::{Component, ComponentCollector, ComponentWriter, Component
 /// # Derive macro
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Position { x: f32, y: f32 }
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Velocity { dx: f32, dy: f32 }
 ///
 /// #[derive(Bundle)]
@@ -90,13 +89,12 @@ use crate::component::{Component, ComponentCollector, ComponentWriter, Component
 /// inline component lists:
 ///
 /// ```rust, no_run
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Position { x: f32, y: f32 }
 ///
-/// #[derive(TypePath, Component, Clone, Debug, PartialEq)]
+/// #[derive(Component, Clone, Debug, PartialEq)]
 /// struct Velocity { dx: f32, dy: f32 }
 ///
 /// let mut world = World::alloc();

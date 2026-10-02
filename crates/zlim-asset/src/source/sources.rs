@@ -4,7 +4,6 @@ use core::time::Duration;
 use std::sync::Arc;
 
 use zlim_core::derive::Resource;
-use zlim_reflect::derive::TypePath;
 use zlim_utils::hash::HashMap;
 use zlim_utils::mpmc::{self, Receiver, Sender};
 use zlim_utils::str::SmolStr;
@@ -482,7 +481,7 @@ const MISSING_DEFAULT_SOURCE: &str =
 /// A [`Resource`] that holds the [`AssetSourceBuilder`]s the asset sources are built from.
 ///
 /// [`Resource`]: trait@zlim_core::resource::Resource
-#[derive(TypePath, Resource, Default)]
+#[derive(Resource, Default)]
 pub struct AssetSourceBuilders {
     sources: HashMap<SmolStr, AssetSourceBuilder>,
     default: Option<AssetSourceBuilder>,
@@ -555,7 +554,7 @@ impl AssetSourceBuilders {
 // AssetSources
 
 /// A collection of [`AssetSource`]s.
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 pub struct AssetSources {
     sources: HashMap<&'static str, AssetSource>,
     default: AssetSource,

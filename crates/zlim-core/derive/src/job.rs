@@ -262,7 +262,7 @@ fn expand_common(input: JobInput) -> syn::Result<TokenStream> {
     let job_label_ = crate::path::job_label_(&zlim_core);
     let job_reg_ = crate::path::job_reg_(&zlim_core);
     let debug_location_ = crate::path::debug_location_(&zlim_core);
-    let type_path_trait_ = crate::path::type_path_trait_(&zlim_core);
+    let type_path_trait_ = crate::path::type_path_(&zlim_core);
     let type_path_derive_ = crate::path::type_path_derive_(&zlim_core);
     let intern_str_ = crate::path::intern_str_(&zlim_core);
     let slice_pool_ = crate::path::slice_pool_(&zlim_core);
@@ -346,14 +346,14 @@ fn expand_common(input: JobInput) -> syn::Result<TokenStream> {
             return expr_str;
         }
         let mut expr_name = String::with_capacity(15);
-        for c in expr_str.chars() {
-            if expr_name.len() + c.len_utf8() <= 13 {
+        for (i, c) in expr_str.char_indices() {
+            if i < 12 {
                 expr_name.push(c);
             } else {
+                expr_name.push_str("..");
                 break;
-            };
+            }
         }
-        expr_name.push_str("..");
         expr_name
     }
 

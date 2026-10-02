@@ -23,9 +23,8 @@ use super::{Message, MessageQueue};
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageQueue};
-/// use zlim_reflect::derive::TypePath;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Event;
 ///
 /// let mut messages = MessageQueue::<Event>::default();
@@ -87,9 +86,8 @@ impl<M: Message> FusedIterator for MessageKeyIter<M> {}
 ///
 /// ```rust
 /// use zlim_core::message::{Message, MessageCursor, MessageQueue};
-/// use zlim_reflect::derive::TypePath;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Hit;
 ///
 /// let mut messages = MessageQueue::<Hit>::default();
@@ -308,7 +306,7 @@ impl<M: Message> FusedIterator for MessageWithKeyIter<'_, M> {}
 /// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Hit;
 ///
 /// fn read_hits(mut reader: MessageReader<Hit>) {
@@ -464,7 +462,7 @@ impl<M: Message> FusedIterator for MessageMutWithKeyIter<'_, M> {}
 /// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Damage {
 ///     amount: u32,
 /// }

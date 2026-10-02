@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use zlim_core::derive::Component;
 use zlim_math::ops;
 use zlim_math::{Affine3A, Dir3, Isometry3d, Mat3, Mat4, Quat, Vec3, Vec3A};
+use zlim_reflect::Reflect;
 use zlim_reflect::derive::TypePath;
 
 // -----------------------------------------------------------------------------
@@ -18,9 +19,10 @@ use zlim_reflect::derive::TypePath;
 ///
 /// - For transform hierarchies to work correctly, you must have both a [`Transform`] and a [`GlobalTransform`].
 ///   [`GlobalTransform`] is automatically inserted whenever [`Transform`] is inserted.
-#[derive(Debug, PartialEq, Clone, Copy)]
-#[derive(Component, TypePath, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Copy, Component)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_transform::GlobalTransform"]
+#[component(copy, reflect)] // Transform should be serialized, but GlobalTransform does not.
 pub struct GlobalTransform(Affine3A);
 
 impl From<Affine3A> for GlobalTransform {
@@ -79,10 +81,10 @@ impl Default for GlobalTransform {
 ///
 /// [change detection]: zlim_core::tick::DetectChanges
 /// [`reparent_in_place`]: crate::EntityTransformExt::reparent_in_place
-#[derive(Debug, PartialEq, Clone, Copy)]
-#[derive(Component, TypePath, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Copy, Component)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_transform::Transform"]
-#[component(serialize)] // Transform should be serialized, but GlobalTransform does not.
+#[component(copy, reflect, serialize)] // Transform should be serialized, but GlobalTransform does not.
 #[require(GlobalTransform)]
 pub struct Transform {
     /// Position of the entity. In 2d, the last value of the `Vec3` is used for z-ordering.

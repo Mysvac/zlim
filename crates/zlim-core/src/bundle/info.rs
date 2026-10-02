@@ -57,10 +57,9 @@ impl BundleId {
 /// # Example
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Health(u32);
 ///
 /// let mut world = World::alloc();

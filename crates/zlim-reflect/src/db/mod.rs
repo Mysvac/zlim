@@ -48,6 +48,11 @@ use crate::ops::Reflect;
 /// [`TypeDB::collect`].
 ///
 /// [`register_reflect!`]: crate::register_reflect!
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not implement `TypeDatabase`",
+    label = "invalid `TypeDatabase`",
+    note = "consider annotating `{Self}` with `#[derive(Reflect)]`"
+)]
 pub trait TypeDatabase: Reflect + Typed {
     /// Called after the type's [`TypeDB`] entry is created.
     #[inline(always)]

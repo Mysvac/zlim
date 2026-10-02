@@ -5,12 +5,13 @@ use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use std::sync::{PoisonError, RwLock};
 
+use zlim_reflect::TypeDB;
 use zlim_utils::ext::{CachePadded, TypeMap};
 use zlim_utils::hash::HashMap;
 
-use super::alias::*;
 use super::{Component, ComponentHook, ComponentId, Required};
 use crate::clone::ComponentCloner;
+use crate::component::ReflectComponent;
 use crate::utils::Dropper;
 
 // -----------------------------------------------------------------------------
@@ -25,7 +26,7 @@ pub(super) static ID_REGISTRY: CachePadded<RwLock<Vec<&'static ComponentDB>>> =
 pub(super) static TYPE_REGISTRY: CachePadded<RwLock<TypeMap<&'static ComponentDB>>> =
     CachePadded::new(RwLock::new(TypeMap::new()));
 
-/// Type-path-indexed global registry of every registered [`ComponentDB`].
+/// Type-path-indexed global registry of reflected [`Component`].
 pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'static ComponentDB>>> =
     CachePadded::new(RwLock::new(HashMap::new()));
 
@@ -39,6 +40,7 @@ pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'stat
 /// `ID_REGISTRY`. Holds type identity, lifecycle hooks, memory layout,
 /// clone/drop strategy, and serialization routines — all type-erased so
 /// they can be stored homogeneously.
+#[repr(C)] // The determined field order can optimize access speed.
 pub struct ComponentDB {
     // --------------------------------
     // Ident
@@ -51,23 +53,23 @@ pub struct ComponentDB {
     // Memory Layout
     /// Memory layout (size + alignment) of `Self`.
     pub layout: Layout,
-    /// Cloning strategy for this component.
-    pub cloner: ComponentCloner,
     /// Optional custom dropper; `None` means standard drop.
     pub dropper: Option<Dropper>,
+    /// Cloning strategy for this component.
+    pub cloner: ComponentCloner,
 
     // --------------------------------
     // Required Components
     pub required: Option<Required>,
 
     // --------------------------------
-    // Names
-    /// Fully-qualified type path (e.g. `"my_crate::components::Transform"`).
-    pub type_path: &'static str,
-    /// Short type name (e.g. `"Transform"`).
-    pub type_name: &'static str,
-    /// Module path of the type definition.
-    pub module_path: &'static str,
+    // Reflect
+    /// Does the component need serialization.
+    pub serialize: bool,
+    /// Cached type database.
+    pub type_db: Option<&'static TypeDB>,
+    /// Reflect functions.
+    pub reflect: Option<&'static ReflectComponent>,
 
     // --------------------------------
     // Hook
@@ -79,35 +81,20 @@ pub struct ComponentDB {
     pub on_insert: Option<ComponentHook>,
     /// Hook invoked when the component is removed from its entity.
     pub on_remove: Option<ComponentHook>,
-    /// Hook invoked when the component value is discarded (i.e. component
-    /// replace, remove, or entity despawn).
+    /// Hook invoked when the component value is discarded
+    /// (i.e. component replace, remove, or entity despawn).
     pub on_discard: Option<ComponentHook>,
     /// Hook invoked when the owning entity is despawned.
     pub on_despawn: Option<ComponentHook>,
 
-    /// Type-erased entity-remapping function.
-    ///
-    /// # Warning
-    /// This field is unstable, should not be used by user.
-    #[doc(hidden)]
-    pub map_entities: MapEntitiesFunc,
-
     // --------------------------------
-    // Serialization
-    /// Type-erased serialization function pointer,
-    /// `None` when the component does not support serialization.
-    ///
-    /// # Warning
-    /// This field is unstable, should not be used by user.
-    #[doc(hidden)]
-    pub serialize: Option<SerializeFunc>,
-    /// Type-erased deserialization function pointer,
-    /// `None` when the component does not support serialization.
-    ///
-    /// # Warning
-    /// This field is unstable, should not be used by user.
-    #[doc(hidden)]
-    pub deserialize: Option<DeserializeFunc>,
+    // Names
+    /// Fully-qualified type path (e.g. `"my_crate::components::Transform"`).
+    pub type_path: &'static str,
+    /// Short type name (e.g. `"Transform"`).
+    pub type_name: &'static str,
+    /// Module path of the type definition.
+    pub module_path: &'static str,
 }
 
 impl Debug for ComponentDB {
@@ -130,10 +117,9 @@ impl ComponentDB {
     /// # Example
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Component, Clone)]
+    /// #[derive(Component, Clone)]
     /// struct Position {
     ///     x: f32,
     ///     y: f32,
@@ -147,10 +133,6 @@ impl ComponentDB {
     /// ```
     #[inline(always)]
     pub fn of<T: Component>() -> &'static ComponentDB {
-        if let Some(db) = ComponentDB::get_by_type(TypeId::of::<T>()) {
-            return db;
-        }
-        ::core::hint::cold_path();
         <T as Component>::REGISTER()
     }
 
@@ -181,10 +163,12 @@ impl ComponentDB {
             .copied()
     }
 
-    /// Looks up a [`ComponentDB`] by its fully-qualified type path (e.g.
-    /// `"my_crate::components::Transform"`).
+    /// Looks up a [`ComponentDB`] by its fully-qualified type path
+    /// (e.g. `"my_crate::components::Transform"`).
     ///
-    /// Returns `None` if the type has not been registered yet.
+    /// This can only find components that support reflection.
+    ///
+    /// Returns `None` if the type has not been registered or reflected.
     pub fn get_by_path(path: &str) -> Option<&'static ComponentDB> {
         PATH_REGISTRY
             .read()

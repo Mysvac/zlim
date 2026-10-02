@@ -10,7 +10,6 @@ use core::fmt::{Debug, Formatter};
 use std::path::PathBuf;
 
 use zlim_core::derive::Message;
-use zlim_reflect::TypePath;
 
 use crate::asset::Asset;
 use crate::error::AssetLoadError;
@@ -88,7 +87,7 @@ pub enum AssetSourceEvent {
 /// [`Assets<A>`]: crate::assets::Assets
 /// [`MessageQueue`]: zlim_core::message::MessageQueue
 /// [`MessageReader`]: zlim_core::message::MessageReader
-#[derive(TypePath, Message)]
+#[derive(Message)]
 pub enum AssetEvent<A: Asset> {
     /// Emitted whenever an [`Asset`] is added.
     Added {
@@ -204,7 +203,7 @@ impl<A: Asset> Eq for AssetEvent<A> {}
 // ErasedAssetLoadFailedEvent
 
 /// An untyped version of [`AssetLoadFailedEvent`].
-#[derive(TypePath, Message, Clone, Debug)]
+#[derive(Message, Clone, Debug)]
 pub struct ErasedAssetLoadFailedEvent {
     /// The stable identifier of the asset that failed to load.
     pub id: ErasedAssetId,
@@ -218,7 +217,7 @@ pub struct ErasedAssetLoadFailedEvent {
 // AssetLoadFailedEvent
 
 /// Emitted when an asset of type `A` fails to load.
-#[derive(TypePath, Message, Debug)]
+#[derive(Message, Debug)]
 pub struct AssetLoadFailedEvent<A: Asset> {
     /// The stable identifier of the asset that failed to load.
     pub id: AssetId<A>,

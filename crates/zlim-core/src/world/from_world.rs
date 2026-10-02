@@ -14,10 +14,9 @@ use super::{World, WorldId};
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, Default)]
+/// #[derive(Component, Clone, Default)]
 /// struct Board {
 ///     width: u32,
 ///     height: u32,

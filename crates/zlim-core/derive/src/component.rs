@@ -29,8 +29,7 @@ struct ComponentAttrs {
     on_remove: Option<syn::ExprPath>,
     on_discard: Option<syn::ExprPath>,
     on_despawn: Option<syn::ExprPath>,
-    /// `serialize`: register with serialization support (requires
-    /// `Serialize` + `Deserialize`) and set `Component::SERIALIZE` to `true`.
+    reflect: bool,
     serialize: bool,
     /// `#[require(A, B)]`: required components, stored in the
     /// `Component::REQUIRED` constant.
@@ -60,6 +59,7 @@ fn parse_component_attrs(attrs: &[syn::Attribute]) -> syn::Result<ComponentAttrs
         on_remove: None,
         on_discard: None,
         on_despawn: None,
+        reflect: false,
         serialize: false,
         required: Vec::new(),
     };
@@ -135,10 +135,18 @@ fn parse_component_attrs(attrs: &[syn::Attribute]) -> syn::Result<ComponentAttrs
             } else if meta.path.is_ident("serialize") {
                 ret.serialize = true;
                 Ok(())
+            } else if meta.path.is_ident("reflect") {
+                ret.reflect = true;
+                Ok(())
             } else {
                 Err(meta.error("unsupported component attribute"))
             }
         })?;
+    }
+
+    if ret.serialize && !ret.reflect {
+        const MSG: &str = "`#[component(serialize)]` requires `#[component(reflect)]`";
+        return Err(syn::Error::new(Span::call_site(), MSG));
     }
 
     Ok(ret)
@@ -217,28 +225,25 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
     // --- generic bounds ------------------------------------------------
     if generics.type_params().next().is_some() {
-        let type_path_ = crate::path::type_path_(&zlim_core);
-
-        // `Serialize`/`Deserialize` are only required when the component is
-        // registered with serialization support.
-        let serde_bounds = if attrs.serialize {
-            let serialize_ = crate::path::serialize_(&zlim_core);
-            let deserialize_ = crate::path::deserialize_(&zlim_core);
-            quote! { + #serialize_ + for<'__de_x_> #deserialize_<'__de_x_> }
-        } else {
-            quote! {}
-        };
-
         let predicates = &mut generics.make_where_clause().predicates;
+
+        predicates.push(parse_quote! {
+            Self: ::core::marker::Send + ::core::marker::Sync + ::core::marker::Sized + 'static
+        });
+
         match &attrs.cloner {
+            Cloner::Cloneable => predicates.push(parse_quote! {
+                Self: ::core::clone::Clone
+            }),
             Cloner::Copy => predicates.push(parse_quote! {
-                Self: ::core::marker::Copy + #type_path_ #serde_bounds
-                    + ::core::marker::Send + ::core::marker::Sync + ::core::marker::Sized + 'static
+                Self: ::core::marker::Copy
             }),
-            _ => predicates.push(parse_quote! {
-                Self: ::core::clone::Clone + #type_path_ #serde_bounds +
-                    ::core::marker::Send + ::core::marker::Sync + ::core::marker::Sized + 'static
-            }),
+            _ => {}
+        }
+
+        if attrs.reflect {
+            let type_database_ = crate::path::type_database_(&zlim_core);
+            predicates.push(parse_quote! { Self: #type_database_ });
         }
     } else if generics.lifetimes().next().is_some() {
         generics
@@ -290,27 +295,39 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
 
     // --- hooks ---------------------------------------------------------
     let on_add_tokens = match &attrs.on_add {
-        Some(p) => quote! { const ON_ADD: Option<#component_hook_> = Some(#p); },
+        Some(p) => {
+            quote! { const ON_ADD: ::core::option::Option<#component_hook_> = ::core::option::Option::Some(#p); }
+        }
         None => TokenStream::new(),
     };
     let on_clone_tokens = match &attrs.on_clone {
-        Some(p) => quote! { const ON_CLONE: Option<#component_hook_> = Some(#p); },
+        Some(p) => {
+            quote! { const ON_CLONE: ::core::option::Option<#component_hook_> = ::core::option::Option::Some(#p); }
+        }
         None => TokenStream::new(),
     };
     let on_insert_tokens = match &attrs.on_insert {
-        Some(p) => quote! { const ON_INSERT: Option<#component_hook_> = Some(#p); },
+        Some(p) => {
+            quote! { const ON_INSERT: ::core::option::Option<#component_hook_> = ::core::option::Option::Some(#p); }
+        }
         None => TokenStream::new(),
     };
     let on_remove_tokens = match &attrs.on_remove {
-        Some(p) => quote! { const ON_REMOVE: Option<#component_hook_> = Some(#p); },
+        Some(p) => {
+            quote! { const ON_REMOVE: ::core::option::Option<#component_hook_> = ::core::option::Option::Some(#p); }
+        }
         None => TokenStream::new(),
     };
     let on_discard_tokens = match &attrs.on_discard {
-        Some(p) => quote! { const ON_DISCARD: Option<#component_hook_> = Some(#p); },
+        Some(p) => {
+            quote! { const ON_DISCARD: ::core::option::Option<#component_hook_> = ::core::option::Option::Some(#p); }
+        }
         None => TokenStream::new(),
     };
     let on_despawn_tokens = match &attrs.on_despawn {
-        Some(p) => quote! { const ON_DESPAWN: Option<#component_hook_> = Some(#p); },
+        Some(p) => {
+            quote! { const ON_DESPAWN: ::core::option::Option<#component_hook_> = ::core::option::Option::Some(#p); }
+        }
         None => TokenStream::new(),
     };
 
@@ -333,9 +350,7 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
             quote! { #map_entities_::map_entities(&mut self.#access, mapper); }
         });
         quote! {
-            fn map_entities<__M_Z_: #entity_mapper_>(&mut self, mapper: &mut __M_Z_) {
-                #(#calls)*
-            }
+            fn map_entities<__M_Z_: #entity_mapper_>(&mut self, mapper: &mut __M_Z_) { #(#calls)* }
         }
     };
 
@@ -347,11 +362,15 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     // `SERIALIZE = true`.
     let register_tokens = if attrs.serialize {
         let component_db_ = crate::path::component_db_(&zlim_core);
+        let register_serialize_ = crate::path::component_register_serialize_(&zlim_core);
         quote! {
-            const SERIALIZE: bool = true;
-
-            const REGISTER: fn() -> &'static #component_db_ =
-                #zlim_core::component::register_serializable::<Self>;
+            const REGISTER: fn() -> &'static #component_db_ = #register_serialize_::<Self>;
+        }
+    } else if attrs.reflect {
+        let component_db_ = crate::path::component_db_(&zlim_core);
+        let register_reflect_ = crate::path::component_register_reflect_(&zlim_core);
+        quote! {
+            const REGISTER: fn() -> &'static #component_db_ = #register_reflect_::<Self>;
         }
     } else {
         TokenStream::new()
@@ -360,18 +379,30 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     // --- required components -------------------------------------------
     let required_tokens = if attrs.required.is_empty() {
         TokenStream::new()
-    } else {
+    } else if attrs.required.len() > 8 * 12 {
+        ::core::hint::cold_path();
+        const MSG: &str = "too many required components";
+        return syn::Error::new(Span::call_site(), MSG).into_compile_error();
+    } else if attrs.required.len() <= 12 {
+        let required_ = crate::path::required_(&zlim_core);
         let ts = &attrs.required;
         quote! {
-            const REQUIRED: Option<#zlim_core::component::Required> =
-                Some(#zlim_core::component::Required::from::<(#(#ts),*)>());
+            const REQUIRED: ::core::option::Option<#required_> = ::core::option::Option::Some(#required_::from::<(#(#ts),*)>());
+        }
+    } else {
+        let required_ = crate::path::required_(&zlim_core);
+        let ts = &attrs.required;
+        let tss = ts.chunks(8).map(|c| quote!( (#(#c),*) ));
+        quote! {
+            const REQUIRED: ::core::option::Option<#required_> = ::core::option::Option::Some(#required_::from::<(#(#tss),*)>());
         }
     };
 
     // --- auto-registration (non-generic types only) -------------------
     let auto_register = if generics.type_params().next().is_none() {
+        let submit_ = crate::path::submit_(&zlim_core);
         quote! {
-            #zlim_core::__macro_exports__::__submit!(
+            #submit_!(
                 #zlim_core::component::__internal__::__ComponentReg__::of::<#type_ident>()
                 => #zlim_core::component::__internal__::__ComponentReg__
             );

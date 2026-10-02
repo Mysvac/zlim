@@ -20,10 +20,9 @@ use crate::world::WorldCell;
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Position { x: f32, y: f32 }
 ///
 /// fn total_x(query: Query<&Position>) -> f32 {
@@ -154,10 +153,9 @@ impl<D: QueryData, F: QueryFilter> FusedIterator for QueryIter<'_, '_, D, F> {}
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Health(u32);
 ///
 /// fn max_health(query: Query<&Health>) -> u32 {

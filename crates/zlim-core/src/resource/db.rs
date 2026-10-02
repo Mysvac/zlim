@@ -5,11 +5,12 @@ use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use std::sync::{PoisonError, RwLock};
 
+use zlim_reflect::TypeDB;
 use zlim_utils::ext::{CachePadded, TypeMap};
 use zlim_utils::hash::HashMap;
 
-use super::alias::{DeserializeFunc, SerializeFunc};
 use super::id::ResourceId;
+use super::reflect::ReflectResource;
 use super::resource::Resource;
 use crate::utils::Dropper;
 
@@ -25,7 +26,7 @@ pub(super) static ID_REGISTRY: CachePadded<RwLock<Vec<&'static ResourceDB>>> =
 pub(super) static TYPE_REGISTRY: CachePadded<RwLock<TypeMap<&'static ResourceDB>>> =
     CachePadded::new(RwLock::new(TypeMap::new()));
 
-/// Type-path-indexed global registry of every registered [`ResourceDB`].
+/// Type-path-indexed global registry of reflected [`Resource`].
 pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'static ResourceDB>>> =
     CachePadded::new(RwLock::new(HashMap::new()));
 
@@ -46,10 +47,9 @@ pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'stat
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Resource)]
+/// #[derive(Resource)]
 /// struct Score(u32);
 ///
 /// // `ResourceDB::of` registers the type on first use and returns its
@@ -57,13 +57,9 @@ pub(super) static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'stat
 /// let db = ResourceDB::of::<Score>();
 /// assert_eq!(db.type_name, "Score");
 ///
-/// // The same metadata is reachable by id, type, or path.
+/// // The same metadata is reachable by id or by type.
 /// assert!(core::ptr::eq(ResourceDB::get_by_id(db.id), db));
 /// assert!(core::ptr::eq(ResourceDB::get_by_type(db.type_id).unwrap(), db));
-/// assert!(core::ptr::eq(
-///     ResourceDB::get_by_path(db.type_path).unwrap(),
-///     db,
-/// ));
 /// ```
 ///
 /// [`Resource`]: crate::resource::Resource
@@ -76,13 +72,6 @@ pub struct ResourceDB {
     /// The [`TypeId`] of the resource type.
     pub type_id: TypeId,
 
-    /// The full type path string (e.g., `"my_crate::MyResource"`).
-    pub type_path: &'static str,
-    /// The short type name string (e.g., `"MyResource"`).
-    pub type_name: &'static str,
-    /// The module path where the type is defined.
-    pub module_path: &'static str,
-
     // --------------------------------
     // Memory Layout
     /// Memory layout of the resource type (size + alignment).
@@ -91,21 +80,27 @@ pub struct ResourceDB {
     pub dropper: Option<Dropper>,
 
     // --------------------------------
-    // Serialization
-    /// Type-erased serialization function pointer,
-    /// `None` when the resource does not support serialization.
+    // Reflect
+    /// Does the resource need serialization.
     ///
-    /// # Warning
-    /// This field is unstable, should not be used by user.
-    #[doc(hidden)]
-    pub serialize: Option<SerializeFunc>,
-    /// Type-erased deserialization function pointer,
-    /// `None` when the resource does not support serialization.
+    /// Unused, always false.
+    pub serialize: bool,
+    /// Cached type database.
+    pub type_db: Option<&'static TypeDB>,
+    /// Reflect functions.
+    pub reflect: Option<&'static ReflectResource>,
+
+    // --------------------------------
+    // Ident
+    /// The full type path string (e.g., `"my_crate::MyResource"`).
     ///
-    /// # Warning
-    /// This field is unstable, should not be used by user.
-    #[doc(hidden)]
-    pub deserialize: Option<DeserializeFunc>,
+    /// Only accurate when the resource supports reflection; otherwise it is
+    /// derived from [`core::any::type_name`] and is not a stable identifier.
+    pub type_path: &'static str,
+    /// The short type name string (e.g., `"MyResource"`).
+    pub type_name: &'static str,
+    /// The module path where the type is defined.
+    pub module_path: &'static str,
 }
 
 impl Debug for ResourceDB {
@@ -129,10 +124,9 @@ impl ResourceDB {
     /// # Examples
     ///
     /// ```rust
-    /// use zlim_reflect::TypePath;
     /// use zlim_core::prelude::*;
     ///
-    /// #[derive(TypePath, Resource)]
+    /// #[derive(Resource)]
     /// struct Score(u32);
     ///
     /// let db = ResourceDB::of::<Score>();
@@ -142,10 +136,6 @@ impl ResourceDB {
     /// [`Resource::REGISTER`]: crate::resource::Resource::REGISTER
     #[inline(always)]
     pub fn of<T: Resource>() -> &'static ResourceDB {
-        if let Some(db) = ResourceDB::get_by_type(TypeId::of::<T>()) {
-            return db;
-        }
-        ::core::hint::cold_path();
         <T as Resource>::REGISTER()
     }
 
@@ -182,8 +172,12 @@ impl ResourceDB {
     /// Looks up [`ResourceDB`] metadata by type path string.
     ///
     /// The path is the full type path as returned by [`TypePath::type_path`]
-    /// (e.g., `"my_crate::MyResource"`). Returns `None` if no resource with
-    /// the given path has been registered.
+    /// (e.g., `"my_crate::MyResource"`).
+    ///
+    /// This can only find resources that support reflection.
+    ///
+    /// Returns `None` if no resource with the given path has been registered
+    /// or reflected.
     ///
     /// [`TypePath::type_path`]: zlim_reflect::TypePath::type_path
     pub fn get_by_path(path: &str) -> Option<&'static ResourceDB> {

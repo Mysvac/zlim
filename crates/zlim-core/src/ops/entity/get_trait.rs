@@ -18,13 +18,12 @@ use crate::tick::Tick;
 /// # Examples
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Position { x: f32, y: f32 }
 ///
-/// #[derive(TypePath, Component, Clone, PartialEq, Debug)]
+/// #[derive(Component, Clone, PartialEq, Debug)]
 /// struct Name(&'static str);
 ///
 /// let mut world = World::alloc();

@@ -82,10 +82,9 @@ const ALWAYS: u32 = 2;
 /// # Example
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 ///
-/// #[derive(TypePath, Message)]
+/// #[derive(Message)]
 /// struct Ping;
 ///
 /// let mut world = World::alloc();

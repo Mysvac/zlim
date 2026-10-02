@@ -135,17 +135,16 @@ type HookItem = (ComponentId, ComponentHook);
 /// # Example
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::table::Tables;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Position {
 ///     x: f32,
 ///     y: f32,
 /// }
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Health {
 ///     value: u32,
 /// }

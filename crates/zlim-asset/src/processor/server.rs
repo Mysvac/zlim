@@ -147,7 +147,7 @@ pub enum SetTransactionLoggerFailed {
 ///
 /// [`AssetSources`]: crate::source::AssetSources
 /// [`AssetPlugin`]: crate::plugin::AssetPlugin
-#[derive(TypePath, Resource)]
+#[derive(Resource)]
 pub struct AssetProcessServer {
     pub(super) server: AssetServer,
 

@@ -12,7 +12,7 @@ use syn::{Data, DeriveInput, Fields};
 pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     let zlim_core = crate::path::zlim_core_path();
     let schedule_stage_ = crate::path::schedule_stage_(&zlim_core);
-    let type_path_ = crate::path::type_path_trait_(&zlim_core);
+    let type_path_ = crate::path::type_path_(&zlim_core);
 
     if !ast.generics.params.is_empty() {
         let message = "ScheduleStage does not support generic types";

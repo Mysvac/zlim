@@ -27,11 +27,10 @@ use crate::utils::{DebugCheckedUnwrap, SlicePool};
 /// # Example
 ///
 /// ```rust
-/// use zlim_reflect::TypePath;
 /// use zlim_core::prelude::*;
 /// use zlim_core::table::Tables;
 ///
-/// #[derive(TypePath, Component, Clone)]
+/// #[derive(Component, Clone)]
 /// struct Position {
 ///     x: f32,
 /// }
