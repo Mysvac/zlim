@@ -1,4 +1,4 @@
-use super::{FromTemplate, Template, TemplateContext};
+use super::{IntoTemplate, Template, TemplateContext};
 use crate::error::ZlimResult;
 
 // -----------------------------------------------------------------------------
@@ -12,50 +12,50 @@ use crate::error::ZlimResult;
 /// one of the element, and spelling out `OptionTemplate<HandleTemplate<T>>` by hand gets tedious.
 ///
 /// This trait names that template, and `#[template(built_in)]` on a field is what asks the derive
-/// to use it. See [`FromTemplate`] document for details.
+/// to use it. See [`IntoTemplate`] document for details.
 ///
 /// [`Option<Handle<T>>`]: crate::template
 pub trait BuiltInTemplate: Sized {
     /// The template considered built in for this type.
-    type Template: Template;
+    type Template: Template<Output = Self>;
+
+    fn built_in_template(self) -> Self::Template;
 }
 
-impl<T: FromTemplate> BuiltInTemplate for Option<T> {
+impl<T: IntoTemplate> BuiltInTemplate for Option<T> {
     type Template = OptionTemplate<T::Template>;
+
+    fn built_in_template(self) -> Self::Template {
+        OptionTemplate(self.map(IntoTemplate::into_template))
+    }
 }
 
-impl<T: FromTemplate> BuiltInTemplate for Vec<T> {
+impl<T: IntoTemplate> BuiltInTemplate for Vec<T> {
     type Template = VecTemplate<T::Template>;
+
+    fn built_in_template(self) -> Self::Template {
+        VecTemplate(self.into_iter().map(IntoTemplate::into_template).collect())
+    }
 }
 
 // -----------------------------------------------------------------------------
 // OptionTemplate
 
-/// A [`Template`] of an [`Option`].
-#[derive(Default)]
-pub enum OptionTemplate<T> {
-    /// The template of an absent value, which builds [`None`].
-    #[default]
-    None,
+/// A built-in [`Template`] of a [`Vec`].
+#[repr(transparent)]
+pub struct OptionTemplate<T>(pub Option<T>);
 
-    /// The template of the value.
-    Some(T),
+impl<T> Default for OptionTemplate<T> {
+    #[inline]
+    fn default() -> Self {
+        Self(None)
+    }
 }
 
 impl<T> From<Option<T>> for OptionTemplate<T> {
     #[inline]
     fn from(value: Option<T>) -> Self {
-        match value {
-            Some(value) => Self::Some(value),
-            None => Self::None,
-        }
-    }
-}
-
-impl<T> From<T> for OptionTemplate<T> {
-    #[inline]
-    fn from(value: T) -> Self {
-        Self::Some(value)
+        Self(value)
     }
 }
 
@@ -65,17 +65,17 @@ impl<T: Template> Template for OptionTemplate<T> {
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     fn build_template(&self, context: &mut TemplateContext) -> ZlimResult<Self::Output> {
-        match self {
-            Self::Some(template) => Ok(Some(template.build_template(context)?)),
-            Self::None => Ok(None),
+        match &self.0 {
+            Some(template) => Ok(Some(template.build_template(context)?)),
+            None => Ok(None),
         }
     }
 
     #[inline]
     fn clone_template(&self) -> Self {
-        match self {
-            Self::Some(template) => Self::Some(template.clone_template()),
-            Self::None => Self::None,
+        match &self.0 {
+            Some(template) => Self(Some(template.clone_template())),
+            None => Self(None),
         }
     }
 }
@@ -83,13 +83,21 @@ impl<T: Template> Template for OptionTemplate<T> {
 // -----------------------------------------------------------------------------
 // VecTemplate
 
-/// A [`Template`] of a [`Vec`].
+/// A built-in [`Template`] of a [`Vec`].
+#[repr(transparent)]
 pub struct VecTemplate<T>(pub Vec<T>);
 
 impl<T> Default for VecTemplate<T> {
     #[inline]
     fn default() -> Self {
         Self(Vec::new())
+    }
+}
+
+impl<T> From<Vec<T>> for VecTemplate<T> {
+    #[inline]
+    fn from(value: Vec<T>) -> Self {
+        Self(value)
     }
 }
 

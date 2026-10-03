@@ -13,7 +13,7 @@
 //! - **Often serializable**: templates are usually plain data, which is what makes them good scene
 //!   files.
 //!
-//! [`FromTemplate`] is the other half: it names the canonical template of a type, so that a
+//! [`IntoTemplate`] is the other half: it names the canonical template of a type, so that a
 //! component holding a templateable field can be described by describing its fields.
 //!
 //! What the built value does with the entity is a [`TemplateEffect`], and that is what makes a template
@@ -23,16 +23,17 @@
 //!
 //! # Templates that are derived automatically
 //!
-//! Both traits are implemented for every `Clone + Unpin` type: such a type is its own template, and
-//! building it just clones it. Most types therefore already have a template, and a type only needs
-//! a template of its own — derived with `#[derive(FromTemplate)]`, or written by hand — when one of
-//! its fields is itself templateable.
+//! Every [`Clone`] type is its own [`Template`], and every `Clone + Default` type is its own
+//! [`IntoTemplate`]: such a type is described by itself, and building it just clones it. Most types
+//! therefore already have a template, and a type only needs a template of its own — derived with
+//! `#[derive(IntoTemplate)]`, or written by hand — when one of its fields is itself described by a
+//! template.
 //!
-//! Because of that blanket implementation, the three traits [`FromTemplate`], [`Default`] and
+//! Because of that blanket implementation, the three traits [`IntoTemplate`], [`Default`] and
 //! [`Clone`] cannot all be implemented for the same type: `Default + Clone` already implies
-//! [`FromTemplate`], so a second implementation would conflict. This is also why [`Template`] has
+//! [`IntoTemplate`], so a second implementation would conflict. This is also why [`Template`] has
 //! its own [`Template::clone_template`] method instead of requiring [`Clone`], and why the types
-//! that implement [`Template`] or [`FromTemplate`] by hand are deliberately not [`Clone`] — or, when
+//! that implement [`Template`] or [`IntoTemplate`] by hand are deliberately not [`Clone`] — or, when
 //! they have to be, not [`Unpin`]; see [`SpecializeFromTemplate`].
 
 mod collections;
@@ -52,7 +53,7 @@ pub use erased::ErasedTemplate;
 pub use function::{FnTemplate, template};
 pub use tuple::TemplateTuple;
 
-pub use crate::derive::FromTemplate;
+pub use crate::derive::IntoTemplate;
 
 use crate::error::ZlimResult;
 
@@ -62,7 +63,7 @@ use crate::error::ZlimResult;
 /// A description of a value that is built with the context of the entity it belongs to.
 ///
 /// See the [module documentation](self) for what a template is and how the blanket implementation
-/// relates to [`FromTemplate`].
+/// relates to [`IntoTemplate`].
 pub trait Template {
     /// The type of value this template produces.
     type Output;
@@ -79,37 +80,40 @@ pub trait Template {
 }
 
 // -----------------------------------------------------------------------------
-// FromTemplate
+// IntoTemplate
 
 /// The canonical [`Template`] of a type.
 ///
-/// Types that can be produced by a template name it here, which is what lets a type be described
-/// through the templates of its fields. It is best thought of as an alternative to [`Default`] for
-/// types whose construction needs a world: see the [module documentation](self).
+/// Types that can be produced by a template name it here, which is what lets
+/// a type be described through the templates of its fields. It is best thought
+/// of as an alternative to [`Default`] for types whose construction needs a
+/// world: see the [module documentation](self).
 ///
-/// [`FromTemplate`] can be derived for types whose fields _also_ implement [`FromTemplate`]:
+/// # Derive Macro
+///
+/// [`IntoTemplate`] can be derived for types whose fields _also_ implement [`IntoTemplate`]:
 ///
 /// ```rust, ignore
-/// #[derive(FromTemplate)]
+/// #[derive(IntoTemplate)]
 /// struct Player {
 ///     image: Handle<Image>
 /// }
 /// ```
 ///
-/// Deriving [`FromTemplate`] will generate a [`Template`] type for the deriving type.
+/// Deriving [`IntoTemplate`] will generate a [`Template`] type for the deriving type.
 /// The example above would generate a `PlayerTemplate` like this:
 ///
 /// ```rust, ignore
-/// struct Player {
-///     image: Handle<Image>
-/// }
-///
-/// impl FromTemplate for Player {
-///     type Template = PlayerTemplate;
-/// }
-///
 /// struct PlayerTemplate {
 ///     image: HandleTemplate<Image>,
+/// }
+///
+/// impl IntoTemplate for Player {
+///     type Template = PlayerTemplate;
+///
+///     fn into_template(self) -> Self::Template {
+///         PlayerTemplate { image: self.image.into_template() }
+///     }
 /// }
 ///
 /// impl Template for PlayerTemplate {
@@ -125,10 +129,21 @@ pub trait Template {
 /// }
 /// ```
 ///
-/// [`FromTemplate`] derives can specify custom templates to use instead of a canonical [`FromTemplate`]:
+/// # Macro Attributes
+///
+/// | Field | `into_template` uses |
+/// |-------|----------------------|
+/// | *(none)* | the field type's own [`IntoTemplate`] |
+/// | `#[template(built_in)]` | the field type's [`BuiltInTemplate`] |
+/// | `#[template(SomeTemplate)]` | `Into<SomeTemplate>` for the field type |
+///
+/// ## Custom Template
+///
+/// [`IntoTemplate`] derives can specify custom templates to use instead of a
+/// canonical [`IntoTemplate`]:
 ///
 /// ```rust, ignore
-/// #[derive(FromTemplate)]
+/// #[derive(IntoTemplate)]
 /// struct Counter {
 ///     #[template(Always10)]
 ///     count: usize
@@ -137,60 +152,76 @@ pub trait Template {
 /// #[derive(Default)]
 /// struct Always10;
 ///
+/// // The field converts into the named template, so `into_template` needs this.
+/// impl From<usize> for Always10 {
+///     fn from(_: usize) -> Self { Self }
+/// }
+///
 /// impl Template for Always10 {
 ///     type Output = usize;
 ///
 ///     fn build_template(&self, ctx: &mut TemplateContext) -> Result<Self::Output> { Ok(10) }
-///
 ///     fn clone_template(&self) -> Self { Always10 }
 /// }
 /// ```
 ///
-/// [`FromTemplate`] is automatically implemented for anything that is [`Default`] and [`Clone`].
+/// ## BuiltIn Template
+///
+/// [`IntoTemplate`] is automatically implemented for anything that is [`Default`] and [`Clone`].
 /// "Built in" collection types like [`Option`] and [`Vec`] pick up this "blanket" implementation,
-/// which is generally a good thing because it means these collection types work with [`FromTemplate`]
+/// which is generally a good thing because it means these collection types work with [`IntoTemplate`]
 /// derives by default.
 ///
-/// However if the items in the collection have a custom [`FromTemplate`] impl (ex: a manual implementation
-/// like `Handle<T>` for assets or an explicit [`FromTemplate`] derive), then relying on a [`Default`] /
+/// However if the items in the collection have a custom [`IntoTemplate`] impl (ex: a manual implementation
+/// like `Handle<T>` for assets or an explicit [`IntoTemplate`] derive), then relying on a [`Default`] /
 /// [`Clone`] implementation doesn't work, as that won't run the template logic!
 ///
-/// Therefore, cases like [`Option<Handle<T>>`] need something other than [`FromTemplate`] to determine the
-/// type. One option is to specify the template manually:
-///
 /// ```rust, ignore
-/// #[derive(FromTemplate)]
-/// struct Widget {
-///     #[template(OptionTemplate<HandleTemplate<Image>>)]
-///     image: Option<Handle<Image>>
-/// }
+/// type T = <Handle<Image> as IntoTemplate>::template;
+/// // ↑ T = HandleTemplate<Image> ✅️
+///
+/// type T = <Option<Handle<Image>> as IntoTemplate>::template;
+/// // ↑ T = Option<Handle<Image>> ❌️
 /// ```
 ///
-/// However that is a bit of a mouthful! This is where [`BuiltInTemplate`] comes in. It fills the same role
-/// as [`FromTemplate`], but has no blanket implementation for [`Default`] and [`Clone`], meaning we can have
-/// custom implementations for types like [`Option`] and [`Vec`].
-///
-/// If you are deriving [`FromTemplate`] and you have a "built in" type like [`Option<Handle<T>>`] which has custom
-/// template logic, annotate it with the `template(built_in)` attribute to use [`BuiltInTemplate`] instead of [`FromTemplate`]:
+/// This is where [`BuiltInTemplate`] comes in:
 ///
 /// ```rust, ignore
-/// #[derive(FromTemplate)]
+/// type T = <Option<Handle<Image>> as BuiltInTemplate>::template;
+/// // ↑ T = OptionTemplate<HandleTemplate<Image>> ✅️
+/// ```
+///
+/// If you are deriving [`IntoTemplate`] and you have a "built in" type like [`Option<Handle<T>>`]
+/// which has custom template logic, annotate it with the `template(built_in)` attribute to use
+/// [`BuiltInTemplate`] instead of [`IntoTemplate`]:
+///
+/// ```rust, ignore
+/// #[derive(IntoTemplate)]
 /// struct Widget {
 ///     #[template(built_in)]
 ///     image: Option<Handle<Image>>
 /// }
 /// ```
-pub trait FromTemplate: Sized {
+pub trait IntoTemplate: Sized {
     /// The template that produces this type.
     type Template: Template<Output = Self>;
+
+    /// Describes `self` with its canonical template.
+    ///
+    /// This is the conversion that a derived template performs field by field:
+    /// - a field whose type has a template of its own is converted with its own [`IntoTemplate`],
+    /// - a `#[template(built_in)]` field with its type's [`BuiltInTemplate`],
+    /// - and a field naming a template explicitly with [`Into`].
+    fn into_template(self) -> Self::Template;
 }
 
 /// The condition that keeps a hand-written template from overlapping the blanket implementation.
 ///
-/// [`Template`] and [`FromTemplate`] are implemented for every `Clone + Unpin` type, so a type that
-/// provides one of them by hand has to stay out of that implementation: exactly one of [`Clone`] or
-/// [`Unpin`] must not hold for it. A type that has to be [`Clone`] — an [`EntityTemplate`], or a
-/// type with a derived template — is instead made not [`Unpin`], with
+/// [`Template`] is implemented for every [`Clone`] type and [`IntoTemplate`] for every
+/// `Clone + Default` one, so a type that provides either by hand has to stay out of those
+/// implementations: exactly one of [`Clone`] or [`Unpin`] must not hold for it. A type that has to
+/// be [`Clone`] — an [`EntityTemplate`], or a type with a derived template — is instead made not
+/// [`Unpin`], with
 ///
 /// ```ignore
 /// impl Unpin for MyTemplate where for<'a> [()]: SpecializeFromTemplate {}
@@ -202,14 +233,14 @@ pub trait FromTemplate: Sized {
 /// Nothing is supposed to implement this trait; it exists so that the unsatisfied condition above
 /// is reported with a useful message.
 #[diagnostic::on_unimplemented(
-    message = "this type has no `FromTemplate` implementation, and it needs one \
+    message = "this type has no `IntoTemplate` implementation, and it needs one \
                to be described by a template",
     label = "the template of this type is unknown",
     note = "a `Clone + Default` type has a template automatically, so this is either a type that \
             is deliberately not `Unpin`, or a field type that has no template of its own. A field \
             without a template can be given one with `#[template(SomeTemplate)]`, or with \
             `#[template(built_in)]` for the built-in collection templates",
-    note = "`FromTemplate` uses pseudo-specialization: the hand-written implementations are kept \
+    note = "`IntoTemplate` uses pseudo-specialization: the hand-written implementations are kept \
             apart from the automatic one by making their types not `Unpin`, which the condition of \
             this trait expresses"
 )]
@@ -220,8 +251,8 @@ pub trait SpecializeFromTemplate: Sized {}
 
 /// A `Clone` type is its own template, and building it clones it.
 ///
-/// This is what gives most types a template; the types that are kept out of
-/// this implementation are documented by [`SpecializeFromTemplate`].
+/// This is what gives most types a template; the types that are kept out
+/// of this implementation are documented by [`SpecializeFromTemplate`].
 impl<T: Clone + Unpin> Template for T {
     type Output = T;
 
@@ -239,10 +270,16 @@ impl<T: Clone + Unpin> Template for T {
 /// A `Default + Clone` type is described by itself:
 /// the template of a type without any templateable field is the type.
 ///
-/// A type that is not `Default + Clone`, or that needs a template of its own, has to
-/// implement this trait by hand — or derive it, which is what `#[derive(FromTemplate)]` is for.
-impl<T: Clone + Default + Unpin> FromTemplate for T {
+/// A type that is not `Default + Clone`, or that needs a template of
+/// its own, has to implement this trait by hand — or derive it, which
+/// is what `#[derive(IntoTemplate)]` is for.
+impl<T: Clone + Default + Unpin> IntoTemplate for T {
     type Template = T;
+
+    #[inline(always)]
+    fn into_template(self) -> Self::Template {
+        self
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -362,10 +399,10 @@ mod tests {
         let mut world = World::alloc();
         let entity = world.spawn_empty(None).id();
 
-        let some: OptionTemplate<EntityTemplate> = EntityTemplate::Entity(entity).into();
+        let some: OptionTemplate<EntityTemplate> = Some(EntityTemplate::Entity(entity)).into();
         assert_eq!(build(&some), Some(entity));
 
-        let none: OptionTemplate<EntityTemplate> = OptionTemplate::None;
+        let none: OptionTemplate<EntityTemplate> = OptionTemplate(None);
         assert_eq!(build(&none), None);
 
         let many = VecTemplate(vec![

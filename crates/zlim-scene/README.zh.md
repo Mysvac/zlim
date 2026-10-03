@@ -7,7 +7,7 @@
 通过 `scn!` 和 `scn_list!` 直接描述场景：
 
 ```rust
-# use zlim_core::derive::FromTemplate;
+# use zlim_core::derive::IntoTemplate;
 # use zlim_core::prelude::*;
 # use zlim_scene::{WorldSceneExt, Scene, SceneList};
 #
@@ -17,7 +17,7 @@
 # #[derive(Component, Clone, Default, Debug, PartialEq)]
 # struct Health { current: u32, max: u32 }
 #
-# #[derive(Component, Clone, FromTemplate)]
+# #[derive(Component, Clone, IntoTemplate)]
 # struct Target { to: EntityId }
 /// 生成单个场景（根实体唯一，子实体任意）
 fn scene() -> impl Scene {
@@ -73,7 +73,7 @@ world.spawn_scene_list(scene_list()).unwrap();
 | `Type(value, ...)` | 同上，用于元组结构体（字段为 `0`、`1` …） |
 | `Type::function(args)` | 用调用的结果替换规范模板 |
 | `~expression` | 把表达式本身作为模板存入，例如 `~{ B(6) }` |
-| `~template { field: value, ... }` / `~template(args)` | 与上两种写法相同，但路径本身就**是**模板，不经过 [`FromTemplate`] 转换 |
+| `~template { field: value, ... }` / `~template(args)` | 与上两种写法相同，但路径本身就**是**模板，不经过 [`IntoTemplate`] 转换 |
 | `@ expression` | 在写下的位置引入一个场景，不进行缓存 |
 | `: expression` | 通过资产路径引用一个缓存的场景，并在它之上继续描述 |
 | `--` | 实体的分隔符，用在 `scn_list!` 或 `Children` 中分隔实体 |
@@ -111,9 +111,9 @@ scn! { #Root Health } // #Root 未使用，可行
 
 通过 `Type::function(…)` 与 `~…` 声明的模板则需要给出完整的值，始终替换规范模板，无论它是否已经存在。
 
-`~` 的意思是「这个路径**就是**模板，不是由它构建的类型」；不带 `~` 时，路径会先经过 [`FromTemplate`] 转换。
+`~` 的意思是「这个路径**就是**模板，不是由它构建的类型」；不带 `~` 时，路径会先经过 [`IntoTemplate`] 转换。
 
-对于模板就是类型本身的类型（大多数 `Clone + Default` 的类型），两种写法没有区别，只有手动实现 `FromTemplate` 的类型才需要区分。
+对于模板就是类型本身的类型（大多数 `Clone + Default` 的类型），两种写法没有区别，只有手动实现 `IntoTemplate` 的类型才需要区分。
 
 ### 层级关系
 
@@ -219,11 +219,11 @@ scn! {
 ### 模板
 
 场景中的一个条目通常称为模板（template），由 `zlim-core` 定义：
-描述模板的是 `Template` 与 `FromTemplate` 两个 Trait，而场景接收的是实现了 `Template` 的类型的值。
+描述模板的是 `Template` 与 `IntoTemplate` 两个 Trait，而场景接收的是实现了 `Template` 的类型的值。
 
 `zlim-core` 通过伪特化为大多数类型实现了这两个 Trait，并且默认实现中模板往往就是类型本身。
 
-前面提到，`Type { .. }` 这类写法得到的是 `FromTemplate` 的值，再通过 `from_template` 转换成 `Template`。
+前面提到，`Type { .. }` 这类写法得到的是 `IntoTemplate` 的值，再通过 `from_template` 转换成 `Template`。
 
 模板按书写顺序组成部件（part），部件再组成场景。部件按顺序解析，因此写在后面的条目可以编辑前面的条目留下的模板。
 
@@ -370,10 +370,10 @@ app.update();
 
 [`AssetPlugin`]: zlim_asset::plugin::AssetPlugin
 [`EntityScene`]: crate::EntityScene
-[`FromTemplate`]: zlim_core::template::FromTemplate
+[`IntoTemplate`]: zlim_core::template::IntoTemplate
 [`InitTemplate`]: crate::InitTemplate
 [`InsertTemplate`]: crate::InsertTemplate
-[`PatchFromTemplate`]: crate::PatchFromTemplate
+[`PatchIntoTemplate`]: crate::PatchIntoTemplate
 [`PatchTemplate`]: crate::PatchTemplate
 [`ResolveContext`]: crate::ResolveContext
 [`ResolvedScene::apply`]: crate::ResolvedScene::apply

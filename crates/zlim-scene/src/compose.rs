@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use zlim_core::component::Component;
 use zlim_core::error::ZlimResult;
 use zlim_core::template::TemplateContext;
-use zlim_core::template::{ErasedTemplate, FnTemplate, FromTemplate, Template, TemplateEffect};
+use zlim_core::template::{ErasedTemplate, FnTemplate, IntoTemplate, Template, TemplateEffect};
 
 use crate::dependency::SceneDependencies;
 use crate::resolved::ResolvedScene;
@@ -202,7 +202,7 @@ where
 /// A scene that patches the canonical template of `T` with a function.
 ///
 /// The template is created from its [`Default`] if the composition has not described it already, and
-/// the function then edits it in place. This is what the [`PatchFromTemplate`] and [`PatchTemplate`]
+/// the function then edits it in place. This is what the [`PatchIntoTemplate`] and [`PatchTemplate`]
 /// traits build.
 ///
 /// ```rust
@@ -239,12 +239,12 @@ where
 }
 
 // -----------------------------------------------------------------------------
-// PatchFromTemplate
+// PatchIntoTemplate
 
-/// Patches the canonical template of a type that has one, through [`FromTemplate`].
+/// Patches the canonical template of a type that has one, through [`IntoTemplate`].
 ///
 /// ```rust
-/// use zlim_scene::{PatchFromTemplate, ResolveContext, ResolvedScene, Scene};
+/// use zlim_scene::{PatchIntoTemplate, ResolveContext, ResolvedScene, Scene};
 /// use zlim_core::derive::Component;
 ///
 /// #[derive(Component, Clone, Default)]
@@ -258,8 +258,8 @@ where
 ///     .unwrap();
 /// ```
 ///
-/// [`FromTemplate`]: zlim_core::template::FromTemplate
-pub trait PatchFromTemplate {
+/// [`IntoTemplate`]: zlim_core::template::IntoTemplate
+pub trait PatchIntoTemplate {
     /// The [`Template`] that the patch edits.
     type Template;
 
@@ -269,7 +269,7 @@ pub trait PatchFromTemplate {
         F: FnOnce(&mut Self::Template, &mut ResolveContext);
 }
 
-impl<G: FromTemplate> PatchFromTemplate for G {
+impl<G: IntoTemplate> PatchIntoTemplate for G {
     type Template = G::Template;
 
     #[inline]

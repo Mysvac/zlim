@@ -142,7 +142,7 @@ pub enum Entry {
     /// `<Type> { field: value, ... }`, or the same behind a `~` — the canonical template, edited in
     /// place.
     Patch {
-        /// The template type: `Type` or `<Type as FromTemplate>::Template`.
+        /// The template type: `Type` or `<Type as IntoTemplate>::Template`.
         template: TemplateType,
         /// The fields to assign.
         fields: Vec<Field>,

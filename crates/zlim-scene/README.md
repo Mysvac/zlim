@@ -14,7 +14,7 @@ what names it can be pointed at by, and which entities belong under it. A scene 
 written this way — children nest, and a name reaches across the whole description:
 
 ```rust
-use zlim_core::derive::{Component, FromTemplate};
+use zlim_core::derive::{Component, IntoTemplate};
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
 use zlim_scene::{WorldSceneExt, scn};
@@ -25,9 +25,9 @@ struct Health {
     max: u32,
 }
 
-/// A component that points at another entity. `#[derive(FromTemplate)]` gives it a template whose
+/// A component that points at another entity. `#[derive(IntoTemplate)]` gives it a template whose
 /// field is an `EntityTemplate`, which is what a `#Name` resolves to.
-#[derive(Component, Clone, FromTemplate)]
+#[derive(Component, Clone, IntoTemplate)]
 struct Target {
     to: EntityId,
 }
@@ -128,7 +128,7 @@ patch, starts from:
 - `Type::function(…)` and `~…` **replace** it outright.
 
 `~` means "this path *is* the template, not the type it is built from": without it, the path goes
-through [`FromTemplate`] first. That is why a hand-written template is written with `~`, and why
+through [`IntoTemplate`] first. That is why a hand-written template is written with `~`, and why
 `Health::full(10)` and `~Health::full(10)` differ for a type whose template is not the type itself.
 
 A *value* — the right-hand side of a field, and the argument of `Parent` — is passed through as it
@@ -186,7 +186,7 @@ itself a scene**, so a composition is written as a tuple of as many parts as it 
 | [`SceneFunction`] | whatever a closure does to the resolved scene (`scn!` uses this for its statements) |
 | [`InsertTemplate`] | a canonical template slot, replaced |
 | [`InitTemplate`] | makes sure a canonical slot exists, from its `Default` |
-| [`TemplatePatch`] | edits a canonical slot in place (what [`PatchFromTemplate`] and [`PatchTemplate`] build) |
+| [`TemplatePatch`] | edits a canonical slot in place (what [`PatchIntoTemplate`] and [`PatchTemplate`] build) |
 | `FnTemplate` | a template that is only ever applied, never edited |
 | [`SceneChildren`] | the entities under the entity |
 | [`SceneParent`] | an explicit parent edge for the entity |
@@ -220,8 +220,8 @@ components, it holds templates that build them when the scene is applied.
 
 - A `Clone` type is its own template, and building it clones it — which is what gives most types a
   template. A `Clone + Default` type is described by itself.
-- [`FromTemplate`] names the template of a type, which is how a type is described through the
-  templates of its fields. `#[derive(FromTemplate)]` writes that template for a type whose fields
+- [`IntoTemplate`] names the template of a type, which is how a type is described through the
+  templates of its fields. `#[derive(IntoTemplate)]` writes that template for a type whose fields
   need more than a clone — a field holding a handle, say.
 - A type that needs neither is a template written by hand, which is what `~` addresses.
 
@@ -479,10 +479,10 @@ The design follows `bevy_scene`, adapted to zlim's built-in hierarchy and to its
 
 [`AssetPlugin`]: zlim_asset::plugin::AssetPlugin
 [`EntityScene`]: crate::EntityScene
-[`FromTemplate`]: zlim_core::template::FromTemplate
+[`IntoTemplate`]: zlim_core::template::IntoTemplate
 [`InitTemplate`]: crate::InitTemplate
 [`InsertTemplate`]: crate::InsertTemplate
-[`PatchFromTemplate`]: crate::PatchFromTemplate
+[`PatchIntoTemplate`]: crate::PatchIntoTemplate
 [`PatchTemplate`]: crate::PatchTemplate
 [`ResolveContext`]: crate::ResolveContext
 [`ResolvedScene::apply`]: crate::ResolvedScene::apply

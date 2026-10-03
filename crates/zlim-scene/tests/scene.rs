@@ -16,7 +16,7 @@ use zlim_core::template::{Template, TemplateContext, TemplateEffect, template};
 use zlim_core::world::World;
 
 use zlim_scene::{
-    EntityScene, InitTemplate, InsertTemplate, PatchFromTemplate, PatchTemplate, ResolveContext,
+    EntityScene, InitTemplate, InsertTemplate, PatchIntoTemplate, PatchTemplate, ResolveContext,
     ResolvedScene, Scene, SceneChildren, SceneDependencies, SceneFunction, SceneList, SceneParent,
     ScenePatch, SceneScope, WorldSceneExt,
 };
@@ -28,7 +28,7 @@ use zlim_scene::{
 #[derive(Component, Clone, Debug, PartialEq)]
 struct Marker(u32);
 
-/// A component that is `Clone + Default`, so it is its own template, and whose `FromTemplate` comes
+/// A component that is `Clone + Default`, so it is its own template, and whose `IntoTemplate` comes
 /// from the blanket implementation.
 #[derive(Component, Clone, Default, Debug, PartialEq)]
 struct Scale(f32);
@@ -624,7 +624,7 @@ fn a_template_can_be_initialised_patched_and_replaced() {
     assert_eq!(apply_to_entity(&scene), Marker(3));
 }
 
-/// A type that has a template of its own can patch it through `PatchFromTemplate`, without naming the
+/// A type that has a template of its own can patch it through `PatchIntoTemplate`, without naming the
 /// template type.
 #[test]
 fn a_type_can_patch_the_template_it_is_built_from() {

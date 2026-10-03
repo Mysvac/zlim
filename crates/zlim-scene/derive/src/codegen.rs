@@ -54,7 +54,7 @@ impl Ctx {
         let column = self.column as u32;
 
         quote! {
-            #scene::__macro_exports__::__EntityReference::new(#file, #line, #column, #index, __call_id)
+            #scene::__macro_exports__::EntityReference::new(#file, #line, #column, #index, __call_id)
         }
     }
 }
@@ -155,7 +155,7 @@ fn scene(scene: &Scene, ctx: &mut Ctx) -> syn::Result<TokenStream> {
                 let tokens = if template.raw {
                     quote! { #path::#function(#args) }
                 } else {
-                    quote! { <#path as #zlim_scene::__macro_exports__::__FromTemplate>::Template::#function(#args) }
+                    quote! { <#path as #zlim_scene::__macro_exports__::IntoTemplate>::Template::#function(#args) }
                 };
                 statement(&mut runs, quote! { _scene.insert_template(#tokens); });
             }
@@ -281,7 +281,7 @@ fn template_type(template: &TemplateType, ctx: &Ctx) -> TokenStream {
     if template.raw {
         quote!(#path)
     } else {
-        quote!(<#path as #scene::__macro_exports__::__FromTemplate>::Template)
+        quote!(<#path as #scene::__macro_exports__::IntoTemplate>::Template)
     }
 }
 
@@ -299,7 +299,7 @@ fn value(value: &Value, ctx: &mut Ctx) -> TokenStream {
             let index = ctx.name_index(name);
             let reference = ctx.reference(index);
             let scene = &ctx.scene;
-            quote! { #scene::__macro_exports__::__EntityTemplate::EntityReference(#reference) }
+            quote! { #scene::__macro_exports__::EntityTemplate::EntityReference(#reference) }
         }
         Value::Tokens(tokens) => tokens.clone(),
     }

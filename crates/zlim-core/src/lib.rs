@@ -88,7 +88,7 @@ pub mod derive {
     #[doc(no_inline)]
     pub use crate::register_resource;
     #[doc(inline)]
-    pub use zlim_core_derive::{Bundle, Error, FromTemplate};
+    pub use zlim_core_derive::{Bundle, Error, IntoTemplate};
     #[doc(inline)]
     pub use zlim_core_derive::{Component, Message, Resource};
     #[doc(inline)]
@@ -156,9 +156,9 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use crate::clone::EntityCloner;
 
-    // implicit use zlim_core_derive::FromTemplate
+    // implicit use zlim_core_derive::IntoTemplate
     #[doc(no_inline)]
-    pub use crate::template::{EntityTemplate, FromTemplate, Template, TemplateContext};
+    pub use crate::template::{EntityTemplate, IntoTemplate, Template, TemplateContext};
 
     #[doc(no_inline)]
     pub use crate::job::{IntoJob, Job, JobDB, JobId};

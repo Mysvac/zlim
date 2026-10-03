@@ -96,7 +96,7 @@ def_path_fn!(table_, table::Table);
 def_path_fn!(table_row_, table::TableRow);
 def_path_fn!(entity_id_, entity::EntityId);
 def_path_fn!(template_, template::Template);
-def_path_fn!(from_template_, template::FromTemplate);
+def_path_fn!(into_template_, template::IntoTemplate);
 def_path_fn!(template_context_, template::TemplateContext);
 def_path_fn!(built_in_template_, template::BuiltInTemplate);
 def_path_fn!(specialize_from_template_, template::SpecializeFromTemplate);

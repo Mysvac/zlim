@@ -4,7 +4,7 @@ use zlim_app::App;
 use zlim_asset::assets::Assets;
 use zlim_asset::plugin::AssetPlugin;
 use zlim_asset::server::AssetServer;
-use zlim_core::derive::{Component, FromTemplate};
+use zlim_core::derive::{Component, IntoTemplate};
 use zlim_core::entity::EntityId;
 use zlim_core::error::ZlimResult;
 use zlim_core::world::World;
@@ -27,7 +27,7 @@ struct Health {
 }
 
 /// A component that points at another entity, described through a derived template.
-#[derive(Component, Clone, FromTemplate, Debug, PartialEq)]
+#[derive(IntoTemplate, Component, Clone, Debug, PartialEq)]
 struct Link {
     to: EntityId,
 }

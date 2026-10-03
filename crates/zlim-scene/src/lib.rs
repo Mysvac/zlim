@@ -51,7 +51,7 @@ mod spawn;
 // Exports
 
 pub use crate::children::{SceneChildren, SceneParent};
-pub use crate::compose::{InitTemplate, InsertTemplate, PatchFromTemplate, PatchTemplate};
+pub use crate::compose::{InitTemplate, InsertTemplate, PatchIntoTemplate, PatchTemplate};
 pub use crate::compose::{SceneFunction, SceneListScope, SceneScope, TemplatePatch};
 pub use crate::dependency::{SceneDependencies, SceneDependency};
 pub use crate::derive::{scn, scn_list};
@@ -115,12 +115,11 @@ pub mod __macro_exports__ {
     /// the *same* invocation — a function that builds a scene and is called twice — because both
     /// runs would produce the same references, and the second run would resolve the first run's
     /// entities. The counter is what tells those apart: one static per invocation, bumped per run.
-    #[derive(Debug, Default)]
     pub struct CallCounter(AtomicU64);
 
     impl CallCounter {
         /// Creates a counter that starts at zero.
-        #[inline]
+        #[expect(clippy::new_without_default, reason = "need const")]
         pub const fn new() -> Self {
             Self(AtomicU64::new(0))
         }
@@ -132,11 +131,9 @@ pub mod __macro_exports__ {
         }
     }
 
-    // The `zlim-core` items the generated code names. They are re-exported here, and not from the
-    // crate itself, so that the macros work for a crate that only depends on `zlim-scene`.
-    pub use zlim_core::template::EntityReference as __EntityReference;
-    pub use zlim_core::template::EntityTemplate as __EntityTemplate;
-    pub use zlim_core::template::FromTemplate as __FromTemplate;
+    pub use zlim_core::template::EntityReference;
+    pub use zlim_core::template::EntityTemplate;
+    pub use zlim_core::template::IntoTemplate;
 }
 
 // -----------------------------------------------------------------------------

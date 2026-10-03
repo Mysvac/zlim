@@ -789,15 +789,15 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
     message::expand(ast)
 }
 
-/// Derives the `FromTemplate` trait implementation.
+/// Derives the `IntoTemplate` trait implementation.
 ///
 /// # Generated items
 ///
 /// A companion type named `<Type>Template` holds one template field per field of the type, each
 /// typed as the template of that field, and the derive associates the two with
-/// `impl FromTemplate for <Type>`. The type itself is also made not `Unpin`, which keeps that
+/// `impl IntoTemplate for <Type>`. The type itself is also made not `Unpin`, which keeps that
 /// association from overlapping with the blanket implementation that every `Clone + Default` type
-/// gets — which also means the three of `FromTemplate`, `Default` and `Clone` cannot be derived
+/// gets — which also means the three of `IntoTemplate`, `Default` and `Clone` cannot be derived
 /// together.
 ///
 /// The companion template is the shape of the type it produces: a named struct, a tuple struct, a
@@ -805,15 +805,26 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 ///
 /// # Field attributes
 ///
-/// | Attribute | Template of the field |
-/// |-----------|-----------------------|
-/// | *(none)* | `<FieldType as FromTemplate>::Template` |
-/// | `#[template(SomeTemplate)]` | `SomeTemplate` |
-/// | `#[template(built_in)]` | `<FieldType as BuiltInTemplate>::Template` |
+/// | Attribute | Template of the field | `From` conversion |
+/// |-----------|-----------------------|-------------------|
+/// | *(none)* | `<FieldType as IntoTemplate>::Template` | the field type's `IntoTemplate` |
+/// | `#[template(SomeTemplate)]` | `SomeTemplate` | `Into<SomeTemplate>` for the field type |
+/// | `#[template(built_in)]` | `<FieldType as BuiltInTemplate>::Template` | the field type's `BuiltInTemplate` |
 ///
 /// `#[template(built_in)]` is what maps a container to the template of its element, so that an
 /// `Option<Handle<Image>>` field becomes an `OptionTemplate<HandleTemplate<Image>>` instead of an
 /// `Option<Handle<Image>>`.
+///
+/// A field that names its template explicitly — the middle row — needs a conversion into it,
+/// because the template is a different type: `impl From<FieldType> for SomeTemplate`, or the
+/// equivalent `Into`.
+///
+/// # Describing an existing value
+///
+/// Besides the association, the derive implements `From<Type> for TypeTemplate`, which converts a
+/// value into the companion template by converting each field with the rule from the table above,
+/// and [`IntoTemplate::into_template`](zlim_core::template::IntoTemplate::into_template), which is
+/// `From::from(self)`.
 ///
 /// # Enum attributes
 ///
@@ -822,13 +833,34 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 ///
 /// # Generic types
 ///
-/// The generated impls carry the generics and where clause of the type, so a generic type needs
-/// the `FromTemplate` bounds its fields need to be written on the type itself.
+/// The derive writes the bounds a generic type's fields need, so the type itself is written without
+/// them. The bound follows the choice each field made:
+///
+/// | Field | Bound the derive adds |
+/// |-------|-----------------------|
+/// | `T` | `T: IntoTemplate` |
+/// | `Vec<T>` with `#[template(built_in)]` | `Vec<T>: BuiltInTemplate` |
+/// | `T` with `#[template(SomeTemplate)]` | none — the conversion into it is the user's to provide |
+///
+/// A field of a concrete type is left alone, since it already satisfies whatever it needs. The
+/// bounds go on the generated impls and on the companion template's declaration; the deriving type
+/// keeps whatever generics and `where` clause it was written with.
+///
+/// ```ignore
+/// // This is all it takes.
+/// #[derive(IntoTemplate)]
+/// struct Holder<T> {
+///     value: T,
+/// }
+/// ```
+///
+/// A field written with `#[template(SomeTemplate)]` additionally needs the `Into` conversion into
+/// `SomeTemplate`, generic type or not, because no bound can make a conversion exist.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// #[derive(FromTemplate)]
+/// #[derive(IntoTemplate)]
 /// struct Sprite {
 ///     image: Handle<Image>,
 ///     scale: f32,
@@ -840,7 +872,7 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 ///     scale: f32,
 /// }
 /// ```
-#[proc_macro_derive(FromTemplate, attributes(template, default))]
+#[proc_macro_derive(IntoTemplate, attributes(template, default))]
 pub fn derive_from_template(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     template::expand(ast).into()
