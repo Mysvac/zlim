@@ -17,7 +17,6 @@ use zlim_core::entity::EntityId;
 use zlim_core::query::Query;
 use zlim_core::world::World;
 
-use crate::apply::spawn_resolved;
 use crate::patch::{SceneListPatch, ScenePatch};
 use crate::resolved::ResolvedScene;
 use crate::spawn::{SceneListPatchInstance, ScenePatchInstance, missing_patches};
@@ -104,7 +103,7 @@ fn handle_scene_spawn(world: &mut World) {
 
         let parent = parent.id();
 
-        if let Err(error) = spawn_resolved(world, &resolved, Some(parent)) {
+        if let Err(error) = ResolvedScene::spawn_batch(&resolved, world, Some(parent)) {
             zlim_log::error!("Failed to spawn a queued scene list: {error}");
         }
     }

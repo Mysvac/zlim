@@ -55,12 +55,18 @@ impl Template for EntityTemplate {
 
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     fn build_template(&self, context: &mut TemplateContext) -> ZlimResult<Self::Output> {
+        const MSG: &str = "no entity was specified for this `EntityTemplate`";
         match self {
-            Self::Entity(entity) => Ok(*entity),
-            Self::EntityReference(reference) => context.resolve_entity(*reference),
-            Self::None => Err(ZlimError::error(
-                "no entity was specified for this `EntityTemplate`",
-            )),
+            // The id of a serialized component is a document id: it names an entity of the scene the
+            // component was read from, and the scene maps it to the entity it spawned here.
+            //
+            // TODO: an id the scene does not declare is kept as it is, so a document that points at
+            // an entity it does not contain silently produces a dangling reference. Worth considering:
+            // have the scene also record the ids it declared and reject the ones it did not, or return
+            // the `Option` from the lookup and let the caller decide. Not handled for now.
+            Self::Entity(entity) => Ok(context.map_entity(*entity)),
+            Self::EntityReference(x) => context.resolve_entity(*x),
+            Self::None => Err(ZlimError::error(MSG)),
         }
     }
 

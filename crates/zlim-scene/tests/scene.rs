@@ -9,9 +9,10 @@ use zlim_asset::handle::{ErasedHandle, Handle};
 use zlim_asset::path::AssetPath;
 use zlim_core::bundle::{Bundle, BundleScratch};
 use zlim_core::component::Component;
+use zlim_core::entity::{EntityId, EntityMap};
 use zlim_core::error::ZlimResult;
 use zlim_core::message::{MessageQueue, ReparentSignal};
-use zlim_core::template::{EntityReference, EntityReferences, EntityTemplate};
+use zlim_core::template::{ComponentTemplate, EntityReference, EntityReferences, EntityTemplate};
 use zlim_core::template::{Template, TemplateContext, TemplateEffect, template};
 use zlim_core::world::World;
 
@@ -124,7 +125,8 @@ fn apply_to<T: Component + Clone>(scene: &ResolvedScene) -> T {
 
     {
         let mut references = EntityReferences::new();
-        let mut context = TemplateContext::new(&mut entity, &mut references);
+        let mut entities = EntityMap::new();
+        let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
         let mut scratch = BundleScratch::default();
         let mut writer = scratch.writer();
 
@@ -169,10 +171,11 @@ fn a_bundle_template_writes_every_component_it_carries() {
     let mut world = World::alloc();
     let mut entity = world.spawn_empty(None);
     let mut references = EntityReferences::new();
+    let mut entities = EntityMap::new();
     let mut scratch = BundleScratch::default();
 
     {
-        let mut context = TemplateContext::new(&mut entity, &mut references);
+        let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
         let mut writer = scratch.writer();
 
         for template in scene.component_templates() {
@@ -203,10 +206,11 @@ fn an_effect_is_applied_explicitly() {
     let mut world = World::alloc();
     let mut entity = world.spawn_empty(None);
     let mut references = EntityReferences::new();
+    let mut entities = EntityMap::new();
     let mut scratch = BundleScratch::default();
 
     {
-        let mut context = TemplateContext::new(&mut entity, &mut references);
+        let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
         let mut writer = scratch.writer();
 
         TemplateEffect::apply(Marker(7), &mut context, &mut writer);
@@ -928,6 +932,7 @@ fn a_failed_application_drops_what_it_pushed() {
     let mut world = World::alloc();
     let mut entity = world.spawn_empty(None);
     let mut references = EntityReferences::new();
+    let mut entities = EntityMap::new();
     let mut scratch = BundleScratch::new();
 
     let mut scene = ResolvedScene::new();
@@ -936,7 +941,7 @@ fn a_failed_application_drops_what_it_pushed() {
         Err::<Scale, _>(zlim_core::error::ZlimError::error("boom"))
     }));
 
-    let result = scene.apply_with(&mut entity, &mut references, &mut scratch);
+    let result = scene.apply_with(&mut entity, &mut references, &mut entities, &mut scratch);
 
     assert!(result.is_err(), "the second template fails");
     assert!(
@@ -946,5 +951,83 @@ fn a_failed_application_drops_what_it_pushed() {
     assert!(
         dropped.load(Ordering::SeqCst),
         "the pushed component was dropped rather than leaked"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Document ids
+
+/// A component that refers to another entity, as a component read back from a document does.
+///
+/// The field is marked `#[entities]`, which is what makes the derive generate the remapping — a
+/// hand-written `MapEntities` impl would be shadowed by the one the derive emits.
+#[derive(Component, Clone, PartialEq, Debug)]
+struct DocumentLink {
+    #[entities]
+    to: EntityId,
+}
+
+/// A scene that describes one entity of a document: the id the document gives it, and a component
+/// pointing at the id of another.
+fn document_scene(id: EntityId, links_to: EntityId) -> ResolvedScene {
+    let mut scene = ResolvedScene::new();
+    scene.set_document_id(id);
+    scene.push_template(ComponentTemplate(DocumentLink { to: links_to }));
+    scene
+}
+
+/// The ids a component read from a document carries are the document's, and applying the scene
+/// rewrites them to the entities the scene spawned.
+///
+/// The whole tree is placed before anything is built, so a child may point at an id its parent
+/// declares — and the parent at an id the child declares — in either order.
+#[test]
+fn a_document_id_resolves_to_the_entity_the_scene_spawned() {
+    let root_id = EntityId::from_bits(0x0000_0001_0000_0001).unwrap();
+    let child_id = EntityId::from_bits(0x0000_0002_0000_0001).unwrap();
+
+    let mut world = World::alloc();
+
+    // The root points at its child, and the child points back at the root: neither id resolves until
+    // both entities exist, which is why placing is a separate step from building.
+    let mut root = document_scene(root_id, child_id);
+    root.push_child(document_scene(child_id, root_id));
+
+    let root_entity = ResolvedScene::spawn(&root, &mut world, None)
+        .expect("the scene spawns")
+        .id();
+
+    let child_entity = world
+        .entity_owned(root_entity)
+        .children()
+        .expect("the root is live")[0];
+
+    assert_eq!(
+        world.entity_ref(root_entity).get::<DocumentLink>(),
+        Some(&DocumentLink { to: child_entity })
+    );
+    assert_eq!(
+        world.entity_ref(child_entity).get::<DocumentLink>(),
+        Some(&DocumentLink { to: root_entity })
+    );
+}
+
+/// A document id that names no entity of the document is kept as it is, which is what lets a
+/// template built in Rust keep naming the entity its id already names.
+#[test]
+fn an_id_no_document_declares_is_kept() {
+    let declared = EntityId::from_bits(0x0000_0001_0000_0001).unwrap();
+    let unknown = EntityId::from_bits(0x0000_0009_0000_0001).unwrap();
+
+    let mut world = World::alloc();
+    let scene = document_scene(declared, unknown);
+
+    let id = ResolvedScene::spawn(&scene, &mut world, None)
+        .expect("the scene spawns")
+        .id();
+
+    assert_eq!(
+        world.entity_ref(id).get::<DocumentLink>(),
+        Some(&DocumentLink { to: unknown })
     );
 }

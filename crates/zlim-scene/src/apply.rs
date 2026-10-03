@@ -5,7 +5,7 @@ use core::any::{Any, TypeId};
 use std::sync::Arc;
 
 use zlim_core::bundle::BundleScratch;
-use zlim_core::entity::EntityId;
+use zlim_core::entity::{EntityId, EntityMap, EntityMapper};
 use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::ops::EntityOwned;
 use zlim_core::template::{EntityReferences, ErasedTemplate, Template, TemplateContext};
@@ -111,25 +111,37 @@ fn push_layers<'a>(base: Source<'a>, skip: HashSet<TypeId>, out: &mut Vec<Layer<
     out.push(Layer { source: base, skip });
 }
 
-/// Spawns one entity per scene of the tree, and binds every name the scenes declare to the entity
-/// that declares them.
+/// Spawns one entity per scene of the tree, and binds every name the scenes declare — and every id
+/// they carry — to the entity that declares them.
 ///
 /// This runs before any component is built, so that a template may mention a name that is declared
-/// later in the scene: by the time templates are built, every name of the whole tree is bound.
+/// later in the scene: by the time templates are built, every name of the whole tree is bound. The
+/// same holds for the ids a document gives its entities, which is what lets the components read from
+/// that document name each other.
 fn place<'a>(
     entity: EntityId,
     created: bool,
     source: Source<'a>,
     world: &mut World,
     references: &mut EntityReferences,
+    entity_mapper: &mut EntityMap<EntityId>,
+    spawned: &mut Vec<EntityId>,
     plan: &mut Vec<Planned<'a>>,
 ) {
     let mut layers = Vec::new();
     push_layers(source, HashSet::new(), &mut layers);
 
     for layer in &layers {
-        for reference in layer.source.get().entity_references() {
+        let scene = layer.source.get();
+
+        for reference in scene.entity_references() {
             references.set(*reference, entity);
+        }
+
+        // The id the document gives this entity is bound here, for the same reason the names are:
+        // a component of one entity may point at another that the document declares later.
+        if let Some(id) = scene.document_id() {
+            entity_mapper.set_mapped(id, entity);
         }
     }
 
@@ -151,7 +163,17 @@ fn place<'a>(
 
     for child_source in children {
         let child = world.spawn_empty(Some(entity)).id();
-        place(child, true, child_source, world, references, plan);
+        spawned.push(child);
+        place(
+            child,
+            true,
+            child_source,
+            world,
+            references,
+            entity_mapper,
+            spawned,
+            plan,
+        );
     }
 }
 
@@ -163,6 +185,7 @@ fn fill(
     plan: &[Planned<'_>],
     entity: &mut EntityOwned<'_>,
     references: &mut EntityReferences,
+    entity_mapper: &mut EntityMap<EntityId>,
     scratch: &mut BundleScratch,
 ) -> ZlimResult<()> {
     for planned in plan {
@@ -174,7 +197,7 @@ fn fill(
 
             {
                 let mut writer = scratch.writer();
-                let mut context = TemplateContext::new(&mut owned, references);
+                let mut context = TemplateContext::new(&mut owned, references, entity_mapper);
 
                 for layer in &planned.layers {
                     let scene = layer.source.get();
@@ -210,7 +233,7 @@ fn fill(
             // The edge is resolved here, and not while the scene was resolved, because the entity it
             // names may be declared anywhere in the tree.
             let parent = {
-                let mut context = TemplateContext::new(&mut owned, references);
+                let mut context = TemplateContext::new(&mut owned, references, entity_mapper);
                 parent.build_template(&mut context)?
             };
 
@@ -241,43 +264,39 @@ fn fill(
 // Apply
 
 impl ResolvedScene {
-    /// Spawns the entities of this scene — and of the cached scenes it builds on — and binds every
-    /// name they declare.
-    ///
-    /// This is the first half of applying a scene, and separable from the second so that a whole
-    /// list of roots can be spawned and named before any of them is written: the roots of a list
-    /// share one name scope, so one of them may point at a name another declares, in either order.
-    fn place<'a>(
-        &'a self,
-        entity: &mut EntityOwned<'_>,
-        references: &mut EntityReferences,
-        created: bool,
-        plan: &mut Vec<Planned<'a>>,
-    ) {
-        let root = entity.id();
-        entity
-            .world_scope(|world| place(root, created, Source::Own(self), world, references, plan));
-    }
-
     /// Applies this scene to `entity`, without the bookkeeping its callers do.
     ///
     /// [`WorldSceneExt::apply_scene`] is the only caller from outside: it describes an entity that
     /// already exists, so the parent edge it carries has to signal.
     ///
     /// [`WorldSceneExt::apply_scene`]: crate::WorldSceneExt::apply_scene
-    pub(crate) fn apply_internal(
+    fn apply_internal(
         &self,
         entity: &mut EntityOwned<'_>,
         references: &mut EntityReferences,
+        entity_mapper: &mut EntityMap<EntityId>,
+        spawned: &mut Vec<EntityId>,
         scratch: &mut BundleScratch,
         created: bool,
     ) -> ZlimResult<()> {
-        // --- 1 & 2: every entity, and every name ---
         let mut plan = Vec::new();
-        self.place(entity, references, created, &mut plan);
+        // --- 1 & 2: every entity, every name, and every document id ---
+        let root = entity.id();
+        entity.world_scope(|world| {
+            place(
+                root,
+                created,
+                Source::Own(self),
+                world,
+                references,
+                entity_mapper,
+                spawned,
+                &mut plan,
+            )
+        });
 
         // --- 3 & 4: the components, then the parent edges ---
-        fill(&plan, entity, references, scratch)
+        fill(&plan, entity, references, entity_mapper, scratch)
     }
 
     /// Applies this scene to `entity`, using the given name scope and scratch space.
@@ -318,9 +337,11 @@ impl ResolvedScene {
         &self,
         entity: &mut EntityOwned<'_>,
         references: &mut EntityReferences,
+        entities: &mut EntityMap<EntityId>,
         scratch: &mut BundleScratch,
     ) -> ZlimResult<()> {
-        self.apply_internal(entity, references, scratch, true)
+        let mut spawned = Vec::with_capacity(self.children().len());
+        self.apply_internal(entity, references, entities, &mut spawned, scratch, true)
     }
 
     /// Applies this scene to an entity that is already part of the world.
@@ -332,8 +353,17 @@ impl ResolvedScene {
     /// [`reparent`]: zlim_core::ops::EntityOwned::reparent
     pub fn apply(&self, entity: &mut EntityOwned<'_>) -> ZlimResult<()> {
         let mut references = EntityReferences::new();
+        let mut entities = EntityMap::new();
         let mut scratch = BundleScratch::new();
-        self.apply_internal(entity, &mut references, &mut scratch, false)
+        let mut spawned = Vec::with_capacity(self.children().len());
+        self.apply_internal(
+            entity,
+            &mut references,
+            &mut entities,
+            &mut spawned,
+            &mut scratch,
+            false,
+        )
     }
 
     /// Spawns an entity under `parent` and applies this scene to it.
@@ -347,63 +377,100 @@ impl ResolvedScene {
         parent: Option<EntityId>,
     ) -> ZlimResult<EntityOwned<'w>> {
         let mut entity = world.spawn_empty(parent);
+
         let mut references = EntityReferences::new();
+        let mut entities = EntityMap::new();
         let mut scratch = BundleScratch::new();
-        self.apply_internal(&mut entity, &mut references, &mut scratch, true)?;
+
+        let hint = 1 + self.children().len();
+        let mut spawned = Vec::with_capacity(hint);
+        spawned.push(entity.id());
+
+        self.apply_internal(
+            &mut entity,
+            &mut references,
+            &mut entities,
+            &mut spawned,
+            &mut scratch,
+            true,
+        )?;
+
         Ok(entity)
+    }
+
+    /// Spawns one entity per scene of `scenes` under `parent`, sharing one name scope.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `parent` is `Some` but not spawned.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `parent` stops existing, or if applying a scene
+    /// to one of the new entities fails.
+    pub fn spawn_batch(
+        scenes: &[Self],
+        world: &mut World,
+        parent: Option<EntityId>,
+    ) -> ZlimResult<Vec<EntityId>> {
+        let mut references = EntityReferences::new();
+        let mut entity_mapper = EntityMap::new();
+        let mut spawned = Vec::with_capacity(scenes.len());
+        let mut idents = Vec::with_capacity(scenes.len());
+        let mut ranges = Vec::with_capacity(scenes.len());
+        let mut scratch = BundleScratch::new();
+        let mut plan = Vec::new();
+
+        for scene in scenes {
+            let mut entity = world.spawn_empty(parent);
+            let start = plan.len();
+            let root = entity.id();
+            entity.world_scope(|world| {
+                place(
+                    root,
+                    true,
+                    Source::Own(scene),
+                    world,
+                    &mut references,
+                    &mut entity_mapper,
+                    &mut spawned,
+                    &mut plan,
+                )
+            });
+            spawned.push(entity.id());
+            idents.push(entity.id());
+            ranges.push(start..plan.len());
+        }
+
+        for (id, range) in idents.iter().zip(&ranges) {
+            let mut entity = match world.get_entity_owned(*id) {
+                Ok(x) => x,
+                Err(e) => {
+                    for id in spawned {
+                        world.try_despawn(id);
+                    }
+                    return Err(e.into());
+                }
+            };
+
+            let res = fill(
+                &plan[range.clone()],
+                &mut entity,
+                &mut references,
+                &mut entity_mapper,
+                &mut scratch,
+            );
+
+            if let Err(e) = res {
+                for id in spawned {
+                    world.try_despawn(id);
+                }
+                return Err(e);
+            }
+        }
+
+        Ok(idents)
     }
 }
 
 // -----------------------------------------------------------------------------
-// Applying a list
-
-/// Spawns one entity per scene of `scenes` under `parent`, sharing one name scope.
-///
-/// The scenes are spawned and their names bound all at once, and only then written, so a `#Name`
-/// declared by one root resolves for the others — in either order. This is what
-/// [`SceneListPatch`](crate::SceneListPatch) spawns through, and what
-/// [`WorldSceneExt::spawn_scene_list`] resolves into.
-///
-/// # Panics
-///
-/// Panics if `parent` is `Some` but not spawned.
-///
-/// # Errors
-///
-/// Returns an error if `parent` stops existing, or if applying a scene to one of the new entities
-/// fails.
-///
-/// [`WorldSceneExt::spawn_scene_list`]: crate::WorldSceneExt::spawn_scene_list
-pub(crate) fn spawn_resolved(
-    world: &mut World,
-    scenes: &[ResolvedScene],
-    parent: Option<EntityId>,
-) -> ZlimResult<Vec<EntityId>> {
-    let mut references = EntityReferences::new();
-    let mut scratch = BundleScratch::new();
-    let mut plan = Vec::new();
-    let mut ids = Vec::with_capacity(scenes.len());
-    let mut ranges = Vec::with_capacity(scenes.len());
-
-    // Every root is spawned, and every name of the list is bound, before any of them is written.
-    // The roots share one scope, so one may point at a name another declares — in either order.
-    for scene in scenes {
-        let mut entity = world.spawn_empty(parent);
-        let start = plan.len();
-        scene.place(&mut entity, &mut references, true, &mut plan);
-        ids.push(entity.id());
-        ranges.push(start..plan.len());
-    }
-
-    for (id, range) in ids.iter().zip(&ranges) {
-        let mut entity = world.get_entity_owned(*id).map_err(ZlimError::error)?;
-        fill(
-            &plan[range.clone()],
-            &mut entity,
-            &mut references,
-            &mut scratch,
-        )?;
-    }
-
-    Ok(ids)
-}

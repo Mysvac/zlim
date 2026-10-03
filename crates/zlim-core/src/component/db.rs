@@ -5,13 +5,14 @@ use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use std::sync::{PoisonError, RwLock};
 
-use zlim_reflect::TypeDB;
+use zlim_reflect::{Reflect, TypeDB};
 use zlim_utils::ext::{CachePadded, TypeMap};
 use zlim_utils::hash::HashMap;
 
 use super::{Component, ComponentHook, ComponentId, Required};
 use crate::clone::ComponentCloner;
 use crate::component::ReflectComponent;
+use crate::template::ErasedTemplate;
 use crate::utils::Dropper;
 
 // -----------------------------------------------------------------------------
@@ -74,6 +75,8 @@ pub struct ComponentDB {
     pub type_db: Option<&'static TypeDB>,
     /// Reflect functions.
     pub reflect: Option<&'static ReflectComponent>,
+    /// Turns a deserialized component value into the template that describes it.
+    pub into_template: Option<fn(Box<dyn Reflect>) -> Box<dyn ErasedTemplate>>,
 
     // --------------------------------
     // Hook
