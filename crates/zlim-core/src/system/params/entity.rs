@@ -221,11 +221,6 @@ impl<'w> HierarchyQuery<'w> {
     #[inline]
     pub unsafe fn get_children_unchecked(self, id: EntityId) -> &'w [EntityId] {
         debug_assert!((id.index() as usize) < self.0.len());
-        unsafe {
-            self.0
-                .get_unchecked(id.index() as usize)
-                .children
-                .as_slice()
-        }
+        unsafe { &self.0.get_unchecked(id.index() as usize).children }
     }
 }

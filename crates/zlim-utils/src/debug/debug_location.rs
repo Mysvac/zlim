@@ -14,7 +14,7 @@ use core::panic::Location;
 ///
 /// This type is commonly used in logging and panic diagnostics where call-site
 /// context is useful during development but should not bloat release output.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct DebugLocation(
     PhantomData<&'static Location<'static>>,

@@ -169,7 +169,6 @@ impl Attributes {
             .iter()
             .find(|&&attr| attr.type_id() == id)
             .copied()
-            .map(|v| v as &dyn Reflect)
     }
 
     /// Returns `true` if an attribute of type `T` is present.
@@ -183,7 +182,7 @@ impl Attributes {
     /// Returns a reference to the attribute of type `T`, or `None`.
     ///
     /// Complexity: O(n) in the number of attributes.
-    pub fn get<T: Reflect>(self) -> Option<&'static T> {
+    pub fn get<T: ::core::any::Any>(self) -> Option<&'static T> {
         for &attr in self.attributes {
             if let Some(a) = attr.downcast_ref::<T>() {
                 return Some(a);
@@ -229,7 +228,7 @@ macro_rules! impl_attributes_fn {
     };
     () => {
         /// Returns the attribute of type `T`, if present.
-        pub fn get_attribute<T: $crate::Reflect>(&self) -> Option<&T> {
+        pub fn get_attribute<T: ::core::any::Any>(&self) -> Option<&T> {
             self.attributes().get::<T>()
         }
 

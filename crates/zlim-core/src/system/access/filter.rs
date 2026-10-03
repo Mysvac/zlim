@@ -179,9 +179,12 @@ impl FilterParam {
         let with = format_component(self.with());
         let without = format_component(self.without());
         msg.push_str("Filter { ");
-        msg.push_str(&format!("With: [{with}], "));
-        msg.push_str(&format!("Without: [{without}] "));
-        msg.push_str("} ");
+        msg.push_str("With: [");
+        msg.push_str(&with);
+        msg.push_str("], ");
+        msg.push_str("Without: [");
+        msg.push_str(&without);
+        msg.push_str("] } ");
         StringFmt(msg)
     }
 }

@@ -18,9 +18,13 @@ fn init_internal() {
     // to avoid triggering the lock on multi-threaded tasks.
     zlim_utils::mem::Global::alloc_str("core");
 
-    // Multithreaded collection is unnecessary and offers no speedup.
-    // The only computational overhead lies in JobGroup initialization,
-    // which is already multithreaded internally.
+    // Multithreaded collection is unnecessary:
+    // 1. RTTI collection relies on global static memory,
+    //    so its parallelizability is low.
+    // 2. Single-threaded collection ensures that related data
+    //    is tightly packed in global memory, improving cache hit rates.
+    // 3. Only JobGroup incurs significant overhead,
+    //    but it is already multithreaded internally.
     TypeDB::collect();
     ResourceDB::collect();
     ComponentDB::collect();

@@ -7,9 +7,8 @@ use std::borrow::Cow;
 
 use zlim_reflect::db::TypeDB;
 use zlim_reflect::info::{OpaqueInfo, ReflectKind, TypeInfo, Typed, VariantKind};
-use zlim_reflect::ops::{
-    ApplyError, CloneError, Enum, Opaque, ReflectMut, ReflectOwned, ReflectRef, Struct, Tuple,
-};
+use zlim_reflect::ops::{ApplyError, CloneError, Enum, Opaque, ReflectMut};
+use zlim_reflect::ops::{ReflectOwned, ReflectRef, Struct, Tuple};
 use zlim_reflect::{Reflect, TypePath};
 
 // -----------------------------------------------------------------------------

@@ -85,6 +85,9 @@ impl SystemParamError {
 pub enum SystemError {
     /// Not an error; usually used to indicate conditional execution.
     ///
+    /// If this error is returned, we will assume that the System has
+    /// been skipped and not run, so we will not apply the delay command.
+    ///
     /// Severity: Ignore
     #[error("Not an error; usually used to indicate conditional execution.")]
     None,
@@ -114,23 +117,6 @@ impl From<SystemError> for ZlimError {
     #[cold]
     #[inline(never)]
     fn from(mut value: SystemError) -> Self {
-        while let SystemError::Runtime(e) = value {
-            let dynerr = e.get();
-            if dynerr.is::<SystemError>() {
-                ::core::hint::cold_path();
-                let boxed = e.take();
-                value = *boxed.downcast::<SystemError>().unwrap();
-            } else if dynerr.is::<SystemParamError>() {
-                ::core::hint::cold_path();
-                let boxed = e.take();
-                value = SystemError::Param(*boxed.downcast::<SystemParamError>().unwrap());
-                break;
-            } else {
-                value = SystemError::Runtime(e);
-                break;
-            }
-        }
-
         let severity = match &value {
             SystemError::None => Severity::Ignore,
             SystemError::Runtime(e) => e.severity(),
@@ -144,8 +130,31 @@ impl From<SystemError> for ZlimError {
             _ => std::backtrace::Backtrace::disabled(),
         };
 
+        let mut location = None;
+
+        if let SystemError::Runtime(e) = value {
+            let dynerr = e.get();
+            if dynerr.is::<SystemError>() {
+                ::core::hint::cold_path();
+                location = Some(e.location());
+                let boxed = e.take();
+                value = *boxed.downcast::<SystemError>().unwrap();
+            } else if dynerr.is::<SystemParamError>() {
+                ::core::hint::cold_path();
+                location = Some(e.location());
+                let boxed = e.take();
+                value = SystemError::Param(*boxed.downcast::<SystemParamError>().unwrap());
+            } else {
+                value = SystemError::Runtime(e);
+            }
+        }
+
         // We don't want capture backtrace again.
-        ZlimError::new_with_backtrace(severity, value, backtrace)
+        let error = ZlimError::new_with_backtrace(severity, value, backtrace);
+        match location {
+            None => error,
+            Some(l) => error.with_location(l),
+        }
     }
 }
 
@@ -153,16 +162,7 @@ impl From<ZlimError> for SystemError {
     #[cold]
     #[inline(never)]
     fn from(value: ZlimError) -> Self {
-        let dynerr = value.get();
-        if dynerr.is::<SystemError>() {
-            ::core::hint::cold_path();
-            *value.take().downcast::<SystemError>().unwrap()
-        } else if dynerr.is::<SystemParamError>() {
-            ::core::hint::cold_path();
-            SystemError::Param(*value.take().downcast::<SystemParamError>().unwrap())
-        } else {
-            Self::Runtime(value)
-        }
+        Self::Runtime(value)
     }
 }
 

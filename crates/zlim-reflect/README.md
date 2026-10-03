@@ -38,7 +38,7 @@ assert_eq!(Foo::type_name(), "Foo");
 
 ## Type Info
 
-The `Reflect` macro generates all the code needed for reflection, which includes the `TypePath` part:
+The `Reflect` macro generates all the code needed for reflection, which requires `TypePath`:
 
 ```rust
 use zlim_reflect::{Reflect, TypePath};
@@ -167,6 +167,8 @@ struct Foo<T>(T);
 
 register_reflect!(Foo<u32>, Foo<i32>);
 ```
+
+Composite types such as structs automatically register their field types when they themselves are registered.
 
 ## Reflection-Based Serialization
 

@@ -22,6 +22,7 @@ use zlim_reflect::derive::TypePath;
 #[derive(Debug, PartialEq, Clone, Copy, Component)]
 #[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_transform::GlobalTransform"]
+#[reflect(Default, Clone, Debug, Serialize, Deserialize)]
 #[component(copy, reflect)] // Transform should be serialized, but GlobalTransform does not.
 pub struct GlobalTransform(Affine3A);
 
@@ -84,6 +85,7 @@ impl Default for GlobalTransform {
 #[derive(Debug, PartialEq, Clone, Copy, Component)]
 #[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_transform::Transform"]
+#[reflect(Default, Clone, Debug, Serialize, Deserialize)]
 #[component(copy, summary_tick, reflect, serialize)] // Transform should be serialized, but GlobalTransform does not.
 #[require(GlobalTransform)]
 pub struct Transform {

@@ -53,6 +53,15 @@ impl From<u8> for AppExit {
     }
 }
 
+impl From<AppExit> for u8 {
+    fn from(value: AppExit) -> Self {
+        match value {
+            AppExit::Success => 0,
+            AppExit::Error(n) => n.get(),
+        }
+    }
+}
+
 impl std::process::Termination for AppExit {
     fn report(self) -> std::process::ExitCode {
         use std::process::ExitCode;

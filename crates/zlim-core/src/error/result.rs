@@ -2,7 +2,7 @@
 
 use core::ops::ControlFlow;
 
-use super::{Severity, ZlimError};
+use super::ZlimError;
 
 // -----------------------------------------------------------------------------
 // ZlimResult
@@ -35,46 +35,11 @@ pub type ZlimResult<T> = Result<T, ZlimError>;
 pub trait IntoZlimResult<T>: Sized {
     /// Converts `self` into a [`ZlimResult`].
     fn into_zlim_result(self) -> Result<T, ZlimError>;
-
-    /// Overrides the severity of the produced error, if any.
-    ///
-    /// If `self.into_zlim_result()` is `Ok(T)`, this method also returns `Ok(T)`.
-    fn with_severity(self, severity: Severity) -> Result<T, ZlimError> {
-        self.into_zlim_result()
-            .map_err(|e| ZlimError::with_severity(e, severity))
-    }
-
-    /// Raises severity to `max(current, severity)` for the produced error, if any.
-    fn merge_severity(self, severity: Severity) -> Result<T, ZlimError> {
-        self.into_zlim_result()
-            .map_err(|e| ZlimError::merge_severity(e, severity))
-    }
-
-    /// Maps the severity of the produced error through a function, if any.
-    fn map_severity(self, f: impl FnOnce(Severity) -> Severity) -> Result<T, ZlimError> {
-        self.into_zlim_result()
-            .map_err(|e| ZlimError::map_severity(e, f))
-    }
 }
 
 impl<T> IntoZlimResult<T> for T {
     #[inline(always)]
     fn into_zlim_result(self) -> Result<T, ZlimError> {
-        Ok(self)
-    }
-
-    #[inline(always)]
-    fn with_severity(self, _: Severity) -> Result<T, ZlimError> {
-        Ok(self)
-    }
-
-    #[inline(always)]
-    fn merge_severity(self, _: Severity) -> Result<T, ZlimError> {
-        Ok(self)
-    }
-
-    #[inline(always)]
-    fn map_severity(self, _: impl FnOnce(Severity) -> Severity) -> Result<T, ZlimError> {
         Ok(self)
     }
 }

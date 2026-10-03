@@ -271,6 +271,7 @@ enum Packed<T, E> {
 
 impl<T: IntoZlimResult<()>, E: Into<ZlimError>> IntoZlimResult<()> for Packed<T, E> {
     #[inline]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     fn into_zlim_result(self) -> Result<(), ZlimError> {
         match self {
             Packed::Next(x) => x.into_zlim_result(),

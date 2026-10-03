@@ -242,7 +242,7 @@ impl AtomicTick {
     ///
     /// If the tick is too old, it is moved to the fallback value `now - Tick::MAX_AGE`.
     #[inline]
-    pub fn clamp(&mut self, now: Tick) {
+    pub fn clamp_with(&mut self, now: Tick) {
         let age = now.relative_to(Tick(*self.0.get_mut()));
         let fallback = now.relative_to(Tick::MAX_AGE);
         if age.0 > MAX_TICK_AGE {
@@ -393,7 +393,7 @@ pub struct TicksMut<'w> {
     /// Mutable reference to the tick recording when this data was most recently
     /// modified.
     pub changed: &'w mut Tick,
-    /// The summary tick for the column, optional.
+    /// The summary tick for the column.
     pub summary: Option<&'w AtomicTick>,
     /// The tick when the system (or system parameter) last ran.
     pub last_run: Tick,

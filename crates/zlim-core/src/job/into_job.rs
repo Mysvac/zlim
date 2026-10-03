@@ -1,5 +1,7 @@
 //! Conversion of functions and systems into boxed jobs.
 
+use zlim_utils::debug::DebugLocation;
+
 use super::{Job, JobId};
 use crate::error::{IntoZlimResult, ZlimError};
 use crate::system::{AccessTable, SystemFlags};
@@ -19,29 +21,32 @@ use crate::world::{World, WorldCell};
 /// from running — while `()` / `Ok(())` map to success.
 pub trait IntoJobResult {
     /// Converts `this` into a scheduler result.
-    fn into_job_result(this: Self) -> Result<(), SystemError>;
+    fn into_job_result(this: Self, location: DebugLocation) -> Result<(), SystemError>;
 }
 
 impl<T: IntoZlimResult<()>> IntoJobResult for T {
     #[inline(always)]
-    fn into_job_result(this: Self) -> Result<(), SystemError> {
-        this.into_zlim_result().map_err(SystemError::Runtime)
+    fn into_job_result(this: Self, location: DebugLocation) -> Result<(), SystemError> {
+        match this.into_zlim_result() {
+            Ok(()) => Ok(()),
+            Err(e) => Err(SystemError::Runtime(e.with_location(location))),
+        }
     }
 }
 
 impl IntoJobResult for bool {
     #[inline(always)]
-    fn into_job_result(this: Self) -> Result<(), SystemError> {
+    fn into_job_result(this: Self, _: DebugLocation) -> Result<(), SystemError> {
         if this { Ok(()) } else { Err(SystemError::None) }
     }
 }
 
 impl<E: Into<ZlimError>> IntoJobResult for Result<bool, E> {
-    fn into_job_result(this: Self) -> Result<(), SystemError> {
+    fn into_job_result(this: Self, location: DebugLocation) -> Result<(), SystemError> {
         match this {
             Ok(true) => Ok(()),
             Ok(false) => Err(SystemError::None),
-            Err(e) => Err(SystemError::Runtime(e.into())),
+            Err(e) => Err(SystemError::Runtime(e.into().with_location(location))),
         }
     }
 }
@@ -58,6 +63,7 @@ where
 {
     system: S,
     id: JobId,
+    location: DebugLocation,
     /// The `tracy::Span` used for performance observation.
     ///
     /// `tracing::Span` and `tracy::Span` have different requirements:
@@ -116,7 +122,7 @@ where
         let _span = self.tracy.begin();
         unsafe {
             let ret = self.system.run_raw((), world)?;
-            IntoJobResult::into_job_result(ret)
+            IntoJobResult::into_job_result(ret, self.location)
         }
     }
 
@@ -164,6 +170,8 @@ where
     O: IntoJobResult + 'static,
     T: IntoSystem<(), O, M>,
 {
+    // ↓ track_caller: Track the definition point of the job.
+    #[track_caller]
     fn into_job<const STRICT: bool>(
         this: Self,
         name: &'static str,
@@ -171,18 +179,24 @@ where
     ) -> Box<dyn Job> {
         let id = JobId::new(name, group);
         let system: T::System = IntoSystem::into_system(this);
-        #[cfg(not(feature = "tracy"))]
-        return Box::new(JobSystem::<O, T::System, STRICT> { system, id });
+
+        let location = DebugLocation::caller();
 
         #[cfg(feature = "tracy")]
-        let (tracy, defer_tracy) = tracy_span_source(&id, system.flags());
+        let tracy_location = ::core::panic::Location::caller();
+
         #[cfg(feature = "tracy")]
-        return Box::new(JobSystem::<O, T::System, STRICT> {
+        let (tracy, defer_tracy) = tracy_span_source(&id, system.flags(), tracy_location);
+
+        Box::new(JobSystem::<O, T::System, STRICT> {
             system,
             id,
+            location,
+            #[cfg(feature = "tracy")]
             tracy,
+            #[cfg(feature = "tracy")]
             defer_tracy,
-        });
+        })
     }
 }
 
@@ -196,23 +210,46 @@ where
 fn tracy_span_source(
     id: &JobId,
     flag: SystemFlags,
+    location: &'static ::core::panic::Location,
 ) -> (
     &'static zlim_tracy::SpanSource,
     &'static zlim_tracy::SpanSource,
 ) {
     let func1 = format!("Job::run_raw::<{}>\0", id.name());
     let func2 = if flag.intersects(SystemFlags::DEFERRED) {
-        format!("Job::apply_deferred::<{}>\0", id.name())
+        format!("Job::deferred::<{}>\0", id.name())
     } else {
         String::new()
     };
 
-    let file = c"zlim_core::job";
+    let file = location.file_as_c_str();
+    let line = location.line();
 
     (
-        zlim_tracy::SpanSource::new_leak(String::new(), func1, file, 0, 0xADFF2F),
-        zlim_tracy::SpanSource::new_leak(String::new(), func2, file, 1, 0x2FFFAD),
+        zlim_tracy::SpanSource::new_leak(String::new(), func1, file, line, 0xADFF2F),
+        zlim_tracy::SpanSource::new_leak(String::new(), func2, file, line, 0x2FFFAD),
     )
 }
 
 // -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use crate::schedule::AnonymousSchedule;
+    use crate::{derive::job, error::ZlimError, world::World};
+
+    job! {
+        type: TestError,
+        system: || -> Result<(), ZlimError> { Err(ZlimError::info("TestError")) },
+        auto_register: false,
+    }
+
+    #[test]
+    #[ignore = "manual trigger"]
+    fn zlim_error_location() {
+        zlim_log::LogConfig::default().apply();
+        let mut world = World::alloc();
+        world.insert_job::<TestError>(AnonymousSchedule, ());
+        world.run_schedule(AnonymousSchedule);
+    }
+}

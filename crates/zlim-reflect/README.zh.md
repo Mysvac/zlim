@@ -39,7 +39,7 @@ assert_eq!(Foo::type_name(), "Foo");
 
 ## 类型信息
 
-通过 `Reflect` 宏为类型生成完整反射所需的代码，这包含 `TypePath` 的内容：
+通过 `Reflect` 宏为类型生成完整反射所需的代码，这依赖 `TypePath` ：
 
 ```rust
 use zlim_reflect::{TypePath, Reflect};
@@ -70,7 +70,7 @@ println!("{:?}", r); // 类似：Struct<Position>({x: 1.0, y: 2.0})
 - `reflect_apply`：弱类型的拷贝赋值，结构相似即可进行赋值。
 
 - `reflect_clone`：类型擦除状态下的数据拷贝，保证返回值的类型与本身一致。
-  此函数通常始终成功，仅有少量不支持 `Clone` 的类型可能失败。
+  此函数通常始终成功，仅有极少数不支持 `Clone` 的类型可能失败。
 
 - `reflect_eq`：类型擦除状态下的比较，强类型比较（类型不等时直接返回 `false`）。
   对于字符串等特殊类型，会使用字符串化的宽松比较。对于 `HashSet` 等特殊类型，由于迭代顺序的
@@ -164,6 +164,8 @@ struct Foo<T>(T);
 register_reflect!(Foo<u32>, Foo<i32>);
 ```
 
+结构体等复合类型，在自身注册时会自动注册字段类型。
+
 ## 基于反射的序列化
 
 反射系统基于 serde 提供序列化与反序列化支持，集成在 `TypeDB` 中，分为两种格式：
@@ -196,8 +198,7 @@ register_reflect!(Foo<u32>, Foo<i32>);
 
 ## 代码生成
 
-反射相关的实现基本不需要手写，`derive` 宏会代劳。相关的宏位于
-`zlim-reflect/derive`，主要有两个：
+反射相关的实现基本不需要手写，`derive` 宏会代劳。相关的宏位于 `zlim-reflect/derive`，主要有两个：
 
 - `#[derive(TypePath)]`：生成 `TypePath` 实现。
   默认使用 `module_path!()` + 类型名拼接路径；也可以通过 `#[type_path = "..."]`

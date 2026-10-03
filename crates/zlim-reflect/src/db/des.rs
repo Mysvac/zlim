@@ -294,6 +294,8 @@ impl TypeDB {
     }
 
     /// Self-describing deserializer for reflected types with processor.
+    ///
+    /// See [`TypeDB::reflect_deserialize`] for details.
     #[inline]
     pub fn reflect_deserialize_with<'de, D, P>(
         deserializer: D,
@@ -307,6 +309,8 @@ impl TypeDB {
     }
 
     /// Type-known deserializer with processor, **without** type path resolution.
+    ///
+    /// See [`TypeDB::deserialize`] for details.
     #[inline]
     pub fn deserialize_with<'de, D, P>(
         &'static self,
@@ -320,6 +324,9 @@ impl TypeDB {
         ReflectDeser::<P>(self, Some(processor)).deserialize(deserializer)
     }
 
+    /// Creates a [`DeserializeSeed`] driver for **self-describing** input.
+    ///
+    /// See [`TypeDB::reflect_deserialize`] for details.
     #[inline]
     pub fn reflect_deserialize_driver<'a, P>(
         processor: Option<&'a mut P>,
@@ -330,6 +337,9 @@ impl TypeDB {
         TypePathReflectDeser::<P>(processor)
     }
 
+    /// Creates a [`DeserializeSeed`] driver for **type-known** input.
+    ///
+    /// See [`TypeDB::deserialize`] for details.
     #[inline]
     pub fn deserialize_driver<'a, P>(
         &'static self,

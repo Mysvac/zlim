@@ -301,6 +301,8 @@ impl TypeDB {
     }
 
     /// Self-describing serializer with specific processor for reflected types.
+    ///
+    /// See [`TypeDB::reflect_serialize`] for details.
     #[inline]
     pub fn reflect_serialize_with<S, P>(
         value: &dyn Reflect,
@@ -315,6 +317,8 @@ impl TypeDB {
     }
 
     /// Serializes a reflected value directly with specific processor, **without** type path wrapping.
+    ///
+    /// See [`TypeDB::serialize`] for details.
     #[inline]
     pub fn serialize_with<S, P>(
         value: &dyn Reflect,
@@ -328,6 +332,9 @@ impl TypeDB {
         ReflectSer::<P>(value, Some(processor)).serialize(serializer)
     }
 
+    /// Creates a [`Serialize`] driver for **self-describing** output.
+    ///
+    /// See [`TypeDB::reflect_serialize`] for details.
     #[inline]
     pub fn reflect_serialize_driver<'a, P>(
         value: &'a dyn Reflect,
@@ -339,6 +346,9 @@ impl TypeDB {
         TypePathReflectSer::<P>(value, processor)
     }
 
+    /// Creates a [`Serialize`] driver for **type-known** output.
+    ///
+    /// See [`TypeDB::serialize`] for details.
     #[inline]
     pub fn serialize_driver<'a, P>(
         value: &'a dyn Reflect,

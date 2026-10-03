@@ -97,6 +97,7 @@ type BoxedError = Box<dyn Error + Send + Sync + 'static>;
 #[repr(align(8))]
 struct InnerError {
     content: BoxedError,
+    built_at: DebugLocation,
     location: DebugLocation,
     #[cfg(feature = "backtrace")]
     backtrace: Backtrace,
@@ -154,11 +155,16 @@ impl ZlimError {
         };
 
         #[cfg(not(feature = "backtrace"))]
-        let boxed = Box::new(InnerError { content, location });
+        let boxed = Box::new(InnerError {
+            content,
+            built_at: location,
+            location,
+        });
 
         #[cfg(feature = "backtrace")]
         let boxed = Box::new(InnerError {
             content,
+            built_at: location,
             location,
             backtrace,
         });
@@ -348,7 +354,15 @@ impl ZlimError {
         self.get_inner().content.as_ref()
     }
 
-    /// Returns the source code location where this [`ZlimError`] was triggered.
+    /// Returns the source code location where this [`ZlimError`] was built.
+    #[inline]
+    pub fn built_at(&self) -> DebugLocation {
+        self.get_inner().built_at
+    }
+
+    /// Returns the source code location where the internal error was occured.
+    ///
+    /// Unlike [`ZlimError::built_at`], this value can be overridden.
     #[inline]
     pub fn location(&self) -> DebugLocation {
         self.get_inner().location
@@ -605,7 +619,14 @@ impl Display for ZlimError {
     /// If you want the output of severity, use [`Debug::fmt`] instead.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[cfg(any(debug_assertions, feature = "debug"))]
-        write!(f, "{}\n\tat {}", self.get(), self.location())?;
+        {
+            let built_at = self.built_at();
+            let location = self.location();
+            write!(f, "{}\n\tat {}", self.get(), built_at)?;
+            if built_at != location {
+                write!(f, "\n\tat {}", location)?;
+            }
+        }
 
         #[cfg(not(any(debug_assertions, feature = "debug")))]
         write!(f, "{}", self.get())?;

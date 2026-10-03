@@ -392,7 +392,7 @@ impl Column {
     pub unsafe fn clamp_ticks(&mut self, len: usize, now: Tick) {
         use crate::utils::clamp_tick_slice;
         unsafe {
-            let _ = self.summary.as_mut().map(|s| s.clamp(now));
+            let _ = self.summary.as_mut().map(|s| s.clamp_with(now));
             clamp_tick_slice(self.added.get_slice_mut().as_mut(len), now);
             clamp_tick_slice(self.changed.get_slice_mut().as_mut(len), now);
         }
