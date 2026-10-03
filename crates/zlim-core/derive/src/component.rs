@@ -248,6 +248,12 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
             let type_database_ = crate::path::type_database_(&zlim_core);
             predicates.push(parse_quote! { Self: #type_database_ });
         }
+
+        // A serialized component is also `Clone`: a scene document describes a value that can be
+        // applied more than once, and the template of such a value is built by cloning it.
+        if attrs.serialize {
+            predicates.push(parse_quote! { Self: ::core::clone::Clone });
+        }
     } else if generics.lifetimes().next().is_some() {
         generics
             .make_where_clause()

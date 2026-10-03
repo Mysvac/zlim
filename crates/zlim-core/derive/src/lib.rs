@@ -823,8 +823,7 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 ///
 /// Besides the association, the derive implements `From<Type> for TypeTemplate`, which converts a
 /// value into the companion template by converting each field with the rule from the table above,
-/// and [`IntoTemplate::into_template`](zlim_core::template::IntoTemplate::into_template), which is
-/// `From::from(self)`.
+/// and `IntoTemplate::into_template`, which is `From::from(self)`.
 ///
 /// # Enum attributes
 ///

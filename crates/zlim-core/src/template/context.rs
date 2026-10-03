@@ -1,12 +1,12 @@
 use core::fmt::{Debug, Display, Formatter};
-use core::hash::{BuildHasher, Hash, Hasher};
+use core::hash::{Hash, Hasher};
 
 use zlim_utils::hash::FixedState;
 use zlim_utils::hash::HashMap;
 use zlim_utils::hash::NoopState;
 
 use crate::borrow::{Res, ResMut};
-use crate::entity::EntityId;
+use crate::entity::{EntityId, EntityMap, EntityMapper};
 use crate::error::{ZlimError, ZlimResult};
 use crate::ops::EntityOwned;
 use crate::resource::Resource;
@@ -42,16 +42,20 @@ impl EntityReference {
     /// name within that invocation, and the counter of the current run.
     ///
     /// The location is what `file!()`, `line!()` and `column!()` expand to at the invocation.
-    #[inline]
     pub fn new(file: &'static str, line: u32, column: u32, name_id: usize, runtime: u64) -> Self {
+        let mut hasher = FixedState::HASHER;
+        file.hash(&mut hasher);
+        hasher.write_u32(line);
+        hasher.write_u32(column);
+        hasher.write_u64(runtime);
+        hasher.write_usize(name_id);
         Self {
             file,
             line,
             column,
             name_id,
             runtime,
-            // Should we hash `invocation` infomation?
-            hash: FixedState.hash_one((file, line, column, name_id, runtime)),
+            hash: hasher.finish(),
         }
     }
 }
@@ -139,21 +143,41 @@ impl Debug for EntityReferences {
 
 /// The context a [`Template`](super::Template) is built with.
 ///
-/// It holds the entity the template is being applied to, and the entity references of the scene it
-/// belongs to.
+/// It holds the entity the template is being applied to, the entity references of the scene it
+/// belongs to, and the entities that scene describes.
+///
+/// The last two are the two ways a template can point at an entity, and they are different in kind:
+///
+/// - a *name* ([`EntityReferences`]) is written as a `#Name` in a scene, and an unknown one is an
+///   error, because an entity invented on the spot would be one nothing describes;
+/// - an *id* ([`EntityMap`]) is what a component carries after it was serialized by reflection — a
+///   document id, meaningful only within the scene it came from. An id the scene does not declare is
+///   kept as it is, which is what lets a template that was never part of a document (everything
+///   built in Rust) work unchanged.
 pub struct TemplateContext<'a, 'w> {
     /// The entity the template is being applied to.
     pub entity: &'a mut EntityOwned<'w>,
 
     /// The entity references of the scene, used to resolve its named entities.
     pub references: &'a mut EntityReferences,
+
+    /// The entities the scene describes, keyed by the id they carry in its document.
+    pub entity_mapper: &'a mut EntityMap<EntityId>,
 }
 
 impl<'a, 'w> TemplateContext<'a, 'w> {
-    /// Creates a context for the given entity and references.
+    /// Creates a context for the given entity, references and entities.
     #[inline]
-    pub fn new(entity: &'a mut EntityOwned<'w>, references: &'a mut EntityReferences) -> Self {
-        Self { entity, references }
+    pub fn new(
+        entity: &'a mut EntityOwned<'w>,
+        references: &'a mut EntityReferences,
+        entity_mapper: &'a mut EntityMap<EntityId>,
+    ) -> Self {
+        Self {
+            entity,
+            references,
+            entity_mapper,
+        }
     }
 
     /// Returns the entity the given reference stands for.
@@ -181,10 +205,25 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
         }
     }
 
+    /// Returns the entity that the given document id stands for in this application.
+    ///
+    /// An id the scene does not declare is returned unchanged, so a template that was built in Rust
+    /// rather than read from a document keeps naming whatever entity its id already names.
+    #[inline]
+    pub fn map_entity(&mut self, id: EntityId) -> EntityId {
+        self.entity_mapper.get_mapped(id)
+    }
+
     /// Gets read-only access to the world that the current template belongs to.
     #[inline]
     pub fn world(&self) -> &World {
         self.entity.world()
+    }
+
+    /// Returns `true` if the entity is currently spawned.
+    #[inline]
+    pub fn contains_entity(&self, entity: EntityId) -> bool {
+        self.entity.world().contains_entity(entity)
     }
 
     /// Gets a reference to the resource of the given type if it exists

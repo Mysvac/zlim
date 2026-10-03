@@ -14,6 +14,7 @@ use crate::query::{ArchetypeFilter, QuerySlice, QuerySliceIter};
 use crate::system::{AccessTable, SystemParam, SystemParamError};
 use crate::table::TableId;
 use crate::tick::Tick;
+use crate::utils::DebugCheckedUnwrap;
 use crate::world::{World, WorldCell};
 
 // -----------------------------------------------------------------------------
@@ -753,17 +754,17 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     }
 
     #[inline]
-    fn update_filter_cache(&self, f_cache: &mut F::Cache<'w>, location: Location) {
+    fn update_filter_cache(&self, f_cache: &mut F::Cache<'w>, location: Location) -> bool {
         let tables = unsafe { &mut self.world.data_mut().tables };
         let table = unsafe { tables.get_unchecked_mut(location.table_id) };
-        unsafe { F::update_table(&self.state.f_state, f_cache, table) };
+        unsafe { F::update_table(&self.state.f_state, f_cache, table) }
     }
 
     #[inline]
-    fn update_data_cache(&self, d_cache: &mut D::Cache<'w>, location: Location) {
+    fn update_data_cache(&self, d_cache: &mut D::Cache<'w>, location: Location) -> bool {
         let tables = unsafe { &mut self.world.data_mut().tables };
         let table = unsafe { tables.get_unchecked_mut(location.table_id) };
-        unsafe { D::update_table(&self.state.d_state, d_cache, table) };
+        unsafe { D::update_table(&self.state.d_state, d_cache, table) }
     }
 
     fn contains_impl(&self, entity: EntityId) -> bool {
@@ -782,7 +783,9 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
         if F::ENABLE_ENTITY_FILTER {
             unsafe {
                 let mut f_cache = F::build_cache(&self.state.f_state, world, last_run, this_run);
-                self.update_filter_cache(&mut f_cache, location);
+                if !self.update_filter_cache(&mut f_cache, location) {
+                    return false;
+                }
                 if !F::filter(
                     &self.state.f_state,
                     &mut f_cache,
@@ -796,7 +799,9 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
 
         unsafe {
             let mut d_cache = D::build_cache(&self.state.d_state, world, last_run, this_run);
-            self.update_data_cache(&mut d_cache, location);
+            if !self.update_data_cache(&mut d_cache, location) {
+                return false;
+            }
             D::fetch(
                 &self.state.d_state,
                 &mut d_cache,
@@ -818,32 +823,14 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
             return Err(QueryEntityError::QueryMismatch(entity));
         }
 
-        if F::ENABLE_ENTITY_FILTER {
-            unsafe {
-                let mut f_cache = F::build_cache(&self.state.f_state, world, last_run, this_run);
-                self.update_filter_cache(&mut f_cache, location);
-                if !F::filter(
-                    &self.state.f_state,
-                    &mut f_cache,
-                    entity,
-                    location.table_row,
-                ) {
-                    return Err(QueryEntityError::QueryMismatch(entity));
-                }
-            }
-        }
+        let mut d_cache = unsafe { D::build_cache(&self.state.d_state, world, last_run, this_run) };
+        let mut f_cache = if F::ENABLE_ENTITY_FILTER {
+            Some(unsafe { F::build_cache(&self.state.f_state, world, last_run, this_run) })
+        } else {
+            None
+        };
 
-        unsafe {
-            let mut d_cache = D::build_cache(&self.state.d_state, world, last_run, this_run);
-            self.update_data_cache(&mut d_cache, location);
-            D::fetch(
-                &self.state.d_state,
-                &mut d_cache,
-                entity,
-                location.table_row,
-            )
-            .ok_or(QueryEntityError::QueryMismatch(entity))
-        }
+        Self::get_with_cache_impl(self, entity, f_cache.as_mut(), &mut d_cache)
     }
 
     fn get_many_mut_impl<const N: usize>(
@@ -871,13 +858,17 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
 
         let mut values = [const { MaybeUninit::<D::Item<'w>>::uninit() }; N];
 
-        let mut f_cache = unsafe { F::build_cache(&self.state.f_state, world, last_run, this_run) };
         let mut d_cache = unsafe { D::build_cache(&self.state.d_state, world, last_run, this_run) };
+        let mut f_cache = if F::ENABLE_ENTITY_FILTER {
+            Some(unsafe { F::build_cache(&self.state.f_state, world, last_run, this_run) })
+        } else {
+            None
+        };
 
         for index in 0..N {
             let value = &mut values[index];
             let entity = entities[index];
-            match self.get_with_cache_impl(entity, &mut f_cache, &mut d_cache) {
+            match self.get_with_cache_impl(entity, f_cache.as_mut(), &mut d_cache) {
                 Ok(item) => *value = MaybeUninit::new(item),
                 Err(e) => {
                     // SAFETY: `values[..index]` were all initialized above.
@@ -895,7 +886,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     fn get_with_cache_impl(
         &self,
         entity: EntityId,
-        f_cache: &mut F::Cache<'w>,
+        f_cache: Option<&mut F::Cache<'w>>,
         d_cache: &mut D::Cache<'w>,
     ) -> Result<D::Item<'w>, QueryEntityError> {
         let location = self.locate_entity(entity)?;
@@ -905,16 +896,20 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
         }
 
         if F::ENABLE_ENTITY_FILTER {
-            unsafe {
-                self.update_filter_cache(f_cache, location);
-                if !F::filter(&self.state.f_state, f_cache, entity, location.table_row) {
-                    return Err(QueryEntityError::QueryMismatch(entity));
-                }
+            let ok = unsafe {
+                let f_cache = f_cache.debug_checked_unwrap();
+                self.update_filter_cache(f_cache, location)
+                    && F::filter(&self.state.f_state, f_cache, entity, location.table_row)
+            };
+            if !ok {
+                return Err(QueryEntityError::QueryMismatch(entity));
             }
         }
 
         unsafe {
-            self.update_data_cache(d_cache, location);
+            if !self.update_data_cache(d_cache, location) {
+                return Err(QueryEntityError::QueryMismatch(entity));
+            }
             D::fetch(&self.state.d_state, d_cache, entity, location.table_row)
                 .ok_or(QueryEntityError::QueryMismatch(entity))
         }

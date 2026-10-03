@@ -43,6 +43,7 @@ mod entity;
 mod erased;
 mod function;
 mod tuple;
+mod value;
 
 pub use collections::{BuiltInTemplate, OptionTemplate, VecTemplate};
 pub use context::TemplateContext;
@@ -52,6 +53,7 @@ pub use entity::EntityTemplate;
 pub use erased::ErasedTemplate;
 pub use function::{FnTemplate, template};
 pub use tuple::TemplateTuple;
+pub use value::ComponentTemplate;
 
 pub use crate::derive::IntoTemplate;
 
@@ -288,7 +290,7 @@ impl<T: Clone + Default + Unpin> IntoTemplate for T {
 mod tests {
 
     use crate::derive::Resource;
-    use crate::entity::EntityId;
+    use crate::entity::{EntityId, EntityMap};
     use crate::error::ZlimResult;
     use crate::world::World;
 
@@ -327,8 +329,9 @@ mod tests {
     /// Builds `source` for a fresh entity of `world`, with a fresh table of references.
     fn build_result_in<T: Template>(world: &mut World, source: &T) -> ZlimResult<T::Output> {
         let mut references = EntityReferences::new();
+        let mut entities = EntityMap::new();
         let mut entity = world.spawn_empty(None);
-        let mut context = TemplateContext::new(&mut entity, &mut references);
+        let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
         source.build_template(&mut context)
     }
 
@@ -373,9 +376,10 @@ mod tests {
 
         let mut world = World::alloc();
         let mut references = EntityReferences::new();
+        let mut entities = EntityMap::new();
         let mut entity = world.spawn_empty(None);
         let declared = entity.id();
-        let mut context = TemplateContext::new(&mut entity, &mut references);
+        let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
 
         // Nothing declared the name yet.
         assert!(context.resolve_entity(first).is_err());

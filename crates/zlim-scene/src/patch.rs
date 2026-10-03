@@ -160,6 +160,18 @@ impl ScenePatch {
         self.resolved.as_ref()
     }
 
+    /// Applies the resolved scene to an entity that already exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the patch has not been resolved yet.
+    pub fn apply(&self, entity: &mut EntityOwned<'_>) -> ZlimResult<()> {
+        self.resolved
+            .as_deref()
+            .ok_or_else(unresolved)?
+            .apply(entity)
+    }
+
     /// Spawns the resolved scene as a new root entity under `parent`.
     ///
     /// # Panics
@@ -174,27 +186,19 @@ impl ScenePatch {
         world: &'w mut World,
         parent: Option<EntityId>,
     ) -> ZlimResult<EntityOwned<'w>> {
-        let resolved = self.resolved.as_deref().ok_or_else(|| self.unresolved())?;
-        resolved.spawn(world, parent)
+        self.resolved
+            .as_deref()
+            .ok_or_else(unresolved)?
+            .spawn(world, parent)
     }
+}
 
-    /// Applies the resolved scene to an entity that already exists.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the patch has not been resolved yet.
-    pub fn apply(&self, entity: &mut EntityOwned<'_>) -> ZlimResult<()> {
-        let resolved = self.resolved.as_deref().ok_or_else(|| self.unresolved())?;
-        resolved.apply(entity)
-    }
-
-    /// The error of applying a patch that was never resolved.
-    fn unresolved(&self) -> ZlimError {
-        ZlimError::error(
-            "this scene patch has not been resolved yet: it is either still loading or was never \
-             resolved",
-        )
-    }
+/// The error of applying a patch that was never resolved.
+fn unresolved() -> ZlimError {
+    ZlimError::error(
+        "this scene patch has not been resolved yet: \
+        it is either still loading or was never resolved",
+    )
 }
 
 // -----------------------------------------------------------------------------
@@ -326,17 +330,17 @@ impl SceneListPatch {
     ///
     /// Returns an error if the patch has not been resolved yet.
     pub fn spawn(&self, world: &mut World, parent: Option<EntityId>) -> ZlimResult<Vec<EntityId>> {
-        let resolved = self.resolved.as_deref().ok_or_else(|| self.unresolved())?;
-        crate::apply::spawn_resolved(world, resolved, parent)
+        let resolved = self.resolved.as_deref().ok_or_else(unresolved_list)?;
+        ResolvedScene::spawn_batch(resolved, world, parent)
     }
+}
 
-    /// The error of spawning a patch that was never resolved.
-    fn unresolved(&self) -> ZlimError {
-        ZlimError::error(
-            "this scene list patch has not been resolved yet: it is either still loading or was \
-             never resolved",
-        )
-    }
+/// The error of spawning a patch that was never resolved.
+fn unresolved_list() -> ZlimError {
+    ZlimError::error(
+        "this scene list patch has not been resolved yet: \
+        it is either still loading or was never resolved",
+    )
 }
 
 // -----------------------------------------------------------------------------
@@ -425,10 +429,11 @@ impl Scene for CachedSceneAsset {
         let handle = assets
             .get_handle::<ScenePatch>(self.0.clone())
             .ok_or_else(|| {
-                ZlimError::error(format!(
+                let e = format!(
                     "the scene patch '{}' is not known to the asset server",
                     self.0
-                ))
+                );
+                ZlimError::error(e)
             })?;
 
         scene.include_cached(context.patches(), handle)?;

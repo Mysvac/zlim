@@ -1,7 +1,7 @@
 //! Integration tests for `#[derive(IntoTemplate)]`.
 
 use zlim_core::derive::IntoTemplate;
-use zlim_core::entity::EntityId;
+use zlim_core::entity::{EntityId, EntityMap};
 use zlim_core::error::ZlimResult;
 use zlim_core::template::IntoTemplate as _;
 use zlim_core::template::{EntityReference, EntityReferences, EntityTemplate};
@@ -114,8 +114,9 @@ enum Shape {
 /// Builds `source` for a fresh entity of `world`.
 fn build<T: Template>(world: &mut World, source: &T) -> T::Output {
     let mut references = EntityReferences::new();
+    let mut entities = EntityMap::new();
     let mut entity = world.spawn_empty(None);
-    let mut context = TemplateContext::new(&mut entity, &mut references);
+    let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
     source
         .build_template(&mut context)
         .expect("the template is expected to build")
@@ -213,8 +214,9 @@ fn the_same_reference_resolves_to_one_entity() {
     // The name is bound by the scene that declares it, which is what makes it resolvable at all.
     references.set(EntityReference::new("scene.rs", 3, 9, 0, 1), declared);
 
+    let mut entities = EntityMap::new();
     let mut entity = world.spawn_empty(None);
-    let mut context = TemplateContext::new(&mut entity, &mut references);
+    let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
 
     let reference = || EntityTemplate::from(EntityReference::new("scene.rs", 3, 9, 0, 1));
     let template = LinkTemplate {
@@ -234,8 +236,9 @@ fn the_same_reference_resolves_to_one_entity() {
 fn a_template_without_an_entity_fails() {
     let mut world = World::alloc();
     let mut references = EntityReferences::new();
+    let mut entities = EntityMap::new();
     let mut entity = world.spawn_empty(None);
-    let mut context = TemplateContext::new(&mut entity, &mut references);
+    let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
 
     let template = WidgetTemplate {
         entity: EntityTemplate::None,

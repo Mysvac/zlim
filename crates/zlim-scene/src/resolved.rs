@@ -11,6 +11,7 @@ use zlim_asset::handle::Handle;
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::HashSet;
 
+use zlim_core::entity::EntityId;
 use zlim_core::error::ZlimError;
 use zlim_core::template::{EntityReference, EntityTemplate};
 use zlim_core::template::{ErasedTemplate, Template, TemplateEffect};
@@ -82,6 +83,13 @@ pub struct ResolvedScene {
     /// The explicit parent edge of this entity.
     parent: Option<EntityTemplate>,
 
+    /// The id this entity carries in the document it was read from.
+    ///
+    /// A scene read from a document has one, and applying it binds that id to the entity it spawns,
+    /// which is what makes the ids the document's components mention resolve. A scene built in Rust
+    /// has none, and the entities its templates name are already the ones they mean.
+    document_id: Option<EntityId>,
+
     /// The cached scene this one builds on, if any.
     cached: Option<CachedSceneInfo>,
 }
@@ -100,6 +108,7 @@ impl Debug for ResolvedScene {
             .field("entity_references", &self.entity_references)
             .field("children", &self.children)
             .field("parent", &self.parent)
+            .field("document_id", &self.document_id)
             .field("cached", &self.cached)
             .finish()
     }
@@ -118,8 +127,24 @@ impl ResolvedScene {
             entity_references: Vec::new(),
             children: Vec::new(),
             parent: None,
+            document_id: None,
             cached: None,
         }
+    }
+
+    /// Returns the id this entity carries in the document it was read from, if it came from one.
+    #[inline]
+    pub fn document_id(&self) -> Option<EntityId> {
+        self.document_id
+    }
+
+    /// Marks this entity as the one a document describes with `id`.
+    ///
+    /// This is what the scene loader calls for every entity of a document, and what makes the
+    /// document's ids — the ones its components carry — resolve to the entities this scene spawns.
+    #[inline]
+    pub fn set_document_id(&mut self, id: EntityId) {
+        self.document_id = Some(id);
     }
 }
 

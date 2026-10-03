@@ -5,13 +5,10 @@
 
 use zlim_asset::assets::Assets;
 use zlim_asset::server::AssetServer;
-use zlim_core::bundle::BundleScratch;
 use zlim_core::entity::EntityId;
 use zlim_core::error::ZlimResult;
-use zlim_core::template::EntityReferences;
 use zlim_core::world::World;
 
-use crate::apply::spawn_resolved;
 use crate::patch::ScenePatch;
 use crate::resolved::ResolvedScene;
 use crate::scene::{ResolveContext, Scene};
@@ -87,7 +84,7 @@ impl WorldSceneExt for World {
 
     fn spawn_scene(&mut self, scene: impl Scene, parent: Option<EntityId>) -> ZlimResult<EntityId> {
         let resolved = self.resolve_scene(scene)?;
-        Ok(resolved.spawn(self, parent)?.id())
+        Ok(ResolvedScene::spawn(&resolved, self, parent)?.id())
     }
 
     fn spawn_scene_list(
@@ -96,16 +93,13 @@ impl WorldSceneExt for World {
         parent: Option<EntityId>,
     ) -> ZlimResult<Vec<EntityId>> {
         let scenes = self.resolve_scene_list(list)?;
-        spawn_resolved(self, &scenes, parent)
+        ResolvedScene::spawn_batch(&scenes, self, parent)
     }
 
     fn apply_scene(&mut self, scene: impl Scene, target: EntityId) -> ZlimResult<()> {
         let resolved = self.resolve_scene(scene)?;
         let mut entity = self.get_entity_owned(target)?;
-        let mut references = EntityReferences::new();
-        let mut scratch = BundleScratch::new();
-
-        resolved.apply_internal(&mut entity, &mut references, &mut scratch, false)
+        resolved.apply(&mut entity)
     }
 }
 
