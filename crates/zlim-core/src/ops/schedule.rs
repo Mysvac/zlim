@@ -27,6 +27,8 @@ impl World {
     }
 
     /// Inserts a standalone job from a [`JobLabel`] into the given [`Schedule`].
+    ///
+    /// Initializes a new empty schedule if it doesn't exist.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_job<J: JobLabel>(
@@ -38,6 +40,8 @@ impl World {
     }
 
     /// Inserts a job group from a [`JobGroupLabel`] into the given [`Schedule`].
+    ///
+    /// Initializes a new empty schedule if it doesn't exist.
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_job_group<J: JobGroupLabel>(

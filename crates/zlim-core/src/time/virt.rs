@@ -2,8 +2,6 @@
 
 use core::time::Duration;
 
-use zlim_reflect::derive::TypePath;
-
 use super::{Time, TimeContext};
 
 // -----------------------------------------------------------------------------
@@ -42,8 +40,7 @@ use super::{Time, TimeContext};
 ///
 /// [`Real`]: crate::time::Real
 /// [`Time<Virtual>`]: Time
-#[derive(TypePath, Debug, Copy, Clone, PartialEq)]
-#[type_path = "zlim_core::time::Virtual"]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Virtual {
     max_delta: Duration,
     paused: bool,

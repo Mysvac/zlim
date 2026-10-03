@@ -3,7 +3,6 @@
 use core::time::Duration;
 
 use zlim_os::time::Instant;
-use zlim_reflect::derive::TypePath;
 
 use super::{Time, TimeContext};
 
@@ -40,7 +39,7 @@ use super::{Time, TimeContext};
 ///
 /// [`Time<Real>`]: Time
 /// [`World::refresh_metadata`]: crate::world::World::refresh_metadata
-#[derive(TypePath, Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Real {
     startup: Instant,
     first_update: Option<Instant>,

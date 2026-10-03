@@ -53,6 +53,8 @@ pub enum Color {
     Srgba(Srgba),
     /// A color in the linear sRGB color space with alpha.
     LinearRgba(LinearRgba),
+    /// A color in the XYZ color space with alpha.
+    Xyza(Xyza),
     /// A color in the HSL color space with alpha.
     Hsla(Hsla),
     /// A color in the HSV color space with alpha.
@@ -67,8 +69,6 @@ pub enum Color {
     Oklaba(Oklaba),
     /// A color in the Oklch color space with alpha.
     Oklcha(Oklcha),
-    /// A color in the XYZ color space with alpha.
-    Xyza(Xyza),
     /// A color in the Okhsl color space with alpha.
     Okhsla(Okhsla),
     /// A color in the Okhsv color space with alpha.
@@ -86,6 +86,12 @@ impl From<Srgba> for Color {
 impl From<LinearRgba> for Color {
     fn from(value: LinearRgba) -> Self {
         Self::LinearRgba(value)
+    }
+}
+
+impl From<Xyza> for Color {
+    fn from(value: Xyza) -> Self {
+        Self::Xyza(value)
     }
 }
 
@@ -128,12 +134,6 @@ impl From<Oklaba> for Color {
 impl From<Oklcha> for Color {
     fn from(value: Oklcha) -> Self {
         Self::Oklcha(value)
-    }
-}
-
-impl From<Xyza> for Color {
-    fn from(value: Xyza) -> Self {
-        Self::Xyza(value)
     }
 }
 
@@ -702,6 +702,7 @@ impl Alpha for Color {
         match &mut new {
             Color::Srgba(x) => *x = x.with_alpha(alpha),
             Color::LinearRgba(x) => *x = x.with_alpha(alpha),
+            Color::Xyza(x) => *x = x.with_alpha(alpha),
             Color::Hsla(x) => *x = x.with_alpha(alpha),
             Color::Hsva(x) => *x = x.with_alpha(alpha),
             Color::Hwba(x) => *x = x.with_alpha(alpha),
@@ -709,7 +710,6 @@ impl Alpha for Color {
             Color::Lcha(x) => *x = x.with_alpha(alpha),
             Color::Oklaba(x) => *x = x.with_alpha(alpha),
             Color::Oklcha(x) => *x = x.with_alpha(alpha),
-            Color::Xyza(x) => *x = x.with_alpha(alpha),
             Color::Okhsla(x) => *x = x.with_alpha(alpha),
             Color::Okhsva(x) => *x = x.with_alpha(alpha),
             Color::Okhwba(x) => *x = x.with_alpha(alpha),
@@ -722,6 +722,7 @@ impl Alpha for Color {
         match self {
             Color::Srgba(x) => x.alpha(),
             Color::LinearRgba(x) => x.alpha(),
+            Color::Xyza(x) => x.alpha(),
             Color::Hsla(x) => x.alpha(),
             Color::Hsva(x) => x.alpha(),
             Color::Hwba(x) => x.alpha(),
@@ -729,7 +730,6 @@ impl Alpha for Color {
             Color::Lcha(x) => x.alpha(),
             Color::Oklaba(x) => x.alpha(),
             Color::Oklcha(x) => x.alpha(),
-            Color::Xyza(x) => x.alpha(),
             Color::Okhsla(x) => x.alpha(),
             Color::Okhsva(x) => x.alpha(),
             Color::Okhwba(x) => x.alpha(),
@@ -740,6 +740,7 @@ impl Alpha for Color {
         match self {
             Color::Srgba(x) => x.set_alpha(alpha),
             Color::LinearRgba(x) => x.set_alpha(alpha),
+            Color::Xyza(x) => x.set_alpha(alpha),
             Color::Hsla(x) => x.set_alpha(alpha),
             Color::Hsva(x) => x.set_alpha(alpha),
             Color::Hwba(x) => x.set_alpha(alpha),
@@ -747,7 +748,6 @@ impl Alpha for Color {
             Color::Lcha(x) => x.set_alpha(alpha),
             Color::Oklaba(x) => x.set_alpha(alpha),
             Color::Oklcha(x) => x.set_alpha(alpha),
-            Color::Xyza(x) => x.set_alpha(alpha),
             Color::Okhsla(x) => x.set_alpha(alpha),
             Color::Okhsva(x) => x.set_alpha(alpha),
             Color::Okhwba(x) => x.set_alpha(alpha),
@@ -762,7 +762,8 @@ impl From<Color> for Srgba {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba,
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
@@ -770,7 +771,6 @@ impl From<Color> for Srgba {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -782,7 +782,8 @@ impl From<Color> for LinearRgba {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear,
+            Color::LinearRgba(x) => x,
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
@@ -790,7 +791,26 @@ impl From<Color> for LinearRgba {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
+            Color::Okhsla(okhsl) => okhsl.into(),
+            Color::Okhsva(okhsv) => okhsv.into(),
+            Color::Okhwba(okhwb) => okhwb.into(),
+        }
+    }
+}
+
+impl From<Color> for Xyza {
+    fn from(value: Color) -> Self {
+        match value {
+            Color::Srgba(srgba) => srgba.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza,
+            Color::Hsla(hsla) => hsla.into(),
+            Color::Hsva(hsva) => hsva.into(),
+            Color::Hwba(hwba) => hwba.into(),
+            Color::Laba(laba) => laba.into(),
+            Color::Lcha(lcha) => lcha.into(),
+            Color::Oklaba(oklab) => oklab.into(),
+            Color::Oklcha(oklch) => oklch.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -802,7 +822,8 @@ impl From<Color> for Hsla {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla,
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
@@ -810,7 +831,6 @@ impl From<Color> for Hsla {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -822,7 +842,8 @@ impl From<Color> for Hsva {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva,
             Color::Hwba(hwba) => hwba.into(),
@@ -830,7 +851,6 @@ impl From<Color> for Hsva {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -842,7 +862,8 @@ impl From<Color> for Hwba {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba,
@@ -850,7 +871,6 @@ impl From<Color> for Hwba {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -862,7 +882,8 @@ impl From<Color> for Laba {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
@@ -870,7 +891,6 @@ impl From<Color> for Laba {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -882,7 +902,8 @@ impl From<Color> for Lcha {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
@@ -890,7 +911,6 @@ impl From<Color> for Lcha {
             Color::Lcha(lcha) => lcha,
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -902,7 +922,8 @@ impl From<Color> for Oklaba {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
@@ -910,7 +931,6 @@ impl From<Color> for Oklaba {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab,
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -922,7 +942,8 @@ impl From<Color> for Oklcha {
     fn from(value: Color) -> Self {
         match value {
             Color::Srgba(srgba) => srgba.into(),
-            Color::LinearRgba(linear) => linear.into(),
+            Color::LinearRgba(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
             Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
@@ -930,27 +951,6 @@ impl From<Color> for Oklcha {
             Color::Lcha(lcha) => lcha.into(),
             Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch,
-            Color::Xyza(xyza) => xyza.into(),
-            Color::Okhsla(okhsl) => okhsl.into(),
-            Color::Okhsva(okhsv) => okhsv.into(),
-            Color::Okhwba(okhwb) => okhwb.into(),
-        }
-    }
-}
-
-impl From<Color> for Xyza {
-    fn from(value: Color) -> Self {
-        match value {
-            Color::Srgba(x) => x.into(),
-            Color::LinearRgba(x) => x.into(),
-            Color::Hsla(x) => x.into(),
-            Color::Hsva(hsva) => hsva.into(),
-            Color::Hwba(hwba) => hwba.into(),
-            Color::Laba(laba) => laba.into(),
-            Color::Lcha(x) => x.into(),
-            Color::Oklaba(x) => x.into(),
-            Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza,
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -961,16 +961,16 @@ impl From<Color> for Xyza {
 impl From<Color> for Okhsla {
     fn from(value: Color) -> Self {
         match value {
-            Color::Srgba(x) => x.into(),
+            Color::Srgba(srgba) => srgba.into(),
             Color::LinearRgba(x) => x.into(),
-            Color::Hsla(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
+            Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
             Color::Laba(laba) => laba.into(),
-            Color::Lcha(x) => x.into(),
-            Color::Oklaba(x) => x.into(),
+            Color::Lcha(lcha) => lcha.into(),
+            Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl,
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -981,16 +981,16 @@ impl From<Color> for Okhsla {
 impl From<Color> for Okhsva {
     fn from(value: Color) -> Self {
         match value {
-            Color::Srgba(x) => x.into(),
+            Color::Srgba(srgba) => srgba.into(),
             Color::LinearRgba(x) => x.into(),
-            Color::Hsla(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
+            Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
             Color::Laba(laba) => laba.into(),
-            Color::Lcha(x) => x.into(),
-            Color::Oklaba(x) => x.into(),
+            Color::Lcha(lcha) => lcha.into(),
+            Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv,
             Color::Okhwba(okhwb) => okhwb.into(),
@@ -1001,16 +1001,16 @@ impl From<Color> for Okhsva {
 impl From<Color> for Okhwba {
     fn from(value: Color) -> Self {
         match value {
-            Color::Srgba(x) => x.into(),
+            Color::Srgba(srgba) => srgba.into(),
             Color::LinearRgba(x) => x.into(),
-            Color::Hsla(x) => x.into(),
+            Color::Xyza(xyza) => xyza.into(),
+            Color::Hsla(hsla) => hsla.into(),
             Color::Hsva(hsva) => hsva.into(),
             Color::Hwba(hwba) => hwba.into(),
             Color::Laba(laba) => laba.into(),
-            Color::Lcha(x) => x.into(),
-            Color::Oklaba(x) => x.into(),
+            Color::Lcha(lcha) => lcha.into(),
+            Color::Oklaba(oklab) => oklab.into(),
             Color::Oklcha(oklch) => oklch.into(),
-            Color::Xyza(xyza) => xyza.into(),
             Color::Okhsla(okhsl) => okhsl.into(),
             Color::Okhsva(okhsv) => okhsv.into(),
             Color::Okhwba(okhwb) => okhwb,
@@ -1029,6 +1029,7 @@ impl Luminance for Color {
         match self {
             Color::Srgba(x) => x.luminance(),
             Color::LinearRgba(x) => x.luminance(),
+            Color::Xyza(x) => x.luminance(),
             Color::Hsla(x) => x.luminance(),
             Color::Hsva(x) => ChosenColorSpace::from(*x).luminance(),
             Color::Hwba(x) => ChosenColorSpace::from(*x).luminance(),
@@ -1036,7 +1037,6 @@ impl Luminance for Color {
             Color::Lcha(x) => x.luminance(),
             Color::Oklaba(x) => x.luminance(),
             Color::Oklcha(x) => x.luminance(),
-            Color::Xyza(x) => x.luminance(),
             Color::Okhsla(x) => x.luminance(),
             Color::Okhsva(x) => ChosenColorSpace::from(*x).luminance(),
             Color::Okhwba(x) => ChosenColorSpace::from(*x).luminance(),
@@ -1049,6 +1049,7 @@ impl Luminance for Color {
         match &mut new {
             Color::Srgba(x) => *x = x.with_luminance(value),
             Color::LinearRgba(x) => *x = x.with_luminance(value),
+            Color::Xyza(x) => *x = x.with_luminance(value),
             Color::Hsla(x) => *x = x.with_luminance(value),
             Color::Hsva(x) => *x = ChosenColorSpace::from(*x).with_luminance(value).into(),
             Color::Hwba(x) => *x = ChosenColorSpace::from(*x).with_luminance(value).into(),
@@ -1056,7 +1057,6 @@ impl Luminance for Color {
             Color::Lcha(x) => *x = x.with_luminance(value),
             Color::Oklaba(x) => *x = x.with_luminance(value),
             Color::Oklcha(x) => *x = x.with_luminance(value),
-            Color::Xyza(x) => *x = x.with_luminance(value),
             Color::Okhsla(x) => *x = x.with_luminance(value),
             Color::Okhsva(x) => *x = ChosenColorSpace::from(*x).with_luminance(value).into(),
             Color::Okhwba(x) => *x = ChosenColorSpace::from(*x).with_luminance(value).into(),
@@ -1071,6 +1071,7 @@ impl Luminance for Color {
         match &mut new {
             Color::Srgba(x) => *x = x.darker(amount),
             Color::LinearRgba(x) => *x = x.darker(amount),
+            Color::Xyza(x) => *x = x.darker(amount),
             Color::Hsla(x) => *x = x.darker(amount),
             Color::Hsva(x) => *x = ChosenColorSpace::from(*x).darker(amount).into(),
             Color::Hwba(x) => *x = ChosenColorSpace::from(*x).darker(amount).into(),
@@ -1078,7 +1079,6 @@ impl Luminance for Color {
             Color::Lcha(x) => *x = x.darker(amount),
             Color::Oklaba(x) => *x = x.darker(amount),
             Color::Oklcha(x) => *x = x.darker(amount),
-            Color::Xyza(x) => *x = x.darker(amount),
             Color::Okhsla(x) => *x = x.darker(amount),
             Color::Okhsva(x) => *x = ChosenColorSpace::from(*x).darker(amount).into(),
             Color::Okhwba(x) => *x = ChosenColorSpace::from(*x).darker(amount).into(),
@@ -1093,6 +1093,7 @@ impl Luminance for Color {
         match &mut new {
             Color::Srgba(x) => *x = x.lighter(amount),
             Color::LinearRgba(x) => *x = x.lighter(amount),
+            Color::Xyza(x) => *x = x.lighter(amount),
             Color::Hsla(x) => *x = x.lighter(amount),
             Color::Hsva(x) => *x = ChosenColorSpace::from(*x).lighter(amount).into(),
             Color::Hwba(x) => *x = ChosenColorSpace::from(*x).lighter(amount).into(),
@@ -1100,7 +1101,6 @@ impl Luminance for Color {
             Color::Lcha(x) => *x = x.lighter(amount),
             Color::Oklaba(x) => *x = x.lighter(amount),
             Color::Oklcha(x) => *x = x.lighter(amount),
-            Color::Xyza(x) => *x = x.lighter(amount),
             Color::Okhsla(x) => *x = x.lighter(amount),
             Color::Okhsva(x) => *x = ChosenColorSpace::from(*x).lighter(amount).into(),
             Color::Okhwba(x) => *x = ChosenColorSpace::from(*x).lighter(amount).into(),
@@ -1117,6 +1117,7 @@ impl Hue for Color {
         match &mut new {
             Color::Srgba(x) => *x = ChosenColorSpace::from(*x).with_hue(hue).into(),
             Color::LinearRgba(x) => *x = ChosenColorSpace::from(*x).with_hue(hue).into(),
+            Color::Xyza(x) => *x = ChosenColorSpace::from(*x).with_hue(hue).into(),
             Color::Hsla(x) => *x = x.with_hue(hue),
             Color::Hsva(x) => *x = x.with_hue(hue),
             Color::Hwba(x) => *x = x.with_hue(hue),
@@ -1124,7 +1125,6 @@ impl Hue for Color {
             Color::Lcha(x) => *x = x.with_hue(hue),
             Color::Oklaba(x) => *x = ChosenColorSpace::from(*x).with_hue(hue).into(),
             Color::Oklcha(x) => *x = x.with_hue(hue),
-            Color::Xyza(x) => *x = ChosenColorSpace::from(*x).with_hue(hue).into(),
             Color::Okhsla(x) => *x = x.with_hue(hue),
             Color::Okhsva(x) => *x = x.with_hue(hue),
             Color::Okhwba(x) => *x = x.with_hue(hue),
@@ -1137,6 +1137,7 @@ impl Hue for Color {
         match self {
             Color::Srgba(x) => ChosenColorSpace::from(*x).hue(),
             Color::LinearRgba(x) => ChosenColorSpace::from(*x).hue(),
+            Color::Xyza(x) => ChosenColorSpace::from(*x).hue(),
             Color::Hsla(x) => x.hue(),
             Color::Hsva(x) => x.hue(),
             Color::Hwba(x) => x.hue(),
@@ -1144,7 +1145,6 @@ impl Hue for Color {
             Color::Lcha(x) => x.hue(),
             Color::Oklaba(x) => ChosenColorSpace::from(*x).hue(),
             Color::Oklcha(x) => x.hue(),
-            Color::Xyza(x) => ChosenColorSpace::from(*x).hue(),
             Color::Okhsla(x) => x.hue(),
             Color::Okhsva(x) => x.hue(),
             Color::Okhwba(x) => x.hue(),
@@ -1163,6 +1163,7 @@ impl Saturation for Color {
         match &mut new {
             Color::Srgba(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
             Color::LinearRgba(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
+            Color::Xyza(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
             Color::Hsla(x) => *x = x.with_saturation(saturation),
             Color::Hsva(x) => *x = x.with_saturation(saturation),
             Color::Hwba(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
@@ -1170,7 +1171,6 @@ impl Saturation for Color {
             Color::Lcha(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
             Color::Oklaba(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
             Color::Oklcha(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
-            Color::Xyza(x) => *x = Hsla::from(*x).with_saturation(saturation).into(),
             Color::Okhsla(x) => *x = x.with_saturation(saturation),
             Color::Okhsva(x) => *x = x.with_saturation(saturation),
             Color::Okhwba(x) => *x = Okhsva::from(*x).with_saturation(saturation).into(),
@@ -1183,6 +1183,7 @@ impl Saturation for Color {
         match self {
             Color::Srgba(x) => Hsla::from(*x).saturation(),
             Color::LinearRgba(x) => Hsla::from(*x).saturation(),
+            Color::Xyza(x) => Hsla::from(*x).saturation(),
             Color::Hsla(x) => x.saturation(),
             Color::Hsva(x) => x.saturation(),
             Color::Hwba(x) => Hsla::from(*x).saturation(),
@@ -1190,7 +1191,6 @@ impl Saturation for Color {
             Color::Lcha(x) => Hsla::from(*x).saturation(),
             Color::Oklaba(x) => Hsla::from(*x).saturation(),
             Color::Oklcha(x) => Hsla::from(*x).saturation(),
-            Color::Xyza(x) => Hsla::from(*x).saturation(),
             Color::Okhsla(x) => x.saturation(),
             Color::Okhsva(x) => x.saturation(),
             Color::Okhwba(x) => Okhsva::from(*x).saturation(),
@@ -1209,6 +1209,7 @@ impl Mix for Color {
         match &mut new {
             Color::Srgba(x) => *x = x.mix(&(*other).into(), factor),
             Color::LinearRgba(x) => *x = x.mix(&(*other).into(), factor),
+            Color::Xyza(x) => *x = x.mix(&(*other).into(), factor),
             Color::Hsla(x) => *x = x.mix(&(*other).into(), factor),
             Color::Hsva(x) => *x = x.mix(&(*other).into(), factor),
             Color::Hwba(x) => *x = x.mix(&(*other).into(), factor),
@@ -1216,7 +1217,6 @@ impl Mix for Color {
             Color::Lcha(x) => *x = x.mix(&(*other).into(), factor),
             Color::Oklaba(x) => *x = x.mix(&(*other).into(), factor),
             Color::Oklcha(x) => *x = x.mix(&(*other).into(), factor),
-            Color::Xyza(x) => *x = x.mix(&(*other).into(), factor),
             Color::Okhsla(x) => *x = x.mix(&(*other).into(), factor),
             Color::Okhsva(x) => *x = x.mix(&(*other).into(), factor),
             Color::Okhwba(x) => *x = x.mix(&(*other).into(), factor),
@@ -1231,6 +1231,7 @@ impl EuclideanDistance for Color {
         match self {
             Color::Srgba(x) => x.distance_squared(&(*other).into()),
             Color::LinearRgba(x) => x.distance_squared(&(*other).into()),
+            Color::Xyza(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
             Color::Hsla(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
             Color::Hsva(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
             Color::Hwba(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
@@ -1238,7 +1239,6 @@ impl EuclideanDistance for Color {
             Color::Lcha(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
             Color::Oklaba(x) => x.distance_squared(&(*other).into()),
             Color::Oklcha(x) => x.distance_squared(&(*other).into()),
-            Color::Xyza(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
             Color::Okhsla(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
             Color::Okhsva(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
             Color::Okhwba(x) => ChosenColorSpace::from(*x).distance_squared(&(*other).into()),
@@ -1256,6 +1256,7 @@ impl TryStableInterpolate for Color {
         match (self, other) {
             (Color::Srgba(a), Color::Srgba(b)) => Ok(Color::Srgba(a.mix(b, t))),
             (Color::LinearRgba(a), Color::LinearRgba(b)) => Ok(Color::LinearRgba(a.mix(b, t))),
+            (Color::Xyza(a), Color::Xyza(b)) => Ok(Color::Xyza(a.mix(b, t))),
             (Color::Hsla(a), Color::Hsla(b)) => Ok(Color::Hsla(a.mix(b, t))),
             (Color::Hsva(a), Color::Hsva(b)) => Ok(Color::Hsva(a.mix(b, t))),
             (Color::Hwba(a), Color::Hwba(b)) => Ok(Color::Hwba(a.mix(b, t))),
@@ -1263,7 +1264,6 @@ impl TryStableInterpolate for Color {
             (Color::Lcha(a), Color::Lcha(b)) => Ok(Color::Lcha(a.mix(b, t))),
             (Color::Oklaba(a), Color::Oklaba(b)) => Ok(Color::Oklaba(a.mix(b, t))),
             (Color::Oklcha(a), Color::Oklcha(b)) => Ok(Color::Oklcha(a.mix(b, t))),
-            (Color::Xyza(a), Color::Xyza(b)) => Ok(Color::Xyza(a.mix(b, t))),
             (Color::Okhsla(a), Color::Okhsla(b)) => Ok(Color::Okhsla(a.mix(b, t))),
             (Color::Okhsva(a), Color::Okhsva(b)) => Ok(Color::Okhsva(a.mix(b, t))),
             (Color::Okhwba(a), Color::Okhwba(b)) => Ok(Color::Okhwba(a.mix(b, t))),

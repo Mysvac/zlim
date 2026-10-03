@@ -6,6 +6,7 @@
 //!
 //! - [`Srgba`] (standard RGBA, with gamma correction)
 //! - [`LinearRgba`] (linear RGBA, without gamma correction)
+//! - [`Xyza`] (x-axis, y-axis, z-axis, alpha)
 //! - [`Hsla`] (hue, saturation, lightness, alpha)
 //! - [`Hsva`] (hue, saturation, value, alpha)
 //! - [`Hwba`] (hue, whiteness, blackness, alpha)
@@ -13,7 +14,6 @@
 //! - [`Lcha`] (lightness, chroma, hue, alpha)
 //! - [`Oklaba`] (lightness, a-axis, b-axis, alpha)
 //! - [`Oklcha`] (lightness, chroma, hue, alpha)
-//! - [`Xyza`] (x-axis, y-axis, z-axis, alpha)
 //! - [`Okhsla`] (hue, saturation, lightness, alpha)
 //! - [`Okhsva`] (hue, saturation, value, alpha)
 //! - [`Okhwba`] (hue, whiteness, blackness, alpha)
@@ -139,19 +139,16 @@ pub use xyza::*;
 /// The color prelude.
 pub mod prelude {
     #[doc(no_inline)]
-    pub use crate::{color::*, color_ops::*};
+    pub use crate::color::Color;
 
     #[doc(no_inline)]
-    pub use crate::{linear_rgba::*, srgba::*, xyza::*};
+    pub use crate::color_ops::*;
 
     #[doc(no_inline)]
-    pub use crate::{hsla::*, hsva::*, hwba::*};
+    pub use crate::srgba::Srgba;
 
     #[doc(no_inline)]
-    pub use crate::{laba::*, lcha::*};
-
-    #[doc(no_inline)]
-    pub use crate::{okhsla::*, okhsva::*, okhwba::*, oklaba::*, oklcha::*};
+    pub use crate::linear_rgba::LinearRgba;
 }
 
 // -----------------------------------------------------------------------------

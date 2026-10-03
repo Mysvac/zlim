@@ -6,6 +6,9 @@
 
 在原生目标上重新导出 `std::time`；在 WASM 上切换为 `web_time`。
 
+`Duration` 可以始终使用 `core::time::Duration`，但是 `Instant` 和 `SystemTime`
+应当使用本库重导出的类型（而非标准库类型），以保证 wasm 的兼容性。
+
 ## dirs
 
 标准的用户目录路径，按平台解析。

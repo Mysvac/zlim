@@ -1,11 +1,8 @@
 //! The generic [`Time`] clock.
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
-use core::time::Duration;
-
-use zlim_reflect::TypePath;
-
 use crate::derive::Resource;
+use core::time::Duration;
 
 // -----------------------------------------------------------------------------
 // TimeContext
@@ -14,7 +11,7 @@ use crate::derive::Resource;
 ///
 /// Time contexts identify different clocks (e.g., Real, Virtual, Fixed)
 /// and may carry additional timing behavior.
-pub trait TimeContext: Default + TypePath + Send + Sync + 'static {}
+pub trait TimeContext: Default + Send + Sync + 'static {}
 
 impl TimeContext for () {}
 

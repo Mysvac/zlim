@@ -7,6 +7,10 @@ exports platform-specific interfaces for the rest of the runtime.
 
 Re-exports `std::time` on native targets; switches to `web_time` on WASM.
 
+`Duration` can always use `core::time::Duration`, but `Instant` and `SystemTime`
+should use the types re-exported by this library (rather than the standard library
+types) to ensure wasm compatibility.
+
 ## dirs
 
 Standard user directory paths, resolved per-platform.

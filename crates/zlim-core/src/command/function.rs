@@ -225,7 +225,7 @@ pub(super) fn run_schedule(label: impl ScheduleLabel) -> impl Command {
 /// Do nothing if the schedule does not exist, just like:
 ///
 /// ```ignore
-/// let _ = world.try_un_schedule(label);
+/// let _ = world.try_run_schedule(label);
 /// ```
 #[inline]
 pub(super) fn try_run_schedule(label: impl ScheduleLabel) -> impl Command {

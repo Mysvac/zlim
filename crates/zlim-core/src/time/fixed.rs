@@ -2,8 +2,6 @@
 
 use core::time::Duration;
 
-use zlim_reflect::derive::TypePath;
-
 use super::{Time, TimeContext};
 
 // -----------------------------------------------------------------------------
@@ -28,7 +26,7 @@ use super::{Time, TimeContext};
 /// [`Time<Fixed>`]: Time
 /// [`TimeSnapshot`]: crate::time::TimeSnapshot
 /// [`World::refresh_metadata`]: crate::world::World::refresh_metadata
-#[derive(TypePath, Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Fixed {
     timestep: Duration,
 }

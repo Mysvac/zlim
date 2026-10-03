@@ -128,9 +128,8 @@ where
     /// Create a handle from given [`System`].
     #[inline(always)]
     pub fn from_system(system: &dyn System<Input = I, Output = O>) -> Self {
-        let id = system.id();
         Self {
-            id,
+            id: system.id(),
             _marker: PhantomData,
         }
     }
