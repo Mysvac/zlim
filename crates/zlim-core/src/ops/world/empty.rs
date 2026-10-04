@@ -2,7 +2,7 @@
 
 use zlim_utils::debug::DebugLocation;
 
-use crate::entity::{EntityId, Location};
+use crate::entity::{EntityError, EntityId, Location};
 use crate::ops::EntityOwned;
 use crate::table::TableId;
 use crate::utils::ForgetEntityOnPanic;
@@ -15,6 +15,8 @@ impl World {
     ///
     /// # Panics
     /// - Panics if `parent` is `Some` but the target entity is not spawned.
+    ///
+    /// Use [`World::try_spawn_empty`] instead if the parent may not exist.
     ///
     /// # Examples
     ///
@@ -145,5 +147,24 @@ impl World {
             world: cell,
             storage,
         }
+    }
+}
+
+impl World {
+    /// Spawns a new empty entity and returns an owned handle to it.
+    ///
+    /// Return `Err` if the `parent` is some but does not exist.
+    ///
+    /// This function is faster than `try_spawn((), parent)`.
+    #[inline(always)] // We enable inlining to avoid copying data
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_spawn_empty(
+        &mut self,
+        parent: Option<EntityId>,
+    ) -> Result<EntityOwned<'_>, EntityError> {
+        if let Some(p) = parent {
+            self.entities.get(p)?;
+        }
+        Ok(self.spawn_empty_with_caller(parent, DebugLocation::caller()))
     }
 }

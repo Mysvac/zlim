@@ -199,8 +199,8 @@ Auxiliary:
     applying it (spawn the entities, write the templates, connect the hierarchy), and the composition
     pieces a description is built from. Also the scene asset — `ScenePatch` / `SceneListPatch`,
     resolved once and applied many times — the copy-on-write that lets one scene build on a cached
-    one, and the queued form that builds a scene later in the `SpawnScene` schedule
-    (`ScenePatchInstance` / `SceneListPatchInstance`).
+    one, and the queued form that builds a scene later in the `SpawnScene` schedule (`SceneQueue`,
+    holding the `ScenePatchInstance` / `SceneListPatchInstance` requests).
   - **Dependencies**: `zlim-core`, `zlim-utils`, `zlim-reflect`, `zlim-log`, `zlim-app`, `zlim-asset`.
 
 - **`zlim-sysinfo-dylib`**

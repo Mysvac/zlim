@@ -14,7 +14,7 @@ use super::{IntoTemplate, SpecializeFromTemplate, Template, TemplateContext};
 /// one of the named entities of the scene, which is what a `#Name` in a scene expands to.
 ///
 /// Building a template that was left at [`EntityTemplate::None`] is an error.
-#[derive(Copy, Clone, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
 pub enum EntityTemplate {
     /// An entity that is already known.
     Entity(EntityId),

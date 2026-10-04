@@ -61,13 +61,13 @@ pub use crate::plugin::ScenePlugin;
 pub use crate::resolved::ResolvedScene;
 pub use crate::scene::{ResolveContext, Scene, SceneBox};
 pub use crate::scene_list::{EntityScene, SceneList, SceneListBox};
-pub use crate::spawn::{SceneListPatchInstance, ScenePatchInstance, WorldSceneQueueExt};
-pub use crate::world::WorldSceneExt;
+pub use crate::spawn::{SceneListPatchInstance, ScenePatchInstance, SceneQueue};
+pub use crate::world::{CommandsSceneExt, EntityCommandsExt, WorldSceneExt};
 
 /// The scene jobs.
 pub mod jobs {
     #[doc(inline)]
-    pub use crate::plugin::HandleSceneSpawn;
+    pub use crate::spawn::HandleSceneSpawn;
 }
 
 /// The scene macros.
@@ -95,9 +95,7 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use crate::scene_list::SceneList;
     #[doc(no_inline)]
-    pub use crate::spawn::WorldSceneQueueExt;
-    #[doc(no_inline)]
-    pub use crate::world::WorldSceneExt;
+    pub use crate::world::{CommandsSceneExt, EntityCommandsExt, WorldSceneExt};
 }
 
 // -----------------------------------------------------------------------------

@@ -23,13 +23,13 @@ use crate::resolved::ResolvedScene;
 /// the world, or in the assets when the scene names it by path.
 ///
 /// [`EntityReference`]: zlim_core::template::EntityReference
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ResolveContext<'a> {
     /// The asset server, when resolution happens with one in reach.
-    assets: Option<&'a AssetServer>,
+    server: Option<&'a AssetServer>,
 
     /// The patches of the world, when it has any.
-    patches: Option<&'a Assets<ScenePatch>>,
+    assets: Option<&'a Assets<ScenePatch>>,
 }
 
 impl<'a> ResolveContext<'a> {
@@ -42,39 +42,39 @@ impl<'a> ResolveContext<'a> {
     #[inline]
     pub const fn new() -> Self {
         Self {
+            server: None,
             assets: None,
-            patches: None,
         }
     }
 
     /// Creates a context that can include cached scenes, but cannot look an asset up by path.
     #[inline]
-    pub const fn with_patches(patches: &'a Assets<ScenePatch>) -> Self {
+    pub const fn with_assets(assets: &'a Assets<ScenePatch>) -> Self {
         Self {
-            assets: None,
-            patches: Some(patches),
+            server: None,
+            assets: Some(assets),
         }
     }
 
     /// Creates a context with the whole asset side.
     #[inline]
-    pub const fn with_assets(assets: &'a AssetServer, patches: &'a Assets<ScenePatch>) -> Self {
+    pub const fn with_server(server: &'a AssetServer, assets: &'a Assets<ScenePatch>) -> Self {
         Self {
+            server: Some(server),
             assets: Some(assets),
-            patches: Some(patches),
         }
     }
 
     /// Returns the asset server, if the context has one.
     #[inline]
-    pub const fn assets(&self) -> Option<&'a AssetServer> {
-        self.assets
+    pub const fn server(&self) -> Option<&'a AssetServer> {
+        self.server
     }
 
     /// Returns the patches, if the context has any.
     #[inline]
-    pub const fn patches(&self) -> Option<&'a Assets<ScenePatch>> {
-        self.patches
+    pub const fn assets(&self) -> Option<&'a Assets<ScenePatch>> {
+        self.assets
     }
 }
 
@@ -131,7 +131,6 @@ pub trait SceneBox: Send + Sync + 'static {
 }
 
 impl<S: Scene + Sized> SceneBox for S {
-    #[inline]
     fn resolve_box(
         self: Box<Self>,
         context: &mut ResolveContext,

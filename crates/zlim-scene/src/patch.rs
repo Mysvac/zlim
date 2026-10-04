@@ -28,7 +28,7 @@ use crate::scene_list::SceneList;
 /// for every template the cached-scene machinery needs, while applying one costs only the writes.
 /// Keeping the resolved form also makes a patch possible — a scene that includes this one and
 /// replaces some of its templates — which is what copy-on-write in
-/// [`ResolvedScene::get_or_insert_template`] is for.
+/// [`ResolvedScene::get_or_init_template`] is for.
 #[derive(Asset, TypePath)]
 pub struct ScenePatch {
     /// The description, taken out of the patch when it is resolved.
@@ -78,19 +78,21 @@ impl ScenePatch {
     ///
     /// A world without an asset server can still describe a scene, it just cannot load what the
     /// description names.
+    #[inline(never)]
     pub fn load_boxed(assets: Option<&AssetServer>, scene: Box<dyn Scene>) -> Self {
-        let mut dependencies = SceneDependencies::new();
-        scene.register_dependencies(&mut dependencies);
-
         let handles = match assets {
-            Some(assets) => dependencies
-                .iter()
-                .map(|dependency| {
-                    assets
-                        .load_builder()
-                        .load_erased(dependency.type_id, dependency.path.clone())
-                })
-                .collect(),
+            Some(assets) => {
+                let mut dependencies = SceneDependencies::new();
+                scene.register_dependencies(&mut dependencies);
+                dependencies
+                    .into_iter()
+                    .map(|dependency| {
+                        assets
+                            .load_builder()
+                            .load_erased(dependency.type_id, dependency.path)
+                    })
+                    .collect()
+            }
             None => Vec::new(),
         };
 
@@ -106,52 +108,40 @@ impl ScenePatch {
     pub fn dependencies(&self) -> &[ErasedHandle] {
         &self.dependencies
     }
+}
 
-    /// Resolves the description, and keeps the result for every application.
-    ///
-    /// `patches` is the collection this patch is part of — resolution may include another patch,
-    /// which is resolved first, and which is read *from* this collection — and `assets` is the asset
-    /// server, when the description looks an asset up by path.
-    ///
-    /// A patch is normally taken *out* of its collection while it resolves, because resolution reads
-    /// the collection it lives in:
-    ///
-    /// ```rust, ignore
-    /// let mut patch = patches.remove(handle.id()).expect("the patch is loaded");
-    /// patch.resolve(Some(&assets), &mut patches)?;
-    /// patches.insert(handle.id(), patch).expect("the patch goes back");
-    /// ```
+#[inline(always)]
+fn unresolved() -> ZlimError {
+    ZlimError::error(
+        "this scene patch has not been resolved yet: \
+        it is either still loading or was never resolved",
+    )
+}
+
+impl ScenePatch {
+    /// Applies the resolved scene to an entity that already exists.
     ///
     /// # Errors
     ///
-    /// Fails if the description was already resolved, if a patch it builds on cannot be resolved, or
-    /// if resolving it fails.
-    pub fn resolve(
-        &mut self,
-        assets: Option<&AssetServer>,
-        patches: &mut Assets<ScenePatch>,
-    ) -> ZlimResult<()> {
-        let scene = self.scene.take().ok_or_else(|| {
-            ZlimError::error("this scene patch has already been resolved, so its scene is gone")
-        })?;
-
-        // A cached scene is read in its resolved form, so what this patch builds on is resolved
-        // first.
-        if let Err(error) = resolve_patch_dependencies(&self.dependencies, assets, patches) {
-            self.scene = Some(scene);
-            return Err(error);
+    /// Returns an error if the patch has not been resolved yet.
+    pub fn apply(&self, entity: &mut EntityOwned<'_>) -> ZlimResult<()> {
+        match &self.resolved {
+            Some(s) => s.apply(entity),
+            None => Err(unresolved()),
         }
+    }
 
-        let mut context = match assets {
-            Some(assets) => ResolveContext::with_assets(assets, patches),
-            None => ResolveContext::with_patches(patches),
-        };
-
-        let mut resolved = ResolvedScene::new();
-        scene.resolve(&mut context, &mut resolved)?;
-        self.resolved = Some(Arc::new(resolved));
-
-        Ok(())
+    /// Spawns the resolved scene as a new root entity under `parent`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EntityError`](zlim_core::entity::EntityError) if `parent` is `Some` but not spawned,
+    /// and an error if the patch has not been resolved yet.
+    pub fn spawn(&self, world: &mut World, parent: Option<EntityId>) -> ZlimResult<EntityId> {
+        match &self.resolved {
+            Some(s) => s.spawn(world, parent),
+            None => Err(unresolved()),
+        }
     }
 
     /// Returns the resolved scene, if the patch has been resolved.
@@ -159,46 +149,6 @@ impl ScenePatch {
     pub fn resolved(&self) -> Option<&Arc<ResolvedScene>> {
         self.resolved.as_ref()
     }
-
-    /// Applies the resolved scene to an entity that already exists.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the patch has not been resolved yet.
-    pub fn apply(&self, entity: &mut EntityOwned<'_>) -> ZlimResult<()> {
-        self.resolved
-            .as_deref()
-            .ok_or_else(unresolved)?
-            .apply(entity)
-    }
-
-    /// Spawns the resolved scene as a new root entity under `parent`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `parent` is `Some` but not spawned.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the patch has not been resolved yet.
-    pub fn spawn<'w>(
-        &self,
-        world: &'w mut World,
-        parent: Option<EntityId>,
-    ) -> ZlimResult<EntityOwned<'w>> {
-        self.resolved
-            .as_deref()
-            .ok_or_else(unresolved)?
-            .spawn(world, parent)
-    }
-}
-
-/// The error of applying a patch that was never resolved.
-fn unresolved() -> ZlimError {
-    ZlimError::error(
-        "this scene patch has not been resolved yet: \
-        it is either still loading or was never resolved",
-    )
 }
 
 // -----------------------------------------------------------------------------
@@ -249,19 +199,21 @@ impl SceneListPatch {
     ///
     /// A world without an asset server can still describe a scene, it just cannot
     /// load what the description names.
+    #[inline(never)]
     pub fn load_boxed(assets: Option<&AssetServer>, list: Box<dyn SceneList>) -> Self {
-        let mut dependencies = SceneDependencies::new();
-        list.register_dependencies(&mut dependencies);
-
         let handles = match assets {
-            Some(assets) => dependencies
-                .iter()
-                .map(|dependency| {
-                    assets
-                        .load_builder()
-                        .load_erased(dependency.type_id, dependency.path.clone())
-                })
-                .collect(),
+            Some(assets) => {
+                let mut dependencies = SceneDependencies::new();
+                list.register_dependencies(&mut dependencies);
+                dependencies
+                    .into_iter()
+                    .map(|dependency| {
+                        assets
+                            .load_builder()
+                            .load_erased(dependency.type_id, dependency.path)
+                    })
+                    .collect()
+            }
             None => Vec::new(),
         };
 
@@ -277,41 +229,27 @@ impl SceneListPatch {
     pub fn dependencies(&self) -> &[ErasedHandle] {
         &self.dependencies
     }
+}
 
-    /// Resolves the description, and keeps the result for every application.
-    ///
-    /// See [`ScenePatch::resolve`] for why a patch is taken out of its collection while it resolves.
+impl SceneListPatch {
+    /// Spawns one entity per scene of the list, under `parent`.
     ///
     /// # Errors
     ///
-    /// Fails if the description was already resolved, if a patch it builds on cannot be resolved, or
-    /// if resolving it fails.
-    pub fn resolve(
-        &mut self,
-        assets: Option<&AssetServer>,
-        patches: &mut Assets<ScenePatch>,
-    ) -> ZlimResult<()> {
-        let list = self.scene_list.take().ok_or_else(|| {
-            ZlimError::error(
-                "this scene list patch has already been resolved, so its description is gone",
-            )
-        })?;
-
-        if let Err(error) = resolve_patch_dependencies(&self.dependencies, assets, patches) {
-            self.scene_list = Some(list);
-            return Err(error);
+    /// Returns [`EntityError`](zlim_core::entity::EntityError) if `parent` is `Some` but not spawned,
+    /// and an error if the patch has not been resolved yet. A list is spawned all at once or not at
+    /// all: no root of a failed list is left behind.
+    pub fn spawn(&self, world: &mut World, parent: Option<EntityId>) -> ZlimResult<Vec<EntityId>> {
+        match &self.resolved {
+            Some(s) => {
+                let scenes = s.as_slice();
+                ResolvedScene::spawn_batch(scenes, world, parent)
+            }
+            None => Err(ZlimError::error(
+                "this scene list patch has not been resolved yet: \
+                it is either still loading or was never resolved",
+            )),
         }
-
-        let mut context = match assets {
-            Some(assets) => ResolveContext::with_assets(assets, patches),
-            None => ResolveContext::with_patches(patches),
-        };
-
-        let mut resolved = Vec::new();
-        list.resolve_list(&mut context, &mut resolved)?;
-        self.resolved = Some(Arc::new(resolved));
-
-        Ok(())
     }
 
     /// Returns the resolved scenes, if the patch has been resolved.
@@ -319,32 +257,10 @@ impl SceneListPatch {
     pub fn resolved(&self) -> Option<&Arc<Vec<ResolvedScene>>> {
         self.resolved.as_ref()
     }
-
-    /// Spawns one entity per scene of the list, under `parent`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `parent` is `Some` but not spawned.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the patch has not been resolved yet.
-    pub fn spawn(&self, world: &mut World, parent: Option<EntityId>) -> ZlimResult<Vec<EntityId>> {
-        let resolved = self.resolved.as_deref().ok_or_else(unresolved_list)?;
-        ResolvedScene::spawn_batch(resolved, world, parent)
-    }
-}
-
-/// The error of spawning a patch that was never resolved.
-fn unresolved_list() -> ZlimError {
-    ZlimError::error(
-        "this scene list patch has not been resolved yet: \
-        it is either still loading or was never resolved",
-    )
 }
 
 // -----------------------------------------------------------------------------
-// Dependencies
+// resolve
 
 /// Resolves the patches the given dependencies name, so that a description which builds on one can
 /// read the resolved form of it.
@@ -357,10 +273,10 @@ fn unresolved_list() -> ZlimError {
 /// A patch that is being resolved has already been taken out of `patches`, so a cycle between two
 /// patches stops at the second one: the patch that is mid-resolution is not there to be resolved
 /// again.
-pub(crate) fn resolve_patch_dependencies(
+fn resolve_patch_deps(
     dependencies: &[ErasedHandle],
-    assets: Option<&AssetServer>,
-    patches: &mut Assets<ScenePatch>,
+    server: Option<&AssetServer>,
+    assets: &mut Assets<ScenePatch>,
 ) -> ZlimResult<()> {
     for dependency in dependencies {
         if dependency.type_id() != TypeId::of::<ScenePatch>() {
@@ -368,25 +284,112 @@ pub(crate) fn resolve_patch_dependencies(
         }
 
         let id = dependency
-            .id()
-            .try_with_type::<ScenePatch>()
-            .map_err(ZlimError::error)?;
+            .id() // ↓ checked above
+            .with_type_debug_checked::<ScenePatch>();
 
-        let Some(mut patch) = patches.remove(id) else {
+        let Some(mut patch) = assets.remove(id) else {
             continue;
         };
 
-        let result = if patch.resolved.is_none() {
-            patch.resolve(assets, patches)
-        } else {
+        let result = if patch.resolved.is_some() {
             Ok(())
+        } else {
+            patch.resolve(server, assets)
         };
 
-        let _ = patches.insert(id, patch);
+        let _ = assets.insert(id, patch);
         result?;
     }
 
     Ok(())
+}
+
+impl ScenePatch {
+    /// Resolves the description, and keeps the result for every application.
+    ///
+    /// `patches` is the collection this patch is part of — resolution may include another patch,
+    /// which is resolved first, and which is read *from* this collection — and `assets` is the asset
+    /// server, when the description looks an asset up by path.
+    ///
+    /// A patch is normally taken *out* of its collection while it resolves, because resolution reads
+    /// the collection it lives in:
+    ///
+    /// ```rust, ignore
+    /// let mut patch = patches.remove(handle.id()).expect("the patch is loaded");
+    /// patch.resolve(Some(&assets), &mut patches)?;
+    /// patches.insert(handle.id(), patch).expect("the patch goes back");
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Fails if the description was already resolved, if a patch it builds on cannot be resolved, or
+    /// if resolving it fails.
+    pub fn resolve(
+        &mut self,
+        server: Option<&AssetServer>,
+        assets: &mut Assets<ScenePatch>,
+    ) -> ZlimResult<()> {
+        let scene = self
+            .scene
+            .take()
+            .ok_or_else(|| ZlimError::error("this scene patch has already been resolved"))?;
+
+        // A cached scene is read in its resolved form, so what this patch builds on is resolved first.
+        if let Err(error) = resolve_patch_deps(&self.dependencies, server, assets) {
+            ::core::hint::cold_path();
+            self.scene = Some(scene);
+            return Err(error);
+        }
+
+        let mut context = match server {
+            Some(server) => ResolveContext::with_server(server, assets),
+            None => ResolveContext::with_assets(assets),
+        };
+
+        let mut resolved = ResolvedScene::new();
+        scene.resolve(&mut context, &mut resolved)?;
+        self.resolved = Some(Arc::new(resolved));
+
+        Ok(())
+    }
+}
+
+impl SceneListPatch {
+    /// Resolves the description, and keeps the result for every application.
+    ///
+    /// See [`ScenePatch::resolve`] for why a patch is taken out of its collection while it resolves.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the description was already resolved, if a patch it builds on cannot be resolved, or
+    /// if resolving it fails.
+    pub fn resolve(
+        &mut self,
+        server: Option<&AssetServer>,
+        assets: &mut Assets<ScenePatch>,
+    ) -> ZlimResult<()> {
+        let list = self
+            .scene_list
+            .take()
+            .ok_or_else(|| ZlimError::error("this scene list patch has already been resolved"))?;
+
+        if let Err(error) = resolve_patch_deps(&self.dependencies, server, assets) {
+            ::core::hint::cold_path();
+            self.scene_list = Some(list);
+            return Err(error);
+        }
+
+        let mut context = match server {
+            Some(server) => ResolveContext::with_server(server, assets),
+            None => ResolveContext::with_assets(assets),
+        };
+
+        let mut resolved = Vec::new();
+        list.resolve_list(&mut context, &mut resolved)?;
+        self.resolved = Some(Arc::new(resolved));
+
+        Ok(())
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -396,7 +399,7 @@ pub(crate) fn resolve_patch_dependencies(
 ///
 /// This is how a scene includes another one: the patch is resolved once, and every scene that
 /// includes it applies the cached form, replacing whatever templates it needs to through
-/// [`ResolvedScene::get_or_insert_template`].
+/// [`ResolvedScene::get_or_init_template`].
 ///
 /// Resolving this needs an asset side, because the path has to be turned into a handle:
 /// [`ResolveContext::new`] has none, and a scene that includes one fails to resolve with it.
@@ -419,14 +422,19 @@ impl CachedSceneAsset {
 
 impl Scene for CachedSceneAsset {
     fn resolve(self, context: &mut ResolveContext, scene: &mut ResolvedScene) -> ZlimResult<()> {
+        let Some(server) = context.server() else {
+            return Err(ZlimError::error(
+                "a scene that includes a cached scene has to be resolved \
+                 without an AssetServer in its `ResolveContext`",
+            ));
+        };
         let Some(assets) = context.assets() else {
             return Err(ZlimError::error(
                 "a scene that includes a cached scene has to be resolved \
-                 with an asset server in its `ResolveContext`",
+                 without an Assets<ScenePatch> in its `ResolveContext`",
             ));
         };
-
-        let handle = assets
+        let handle = server
             .get_handle::<ScenePatch>(self.0.clone())
             .ok_or_else(|| {
                 let e = format!(
@@ -436,7 +444,7 @@ impl Scene for CachedSceneAsset {
                 ZlimError::error(e)
             })?;
 
-        scene.include_cached(context.patches(), handle)?;
+        scene.include_cached(assets, handle)?;
 
         Ok(())
     }
@@ -454,3 +462,5 @@ pub type ScenePatchHandle = Handle<ScenePatch>;
 
 /// A handle to a [`SceneListPatch`].
 pub type SceneListPatchHandle = Handle<SceneListPatch>;
+
+// -----------------------------------------------------------------------------

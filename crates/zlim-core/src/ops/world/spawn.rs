@@ -8,7 +8,7 @@ use zlim_utils::debug::DebugLocation;
 
 use crate::bundle::{Bundle, BundleId};
 use crate::component::ComponentWriter;
-use crate::entity::{AllocEntitiesIter, EntityId, Location};
+use crate::entity::{AllocEntitiesIter, EntityError, EntityId, Location};
 use crate::ops::EntityOwned;
 use crate::table::Table;
 use crate::utils::ForgetEntityOnPanic;
@@ -154,6 +154,8 @@ impl World {
     /// # Panics
     /// - Panics if `parent` is `Some` but the target entity is not spawned.
     ///
+    /// Use [`World::try_spawn`] instead if the parent may not exist.
+    ///
     /// # Examples
     ///
     /// ```rust
@@ -293,6 +295,24 @@ impl World {
     }
 }
 
+impl World {
+    /// Spawns a new entity and returns an owned handle to it.
+    ///
+    /// Return `Err` if the `parent` is some but does not exist.
+    #[inline(always)] // We enable inlining to avoid copying data
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_spawn<B: Bundle>(
+        &mut self,
+        bundle: B,
+        parent: Option<EntityId>,
+    ) -> Result<EntityOwned<'_>, EntityError> {
+        if let Some(p) = parent {
+            self.entities.get(p)?;
+        }
+        Ok(self.spawn_with_caller(bundle, parent, DebugLocation::caller()))
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Spawn Batch Iter
 // -----------------------------------------------------------------------------
@@ -377,6 +397,8 @@ impl World {
     /// # Panics
     /// - Panics if `parent` is `Some` but the target entity is not spawned.
     ///
+    /// Use [`World::try_spawn_batch`] instead if the parent may not exist.
+    ///
     /// # Examples
     ///
     /// ```rust
@@ -444,6 +466,31 @@ impl World {
             spawner,
             allocator,
         }
+    }
+}
+
+impl World {
+    /// Returns an iterator for batch spawning entities.
+    ///
+    /// Return `Err` if the `parent` is some but does not exist.
+    ///
+    /// If the iterator is not fully consumed, remaining data will
+    /// be spawned during `Drop::drop`.
+    #[inline(always)] // We enable inlining to avoid copying data
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
+    pub fn try_spawn_batch<B, I>(
+        &mut self,
+        iter: I,
+        parent: Option<EntityId>,
+    ) -> Result<SpawnBatchIter<'_, I::IntoIter>, EntityError>
+    where
+        B: Bundle,
+        I: IntoIterator<Item = B>,
+    {
+        if let Some(p) = parent {
+            self.entities.get(p)?;
+        }
+        Ok(self.spawn_batch_with_caller(iter, parent, DebugLocation::caller()))
     }
 }
 

@@ -106,8 +106,9 @@ enum Run {
 ///
 /// The order is what the tuple is for: a scene is composed of its entries, so an entry is resolved
 /// after the ones written before it. Statements are collected into one closure per run, and a run of
-/// scenes becomes a tuple of its own, so that a scene of a few dozen entries still fits the tuple
-/// implementations.
+/// scenes becomes a tuple of its own.
+///
+/// A composition longer than a tuple can hold is grouped rather than refused; see [`push_nested`].
 fn scene(scene: &Scene, ctx: &mut Ctx) -> syn::Result<TokenStream> {
     let zlim_scene = ctx.scene.clone();
     let mut runs: Vec<Run> = Vec::new();
@@ -140,7 +141,7 @@ fn scene(scene: &Scene, ctx: &mut Ctx) -> syn::Result<TokenStream> {
                     &mut runs,
                     quote! {
                         {
-                            let __template = _scene.get_or_insert_template::<#ty>();
+                            let __template = _scene.get_or_init_template::<#ty>();
                             #(#assigns)*
                         }
                     },
@@ -163,7 +164,7 @@ fn scene(scene: &Scene, ctx: &mut Ctx) -> syn::Result<TokenStream> {
                 let ty = template_type(template, ctx);
                 statement(
                     &mut runs,
-                    quote! { let _ = _scene.get_or_insert_template::<#ty>(); },
+                    quote! { let _ = _scene.get_or_init_template::<#ty>(); },
                 );
             }
             Entry::CachedScene(path) => {
@@ -191,14 +192,10 @@ fn scene(scene: &Scene, ctx: &mut Ctx) -> syn::Result<TokenStream> {
     });
 
     let parts = parts.collect::<Vec<_>>();
+    let mut composed = TokenStream::new();
+    push_nested(&mut composed, &parts, ctx)?;
 
-    fits(parts.len(), ctx, PARTS_HINT)?;
-
-    Ok(match parts.len() {
-        0 => quote!(()),
-        1 => parts.into_iter().next().expect("there is one part"),
-        _ => quote!((#(#parts,)*)),
-    })
+    Ok(composed)
 }
 
 /// Adds a statement to the current run, starting one if the last run was a scene.
@@ -218,6 +215,9 @@ fn scene_piece(runs: &mut Vec<Run>, tokens: TokenStream) {
 }
 
 /// Generates a scene list: one `EntityScene` per entity, in order.
+///
+/// Like a scene, a list longer than a tuple can hold is grouped rather than refused; see
+/// [`push_nested`].
 fn list(list: &SceneList, ctx: &mut Ctx) -> syn::Result<TokenStream> {
     let zlim_scene = ctx.scene.clone();
     let scenes = list
@@ -229,9 +229,10 @@ fn list(list: &SceneList, ctx: &mut Ctx) -> syn::Result<TokenStream> {
         })
         .collect::<syn::Result<Vec<_>>>()?;
 
-    fits(scenes.len(), ctx, ENTITIES_HINT)?;
+    let mut composed = TokenStream::new();
+    push_nested(&mut composed, &scenes, ctx)?;
 
-    Ok(quote!((#(#scenes,)*)))
+    Ok(composed)
 }
 
 // -----------------------------------------------------------------------------
@@ -241,33 +242,86 @@ fn list(list: &SceneList, ctx: &mut Ctx) -> syn::Result<TokenStream> {
 /// [`SceneList`](zlim_scene::SceneList) for.
 ///
 /// This mirrors the `range_invoke!` of the crate's `tuple` module. A composition longer than this is
-/// not a composition at all, so it is reported here — with a count and a way out — instead of being
-/// left to the trait solver, whose complaint would be about a tuple of thirteen scenes.
+/// grouped; see [`MAX_COMPOSITION`].
 const MAX_PARTS: usize = 12;
 
-/// What a part of a scene is, for the error of a scene that has too many of them.
-const PARTS_HINT: &str = "a scene is the tuple of the runs it is written in: a run of statements \
-                          (`#Name`, a template edit, `~…`) is one part, and a run of scenes \
-                          (`Children`, `Parent`, `:`, `@`) is another. Write the entries of each \
-                          kind together, or move some of them into a nested entity";
+/// How many parts go into a group when the parts do not fit in one tuple.
+const CHUNK: usize = 8;
 
-/// What a part of a scene list is, for the error of a list that has too many of them.
-const ENTITIES_HINT: &str = "a scene list is the tuple of its entities: one entity is one part. \
-                             Nest some of them under a `Children` list, or spawn them as several \
-                             scenes";
+/// The most parts one entity of a scene, or one list of them, can be written with.
+///
+/// One level of grouping is what a composition gets: [`MAX_PARTS`] groups of [`CHUNK`] parts, which
+/// is ninety-six. That is the length a scene or a list is written with, and past it the answer is
+/// not more nesting but fewer entities — so the macro says so, with the count, instead of leaving
+/// the trait solver to complain about a tuple of a hundred scenes.
+///
+/// It also bounds the nesting: two levels of tuple are as deep as any composition of this macro
+/// goes, whatever it holds.
+const MAX_COMPOSITION: usize = MAX_PARTS * CHUNK;
 
-/// Reports a composition whose parts do not fit in a tuple, and does nothing when they do.
-fn fits(parts: usize, ctx: &Ctx, hint: &str) -> syn::Result<()> {
-    if parts <= MAX_PARTS {
+/// Writes `parts` as a scene or a list composition.
+///
+/// Up to [`MAX_PARTS`] parts become one tuple, which is the common case and generates exactly what a
+/// flat composition always did. Past that the parts are grouped [`CHUNK`] at a time, and the groups
+/// become the parts of one more tuple — two levels, since the grouping only ever has to happen once.
+///
+/// The groups are tuples of the same pieces in the same order, so a nested composition is resolved
+/// exactly as a flat one would be.
+///
+/// # Errors
+///
+/// Fails for a composition past [`MAX_COMPOSITION`], which no two levels of tuple hold.
+fn push_nested(out: &mut TokenStream, parts: &[TokenStream], ctx: &Ctx) -> syn::Result<()> {
+    if parts.len() > MAX_COMPOSITION {
+        return Err(too_many(parts.len(), ctx));
+    }
+
+    if parts.len() <= MAX_PARTS {
+        write_group(out, parts);
         return Ok(());
     }
 
-    Err(syn::Error::new(
+    let groups = parts.chunks(CHUNK).map(|group| {
+        let mut tuple = TokenStream::new();
+        write_tuple(&mut tuple, group);
+        tuple
+    });
+
+    write_tuple(out, &groups.collect::<Vec<_>>());
+    Ok(())
+}
+
+/// Writes `parts` as one tuple into `out`.
+///
+/// A single part is written bare: it is the same composition without a layer of nesting that
+/// resolves to nothing.
+fn write_group(out: &mut TokenStream, parts: &[TokenStream]) {
+    match parts {
+        [] => {}
+        [only] => out.extend(only.clone()),
+        _ => write_tuple(out, parts),
+    }
+}
+
+/// Writes `parts` as one tuple into `out`, a single part included.
+///
+/// A group of the grouping has to stay a tuple even when it is the only one: written bare, the level
+/// above would hold that group's parts instead of the group, and a composition of ninety-seven would
+/// come out as a tuple of thirteen.
+fn write_tuple(out: &mut TokenStream, parts: &[TokenStream]) {
+    out.extend(quote!((#(#parts),*)));
+}
+
+/// Builds the error of a composition too long to be written at all.
+fn too_many(parts: usize, ctx: &Ctx) -> syn::Error {
+    syn::Error::new(
         ctx.span,
         format!(
-            "this composition has {parts} parts, and a tuple holds at most {MAX_PARTS}: {hint}"
+            "this composition has {parts} parts, and one scene or list holds at most \
+             {MAX_COMPOSITION}: split it into several entities — a `Children [...]` list is resolved \
+             as a composition of its own, and each of its entities has the whole allowance again"
         ),
-    ))
+    )
 }
 
 // -----------------------------------------------------------------------------
@@ -302,5 +356,147 @@ fn value(value: &Value, ctx: &mut Ctx) -> TokenStream {
             quote! { #scene::__macro_exports__::EntityTemplate::EntityReference(#reference) }
         }
         Value::Tokens(tokens) => tokens.clone(),
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::{Ctx, MAX_COMPOSITION, MAX_PARTS, push_nested};
+    use proc_macro2::{Delimiter, TokenStream, TokenTree};
+
+    /// A context with nothing in it: the count is all the macro needs to report a composition that
+    /// is too long, and the grouping never looks at the invocation.
+    fn context() -> Ctx {
+        Ctx {
+            scene: syn::parse_quote!(::zlim_scene),
+            file: String::new(),
+            line: 0,
+            column: 0,
+            span: proc_macro2::Span::call_site(),
+            names: Vec::new(),
+        }
+    }
+
+    /// The deepest tuple `tokens` holds.
+    fn depth(tokens: &TokenStream) -> usize {
+        let mut deepest = 0;
+
+        for token in tokens.clone() {
+            if let TokenTree::Group(group) = token {
+                let below = match group.delimiter() {
+                    Delimiter::Parenthesis => depth(&group.stream()),
+                    _ => 0,
+                };
+                deepest = deepest.max(1 + below);
+            }
+        }
+
+        deepest
+    }
+
+    /// Returns how many items the tuples of `tokens` hold at most.
+    fn longest_tuple(tokens: &TokenStream) -> usize {
+        let mut longest = 0;
+
+        for token in tokens.clone() {
+            if let TokenTree::Group(group) = token {
+                let inner = group.stream();
+                let below = longest_tuple(&inner);
+
+                if group.delimiter() == Delimiter::Parenthesis {
+                    let commas = inner
+                        .clone()
+                        .into_iter()
+                        .filter(|token| token.to_string() == ",")
+                        .count();
+                    let items = commas + usize::from(!inner.to_string().ends_with(','));
+                    longest = longest.max(items);
+                }
+
+                longest = longest.max(below);
+            }
+        }
+
+        longest
+    }
+
+    /// Composes `count` parts.
+    fn compose(count: usize) -> syn::Result<TokenStream> {
+        let parts = (0..count)
+            .map(|i| {
+                let name = quote::format_ident!("part_{i}");
+                quote::quote!(#name)
+            })
+            .collect::<Vec<_>>();
+
+        let mut out = TokenStream::new();
+        push_nested(&mut out, &parts, &context())?;
+        Ok(out)
+    }
+
+    /// Composes `count` parts that the macro accepts.
+    fn compose_ok(count: usize) -> TokenStream {
+        compose(count).unwrap_or_else(|error| panic!("{count} parts do not compose: {error}"))
+    }
+
+    /// No composition the macro accepts is a tuple longer than the implementations cover, at any
+    /// length — the grouping is the only thing standing between a long scene and a tuple the traits
+    /// do not cover.
+    #[test]
+    fn a_composition_is_never_over_the_tuple_limit() {
+        for count in [
+            0,
+            1,
+            2,
+            MAX_PARTS,
+            MAX_PARTS + 1,
+            MAX_COMPOSITION - 1,
+            MAX_COMPOSITION,
+        ] {
+            let tokens = compose_ok(count);
+
+            assert!(
+                longest_tuple(&tokens) <= MAX_PARTS,
+                "{count} parts made a tuple of {}",
+                longest_tuple(&tokens)
+            );
+        }
+
+        assert_eq!(compose_ok(0).to_string(), "", "an empty scene is nothing");
+        assert_eq!(compose_ok(1).to_string(), "part_0", "one part is itself");
+    }
+
+    /// Up to the limit a composition is one tuple, exactly as it was before grouping existed.
+    #[test]
+    fn a_composition_within_the_limit_is_a_flat_tuple() {
+        assert_eq!(depth(&compose_ok(2)), 1);
+        assert_eq!(depth(&compose_ok(MAX_PARTS)), 1);
+    }
+
+    /// Past the limit the composition is grouped — one level of it, since a level of `MAX_PARTS`
+    /// groups of `CHUNK` is the whole allowance.
+    #[test]
+    fn a_composition_past_the_limit_is_nested_once() {
+        assert_eq!(depth(&compose_ok(MAX_PARTS + 1)), 2);
+        assert_eq!(depth(&compose_ok(MAX_COMPOSITION)), 2);
+    }
+
+    /// A composition past what a scene or a list holds is an error, not a tuple the trait solver
+    /// cannot resolve. The error says the count and what to do about it.
+    #[test]
+    fn a_composition_past_the_limit_is_an_error() {
+        let over = MAX_COMPOSITION + 1;
+        let error = compose(over).expect_err("one part too many is refused");
+
+        assert!(
+            error.to_string().contains(&over.to_string()),
+            "the error counts the parts: {error}"
+        );
+        assert!(
+            error.to_string().contains(&MAX_COMPOSITION.to_string()),
+            "the error says how many fit: {error}"
+        );
     }
 }

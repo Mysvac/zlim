@@ -40,9 +40,14 @@ use parse::{SceneListRoot, SceneRoot};
 ///
 /// See the `zlim-scene` crate documentation for the whole grammar.
 ///
-/// A scene is the tuple of the runs it is written in, and a tuple holds at most twelve parts, so a
-/// scene that alternates between statements and scenes more than twelve times is a compile error.
-/// Entries of the same kind written together are one part, and so are the entities of a list.
+/// # How much fits
+///
+/// One entity holds at most **ninety-six** parts. A *part* is a run of entries of one kind:
+/// statements written together are one part, scenes written together are another, and a nested
+/// entity is one part however much is written inside it. Up to twelve parts are written as one
+/// tuple; past that they are grouped eight at a time, which is where the ninety-six comes from.
+/// Writing more than that is a compile error, and the scene wants part of its description moved into
+/// a nested entity — which has the whole allowance again.
 #[proc_macro]
 pub fn scn(input: TokenStream) -> TokenStream {
     let root = parse_macro_input!(input as SceneRoot);
@@ -58,8 +63,12 @@ pub fn scn(input: TokenStream) -> TokenStream {
 ///
 /// The entities share one name scope, so a `#Name` of one resolves for the others.
 ///
-/// A list is a tuple of its entities, so a list of more than twelve of them is a compile error; the
-/// same holds for the parts a single scene is written in.
+/// # How much fits
+///
+/// A list holds at most **ninety-six** entities, since an entity is one part of the list. Up to
+/// twelve of them are written as one tuple; past that they are grouped eight at a time, which is
+/// where the ninety-six comes from. A longer list is a compile error, and wants splitting into
+/// several lists.
 #[proc_macro]
 pub fn scn_list(input: TokenStream) -> TokenStream {
     let root = parse_macro_input!(input as SceneListRoot);

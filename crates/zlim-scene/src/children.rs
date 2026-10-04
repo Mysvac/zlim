@@ -14,11 +14,10 @@ use crate::scene_list::SceneList;
 
 /// The entities that belong under the entity this scene describes.
 ///
-/// Because the hierarchy lives in the world rather than in a component (see the [module
-/// documentation](super)), these entities are not related back to their parent by a component: they
-/// are spawned *with* the parent, which is the one operation that both links them and puts them in
-/// [`Children`]. Nothing has to be connected afterwards, and the order of the list is the order of
-/// the children.
+/// Because the hierarchy lives in the world rather than in a component (see the [module documentation](super)),
+/// these entities are not related back to their parent by a component: they are spawned *with* the parent,
+/// which is the one operation that both links them and puts them in [`Children`]. Nothing has to be connected
+/// afterwards, and the order of the list is the order of the children.
 ///
 /// This is the counterpart of Bevy's `RelatedScenes<ChildOf, L>`; since the hierarchy is the only
 /// relation a scene can describe, it carries no relationship type.
@@ -81,6 +80,25 @@ impl<L: SceneList> Scene for SceneChildren<L> {
 /// rather than spawned for it — is moved with [`reparent`], because moving something that is already
 /// placed in the tree is exactly what propagation has to hear about.
 ///
+/// # What an edge can say
+///
+/// A scene that carries no `SceneParent` leaves the hierarchy alone: the entity keeps whatever parent
+/// it has. Carrying one always says something, and [`EntityTemplate::None`] is an answer rather than
+/// silence — it names no parent, so the entity is moved to the root:
+///
+/// ```rust
+/// use zlim_core::template::EntityTemplate;
+/// use zlim_scene::{ResolveContext, ResolvedScene, Scene, SceneParent};
+///
+/// let mut scene = ResolvedScene::new();
+/// SceneParent::new(EntityTemplate::None)
+///     .resolve(&mut ResolveContext::new(), &mut scene)
+///     .unwrap();
+///
+/// // An answer, not silence: the entity is described as having no parent.
+/// assert_eq!(scene.parent(), Some(EntityTemplate::None));
+/// ```
+///
 /// The children of a scene do not need this: they are spawned with their parent already in place.
 /// When both are present, the explicit edge wins, because it is applied last.
 ///
@@ -98,7 +116,7 @@ impl<L: SceneList> Scene for SceneChildren<L> {
 ///     .resolve(&mut ResolveContext::new(), &mut scene)
 ///     .unwrap();
 ///
-/// assert!(matches!(scene.parent(), Some(EntityTemplate::Entity(id)) if id == parent));
+/// assert_eq!(scene.parent(), Some(EntityTemplate::Entity(parent)));
 /// ```
 ///
 /// [`reparent_without_signal`]: zlim_core::ops::EntityOwned::reparent_without_signal
@@ -106,7 +124,7 @@ impl<L: SceneList> Scene for SceneChildren<L> {
 /// [`ReparentSignal`]: zlim_core::message::ReparentSignal
 #[derive(Copy, Clone, Debug, Default)]
 pub struct SceneParent {
-    /// The entity that becomes this entity's parent.
+    /// The entity that becomes this entity's parent, or no entity at all for the root.
     pub parent: EntityTemplate,
 }
 

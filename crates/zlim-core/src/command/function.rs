@@ -40,10 +40,12 @@ pub(super) fn spawn_empty_at(entity: EntityId, parent: Option<EntityId>) -> impl
         if let Some(p) = parent
             && let Err(e) = check_contains(&world.entities, p)
         {
-            // Retrieve reusable entity id.
-            world
-                .allocator
-                .free(world.entities.free_slot(entity.index()));
+            ::core::hint::cold_path();
+            if world.entities.check_spawnable(entity).is_ok() {
+                // Retrieve reusable entity id.
+                let free = world.entities.free_slot(entity.index());
+                world.allocator.free(free);
+            }
             return Err(e);
         }
 
@@ -69,10 +71,12 @@ pub(super) fn spawn_at<B: Bundle>(
         if let Some(p) = parent
             && let Err(e) = check_contains(&world.entities, p)
         {
-            // Retrieve reusable entity id.
-            world
-                .allocator
-                .free(world.entities.free_slot(entity.index()));
+            ::core::hint::cold_path();
+            if world.entities.check_spawnable(entity).is_ok() {
+                // Retrieve reusable entity id.
+                let free = world.entities.free_slot(entity.index());
+                world.allocator.free(free);
+            }
             return Err(e);
         }
 

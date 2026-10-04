@@ -1,5 +1,5 @@
-//! Integration tests for the queued scene API: the `SpawnScene` schedule, `ScenePatchInstance` and
-//! `SceneListPatchInstance`.
+//! Integration tests for the queued scene API: the `SpawnScene` schedule, `SceneQueue`, and the
+//! `queue_*` entry points that fill it.
 
 use zlim_app::App;
 use zlim_asset::plugin::AssetPlugin;
@@ -7,8 +7,7 @@ use zlim_core::component::Component;
 use zlim_core::entity::EntityId;
 use zlim_core::world::World;
 
-use zlim_scene::{SceneListPatchInstance, ScenePatchInstance, ScenePlugin};
-use zlim_scene::{WorldSceneQueueExt, scn, scn_list};
+use zlim_scene::{CommandsSceneExt, EntityCommandsExt, ScenePlugin, WorldSceneExt, scn, scn_list};
 
 // -----------------------------------------------------------------------------
 // Types
@@ -40,38 +39,47 @@ fn scale(world: &mut World, entity: EntityId) -> Option<Scale> {
 // -----------------------------------------------------------------------------
 // Tests
 
-/// A scene queued for an entity is built by the `SpawnScene` schedule, not by the call that queued
-/// it: the entity exists first, so it can be pointed at.
+/// A scene queued for spawning is given an empty entity at once, so there is something to point at
+/// while its components are still loading; the scene itself arrives with the `SpawnScene` run.
 #[test]
 fn a_queued_scene_is_built_when_the_spawn_scene_schedule_runs() {
     let mut app = scene_app();
 
-    let entity = app
-        .main_world_mut()
+    let before = app.main_world_mut().entities().count_spawned();
+
+    app.main_world_mut()
         .queue_spawn_scene(scn! { Scale(1.5) }, None)
         .expect("the scene is queued");
 
-    assert!(
-        scale(app.main_world_mut(), entity).is_none(),
-        "the scene is only described so far"
+    assert_eq!(
+        app.main_world_mut().entities().count_spawned(),
+        before + 1,
+        "the entity is made as soon as the scene is queued"
     );
-    assert!(
-        app.main_world_mut()
-            .entity_owned(entity)
-            .get::<ScenePatchInstance>()
-            .is_some(),
-        "the request is what the schedule looks for"
+
+    let entity = app
+        .main_world_mut()
+        .entities()
+        .root_entities()
+        .last()
+        .expect("the entity exists");
+    assert_eq!(
+        scale(app.main_world_mut(), entity),
+        None,
+        "and it is empty until the scene is ready"
     );
 
     app.update();
 
-    assert_eq!(scale(app.main_world_mut(), entity), Some(Scale(1.5)));
-    assert!(
-        app.main_world_mut()
-            .entity_owned(entity)
-            .get::<ScenePatchInstance>()
-            .is_none(),
-        "a request is removed once it has been answered"
+    assert_eq!(
+        scale(app.main_world_mut(), entity),
+        Some(Scale(1.5)),
+        "the scene was applied to the entity that was already there"
+    );
+    assert_eq!(
+        app.main_world_mut().entities().count_spawned(),
+        before + 1,
+        "the scene did not make a second entity"
     );
 }
 
@@ -96,23 +104,24 @@ fn a_queued_scene_is_applied_to_the_entity_it_names() {
 fn a_queued_scene_list_spawns_under_its_entity() {
     let mut app = scene_app();
 
-    let holder = app
-        .main_world_mut()
+    let holder = app.main_world_mut().spawn_empty(None).id();
+    app.main_world_mut()
         .queue_spawn_scene_list(
             scn_list! {
                 Scale(1.0)
                 --
                 Scale(2.0)
             },
-            None,
+            Some(holder),
         )
         .expect("the list is queued");
 
     assert!(
         app.main_world_mut()
             .entity_owned(holder)
-            .get::<SceneListPatchInstance>()
-            .is_some()
+            .children()
+            .is_ok_and(<[EntityId]>::is_empty),
+        "nothing is spawned until the job runs"
     );
 
     app.update();
@@ -127,37 +136,6 @@ fn a_queued_scene_list_spawns_under_its_entity() {
     assert_eq!(children.len(), 2);
     assert_eq!(scale(world, children[0]), Some(Scale(1.0)));
     assert_eq!(scale(world, children[1]), Some(Scale(2.0)));
-    assert!(
-        world
-            .entity_owned(holder)
-            .get::<SceneListPatchInstance>()
-            .is_none(),
-        "a request is removed once it has been answered"
-    );
-}
-
-/// A queued scene is applied by the first run that finds it ready, and the request is only taken out
-/// once it has been: a later frame still builds it.
-#[test]
-fn a_queued_scene_is_built_by_a_later_frame() {
-    let mut app = scene_app();
-
-    let entity = app
-        .main_world_mut()
-        .queue_spawn_scene(scn! { Scale(3.5) }, None)
-        .expect("the scene is queued");
-
-    // The scene is applied on the first `SpawnScene` run, which is part of the first frame; earlier
-    // frames only matter for a scene whose assets are still loading.
-    app.update();
-    assert!(scale(app.main_world_mut(), entity).is_some());
-
-    app.update();
-    assert_eq!(
-        scale(app.main_world_mut(), entity),
-        Some(Scale(3.5)),
-        "a scene is applied once, not once per frame"
-    );
 }
 
 /// Queueing a scene in a world without the scene assets is an error rather than a silent no-op.
@@ -173,20 +151,134 @@ fn queueing_a_scene_without_the_scene_plugin_is_an_error() {
     );
 }
 
-/// The entity a scene is queued for has to exist: queueing onto a stale id is an error, rather than
-/// a request nobody will ever see.
+/// A request that names an entity which is gone by the time it is answered is reported and dropped,
+/// rather than bringing the run down: the queueing call could not have known, since it resolves
+/// nothing.
 #[test]
-fn queueing_a_scene_for_a_missing_entity_is_an_error() {
+fn a_request_naming_a_missing_entity_is_dropped() {
     let mut app = scene_app();
 
-    let entity = app.main_world_mut().spawn_empty(None).id();
+    let target = app.main_world_mut().spawn_empty(None).id();
+    let parent = app.main_world_mut().spawn_empty(None).id();
+
     app.main_world_mut()
-        .despawn(entity)
+        .queue_apply_scene(scn! { Scale(2.5) }, target)
+        .expect("the scene is queued");
+    app.main_world_mut()
+        .queue_spawn_scene_list(scn_list! { Scale(1.0) }, Some(parent))
+        .expect("the list is queued");
+
+    app.main_world_mut()
+        .despawn(target)
+        .expect("the entity is live");
+    app.main_world_mut()
+        .despawn(parent)
         .expect("the entity is live");
 
+    // Neither request can be built where it asked, and neither is left behind.
+    app.update();
+
+    let world = app.main_world_mut();
+    assert!(world.get_entity_ref(target).is_err());
+    assert!(world.get_entity_ref(parent).is_err());
     assert!(
-        app.main_world_mut()
-            .queue_apply_scene(scn! { Scale(1.0) }, entity)
-            .is_err()
+        world
+            .get_resource::<zlim_scene::SceneQueue>()
+            .is_some_and(zlim_scene::SceneQueue::is_empty),
+        "a request nothing can answer is dropped rather than retried for ever"
     );
+}
+
+// -----------------------------------------------------------------------------
+// Commands
+//
+// A command is deferred twice: the command queue runs at the end of the schedule, and the scene then
+// waits in `SceneQueue` for its assets. These tests drive the command queue by hand, since what they
+// are about is the command, not the frame.
+
+/// A scene queued as a command spawns its entity when the command queue runs, and the entity it
+/// hands back is the one that will exist.
+#[test]
+fn a_scene_command_spawns_when_the_queue_runs() {
+    let mut app = scene_app();
+
+    let entity = {
+        let world = app.main_world_mut();
+        let mut commands = world.commands();
+        let entity = commands.spawn_scene(scn! { Scale(3.5) }, None);
+        let id = entity.id();
+        assert!(
+            world.get_entity_ref(id).is_err(),
+            "the command has not run yet, so the entity is not there"
+        );
+        id
+    };
+
+    app.main_world_mut().flush();
+    app.update();
+
+    assert_eq!(scale(app.main_world_mut(), entity), Some(Scale(3.5)));
+}
+
+/// `apply_scene` is the same deferral for an entity that already exists, and it chains: the value it
+/// returns is the same `EntityCommands`, so further commands can be hung on it.
+#[test]
+fn a_scene_command_applies_and_chains() {
+    let mut app = scene_app();
+
+    let target = app.main_world_mut().spawn_empty(None).id();
+
+    {
+        let world = app.main_world_mut();
+        let mut commands = world.commands();
+        commands
+            .with_entity(target)
+            .apply_scene(scn! { Scale(4.5) })
+            .apply_scene(scn! { Scale(5.5) });
+    }
+
+    app.main_world_mut().flush();
+    app.update();
+
+    assert_eq!(
+        scale(app.main_world_mut(), target),
+        Some(Scale(5.5)),
+        "both scenes were queued, and the one written last wins"
+    );
+}
+
+/// A scene list queued as a command spawns its entities under the parent, and hands nothing back
+/// because a list describes more than one entity.
+#[test]
+fn a_scene_list_command_spawns_under_its_parent() {
+    let mut app = scene_app();
+
+    let parent = app.main_world_mut().spawn_empty(None).id();
+
+    {
+        let world = app.main_world_mut();
+        let mut commands = world.commands();
+        commands.spawn_scene_list(
+            scn_list! {
+                Scale(1.0)
+                --
+                Scale(2.0)
+            },
+            Some(parent),
+        );
+    }
+
+    app.main_world_mut().flush();
+    app.update();
+
+    let world = app.main_world_mut();
+    let children = world
+        .entity_owned(parent)
+        .children()
+        .expect("the parent is live")
+        .to_vec();
+
+    assert_eq!(children.len(), 2);
+    assert_eq!(scale(world, children[0]), Some(Scale(1.0)));
+    assert_eq!(scale(world, children[1]), Some(Scale(2.0)));
 }

@@ -15,6 +15,23 @@ use crate::world::World;
 // -----------------------------------------------------------------------------
 // EntityReference
 
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+struct FileStr(&'static str);
+
+impl PartialEq for FileStr {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        if core::ptr::eq::<str>(self.0, other.0) {
+            true
+        } else {
+            self.0 == other.0
+        }
+    }
+}
+
+impl Eq for FileStr {}
+
 /// A unique reference to a named entity of a scene.
 ///
 /// A reference is what a `#Name` in a scene expands to. Its identity is made of
@@ -28,13 +45,11 @@ use crate::world::World;
 /// reference is created, because [`EntityReferences`] looks references up through
 /// [`NoopState`], which forwards the value a key hashes to instead of hashing it again.
 #[derive(Copy, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct EntityReference {
-    file: &'static str,
-    line: u32,
-    column: u32,
-    name_id: usize,
-    runtime: u64,
-    hash: u64,
+    // SIMD comparison
+    meta: [u64; 4],
+    file: FileStr,
 }
 
 impl EntityReference {
@@ -50,22 +65,14 @@ impl EntityReference {
         hasher.write_u64(runtime);
         hasher.write_usize(name_id);
         Self {
-            file,
-            line,
-            column,
-            name_id,
-            runtime,
-            hash: hasher.finish(),
+            meta: [
+                hasher.finish(),
+                ((line as u64) << 32) + (column as u64),
+                name_id as u64,
+                runtime,
+            ],
+            file: FileStr(file),
         }
-    }
-}
-
-impl Hash for EntityReference {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // The identity is already hashed, and `NoopState` expects exactly one write.
-        // See the type documentation for why the map is looked up this way.
-        state.write_u64(self.hash);
     }
 }
 
@@ -74,8 +81,21 @@ impl Display for EntityReference {
         write!(
             f,
             "{}:{}:{} #{} of run {}",
-            self.file, self.line, self.column, self.name_id, self.runtime
+            self.file.0,
+            self.meta[1] >> 32,
+            self.meta[1] & (u32::MAX as u64),
+            self.meta[2],
+            self.meta[3],
         )
+    }
+}
+
+impl Hash for EntityReference {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // The identity is already hashed, and `NoopState` expects exactly one write.
+        // See the type documentation for why the map is looked up this way.
+        state.write_u64(self.meta[0]);
     }
 }
 
@@ -97,6 +117,9 @@ impl Debug for EntityReference {
 /// Looking a name up before it is bound is an error rather than a new entity: an entity invented on
 /// the spot would be one the scene never describes, and a component pointing at it would be pointing
 /// at nothing.
+///
+/// A scene applied on its own owns its scope and drops it with the application; a list of roots
+/// shares one scope, which is what lets one root name an entity another declares.
 #[derive(Default)]
 pub struct EntityReferences(HashMap<EntityReference, EntityId, NoopState>);
 

@@ -1,6 +1,5 @@
 //! Composing a scene, and editing the templates it carries.
 
-use core::any::TypeId;
 use core::marker::PhantomData;
 
 use zlim_core::component::Component;
@@ -132,9 +131,6 @@ where
 ///
 /// [`FnTemplate`]: zlim_core::template::FnTemplate
 pub struct InsertTemplate {
-    /// The [`TypeId`] the template is stored under.
-    pub type_id: TypeId,
-
     /// The template to store.
     pub template: Box<dyn ErasedTemplate>,
 }
@@ -147,7 +143,6 @@ impl InsertTemplate {
         T: Template<Output: TemplateEffect> + Send + Sync + 'static,
     {
         Self {
-            type_id: TypeId::of::<T>(),
             template: Box::new(template),
         }
     }
@@ -156,7 +151,7 @@ impl InsertTemplate {
 impl Scene for InsertTemplate {
     #[inline]
     fn resolve(self, _context: &mut ResolveContext, scene: &mut ResolvedScene) -> ZlimResult<()> {
-        scene.insert_erased_template(self.type_id, self.template);
+        scene.insert_erased_template((*self.template).type_id(), self.template);
         Ok(())
     }
 }
@@ -191,7 +186,7 @@ where
 {
     #[inline]
     fn resolve(self, _context: &mut ResolveContext, scene: &mut ResolvedScene) -> ZlimResult<()> {
-        scene.get_or_insert_template::<T>();
+        scene.get_or_init_template::<T>();
         Ok(())
     }
 }
@@ -221,7 +216,7 @@ where
 ///     .resolve(&mut ResolveContext::new(), &mut scene)
 ///     .unwrap();
 ///
-/// assert_eq!(scene.component_templates().len(), 1);
+/// assert_eq!(scene.templates().len(), 1);
 /// ```
 pub struct TemplatePatch<F, T>(pub F, pub PhantomData<T>);
 
@@ -232,7 +227,7 @@ where
 {
     #[inline]
     fn resolve(self, context: &mut ResolveContext, scene: &mut ResolvedScene) -> ZlimResult<()> {
-        let template = scene.get_or_insert_template::<T>();
+        let template = scene.get_or_init_template::<T>();
         (self.0)(template, context);
         Ok(())
     }

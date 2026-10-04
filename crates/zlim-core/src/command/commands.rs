@@ -254,7 +254,6 @@ impl<'w, 's> Commands<'w, 's> {
     /// This command is faster than `spawn((), parent)`.
     ///
     /// Logs at warn level if the parent is some but does not exist and do nothing.
-    #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn spawn_empty(&mut self, parent: Option<EntityId>) -> EntityCommands<'_> {
         let entity = self.world.alloc_entity();
@@ -267,7 +266,6 @@ impl<'w, 's> Commands<'w, 's> {
     /// This command is faster than `spawn((), parent)`.
     ///
     /// No-op if the entity is already despawned.
-    #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_spawn_empty(&mut self, parent: Option<EntityId>) -> EntityCommands<'_> {
         let entity = self.world.alloc_entity();
@@ -420,7 +418,6 @@ impl<'w, 's> Commands<'w, 's> {
     /// Despawns an entity and removes all of its components.
     ///
     /// Logs at warn level if the entity is already despawned.
-    #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn despawn(&mut self, entity: EntityId) {
         self.queue(func::despawn(entity));
@@ -429,7 +426,6 @@ impl<'w, 's> Commands<'w, 's> {
     /// Despawns an entity and removes all of its components.
     ///
     /// No-op if the entity is already despawned.
-    #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn try_despawn(&mut self, entity: EntityId) {
         self.queue(func::try_despawn(entity));

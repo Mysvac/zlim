@@ -45,12 +45,6 @@ impl SceneDependencies {
         self.0.push(SceneDependency { type_id, path });
     }
 
-    /// Iterates the registered dependencies.
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &SceneDependency> {
-        self.0.iter()
-    }
-
     /// Returns the number of registered dependencies.
     #[inline]
     pub fn len(&self) -> usize {
@@ -61,5 +55,21 @@ impl SceneDependencies {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Iterates the registered dependencies.
+    #[inline]
+    pub fn iter(&self) -> core::slice::Iter<'_, SceneDependency> {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for SceneDependencies {
+    type Item = SceneDependency;
+    type IntoIter = std::vec::IntoIter<SceneDependency>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }

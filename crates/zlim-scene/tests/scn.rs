@@ -55,7 +55,7 @@ struct Inline(f32);
 
 impl Scene for Inline {
     fn resolve(self, _context: &mut ResolveContext, scene: &mut ResolvedScene) -> ZlimResult<()> {
-        scene.get_or_insert_template::<Scale>().0 = self.0;
+        scene.get_or_init_template::<Scale>().0 = self.0;
         Ok(())
     }
 }
@@ -253,39 +253,47 @@ fn scn_includes_an_inline_scene_where_it_is_written() {
     assert_eq!(scale(&mut world, overridden), Some(Scale(1.0)));
 }
 
-/// A scene is the tuple of the runs it is written in, and a tuple holds twelve parts: this is the
-/// longest scene that still fits. Alternating a scene with every statement is what costs parts, and
-/// the entry written last is the one that survives.
+// -----------------------------------------------------------------------------
+// Composition length
+
+/// A scene longer than a tuple holds is grouped rather than refused.
+///
+/// A scene is composed of the runs it is written in, so alternating a scene with every statement is
+/// what makes it long — and the entry written last is the one that survives.
+///
+/// How the grouping itself comes out is the business of the `codegen` module, which checks it at
+/// every length where a level changes shape; what matters here is that a composition written this
+/// way still reaches the world, in order.
 #[test]
-fn scn_a_scene_of_twelve_runs_still_fits() {
+fn scn_a_scene_of_more_than_twelve_runs_is_grouped() {
     let mut world = World::alloc();
 
     let root = world
         .spawn_scene(
             scn! {
-                @ Inline(0.5)
-                #Root
-                @ Inline(1.0)
-                Scale(2.0)
-                @ Inline(3.0)
-                Scale(4.0)
-                @ Inline(5.0)
-                Scale(6.0)
-                @ Inline(7.0)
-                Scale(8.0)
-                @ Inline(9.0)
-                Scale(10.0)
+                @ Inline(0.5)  Scale(0.0)
+                @ Inline(0.5)  Scale(1.0)
+                @ Inline(0.5)  Scale(2.0)
+                @ Inline(0.5)  Scale(3.0)
+                @ Inline(0.5)  Scale(4.0)
+                @ Inline(0.5)  Scale(5.0)
+                @ Inline(0.5)  Scale(6.0)
+                @ Inline(0.5)  Scale(7.0)
+                @ Inline(0.5)  Scale(8.0)
+                @ Inline(0.5)  Scale(9.0)
+                @ Inline(0.5)  Scale(10.0)
+                @ Inline(0.5)  Scale(11.0)
             },
             None,
         )
         .expect("the scene spawns");
 
-    assert_eq!(scale(&mut world, root), Some(Scale(10.0)));
+    assert_eq!(scale(&mut world, root), Some(Scale(11.0)));
 }
 
-/// A scene list is the tuple of its entities, and a tuple holds twelve of them.
+/// A list longer than a tuple holds is grouped the same way, and the entities keep their order.
 #[test]
-fn scn_a_list_of_twelve_entities_still_fits() {
+fn scn_a_list_of_more_than_twelve_entities_is_grouped() {
     let mut world = World::alloc();
 
     let roots = world
@@ -294,13 +302,15 @@ fn scn_a_list_of_twelve_entities_still_fits() {
                 Scale(0.0) -- Scale(1.0) -- Scale(2.0) -- Scale(3.0)
                 -- Scale(4.0) -- Scale(5.0) -- Scale(6.0) -- Scale(7.0)
                 -- Scale(8.0) -- Scale(9.0) -- Scale(10.0) -- Scale(11.0)
+                -- Scale(12.0) -- Scale(13.0) -- Scale(14.0) -- Scale(15.0)
             },
             None,
         )
         .expect("the list spawns");
 
-    assert_eq!(roots.len(), 12);
-    assert_eq!(scale(&mut world, roots[11]), Some(Scale(11.0)));
+    assert_eq!(roots.len(), 16);
+    assert_eq!(scale(&mut world, roots[15]), Some(Scale(15.0)));
+    assert_eq!(scale(&mut world, roots[0]), Some(Scale(0.0)));
 }
 
 /// `Type::function(args)` replaces the canonical template with what the call produces, where
@@ -333,10 +343,7 @@ fn scn_builds_on_a_cached_scene_by_path() {
     let mut app = scene_app();
 
     let world = app.main_world_mut();
-    let server = world
-        .get_resource::<AssetServer>()
-        .expect("the asset plugin inserts a server")
-        .clone();
+    let server = world.resource::<AssetServer>().clone();
 
     // Nothing loads a scene asset yet — there is no loader for one — so the handle is asked for by
     // path and the resolved patch is then published under it by hand.
@@ -345,9 +352,7 @@ fn scn_builds_on_a_cached_scene_by_path() {
     let mut base = ScenePatch::new(scn! { Health { current: 10, max: 20 } });
 
     {
-        let mut patches = world
-            .get_resource_mut::<Assets<ScenePatch>>()
-            .expect("the scene plugin registers the patches");
+        let mut patches = world.resource_mut::<Assets<ScenePatch>>();
         base.resolve(Some(&server), &mut patches)
             .expect("the base resolves");
         patches

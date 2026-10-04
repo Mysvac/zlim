@@ -8,19 +8,24 @@ use zlim_core::bundle::BundleScratch;
 use zlim_core::entity::{EntityId, EntityMap, EntityMapper};
 use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::ops::EntityOwned;
-use zlim_core::template::{EntityReferences, ErasedTemplate, Template, TemplateContext};
+use zlim_core::template::{EntityReferences, EntityTemplate};
+use zlim_core::template::{ErasedTemplate, Template, TemplateContext};
 use zlim_core::world::World;
-use zlim_utils::hash::HashSet;
+use zlim_utils::hash::{HashSet, NoopState};
 
 use crate::resolved::ResolvedScene;
 
 // -----------------------------------------------------------------------------
 // Layers
 
+/// The template types a layer does not have to apply.
+type TypeSet = HashSet<TypeId, NoopState>;
+
 /// Where the scene of a layer lives.
 ///
-/// A scene of the tree being applied is borrowed; a scene inside a cached patch is owned through the
-/// handle the layer that includes it holds, and reached by walking a path from that patch's root.
+/// A scene of the tree being applied is borrowed; a scene inside a
+/// cached patch is owned through the handle the layer that includes
+/// it holds, and reached by walking a path from that patch's root.
 enum Source<'a> {
     /// A scene of the tree being applied.
     Own(&'a ResolvedScene),
@@ -76,7 +81,7 @@ struct Layer<'a> {
     /// Those are exactly the templates this layer contributed that the scene above cloned to edit —
     /// so it applies its own copy, and this one is skipped instead of being built and written only
     /// to be overwritten by the copy derived from it.
-    skip: HashSet<TypeId>,
+    skip: TypeSet,
 }
 
 /// One entity of an application, and the layers that describe it.
@@ -85,6 +90,10 @@ struct Planned<'a> {
     entity: EntityId,
 
     /// Whether the entity was created for this application.
+    ///
+    /// It is one fact with two consequences: the entity has no place in the tree the rest of the
+    /// world has seen, so moving it needs no signal — and it is the application's to drop when a
+    /// template fails.
     created: bool,
 
     /// The layers in application order: a cached scene (and what it includes, and so on) first, then
@@ -96,7 +105,7 @@ struct Planned<'a> {
 ///
 /// `skip` is the set of types the scene that includes `base` cloned from it, so `base` does not have
 /// to apply them.
-fn push_layers<'a>(base: Source<'a>, skip: HashSet<TypeId>, out: &mut Vec<Layer<'a>>) {
+fn push_layers<'a>(base: Source<'a>, skip: TypeSet, out: &mut Vec<Layer<'a>>) {
     if let Some(cached) = base.get().cached_info() {
         push_layers(
             Source::Cached {
@@ -111,6 +120,23 @@ fn push_layers<'a>(base: Source<'a>, skip: HashSet<TypeId>, out: &mut Vec<Layer<
     out.push(Layer { source: base, skip });
 }
 
+// -----------------------------------------------------------------------------
+// The record of an application
+
+/// The entities an application has spawned, in the order it spawned them.
+///
+/// An application fails as a whole — a template that cannot be built leaves the entity it was
+/// building half described — so what it created is dropped rather than left behind. Only the
+/// entities are recorded: the name scope and the id map are made by the application itself, so
+/// dropping them is all it takes to leave them as they were.
+///
+/// A parent is pushed before its children, so dropping the list in reverse drops a child before the
+/// parent that owns it.
+type Spawned = Vec<EntityId>;
+
+// -----------------------------------------------------------------------------
+// Applying a tree
+
 /// Spawns one entity per scene of the tree, and binds every name the scenes declare — and every id
 /// they carry — to the entity that declares them.
 ///
@@ -118,18 +144,25 @@ fn push_layers<'a>(base: Source<'a>, skip: HashSet<TypeId>, out: &mut Vec<Layer<
 /// later in the scene: by the time templates are built, every name of the whole tree is bound. The
 /// same holds for the ids a document gives its entities, which is what lets the components read from
 /// that document name each other.
+///
+/// The root is the application's to drop only when it created it: a scene applied to an entity that
+/// already existed keeps that entity, and only the children spawned under it are taken back.
 fn place<'a>(
     entity: EntityId,
     created: bool,
     source: Source<'a>,
     world: &mut World,
     references: &mut EntityReferences,
-    entity_mapper: &mut EntityMap<EntityId>,
-    spawned: &mut Vec<EntityId>,
+    entities: &mut EntityMap<EntityId>,
+    spawned: &mut Spawned,
     plan: &mut Vec<Planned<'a>>,
 ) {
     let mut layers = Vec::new();
-    push_layers(source, HashSet::new(), &mut layers);
+    push_layers(source, TypeSet::with_hasher(NoopState), &mut layers);
+
+    if created {
+        spawned.push(entity);
+    }
 
     for layer in &layers {
         let scene = layer.source.get();
@@ -138,10 +171,10 @@ fn place<'a>(
             references.set(*reference, entity);
         }
 
-        // The id the document gives this entity is bound here, for the same reason the names are:
-        // a component of one entity may point at another that the document declares later.
-        if let Some(id) = scene.document_id() {
-            entity_mapper.set_mapped(id, entity);
+        // The id the document gives this entity is bound here, for the same reason the names are: a
+        // component of one entity may point at another that the document declares later.
+        if let EntityTemplate::Entity(id) = scene.id() {
+            entities.set_mapped(id, entity);
         }
     }
 
@@ -163,14 +196,13 @@ fn place<'a>(
 
     for child_source in children {
         let child = world.spawn_empty(Some(entity)).id();
-        spawned.push(child);
         place(
             child,
             true,
             child_source,
             world,
             references,
-            entity_mapper,
+            entities,
             spawned,
             plan,
         );
@@ -185,24 +217,23 @@ fn fill(
     plan: &[Planned<'_>],
     entity: &mut EntityOwned<'_>,
     references: &mut EntityReferences,
-    entity_mapper: &mut EntityMap<EntityId>,
+    entities: &mut EntityMap<EntityId>,
     scratch: &mut BundleScratch,
 ) -> ZlimResult<()> {
     for planned in plan {
         let target = planned.entity;
-        let created = planned.created;
 
         let result = entity.world_scope(|world| -> ZlimResult<()> {
             let mut owned = world.get_entity_owned(target).map_err(ZlimError::error)?;
 
             {
                 let mut writer = scratch.writer();
-                let mut context = TemplateContext::new(&mut owned, references, entity_mapper);
+                let mut context = TemplateContext::new(&mut owned, references, entities);
 
                 for layer in &planned.layers {
                     let scene = layer.source.get();
 
-                    for template in scene.component_templates() {
+                    for template in scene.templates() {
                         let template: &dyn ErasedTemplate = &**template;
                         if layer.skip.contains(&(template as &dyn Any).type_id()) {
                             continue;
@@ -216,8 +247,9 @@ fn fill(
                     .map_err(ZlimError::error)?;
             }
 
-            // The last layer that carries an edge wins: the scene is applied on
-            // top of the cached one, so what it says about the hierarchy comes last.
+            // The last layer that carries an edge wins: the scene is applied on top of the cached one,
+            // so what it says about the hierarchy comes last. A layer that says nothing — `None` —
+            // is skipped rather than taken as an answer, so it does not cancel an earlier layer's.
             let mut edge = None;
             for layer in planned.layers.iter().rev() {
                 if let Some(parent) = layer.source.get().parent() {
@@ -231,18 +263,24 @@ fn fill(
             };
 
             // The edge is resolved here, and not while the scene was resolved, because the entity it
-            // names may be declared anywhere in the tree.
-            let parent = {
-                let mut context = TemplateContext::new(&mut owned, references, entity_mapper);
-                parent.build_template(&mut context)?
+            // names may be declared anywhere in the tree. An edge that names no entity resolves to no
+            // entity, which is the request to move to the root.
+            let parent = match parent {
+                EntityTemplate::None => None,
+                parent => {
+                    let mut context = TemplateContext::new(&mut owned, references, entities);
+                    Some(parent.build_template(&mut context)?)
+                }
             };
 
-            if created {
+            // An entity this application created has no place in the tree that the rest of the world
+            // has seen, so its move needs no signal; one that already existed has, so it does.
+            if planned.created {
                 owned
-                    .reparent_without_signal(Some(parent))
+                    .reparent_without_signal(parent)
                     .map_err(ZlimError::error)?;
             } else {
-                owned.reparent(Some(parent)).map_err(ZlimError::error)?;
+                owned.reparent(parent).map_err(ZlimError::error)?;
             }
 
             Ok(())
@@ -266,21 +304,29 @@ fn fill(
 impl ResolvedScene {
     /// Applies this scene to `entity`, without the bookkeeping its callers do.
     ///
-    /// [`WorldSceneExt::apply_scene`] is the only caller from outside: it describes an entity that
-    /// already exists, so the parent edge it carries has to signal.
+    /// The name scope and the id map are made here and die here, so a failed application only has
+    /// the world to put back: the entities it spawned are all of it.
     ///
-    /// [`WorldSceneExt::apply_scene`]: crate::WorldSceneExt::apply_scene
+    /// `created` says whether `entity` was spawned for this application, which decides both how its
+    /// parent edge is applied and whether it is dropped again when a template fails.
+    ///
+    /// `spawned` collects what the application creates, so that a caller which writes several roots
+    /// at once can take the whole lot back.
     fn apply_internal(
         &self,
         entity: &mut EntityOwned<'_>,
-        references: &mut EntityReferences,
-        entity_mapper: &mut EntityMap<EntityId>,
-        spawned: &mut Vec<EntityId>,
-        scratch: &mut BundleScratch,
+        spawned: &mut Spawned,
         created: bool,
     ) -> ZlimResult<()> {
-        let mut plan = Vec::new();
+        // The name scope and the id map belong to this application alone: nothing outside reads
+        // them, so a failure leaves the world as the only thing to put back.
+        let mut references = EntityReferences::new();
+        let mut entities = EntityMap::new();
+        let mut scratch = BundleScratch::new();
+        let start = spawned.len();
+
         // --- 1 & 2: every entity, every name, and every document id ---
+        let mut plan = Vec::new();
         let root = entity.id();
         entity.world_scope(|world| {
             place(
@@ -288,25 +334,30 @@ impl ResolvedScene {
                 created,
                 Source::Own(self),
                 world,
-                references,
-                entity_mapper,
+                &mut references,
+                &mut entities,
                 spawned,
                 &mut plan,
             )
         });
 
         // --- 3 & 4: the components, then the parent edges ---
-        fill(&plan, entity, references, entity_mapper, scratch)
+        fill(&plan, entity, &mut references, &mut entities, &mut scratch).inspect_err(move |_| {
+            ::core::hint::cold_path();
+            entity.world_scope(|world| {
+                for &id in spawned[start..].iter().rev() {
+                    world.try_despawn(id);
+                }
+            });
+        })
     }
 
-    /// Applies this scene to `entity`, using the given name scope and scratch space.
+    /// Applies this scene to an entity that is already part of the world.
     ///
-    /// This is the form to reach for when several roots are applied as one scene: they share
-    /// `references` — so a `#Name` of one resolves for the others — and they reuse `scratch`, whose
-    /// arena is only reset between writes. The entity is taken to have been spawned for the scene, so
-    /// a parent edge it carries is applied with [`reparent_without_signal`] rather than
-    /// [`reparent`]: the move is not something the rest of the world has seen yet, so there is no
-    /// [`ReparentSignal`] to send.
+    /// The entity is described as it is, so its own parent edge — if the scene carries one — is
+    /// applied with the signalling [`reparent`]: moving something that is already placed in the tree
+    /// is what propagation has to hear about. Use [`spawn`](Self::spawn) for an entity that does not
+    /// exist yet.
     ///
     /// # What an application does
     ///
@@ -329,100 +380,89 @@ impl ResolvedScene {
     /// exactly as with [`EntityOwned::insert`]. Readiness is not announced either: zlim has
     /// no observers yet, so the `Ready` event of Bevy's scenes has no counterpart here.
     ///
-    /// [`reparent_without_signal`]: zlim_core::ops::EntityOwned::reparent_without_signal
+    /// The name scope is the scene's own, so a `#Name` it carries has to be declared by the scene
+    /// itself or by a cached scene it builds on. Use [`spawn_batch`](Self::spawn_batch) to apply
+    /// several scenes under one scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a template cannot be built, in which case everything this application
+    /// created is dropped. The entity itself is not dropped — it was already part of the world — but
+    /// everything the application spawned under it is.
+    ///
     /// [`reparent`]: zlim_core::ops::EntityOwned::reparent
     /// [`ReparentSignal`]: zlim_core::message::ReparentSignal
     /// [`BundleWriter`]: zlim_core::bundle::BundleWriter
-    pub fn apply_with(
-        &self,
-        entity: &mut EntityOwned<'_>,
-        references: &mut EntityReferences,
-        entities: &mut EntityMap<EntityId>,
-        scratch: &mut BundleScratch,
-    ) -> ZlimResult<()> {
-        let mut spawned = Vec::with_capacity(self.children().len());
-        self.apply_internal(entity, references, entities, &mut spawned, scratch, true)
-    }
-
-    /// Applies this scene to an entity that is already part of the world.
-    ///
-    /// The entity is described as it is, so its own parent edge — if the scene carries one — is
-    /// applied with the signalling [`reparent`]. Use [`spawn`](Self::spawn) for an entity that does
-    /// not exist yet.
-    ///
-    /// [`reparent`]: zlim_core::ops::EntityOwned::reparent
+    #[inline(never)]
     pub fn apply(&self, entity: &mut EntityOwned<'_>) -> ZlimResult<()> {
-        let mut references = EntityReferences::new();
-        let mut entities = EntityMap::new();
-        let mut scratch = BundleScratch::new();
         let mut spawned = Vec::with_capacity(self.children().len());
-        self.apply_internal(
-            entity,
-            &mut references,
-            &mut entities,
-            &mut spawned,
-            &mut scratch,
-            false,
-        )
+
+        // The entity is the caller's, and it is still holding it: only what the application spawns
+        // under it is recorded, so a failure leaves the root alone.
+        self.apply_internal(entity, &mut spawned, false)
     }
 
     /// Spawns an entity under `parent` and applies this scene to it.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `parent` is `Some` but not spawned.
-    pub fn spawn<'w>(
-        &self,
-        world: &'w mut World,
-        parent: Option<EntityId>,
-    ) -> ZlimResult<EntityOwned<'w>> {
-        let mut entity = world.spawn_empty(parent);
+    /// Returns [`EntityError`](zlim_core::entity::EntityError) if `parent` is `Some` but not spawned,
+    /// and an error if a template cannot be built. In either case nothing is left behind: the entity
+    /// this method spawned is dropped again, because the caller only learns of the failure through
+    /// the error and would have no way to name it.
+    #[inline(never)]
+    pub fn spawn(&self, world: &mut World, parent: Option<EntityId>) -> ZlimResult<EntityId> {
+        let id = world.try_spawn_empty(parent)?.id();
+        let mut spawned = Vec::with_capacity(1 + self.children().len());
 
-        let mut references = EntityReferences::new();
-        let mut entities = EntityMap::new();
-        let mut scratch = BundleScratch::new();
+        // The handle is released before the application runs: a failed application drops this entity
+        // with the rest, and a handle that outlived it would point at a slot that is gone.
+        let mut entity = world.entity_owned(id);
+        self.apply_internal(&mut entity, &mut spawned, true)?;
 
-        let hint = 1 + self.children().len();
-        let mut spawned = Vec::with_capacity(hint);
-        spawned.push(entity.id());
-
-        self.apply_internal(
-            &mut entity,
-            &mut references,
-            &mut entities,
-            &mut spawned,
-            &mut scratch,
-            true,
-        )?;
-
-        Ok(entity)
+        Ok(id)
     }
 
     /// Spawns one entity per scene of `scenes` under `parent`, sharing one name scope.
     ///
-    /// # Panics
-    ///
-    /// Panics if `parent` is `Some` but not spawned.
+    /// Every root is spawned, and every name and id of the list is bound, before any of them is
+    /// written: the roots share one scope, so one may point at a name another declares, in either
+    /// order.
     ///
     /// # Errors
     ///
-    /// Returns an error if `parent` stops existing, or if applying a scene
-    /// to one of the new entities fails.
+    /// Returns [`EntityError`](zlim_core::entity::EntityError) if `parent` is `Some` but not spawned,
+    /// or an error if applying a scene to one of the new entities fails.
+    ///
+    /// A batch is applied all at once or not at all: the roots may point at each other, so a root
+    /// that was already written is not a usable half of the list — no root of a failed batch is left
+    /// under `parent`, nor any of their children. A root that another entity already owned is not
+    /// touched; only what the batch itself spawned goes.
+    #[inline(never)]
     pub fn spawn_batch(
         scenes: &[Self],
         world: &mut World,
         parent: Option<EntityId>,
     ) -> ZlimResult<Vec<EntityId>> {
+        // The name scope and the id map belong to the batch, and are shared by every root of it:
+        // that is what lets one root point at a name or an id another declares. A failure drops them
+        // with the entities they were bound to.
         let mut references = EntityReferences::new();
-        let mut entity_mapper = EntityMap::new();
-        let mut spawned = Vec::with_capacity(scenes.len());
-        let mut idents = Vec::with_capacity(scenes.len());
-        let mut ranges = Vec::with_capacity(scenes.len());
+        let mut entities = EntityMap::new();
         let mut scratch = BundleScratch::new();
         let mut plan = Vec::new();
+        let mut idents = Vec::with_capacity(scenes.len());
+        let mut ranges = Vec::with_capacity(scenes.len());
 
+        let hint = scenes.iter().map(|scene| 1 + scene.children().len()).sum();
+        let mut spawned = Spawned::with_capacity(hint);
+
+        // Placing first is what lets one root of the list point at another: the ids and names of the
+        // whole list are bound before any of them is built, in either order.
         for scene in scenes {
-            let mut entity = world.spawn_empty(parent);
+            // A root the world does not accept fails the whole batch: it is the parent that is
+            // wrong, so the next root would be refused in exactly the same way.
+            let mut entity = world.try_spawn_empty(parent)?;
             let start = plan.len();
             let root = entity.id();
             entity.world_scope(|world| {
@@ -432,45 +472,37 @@ impl ResolvedScene {
                     Source::Own(scene),
                     world,
                     &mut references,
-                    &mut entity_mapper,
+                    &mut entities,
                     &mut spawned,
                     &mut plan,
                 )
             });
-            spawned.push(entity.id());
-            idents.push(entity.id());
+            idents.push(root);
             ranges.push(start..plan.len());
         }
 
         for (id, range) in idents.iter().zip(&ranges) {
-            let mut entity = match world.get_entity_owned(*id) {
-                Ok(x) => x,
-                Err(e) => {
-                    for id in spawned {
-                        world.try_despawn(id);
-                    }
-                    return Err(e.into());
-                }
+            let result = match world.get_entity_owned(*id) {
+                Ok(mut entity) => fill(
+                    &plan[range.clone()],
+                    &mut entity,
+                    &mut references,
+                    &mut entities,
+                    &mut scratch,
+                ),
+                Err(error) => Err(error.into()),
             };
 
-            let res = fill(
-                &plan[range.clone()],
-                &mut entity,
-                &mut references,
-                &mut entity_mapper,
-                &mut scratch,
-            );
-
-            if let Err(e) = res {
-                for id in spawned {
+            if let Err(error) = result {
+                // Nothing holds a handle to the roots: the caller learns of the failure only through
+                // the error, so the whole batch goes, rather than the half of it that worked.
+                for &id in spawned.iter().rev() {
                     world.try_despawn(id);
                 }
-                return Err(e);
+                return Err(error);
             }
         }
 
         Ok(idents)
     }
 }
-
-// -----------------------------------------------------------------------------

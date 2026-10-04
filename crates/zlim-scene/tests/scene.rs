@@ -130,7 +130,7 @@ fn apply_to<T: Component + Clone>(scene: &ResolvedScene) -> T {
         let mut scratch = BundleScratch::default();
         let mut writer = scratch.writer();
 
-        for template in scene.component_templates() {
+        for template in scene.templates() {
             template
                 .apply(&mut context, &mut writer)
                 .expect("the template applies");
@@ -178,7 +178,7 @@ fn a_bundle_template_writes_every_component_it_carries() {
         let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
         let mut writer = scratch.writer();
 
-        for template in scene.component_templates() {
+        for template in scene.templates() {
             template
                 .apply(&mut context, &mut writer)
                 .expect("the template applies");
@@ -234,10 +234,14 @@ fn an_empty_scene_resolves_to_nothing() {
     ().resolve(&mut ResolveContext::new(), &mut scene)
         .expect("the empty scene resolves");
 
-    assert!(scene.component_templates().is_empty());
+    assert!(scene.templates().is_empty());
     assert!(scene.entity_references().is_empty());
     assert!(scene.children().is_empty());
-    assert!(scene.parent().is_none());
+    assert_eq!(
+        scene.parent(),
+        None,
+        "a scene without a parent piece says nothing about the hierarchy"
+    );
 }
 
 /// A tuple is resolved in declaration order, and every part of it contributes: two templates of the
@@ -250,7 +254,7 @@ fn scenes_compose_in_declaration_order() {
         .resolve(&mut ResolveContext::new(), &mut scene)
         .expect("the scene resolves");
 
-    assert_eq!(scene.component_templates().len(), 2);
+    assert_eq!(scene.templates().len(), 2);
     assert_eq!(apply_to_entity(&scene), Marker(2));
 }
 
@@ -300,12 +304,64 @@ fn a_parent_template_records_an_edge() {
     SceneParent::from(parent)
         .resolve(&mut ResolveContext::new(), &mut scene)
         .expect("the parent resolves");
-    assert!(matches!(scene.parent(), Some(EntityTemplate::Entity(id)) if id == parent));
+    assert_eq!(scene.parent(), Some(EntityTemplate::Entity(parent)));
 
     (SceneParent::from(other), SceneParent::from(parent))
         .resolve(&mut ResolveContext::new(), &mut scene)
         .expect("the parents resolve");
-    assert!(matches!(scene.parent(), Some(EntityTemplate::Entity(id)) if id == parent));
+    assert_eq!(scene.parent(), Some(EntityTemplate::Entity(parent)));
+}
+
+/// A scene that asks for no parent moves its entity to the root, which is what a scene applied to a
+/// child entity needs: it is an answer about the hierarchy, not silence.
+#[test]
+fn a_parent_of_no_entity_moves_the_entity_to_the_root() {
+    let mut world = World::alloc();
+    let parent = world.spawn_empty(None).id();
+    let child = world.spawn_empty(Some(parent)).id();
+
+    let mut scene = ResolvedScene::new();
+    scene.push_template(template(|_| Ok(Scale(1.0))));
+    SceneParent::new(EntityTemplate::None)
+        .resolve(&mut ResolveContext::new(), &mut scene)
+        .expect("the parent resolves");
+
+    assert_eq!(scene.parent(), Some(EntityTemplate::None));
+
+    let mut entity = world.entity_owned(child);
+    scene.apply(&mut entity).expect("the scene applies");
+
+    assert_eq!(
+        world
+            .entity_owned(child)
+            .parent()
+            .expect("the entity is live"),
+        None,
+        "the entity is a root again"
+    );
+}
+
+/// A scene that says nothing about the hierarchy leaves the entity where it is.
+#[test]
+fn a_scene_without_a_parent_leaves_the_hierarchy_alone() {
+    let mut world = World::alloc();
+    let parent = world.spawn_empty(None).id();
+    let child = world.spawn_empty(Some(parent)).id();
+
+    let mut scene = ResolvedScene::new();
+    scene.push_template(template(|_| Ok(Scale(1.0))));
+
+    let mut entity = world.entity_owned(child);
+    scene.apply(&mut entity).expect("the scene applies");
+
+    assert_eq!(
+        world
+            .entity_owned(child)
+            .parent()
+            .expect("the entity is live"),
+        Some(parent),
+        "the entity keeps the parent it had"
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -360,12 +416,12 @@ fn an_inserted_template_takes_the_canonical_slot() {
     scene.insert_template(Count(1));
     scene.insert_template(Count(2));
 
-    assert_eq!(scene.component_templates().len(), 1);
+    assert_eq!(scene.templates().len(), 1);
     assert_eq!(apply_to_entity(&scene), Marker(2));
 
     scene.push_template(template(|_| Ok(Marker(3))));
 
-    assert_eq!(scene.component_templates().len(), 2);
+    assert_eq!(scene.templates().len(), 2);
     assert_eq!(apply_to_entity(&scene), Marker(3));
 }
 
@@ -375,14 +431,14 @@ fn an_inserted_template_takes_the_canonical_slot() {
 fn the_canonical_slot_can_be_edited_in_place() {
     let mut scene = ResolvedScene::new();
 
-    scene.get_or_insert_template::<Count>().0 = 7;
+    scene.get_or_init_template::<Count>().0 = 7;
 
-    assert_eq!(scene.component_templates().len(), 1);
+    assert_eq!(scene.templates().len(), 1);
     assert_eq!(apply_to_entity(&scene), Marker(7));
 
     // Asking again hands out the same slot rather than adding a second template.
-    scene.get_or_insert_template::<Count>();
-    assert_eq!(scene.component_templates().len(), 1);
+    scene.get_or_init_template::<Count>();
+    assert_eq!(scene.templates().len(), 1);
 }
 
 /// A name is declared once, however many times the same reference is declared.
@@ -610,21 +666,21 @@ fn a_template_can_be_initialised_patched_and_replaced() {
         .resolve(&mut context, &mut scene)
         .expect("the template is initialised");
 
-    assert_eq!(scene.component_templates().len(), 1);
+    assert_eq!(scene.templates().len(), 1);
     assert_eq!(apply_to_entity(&scene), Marker(0));
 
     Count::patch_template(|template, _context| template.0 = 9)
         .resolve(&mut context, &mut scene)
         .expect("the template is patched");
 
-    assert_eq!(scene.component_templates().len(), 1);
+    assert_eq!(scene.templates().len(), 1);
     assert_eq!(apply_to_entity(&scene), Marker(9));
 
     InsertTemplate::new(Count(3))
         .resolve(&mut context, &mut scene)
         .expect("the template is replaced");
 
-    assert_eq!(scene.component_templates().len(), 1);
+    assert_eq!(scene.templates().len(), 1);
     assert_eq!(apply_to_entity(&scene), Marker(3));
 }
 
@@ -639,7 +695,7 @@ fn a_type_can_patch_the_template_it_is_built_from() {
         .resolve(&mut ResolveContext::new(), &mut scene)
         .expect("the patch resolves");
 
-    assert_eq!(scene.component_templates().len(), 1);
+    assert_eq!(scene.templates().len(), 1);
     assert_eq!(apply_to::<Scale>(&scene), Scale(2.5));
 }
 
@@ -653,7 +709,7 @@ struct Cached(Handle<ScenePatch>);
 
 impl Scene for Cached {
     fn resolve(self, context: &mut ResolveContext, scene: &mut ResolvedScene) -> ZlimResult<()> {
-        scene.include_cached(context.patches(), self.0)
+        scene.include_cached(context.assets().expect("the context has assets"), self.0)
     }
 }
 
@@ -673,7 +729,7 @@ struct PatchScale(f32);
 
 impl Scene for PatchScale {
     fn resolve(self, _context: &mut ResolveContext, scene: &mut ResolvedScene) -> ZlimResult<()> {
-        scene.get_or_insert_template::<Scale>().0 = self.0;
+        scene.get_or_init_template::<Scale>().0 = self.0;
         Ok(())
     }
 }
@@ -720,8 +776,7 @@ fn a_scene_builds_on_a_cached_patch() {
         .get(&base)
         .expect("the base patch is there")
         .spawn(&mut world, None)
-        .expect("the base scene spawns")
-        .id();
+        .expect("the base scene spawns");
 
     assert_eq!(
         world.entity_owned(base_root).get::<Marker>().cloned(),
@@ -738,8 +793,7 @@ fn a_scene_builds_on_a_cached_patch() {
         .get(&patch)
         .expect("the patch is there")
         .spawn(&mut world, None)
-        .expect("the patch spawns")
-        .id();
+        .expect("the patch spawns");
 
     assert_eq!(
         world.entity_owned(patch_root).get::<Marker>().cloned(),
@@ -770,8 +824,7 @@ fn a_cached_scene_spawns_its_children_first() {
         .get(&patch)
         .expect("the patch is there")
         .spawn(&mut world, None)
-        .expect("the patch spawns")
-        .id();
+        .expect("the patch spawns");
 
     let children = world
         .entity_owned(root)
@@ -799,23 +852,23 @@ fn a_cached_scene_is_included_first_and_once() {
     let mut scene = ResolvedScene::new();
 
     MarkerScene(1)
-        .resolve(&mut ResolveContext::with_patches(&patches), &mut scene)
+        .resolve(&mut ResolveContext::with_assets(&patches), &mut scene)
         .expect("the marker resolves");
 
     assert!(
-        scene.include_cached(Some(&patches), base.clone()).is_err(),
+        scene.include_cached(&patches, base.clone()).is_err(),
         "a cached scene cannot be included after the scene describes something"
     );
 
     let mut scene = ResolvedScene::new();
     scene
-        .include_cached(Some(&patches), base.clone())
+        .include_cached(&patches, base.clone())
         .expect("the cached scene is included first");
     assert!(scene.is_cached());
     assert_eq!(scene.cached_patch(), Some(&base));
 
     assert!(
-        scene.include_cached(Some(&patches), base).is_err(),
+        scene.include_cached(&patches, base).is_err(),
         "a scene can only build on one cached scene"
     );
 }
@@ -844,9 +897,7 @@ fn a_patch_resolves_once() {
 
     let mut scene = ResolvedScene::new();
     assert!(
-        scene
-            .include_cached(Some(&patches), unresolved.clone())
-            .is_err(),
+        scene.include_cached(&patches, unresolved.clone()).is_err(),
         "an unresolved patch has no resolved scene to build on"
     );
 
@@ -923,7 +974,7 @@ impl Drop for Tracked {
 }
 
 /// A scene whose second template fails after the first one has been pushed: what the first one had
-/// put in the scratch space is dropped, and the scratch space is empty again.
+/// put in the scratch space is dropped rather than leaked.
 #[test]
 fn a_failed_application_drops_what_it_pushed() {
     let dropped = Arc::new(AtomicBool::new(false));
@@ -931,9 +982,6 @@ fn a_failed_application_drops_what_it_pushed() {
 
     let mut world = World::alloc();
     let mut entity = world.spawn_empty(None);
-    let mut references = EntityReferences::new();
-    let mut entities = EntityMap::new();
-    let mut scratch = BundleScratch::new();
 
     let mut scene = ResolvedScene::new();
     scene.push_template(template(move |_| Ok(Tracked(flag.clone()))));
@@ -941,17 +989,127 @@ fn a_failed_application_drops_what_it_pushed() {
         Err::<Scale, _>(zlim_core::error::ZlimError::error("boom"))
     }));
 
-    let result = scene.apply_with(&mut entity, &mut references, &mut entities, &mut scratch);
-
-    assert!(result.is_err(), "the second template fails");
     assert!(
-        scratch.is_empty(),
-        "nothing is left waiting in the scratch space"
+        scene.apply(&mut entity).is_err(),
+        "the second template fails"
     );
     assert!(
         dropped.load(Ordering::SeqCst),
         "the pushed component was dropped rather than leaked"
     );
+}
+
+// -----------------------------------------------------------------------------
+// Taking a failed application back
+
+/// A scene whose child cannot be built: the entities the application spawned are gone, and the
+/// entity it was applied to — which was already there — is not.
+#[test]
+fn a_failed_application_takes_back_what_it_spawned() {
+    let mut world = World::alloc();
+    let existing = world.spawn_empty(None).id();
+
+    // The failure is in the child, so the root is written before the application fails.
+    let mut scene = ResolvedScene::new();
+    scene.push_template(template(|_| Ok(Scale(1.0))));
+    let mut child = ResolvedScene::new();
+    child.push_template(template(|_| {
+        Err::<Marker, _>(zlim_core::error::ZlimError::error("boom"))
+    }));
+    scene.add_child(child);
+
+    let mut entity = world.entity_owned(existing);
+    assert!(
+        scene.apply(&mut entity).is_err(),
+        "the child template fails"
+    );
+
+    // The entity the scene described is the caller's, and outlives the failure.
+    assert!(
+        world.get_entity_ref(existing).is_ok(),
+        "the entity the scene was applied to is left alone"
+    );
+
+    let children = world
+        .entity_owned(existing)
+        .children()
+        .map(<[EntityId]>::to_vec)
+        .unwrap_or_default();
+    assert!(
+        children.is_empty(),
+        "the children the application spawned are gone"
+    );
+}
+
+/// A list is applied all at once or not at all: when the second root cannot be built, the first one
+/// — which was already spawned and written — goes as well.
+#[test]
+fn a_failed_batch_takes_back_every_root_it_spawned() {
+    let mut world = World::alloc();
+    let parent = world.spawn_empty(None).id();
+
+    let mut ok = ResolvedScene::new();
+    ok.push_template(template(|_| Ok(Scale(1.0))));
+
+    let mut bad = ResolvedScene::new();
+    bad.push_template(template(|_| {
+        Err::<Marker, _>(zlim_core::error::ZlimError::error("boom"))
+    }));
+
+    assert!(
+        ResolvedScene::spawn_batch(&[ok, bad], &mut world, Some(parent)).is_err(),
+        "the second root fails"
+    );
+
+    let remaining = world
+        .entity_owned(parent)
+        .children()
+        .map(<[EntityId]>::to_vec)
+        .unwrap_or_default();
+    assert!(
+        remaining.is_empty(),
+        "no root of the failed batch is left under the parent"
+    );
+}
+
+/// A [`spawn`](ResolvedScene::spawn) that fails drops the entity it spawned: the caller is told by
+/// the error and gets no id back, so the entity would be one nothing could ever name again.
+#[test]
+fn a_failed_spawn_drops_the_entity_it_spawned() {
+    let mut world = World::alloc();
+    let before = world.entities().count_spawned();
+
+    let mut scene = ResolvedScene::new();
+    scene.push_template(template(|_| {
+        Err::<Marker, _>(zlim_core::error::ZlimError::error("boom"))
+    }));
+
+    assert!(scene.spawn(&mut world, None).is_err(), "the template fails");
+    assert_eq!(
+        world.entities().count_spawned(),
+        before,
+        "the entity the failed spawn created is gone"
+    );
+}
+
+/// A scene spawned under an entity that is no longer there is refused, rather than bringing the
+/// caller down: the world is the one that knows which entities exist, and a stale id is as likely as
+/// a live one when scenes are queued and applied later.
+#[test]
+fn spawning_under_a_missing_parent_is_an_error() {
+    let mut world = World::alloc();
+    let parent = world.spawn_empty(None).id();
+    world.despawn(parent).expect("the entity is live");
+
+    let mut scene = ResolvedScene::new();
+    scene.push_template(template(|_| Ok(Scale(1.0))));
+
+    assert!(scene.spawn(&mut world, Some(parent)).is_err());
+
+    let mut list = ResolvedScene::new();
+    list.push_template(template(|_| Ok(Scale(1.0))));
+    let batch = [list];
+    assert!(ResolvedScene::spawn_batch(&batch, &mut world, Some(parent)).is_err());
 }
 
 // -----------------------------------------------------------------------------
@@ -971,7 +1129,7 @@ struct DocumentLink {
 /// pointing at the id of another.
 fn document_scene(id: EntityId, links_to: EntityId) -> ResolvedScene {
     let mut scene = ResolvedScene::new();
-    scene.set_document_id(id);
+    scene.set_id(EntityTemplate::Entity(id));
     scene.push_template(ComponentTemplate(DocumentLink { to: links_to }));
     scene
 }
@@ -991,11 +1149,9 @@ fn a_document_id_resolves_to_the_entity_the_scene_spawned() {
     // The root points at its child, and the child points back at the root: neither id resolves until
     // both entities exist, which is why placing is a separate step from building.
     let mut root = document_scene(root_id, child_id);
-    root.push_child(document_scene(child_id, root_id));
+    root.add_child(document_scene(child_id, root_id));
 
-    let root_entity = ResolvedScene::spawn(&root, &mut world, None)
-        .expect("the scene spawns")
-        .id();
+    let root_entity = ResolvedScene::spawn(&root, &mut world, None).expect("the scene spawns");
 
     let child_entity = world
         .entity_owned(root_entity)
@@ -1022,9 +1178,7 @@ fn an_id_no_document_declares_is_kept() {
     let mut world = World::alloc();
     let scene = document_scene(declared, unknown);
 
-    let id = ResolvedScene::spawn(&scene, &mut world, None)
-        .expect("the scene spawns")
-        .id();
+    let id = ResolvedScene::spawn(&scene, &mut world, None).expect("the scene spawns");
 
     assert_eq!(
         world.entity_ref(id).get::<DocumentLink>(),
