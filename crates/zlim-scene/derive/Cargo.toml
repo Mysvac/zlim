@@ -15,7 +15,7 @@ zlim-derive-utils = { path = "../../zlim-derive-utils", default-features = false
 
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full", "extra-traits"] }
+syn = { version = "3.0", features = ["full", "extra-traits"] }
 
 [lints]
 workspace = true

@@ -19,7 +19,7 @@ itertools = { version = "0.15", default-features = false, features = ["use_alloc
 [dev-dependencies]
 approx = "0.5"
 zlim-math = { path = "../zlim-math", default-features = false, features = ["approx"] }
-glam = { version = "0.33", default-features = false, features = ["approx"] }
+glam = { version = "0.34", default-features = false, features = ["approx-05"] }
 
 [lints]
 workspace = true

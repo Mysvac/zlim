@@ -12,9 +12,9 @@ libm = ["dep:libm", "glam/libm"]
 
 debug = ["glam/debug-glam-assert"]
 
-approx = ["dep:approx", "glam/approx"]
+approx = ["dep:approx", "glam/approx-05"]
 
-rand = ["dep:rand", "glam/rand"]
+rand = ["dep:rand", "glam/rand-010"]
 
 [dependencies]
 
@@ -22,7 +22,7 @@ zlim-log = { path = "../zlim-log", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
 zlim-reflect = { path = "../zlim-reflect", default-features = false, features = ["glam"] }
 
-glam = { version = "0.33", default-features = false, features = ["std", "bytemuck", "serde", "float-types", "integer-types"] }
+glam = { version = "0.34", default-features = false, features = ["std", "bytemuck", "serde", "float-types", "integer-types"] }
 libm = { version = "0.2", optional = true }
 approx = { version = "0.5", default-features = false, optional = true }
 rand = { version = "0.10", default-features = false, features = ["std"], optional = true }
@@ -31,7 +31,7 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 
 [dev-dependencies]
 approx = "0.5"
-glam = { version = "0.33", default-features = false, features = ["approx"] }
+glam = { version = "0.34", default-features = false, features = ["approx-05"] }
 
 [lints]
 workspace = true

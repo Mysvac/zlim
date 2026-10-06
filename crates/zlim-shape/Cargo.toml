@@ -18,7 +18,7 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 zlim-math = { path = "../zlim-math", default-features = false, features = ["approx"] }
 
 approx = "0.5"
-glam = { version = "0.33", default-features = false, features = ["approx"] }
+glam = { version = "0.34", default-features = false, features = ["approx-05"] }
 
 [lints]
 workspace = true

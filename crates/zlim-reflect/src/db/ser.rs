@@ -362,8 +362,7 @@ fn unit_ok<S: Serializer>(_: ()) -> Result<S::Ok, S::Error> {
     }
 
     #[expect(unsafe_code, reason = "initialize ZST")]
-    #[expect(clippy::uninit_assumed_init, reason = "ZST")]
-    Ok(unsafe { ::core::mem::MaybeUninit::<S::Ok>::uninit().assume_init() })
+    Ok(unsafe { ::core::mem::MaybeUninit::<S::Ok>::zeroed().assume_init() })
 }
 
 // -----------------------------------------------------------------------------

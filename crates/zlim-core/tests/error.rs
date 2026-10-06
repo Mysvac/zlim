@@ -390,3 +390,40 @@ fn transparent_variant_mixes_with_default() {
     assert_eq!(MixedEnum::Wrapped(InnerError(5)).to_string(), "inner #5");
     assert_eq!(MixedEnum::Plain.to_string(), "plain failure");
 }
+
+// -----------------------------------------------------------------------------
+// Enum — a tuple variant with no fields
+// -----------------------------------------------------------------------------
+
+/// `Empty()` is a *tuple* variant that happens to hold nothing, which is legal
+/// and is not the same thing as the unit variant `Unit`. The generated `From`
+/// impl matches on every variant to read the severity, so each shape needs its
+/// own pattern: a unit pattern would not match a tuple variant and the derive
+/// would fail to compile. `Payload(u32)` guards the other direction — a tuple
+/// variant with fields must keep its `..`.
+#[derive(Debug, Error)]
+#[error("empty enum failure")]
+#[zlim_error(error)]
+enum EmptyTupleEnum {
+    #[error("holds nothing")]
+    #[zlim_error(warning)]
+    Empty(),
+
+    #[error("holds one")]
+    #[zlim_error(debug)]
+    Payload(u32),
+
+    Unit,
+}
+
+#[test]
+fn an_empty_tuple_variant_is_matched_as_a_tuple() {
+    let zerr: ZlimError = EmptyTupleEnum::Empty().into();
+    assert_eq!(zerr.severity(), Severity::Warning);
+
+    let zerr: ZlimError = EmptyTupleEnum::Payload(7).into();
+    assert_eq!(zerr.severity(), Severity::Debug);
+
+    let zerr: ZlimError = EmptyTupleEnum::Unit.into();
+    assert_eq!(zerr.severity(), Severity::Error);
+}

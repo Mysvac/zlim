@@ -470,9 +470,7 @@ fn variant_pat(name: &Ident, v: &syn::Variant) -> TokenStream {
     let vname = &v.ident;
     match &v.fields {
         Fields::Named(_) => quote! { #name::#vname { .. } },
-        Fields::Unnamed(fields) if !fields.unnamed.is_empty() => {
-            quote! { #name::#vname(..) }
-        }
-        _ => quote! { #name::#vname },
+        Fields::Unnamed(_) => quote! { #name::#vname(..) },
+        Fields::Unit => quote! { #name::#vname },
     }
 }

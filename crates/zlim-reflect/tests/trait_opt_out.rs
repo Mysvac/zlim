@@ -400,14 +400,13 @@ impl Typed for SkippedTyped {
 
 #[test]
 fn typed_opt_out_leaves_the_impl_to_the_user() {
-    // The macro emitted no `Typed`, so this is the hand-written one — and the
-    // registry still picks the type up through it.
+    // The macro emitted no `Typed`, so this is the hand-written one.
     assert_eq!(
         SkippedTyped::type_info().type_path(),
         "trait_opt_out::SkippedTyped"
     );
-    assert!(TypeDB::get_by_type(TypeId::of::<SkippedTyped>()).is_none());
-    TypeDB::register::<SkippedTyped>();
+
+    TypeDB::collect();
     assert!(TypeDB::get_by_type(TypeId::of::<SkippedTyped>()).is_some());
 }
 
@@ -429,10 +428,12 @@ struct SkippedTypeDatabaseHolder {
 fn type_database_opt_out_leaves_the_registration_out() {
     TypeDB::collect();
 
-    // `TypeDB::of` would register on demand, so go through the raw lookup: the
-    // type is absent, and asking for it by path finds nothing.
+    // The opt-out drops the `register_reflect!` submission as well, so the type is not in the
+    // linker section `collect` walks. Its absence is therefore structural: no number of further
+    // collections can register it, which is why this is safe to assert under parallel tests.
     let id = TypeId::of::<SkippedTypeDatabase>();
     assert!(TypeDB::get_by_type(id).is_none());
+    assert!(TypeDB::get_by_path(<SkippedTypeDatabase as TypePath>::type_path()).is_none());
 
     // The reflection impls are untouched, so the value still works.
     let holder = SkippedTypeDatabaseHolder { value: 5 };

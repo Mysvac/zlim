@@ -133,10 +133,12 @@ impl<'a> ReflectMeta<'a> {
                 GenericParam::Type(type_param) => {
                     let ident = &type_param.ident;
                     let name: String = ident.to_string();
+                    // Syn 3 folded the `=` token and the default type into one field;
+                    // only the type is wanted here.
                     let with_default = type_param
                         .default
                         .as_ref()
-                        .map(|ty| quote!(.with_default::<#ty>()));
+                        .map(|(_, ty)| quote!(.with_default::<#ty>()));
 
                     Some(quote! {
                         #generic_info_::Type(
