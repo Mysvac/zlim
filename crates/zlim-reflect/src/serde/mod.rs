@@ -15,7 +15,7 @@
 //!   [`TypeDB`](crate::db::TypeDB) registers through
 //!   [`insert_serializer`](crate::db::TypeDB::insert_serializer) and
 //!   [`insert_deserializer`](crate::db::TypeDB::insert_deserializer).
-//! - [`EMPTY`] — the shared empty context, for the entry points that take none.
+//! - [`EMPTY_CONTEXT`] — the shared empty context, for the entry points that take none.
 //!
 //! # Which way the context flows
 //!
@@ -89,7 +89,7 @@ use crate::Reflect;
 ///
 /// # Safety
 ///
-/// [`get`](dyn ReflectContext::get) turns what [`get_ptr`](ReflectContext::get_ptr) returns into a
+/// `dyn ReflectContext::get` turns what [`get_ptr`](ReflectContext::get_ptr) returns into a
 /// reference without checking it, so an implementation must keep the contract documented on
 /// `get_ptr`: the pointer it produces for a `TypeId` must be a valid reference to a value of that
 /// type, and must stay valid for as long as the context is borrowed. The default implementation
@@ -128,9 +128,6 @@ pub const EMPTY_CONTEXT: &() = &();
 
 impl dyn ReflectContext {
     /// Downcasts this context to `T`, if it is one.
-    ///
-    /// This is [`get`](Self::get) without the `TypeId` table, and it only ever sees the context
-    /// itself: a context that answers for other types must be asked for them with [`get`](Self::get).
     #[inline]
     pub fn downcast<T: Any>(&self) -> Option<&T> {
         <dyn Any>::downcast_ref(self)

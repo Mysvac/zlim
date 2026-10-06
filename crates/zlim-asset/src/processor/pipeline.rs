@@ -11,7 +11,7 @@ use crate::error::AssetProcessError;
 use crate::io::Writer;
 use crate::loaded::LoadedAsset;
 use crate::loader::AssetLoader;
-use crate::saver::{AssetSaver, SavedAsset};
+use crate::saver::{AssetSaver, SavedAsset, SaverContext};
 use crate::transformer::{AssetTransformer, IdentityTransformer, TransformedAsset};
 
 // -----------------------------------------------------------------------------
@@ -136,16 +136,21 @@ where
         // processed bytes are read back with, `save` writes the bytes themselves. The settings are
         // therefore known before anything is written — the meta of the processed output is built
         // from them by the driver, which also records the bytes.
-        let path = context.path();
+        //
+        // The asset here is complete: it came out of a load and a transform, so it still carries its
+        // labeled sub-assets. Nothing ambient is offered with it — no server and no world — because
+        // processing is not a place that reaches back into either.
+        let path = context.path().clone();
         let asset = SavedAsset::<T::AssetOutput>::from_transformed(&transformed);
+        let saver_context = SaverContext::complete(path, asset.erased());
 
         let loader_settings = self
             .saver
-            .build_settings(path, asset.clone(), &settings.saver_settings)
+            .build_settings(&saver_context, &settings.saver_settings)
             .await?;
 
         self.saver
-            .save(writer, path, asset, &settings.saver_settings)
+            .save(writer, &saver_context, &settings.saver_settings)
             .await?;
 
         // What the saver reports is exactly what the output loader needs: the pipeline requires

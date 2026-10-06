@@ -111,6 +111,7 @@ pub trait WorldSceneExt {
     /// Returns an error if `target` is not a spawned entity, or if the world has no patch collection
     /// ([`ScenePlugin`](crate::ScenePlugin) registers one).
     ///
+    /// [`SpawnScene`]: zlim_app::SpawnScene
     /// [`Scene::register_dependencies`]: crate::Scene::register_dependencies
     fn queue_apply_scene(&mut self, scene: impl Scene, target: EntityId) -> ZlimResult<()>;
 

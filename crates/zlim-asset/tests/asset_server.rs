@@ -8,6 +8,7 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use zlim_app::{App, Plugin, PluginExt};
 use zlim_asset::assets::Assets;
@@ -20,9 +21,8 @@ use zlim_asset::io::Writer;
 use zlim_asset::io::memory::{Dir, MemoryAssetReader, MemoryAssetWriter};
 use zlim_asset::loaded::{LoadedFolder, LoadedUntypedAsset};
 use zlim_asset::loader::{AssetLoader, LoadContext};
-use zlim_asset::path::AssetPath;
 use zlim_asset::plugin::{AppAssetExt, AssetPlugin};
-use zlim_asset::saver::{AssetSaver, SavedAsset};
+use zlim_asset::saver::{AssetSaver, SaverContext};
 use zlim_asset::server::{AssetServer, LoadState};
 use zlim_asset::source::AssetSourceBuilder;
 use zlim_core::message::MessageQueue;
@@ -558,8 +558,7 @@ impl AssetSaver for FolderSaver {
     async fn save(
         &self,
         writer: &mut dyn Writer,
-        _path: &AssetPath<'static>,
-        _asset: SavedAsset<'_, Self::Asset>,
+        _context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<(), AssetSaveError> {
         writer
@@ -572,8 +571,7 @@ impl AssetSaver for FolderSaver {
 
     async fn build_settings(
         &self,
-        _path: &AssetPath<'static>,
-        _asset: SavedAsset<'_, Self::Asset>,
+        _context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<Self::LoaderSettings, AssetSaveError> {
         Ok(())
@@ -616,6 +614,103 @@ fn save_writes_the_asset_bytes_when_the_frame_runs() {
         dir.get_meta(Path::new("saved.folder")).is_none(),
         "a plain save writes the asset bytes and no `.meta`",
     );
+}
+
+/// A saver that records what the [`SaverContext`] told it, so a test can assert on it.
+#[derive(TypePath)]
+struct RecordingSaver;
+
+/// What [`RecordingSaver`] saw, if it ran a save.
+static RECORDED: Mutex<Option<Recorded>> = Mutex::new(None);
+
+/// One save's worth of observations.
+struct Recorded {
+    /// Whether the context offered a server.
+    has_server: bool,
+
+    /// Whether the context offered a world.
+    has_world: bool,
+
+    /// Whether the context called the asset incomplete.
+    incomplete: bool,
+
+    /// The path the context named.
+    path: String,
+}
+
+impl AssetSaver for RecordingSaver {
+    type Asset = LoadedFolder;
+    type Settings = ();
+    type LoaderSettings = ();
+
+    const EXTENSIONS: &[&str] = &["folder"];
+
+    async fn save(
+        &self,
+        writer: &mut dyn Writer,
+        context: &SaverContext<'_>,
+        _settings: &Self::Settings,
+    ) -> Result<(), AssetSaveError> {
+        // What the context carries beyond the asset: the two pieces of ambient state, and the flag
+        // saying the value is all there is of it.
+        *RECORDED.lock().unwrap() = Some(Recorded {
+            has_server: context.server().is_some(),
+            has_world: context.world().is_some(),
+            incomplete: context.is_incomplete(),
+            path: context.path().to_string(),
+        });
+
+        writer
+            .write_all_bytes(b"recorded")
+            .await
+            .map_err(|error| AssetSaveError::from(error.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn build_settings(
+        &self,
+        _context: &SaverContext<'_>,
+        _settings: &Self::Settings,
+    ) -> Result<Self::LoaderSettings, AssetSaveError> {
+        Ok(())
+    }
+}
+
+/// A save that goes through the queue reads its asset out of the world, so it is handed both the
+/// server and the world, and told that the asset is incomplete — the world keeps the value alone, not
+/// the labeled sub-assets.
+#[test]
+fn a_queued_save_sees_the_server_and_world_and_an_incomplete_asset() {
+    let (mut app, server, dir) = test_app_with_dir(&[]);
+    server.register_saver(RecordingSaver);
+
+    let handle = server.add(LoadedFolder {
+        handles: Vec::new(),
+    });
+    drive_until(&mut app, "the asset to be published", || {
+        server.is_loaded(handle.id())
+    });
+
+    server.save("recorded.folder", handle.clone());
+    app.update();
+
+    assert!(
+        dir.get_asset(Path::new("recorded.folder")).is_some(),
+        "the save job should have written the bytes",
+    );
+
+    let recorded = RECORDED.lock().unwrap().take().expect("the saver ran");
+    assert!(
+        recorded.has_server,
+        "a queued save is handed the server its registry lives in",
+    );
+    assert!(recorded.has_world, "a queued save is handed the world");
+    assert!(
+        recorded.incomplete,
+        "a queued save only has the value, not the labeled sub-assets",
+    );
+    assert_eq!(recorded.path, "recorded.folder");
 }
 
 // -----------------------------------------------------------------------------

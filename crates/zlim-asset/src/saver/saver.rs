@@ -11,8 +11,7 @@ use crate::asset::Asset;
 use crate::error::{AssetSaveError, MismatchedSettingsType};
 use crate::io::Writer;
 use crate::meta::{AssetConfig, AssetMeta, ErasedAssetMeta, Settings};
-use crate::path::AssetPath;
-use crate::saver::{ErasedSavedAsset, SavedAsset};
+use crate::saver::SaverContext;
 use crate::utils::BoxedFuture;
 
 // -----------------------------------------------------------------------------
@@ -68,8 +67,7 @@ pub trait AssetSaver: TypePath + Send + Sync + 'static {
     fn save(
         &self,
         writer: &mut dyn Writer,
-        path: &AssetPath<'static>,
-        asset: SavedAsset<'_, Self::Asset>,
+        context: &SaverContext<'_>,
         settings: &Self::Settings,
     ) -> impl Future<Output = Result<(), AssetSaveError>> + Send;
 
@@ -80,8 +78,7 @@ pub trait AssetSaver: TypePath + Send + Sync + 'static {
     /// [`LoaderSettings`](Self::LoaderSettings) of whichever loader the caller pairs it with.
     fn build_settings(
         &self,
-        path: &AssetPath<'static>,
-        asset: SavedAsset<'_, Self::Asset>,
+        context: &SaverContext<'_>,
         settings: &Self::Settings,
     ) -> impl Future<Output = Result<Self::LoaderSettings, AssetSaveError>> + Send;
 }
@@ -117,18 +114,15 @@ pub trait ErasedAssetSaver: Send + Sync + 'static {
 
     /// Type-erased [`AssetSaver::save`]: writes the bytes alone, and returns nothing.
     ///
-    /// `settings` must be the saver's own `Settings` when given; `None` uses `Default`. A value of
-    /// another type — which only a registry bug can produce — **panics**, or returns
-    /// [`MismatchedSettingsType`] when neither `debug_assertions` nor the `debug` feature is on.
-    fn save<'a, 'b>(
+    /// The context carries the asset type-erased, so a value of the wrong type — which only a registry
+    /// bug can produce — **panics**, or returns [`MismatchedSettingsType`] for the settings when
+    /// neither `debug_assertions` nor the `debug` feature is on.
+    fn save<'a>(
         &'a self,
-        writer: &'b mut dyn Writer,
-        path: &'a AssetPath<'static>,
-        asset: ErasedSavedAsset<'a>,
+        writer: &'a mut dyn Writer,
+        context: SaverContext<'a>,
         settings: Option<&'a dyn Settings>,
-    ) -> BoxedFuture<'b, Result<(), AssetSaveError>>
-    where
-        'a: 'b;
+    ) -> BoxedFuture<'a, Result<(), AssetSaveError>>;
 
     /// Builds the `.meta` for the bytes this saver writes.
     ///
@@ -141,15 +135,12 @@ pub trait ErasedAssetSaver: Send + Sync + 'static {
     /// When the string is empty, it is equivalent to nothing (skip serializing) — that is what a
     /// config which records no loader carries, so a caller that *has* a name must not pass the empty
     /// one: the `.meta` would then name no loader at all.
-    fn build_meta<'a, 'b>(
+    fn build_meta<'a>(
         &'a self,
-        path: &'a AssetPath<'static>,
-        asset: ErasedSavedAsset<'a>,
+        context: SaverContext<'a>,
         settings: Option<&'a dyn Settings>,
         loader: Cow<'static, str>,
-    ) -> BoxedFuture<'b, Result<Box<dyn ErasedAssetMeta>, AssetSaveError>>
-    where
-        'a: 'b;
+    ) -> BoxedFuture<'a, Result<Box<dyn ErasedAssetMeta>, AssetSaveError>>;
 }
 
 impl<S: AssetSaver> ErasedAssetSaver for S {
@@ -177,16 +168,13 @@ impl<S: AssetSaver> ErasedAssetSaver for S {
         S::EXTENSIONS
     }
 
-    fn save<'a, 'b>(
+    fn save<'a>(
         &'a self,
-        writer: &'b mut dyn Writer,
-        path: &'a AssetPath<'static>,
-        asset: ErasedSavedAsset<'a>,
+        writer: &'a mut dyn Writer,
+        context: SaverContext<'a>,
         settings: Option<&'a dyn Settings>,
-    ) -> BoxedFuture<'b, Result<(), AssetSaveError>>
-    where
-        'a: 'b,
-    {
+    ) -> BoxedFuture<'a, Result<(), AssetSaveError>> {
+        /// Reports settings of the wrong type: a panic while debugging, an error otherwise.
         #[cold]
         #[inline(never)]
         fn invalid_settings<T: ?Sized>() -> AssetSaveError {
@@ -208,24 +196,20 @@ impl<S: AssetSaver> ErasedAssetSaver for S {
                 &default
             };
 
-            let asset = asset.with_type::<S::Asset>();
-
-            <S as AssetSaver>::save(self, writer, path, asset, settings).await?;
+            // The asset is taken as the saver's own type here: the registry pairs a saver with an
+            // asset type, so this is the type-erasure boundary's business rather than the saver's.
+            <S as AssetSaver>::save(self, writer, &context, settings).await?;
 
             Ok(())
         })
     }
 
-    fn build_meta<'a, 'b>(
+    fn build_meta<'a>(
         &'a self,
-        path: &'a AssetPath<'static>,
-        asset: ErasedSavedAsset<'a>,
+        context: SaverContext<'a>,
         settings: Option<&'a dyn Settings>,
         loader: Cow<'static, str>,
-    ) -> BoxedFuture<'b, Result<Box<dyn ErasedAssetMeta>, AssetSaveError>>
-    where
-        'a: 'b,
-    {
+    ) -> BoxedFuture<'a, Result<Box<dyn ErasedAssetMeta>, AssetSaveError>> {
         Box::pin(async move {
             let default: S::Settings;
 
@@ -237,9 +221,7 @@ impl<S: AssetSaver> ErasedAssetSaver for S {
                 &default
             };
 
-            let asset = asset.with_type::<S::Asset>();
-
-            let s = <S as AssetSaver>::build_settings(self, path, asset, settings).await?;
+            let s = <S as AssetSaver>::build_settings(self, &context, settings).await?;
 
             let config = AssetConfig::<S::LoaderSettings, ()>::Load {
                 loader,
@@ -262,8 +244,7 @@ impl AssetSaver for () {
     async fn save(
         &self,
         _writer: &mut dyn Writer,
-        _path: &AssetPath<'static>,
-        _asset: SavedAsset<'_, Self::Asset>,
+        _context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<(), AssetSaveError> {
         unreachable!("`()` is just a placeholder, not a valid `AssetSaver`")
@@ -271,8 +252,7 @@ impl AssetSaver for () {
 
     async fn build_settings(
         &self,
-        _path: &AssetPath<'static>,
-        _asset: SavedAsset<'_, Self::Asset>,
+        _context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<Self::LoaderSettings, AssetSaveError> {
         unreachable!("`()` is just a placeholder, not a valid `AssetSaver`")

@@ -18,7 +18,7 @@ use zlim_asset::loaded::{LoadedFolder, LoadedUntypedAsset};
 use zlim_asset::loader::{AssetLoader, LoadContext};
 use zlim_asset::plugin::{AppAssetExt, AssetPlugin};
 use zlim_asset::processor::{AssetProcessServer, LoadTransformAndSave};
-use zlim_asset::saver::{AssetSaver, SavedAsset};
+use zlim_asset::saver::{AssetSaver, SaverContext};
 use zlim_asset::server::{AssetServer, AssetServerMode};
 use zlim_asset::source::AssetSourceBuilder;
 use zlim_asset::transformer::IdentityTransformer;
@@ -165,10 +165,10 @@ impl AssetSaver for TextSaver {
     async fn save(
         &self,
         writer: &mut dyn Writer,
-        _path: &zlim_asset::path::AssetPath<'static>,
-        asset: SavedAsset<'_, Self::Asset>,
+        context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<(), AssetSaveError> {
+        let asset = context.asset::<Self::Asset>();
         writer
             .write_all_bytes(asset.get().0.as_bytes())
             .await
@@ -179,8 +179,7 @@ impl AssetSaver for TextSaver {
 
     async fn build_settings(
         &self,
-        _path: &zlim_asset::path::AssetPath<'static>,
-        _asset: SavedAsset<'_, Self::Asset>,
+        _context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<Self::LoaderSettings, AssetSaveError> {
         Ok(())

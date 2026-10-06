@@ -193,8 +193,7 @@ impl TypeDB {
 
     /// Serializes a reflected value directly, **without** type path wrapping.
     ///
-    /// See [`TypeDB::reflect_serialize`] for the shape of the output, and the
-    /// [module documentation](self) for the dispatch order.
+    /// See [`TypeDB::reflect_serialize`] for the shape of the output.
     #[inline]
     pub fn serialize<S>(value: &dyn Reflect, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -205,8 +204,7 @@ impl TypeDB {
 
     /// Self-describing serializer with a context for reflected types.
     ///
-    /// The counterpart of [`reflect_deserialize_with`](TypeDB::reflect_deserialize_with); see
-    /// [`TypeDB::reflect_serialize`] for the output.
+    /// See [`TypeDB::reflect_serialize`] for the output.
     #[inline]
     pub fn reflect_serialize_with<S>(
         value: &dyn Reflect,

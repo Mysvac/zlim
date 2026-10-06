@@ -121,8 +121,8 @@ const EMPTY_ASSET_MAP: &HashMap<ErasedAssetId, usize> = &HashMap::new();
 
 impl<'a, A: Asset> SavedAsset<'a, A> {
     /// Creates a [`SavedAsset`] from an [`Asset`].
-    #[doc(alias = "from_asset")]
     #[inline]
+    #[doc(alias = "from_asset")]
     pub fn new(asset: &'a A) -> Self {
         Self {
             value: asset,

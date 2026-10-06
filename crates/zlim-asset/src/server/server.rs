@@ -648,7 +648,7 @@ impl AssetServer {
     #[inline]
     #[must_use = "not using the returned handle may cause the asset to be released"]
     pub fn load<'a, A: Asset>(&self, path: impl Into<AssetPath<'a>>) -> Handle<A> {
-        self.load_builder().load(path)
+        self.load_builder().load(path.into())
     }
 
     /// Queues a save of the asset `handle` points at, to be written to `path`.

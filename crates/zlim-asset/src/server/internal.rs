@@ -45,6 +45,7 @@ use crate::loaded::{ErasedLoadedAsset, LoadedAsset, LoadedFolder, LoadedUntypedA
 use crate::loader::{AssetLoader, AssetLoaders, ErasedAssetLoader, LoadContext};
 use crate::meta::{AssetActionMinimal, AssetConfigMinimal, ErasedAssetMeta, Settings};
 use crate::path::AssetPath;
+use crate::saver::SaverContext;
 use crate::saver::{AssetSaver, AssetSavers, ErasedSavedAsset};
 use crate::server::AssetServerEvent;
 use crate::server::UNTYPED_SOURCE_SUFFIX;
@@ -1519,7 +1520,8 @@ impl AssetServer {
 
         if save_meta {
             let loader = loader.unwrap_or(Cow::Borrowed(""));
-            let meta = saver.build_meta(&path, asset.clone(), None, loader).await?;
+            let context = SaverContext::incomplete(world, self, path.clone(), asset.clone());
+            let meta = saver.build_meta(context, None, loader).await?;
             asset_writer
                 .write_meta_bytes(path.path(), &meta.serialize())
                 .await?;
@@ -1532,7 +1534,11 @@ impl AssetServer {
 
         let mut writer = asset_writer.write(path.path()).await?;
 
-        let save = AssertUnwindSafe(saver.save(&mut writer, &path, asset, None));
+        // This asset came out of the world, so it is the value alone: the labeled sub-assets a load
+        // would have produced are not kept there. The context says so, and carries the world for a
+        // saver that needs to look something up.
+        let context = SaverContext::incomplete(world, self, path.clone(), asset);
+        let save = AssertUnwindSafe(saver.save(&mut writer, context, None));
 
         match FutureExt::catch_unwind(save).await {
             Err(_) => {

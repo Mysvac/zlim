@@ -4,7 +4,7 @@
 //! They live in the crate (not in `tests/`) because they build a `ProcessContext` through its
 //! `pub(crate)` constructor and drive the processor registry on the importer.
 
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -31,7 +31,7 @@ use crate::loader::{AssetLoader, LoadContext};
 use crate::meta::{AssetConfig, AssetMeta, ProcessedInfo};
 use crate::path::AssetPath;
 use crate::processor::{AssetProcessServer, ProcessStatus, ProcessorState};
-use crate::saver::{AssetSaver, SavedAsset};
+use crate::saver::{AssetSaver, SaverContext};
 use crate::server::{AssetMetaCheckMode, AssetServer, AssetServerMode, UnapprovedPathMode};
 use crate::source::{AssetSourceBuilder, AssetSourceBuilders};
 use crate::transaction::{LogEntry, TransactionError, TransactionLog, TransactionLogger};
@@ -124,6 +124,10 @@ impl AssetTransformer for AppendTransformer {
 #[derive(TypePath)]
 struct DstSaver;
 
+/// What the last save's [`SaverContext`] offered, as `(server, world)`, so a test can check that
+/// processing offers neither.
+static CONTEXT_AMBIENT: AtomicU8 = AtomicU8::new(0);
+
 impl AssetSaver for DstSaver {
     type Asset = DstAsset;
     type Settings = ();
@@ -134,10 +138,15 @@ impl AssetSaver for DstSaver {
     async fn save(
         &self,
         writer: &mut dyn Writer,
-        _path: &AssetPath<'static>,
-        asset: SavedAsset<'_, Self::Asset>,
+        context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<(), AssetSaveError> {
+        CONTEXT_AMBIENT.store(
+            u8::from(context.server().is_some()) | (u8::from(context.world().is_some()) << 1),
+            Ordering::Relaxed,
+        );
+
+        let asset = context.asset::<Self::Asset>();
         writer
             .write_all_bytes(asset.get().0.as_bytes())
             .await
@@ -146,8 +155,7 @@ impl AssetSaver for DstSaver {
 
     async fn build_settings(
         &self,
-        _path: &AssetPath<'static>,
-        _asset: SavedAsset<'_, Self::Asset>,
+        _context: &SaverContext<'_>,
         _settings: &Self::Settings,
     ) -> Result<Self::LoaderSettings, AssetSaveError> {
         Ok(())
@@ -363,6 +371,14 @@ fn the_pipeline_loads_transforms_and_saves() {
         }
         _ => panic!("the processed output is a load config naming its loader"),
     }
+
+    // Processing is the form of a save that has nothing ambient to offer: it neither needs the server
+    // nor has a world, and the saver is told so.
+    assert_eq!(
+        CONTEXT_AMBIENT.load(Ordering::Relaxed),
+        0,
+        "a processing save is offered neither an `AssetServer` nor a `World`",
+    );
 }
 
 /// The importer driven from the outside: one `process_asset` call takes the bytes on the source
