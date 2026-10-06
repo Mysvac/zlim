@@ -2,7 +2,7 @@ use crate::entity::EntityId;
 use crate::error::{ZlimError, ZlimResult};
 
 use super::context::EntityReference;
-use super::{IntoTemplate, SpecializeFromTemplate, Template, TemplateContext};
+use super::{IntoTemplate, SpecializeTemplate, Template, TemplateContext};
 
 // -----------------------------------------------------------------------------
 // EntityTemplate
@@ -47,8 +47,8 @@ impl From<EntityReference> for EntityTemplate {
 /// Keeps this type out of the blanket `Clone + Unpin` implementations of [`Template`]
 /// and [`IntoTemplate`], which is what allows it to implement [`Template`] itself.
 ///
-/// See [`SpecializeFromTemplate`] for how the condition works.
-impl Unpin for EntityTemplate where for<'a> [()]: SpecializeFromTemplate {}
+/// See [`SpecializeTemplate`] for how the condition works.
+impl Unpin for EntityTemplate where for<'a> [()]: SpecializeTemplate {}
 
 impl Template for EntityTemplate {
     type Output = EntityId;

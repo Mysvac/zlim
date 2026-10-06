@@ -94,11 +94,16 @@ static PATH_REGISTRY: CachePadded<RwLock<HashMap<&'static str, &'static TypeDB>>
 type CtorFunc = fn() -> Box<dyn Reflect>;
 type FromFunc = fn(Box<dyn Reflect>) -> Result<Box<dyn Reflect>, Box<dyn Reflect>>;
 
-// Returns `&dyn Serialize` instead of taking `&mut dyn Serializer` because
-// `erased_serde::Serialize` returns `Ok(S::Ok)`, which is compatible with serde's `Serialize`.
-type SerdFunc = fn(&dyn Reflect) -> &dyn erased_serde::Serialize;
-type DeseFunc =
-    fn(&mut dyn erased_serde::Deserializer) -> Result<Box<dyn Reflect>, erased_serde::Error>;
+type SerdFunc = fn(
+    &dyn Reflect,
+    &mut dyn erased_serde::Serializer,
+    &dyn crate::serde::ReflectContext,
+) -> Result<(), erased_serde::Error>;
+
+type DeseFunc = fn(
+    &mut dyn erased_serde::Deserializer<'_>,
+    &dyn crate::serde::ReflectContext,
+) -> Result<Box<dyn Reflect>, erased_serde::Error>;
 
 // -----------------------------------------------------------------------------
 // Register
@@ -203,6 +208,7 @@ impl TypeDB {
                 }
                 Entry::Vacant(entry) => {
                     let db: &'static TypeDB = Global::alloc_static(tdb);
+                    T::on_register(db);
                     entry.insert(db);
                     db
                 }
@@ -213,11 +219,10 @@ impl TypeDB {
                 .unwrap_or_else(PoisonError::into_inner)
                 .insert(db.type_path, db);
 
+            T::register_dependencies();
+
             db
         };
-
-        T::on_register(db);
-        T::register_dependencies();
 
         db
     }
@@ -324,9 +329,6 @@ crate::cfg::debug! {
 
 mod des;
 mod ser;
-
-pub use des::DeserializeProcessor;
-pub use ser::SerializeProcessor;
 
 // -----------------------------------------------------------------------------
 // Bulk Registration

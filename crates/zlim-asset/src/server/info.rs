@@ -335,7 +335,7 @@ impl AssetInfos {
                 let index = match &handle {
                     ErasedHandle::Strong(handle) => handle.index,
                     // `alloc_internal` always returns the Strong variant.
-                    ErasedHandle::Uuid { .. } => unreachable!(),
+                    _ => unreachable!(),
                 };
                 entry.insert(index);
                 Ok((handle, should_load))

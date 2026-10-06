@@ -34,7 +34,7 @@
 //! [`IntoTemplate`], so a second implementation would conflict. This is also why [`Template`] has
 //! its own [`Template::clone_template`] method instead of requiring [`Clone`], and why the types
 //! that implement [`Template`] or [`IntoTemplate`] by hand are deliberately not [`Clone`] — or, when
-//! they have to be, not [`Unpin`]; see [`SpecializeFromTemplate`].
+//! they have to be, not [`Unpin`]; see [`SpecializeTemplate`].
 
 mod collections;
 mod context;
@@ -226,7 +226,7 @@ pub trait IntoTemplate: Sized {
 /// [`Unpin`], with
 ///
 /// ```ignore
-/// impl Unpin for MyTemplate where for<'a> [()]: SpecializeFromTemplate {}
+/// impl Unpin for MyTemplate where for<'a> [()]: SpecializeTemplate {}
 /// ```
 ///
 /// whose condition never holds, because this trait is never implemented. The type is then
@@ -246,7 +246,7 @@ pub trait IntoTemplate: Sized {
             apart from the automatic one by making their types not `Unpin`, which the condition of \
             this trait expresses"
 )]
-pub trait SpecializeFromTemplate: Sized {}
+pub trait SpecializeTemplate: Sized {}
 
 // -----------------------------------------------------------------------------
 // Blanket implementations
@@ -254,7 +254,7 @@ pub trait SpecializeFromTemplate: Sized {}
 /// A `Clone` type is its own template, and building it clones it.
 ///
 /// This is what gives most types a template; the types that are kept out
-/// of this implementation are documented by [`SpecializeFromTemplate`].
+/// of this implementation are documented by [`SpecializeTemplate`].
 impl<T: Clone + Unpin> Template for T {
     type Output = T;
 

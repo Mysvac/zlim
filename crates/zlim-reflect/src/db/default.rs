@@ -1,7 +1,7 @@
 use core::any::TypeId;
-use core::panic::Location;
 
 use zlim_log as log;
+use zlim_utils::debug::DebugLocation;
 
 use super::{TypeDB, TypeDatabase};
 use crate::ops::Reflect;
@@ -9,7 +9,7 @@ use crate::ops::Reflect;
 /// Logs a message when the same constructor is registered more than once.
 #[cold]
 #[inline(never)]
-fn warn_defaultor_dup(ty: &'static str, l: &'static Location<'static>) {
+fn warn_defaultor_dup(ty: &'static str, l: DebugLocation) {
     log::trace!("{l}: constructor `fn() -> {ty}` registered repeatedly; ignored.");
 }
 
@@ -44,15 +44,15 @@ impl TypeDB {
     /// `true` on first registration, `false` if a constructor was already
     /// registered (a message is logged and the original is kept).
     #[cold]
-    #[track_caller]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_defaultor<T>(&self) -> bool
     where
         T: TypeDatabase + Default,
     {
         #[cold]
         #[inline(never)]
-        fn panicked(e: &'static str, a: &'static str, l: &'static Location<'static>) -> ! {
+        fn panicked(e: &'static str, a: &'static str, l: DebugLocation) -> ! {
             panic!(
                 "{l}: `insert_defaultor` type mismatch — TypeDB is \
                 for `{e}`, but the constructor produces `{a}`."
@@ -60,7 +60,7 @@ impl TypeDB {
         }
 
         if self.id != TypeId::of::<T>() {
-            panicked(self.type_path, T::type_path(), Location::caller());
+            panicked(self.type_path, T::type_path(), DebugLocation::caller());
         }
 
         if self
@@ -68,7 +68,7 @@ impl TypeDB {
             .set(|| Box::new(T::default()) as Box<dyn Reflect>)
             .is_err()
         {
-            warn_defaultor_dup(T::type_path(), Location::caller());
+            warn_defaultor_dup(T::type_path(), DebugLocation::caller());
             false
         } else {
             true
@@ -83,12 +83,11 @@ impl TypeDB {
     /// Returns `true` on first registration, `false` if a constructor was
     /// already registered.
     #[cold]
-    #[track_caller]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn register_defaultor<T>() -> bool
     where
         T: TypeDatabase + Default,
     {
-        let db = TypeDB::of::<T>();
-        db.insert_defaultor::<T>()
+        TypeDB::of::<T>().insert_defaultor::<T>()
     }
 }

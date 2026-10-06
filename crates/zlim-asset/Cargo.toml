@@ -42,6 +42,7 @@ zlim-app = { path = "../zlim-app", default-features = false }
 zlim-diagnostic = { path = "../zlim-diagnostic", default-features = false }
 
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+erased-serde = { version = "0.4", default-features = false, features = ["std"] }
 ron = { version = "0.12", default-features = false }
 atomicow = { version = "1.2", default-features = false, features = ["std"] }
 futures-lite = { version = "2.6", default-features = false, features = ["std"] }

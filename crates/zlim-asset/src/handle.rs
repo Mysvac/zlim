@@ -1,13 +1,18 @@
 //! Asset handles: strong references, stable UUID references and the handle allocator.
 
 use core::any::TypeId;
+use core::fmt::Display;
 use core::fmt::{Debug, Formatter};
 use core::hash::Hash;
 use core::marker::PhantomData;
 use std::sync::Arc;
 
+use serde::de::Visitor;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zlim_core::derive::Error;
+use zlim_core::error::{ZlimError, ZlimResult};
+use zlim_core::template::{IntoTemplate, SpecializeTemplate, Template, TemplateContext};
 use zlim_reflect::TypePath;
 use zlim_utils::hash::Equivalent;
 use zlim_utils::sync::SegQueue;
@@ -179,29 +184,32 @@ impl AssetHandleProvider {
 /// [`Assets`]: crate::assets::Assets
 /// [`Assets<A>`]: crate::assets::Assets
 #[derive(TypePath)]
+#[type_path = "zlim_asset::handle::Handle"]
 pub enum Handle<A: Asset> {
+    /// A "uuid" reference to an [`Asset`] using a stable-across-runs / const identifier.
+    ///
+    /// Dropping this handle will not result in the asset being dropped.
+    Uuid(Uuid, PhantomData<fn() -> A>),
+
     /// A "strong" reference to a live (or loading) [`Asset`].
     ///
     /// If a [`Handle`] is [`Handle::Strong`], the [`Asset`]
     /// will be kept alive until the [`Handle`] is dropped.
     Strong(Arc<StrongHandle>),
-
-    /// A "uuid" reference to an [`Asset`] using a stable-across-runs / const identifier.
-    ///
-    /// Dropping this handle will not result in the asset being dropped.
-    Uuid(Uuid, PhantomData<fn() -> A>),
 }
 
 impl<A: Asset> Handle<A> {
     /// The id of the referenced asset.
+    ///
+    /// For a pending handle, this will return [`AssetId::default()`].
     #[inline]
     pub fn id(&self) -> AssetId<A> {
         match self {
+            Self::Uuid(uuid, ..) => AssetId::Uuid { uuid: *uuid },
             Self::Strong(handle) => AssetId::Index {
                 index: handle.index,
                 marker: PhantomData,
             },
-            Self::Uuid(uuid, _) => AssetId::Uuid { uuid: *uuid },
         }
     }
 
@@ -209,15 +217,9 @@ impl<A: Asset> Handle<A> {
     #[inline]
     pub fn path(&self) -> Option<&AssetPath<'static>> {
         match self {
-            Self::Strong(handle) => handle.path.as_ref(),
             Self::Uuid(..) => None,
+            Self::Strong(handle) => handle.path.as_ref(),
         }
-    }
-
-    /// Returns `true` if this is a strong handle.
-    #[inline]
-    pub const fn is_strong(&self) -> bool {
-        matches!(self, Self::Strong(_))
     }
 
     /// Returns `true` if this is a UUID handle.
@@ -226,16 +228,22 @@ impl<A: Asset> Handle<A> {
         matches!(self, Self::Uuid(..))
     }
 
+    /// Returns `true` if this is a strong handle.
+    #[inline]
+    pub const fn is_strong(&self) -> bool {
+        matches!(self, Self::Strong(..))
+    }
+
     /// Erases the asset type, keeping the type id so the handle can be typed back.
     #[inline]
     pub fn erased(&self) -> ErasedHandle {
+        let type_id = TypeId::of::<A>();
         match self {
+            Self::Uuid(uuid, ..) => ErasedHandle::Uuid {
+                uuid: *uuid,
+                type_id,
+            },
             Self::Strong(handle) => ErasedHandle::Strong(Arc::clone(handle)),
-            Self::Uuid(uuid, _) => {
-                let type_id = TypeId::of::<A>();
-                let uuid = *uuid;
-                ErasedHandle::Uuid { type_id, uuid }
-            }
         }
     }
 }
@@ -243,8 +251,8 @@ impl<A: Asset> Handle<A> {
 impl<A: Asset> Clone for Handle<A> {
     fn clone(&self) -> Self {
         match self {
+            Self::Uuid(uuid, ..) => Self::Uuid(*uuid, PhantomData),
             Self::Strong(handle) => Self::Strong(Arc::clone(handle)),
-            Self::Uuid(uuid, _) => Self::Uuid(*uuid, PhantomData),
         }
     }
 }
@@ -258,25 +266,28 @@ impl<A: Asset> Default for Handle<A> {
 
 impl<A: Asset> Debug for Handle<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Handle<{}>", A::type_name())?;
+        let name = format!("Handle<{}>", A::type_name());
+        let mut writer = f.debug_struct(&name);
+
         match self {
-            Self::Strong(handle) => {
-                let i = handle.index;
-                if let Some(p) = &handle.path {
-                    write!(f, "{{ index: {i}, path: {p} }}")
-                } else {
-                    write!(f, "{{ index: {i}, path: None }}")
-                }
+            Self::Uuid(uuid, ..) => {
+                writer.field("uuid", uuid);
             }
-            Self::Uuid(uuid, _) => write!(f, "{{ uuid: {uuid} }}"),
+            Self::Strong(handle) => {
+                writer
+                    .field("index", &handle.index)
+                    .field("path", &handle.path);
+            }
         }
+
+        writer.finish()
     }
 }
 
 impl<A: Asset> Hash for Handle<A> {
     #[inline]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.id().hash(state);
+        self.id().hash(state)
     }
 }
 
@@ -352,11 +363,9 @@ impl<A: Asset> From<Uuid> for Handle<A> {
 /// A handle whose asset type is only known at runtime, but **is** recorded.
 ///
 /// This allows handles across [`Asset`] types to be stored together and compared.
-#[derive(Clone)]
+#[derive(Clone, TypePath)]
+#[type_path = "zlim_asset::handle::ErasedHandle"]
 pub enum ErasedHandle {
-    /// A reference-counted slot reference.
-    Strong(Arc<StrongHandle>),
-
     /// A stable UUID reference.
     Uuid {
         /// The referenced UUID.
@@ -364,13 +373,16 @@ pub enum ErasedHandle {
         /// The concrete asset type.
         type_id: TypeId,
     },
+
+    /// A reference-counted slot reference.
+    Strong(Arc<StrongHandle>),
 }
 
 impl ErasedHandle {
     /// The default UUID handle for a given asset type.
     #[inline]
     pub const fn default_for_type(type_id: TypeId) -> Self {
-        let uuid = AssetId::<()>::DEFAULT_UUID;
+        let uuid = ErasedAssetId::DEFAULT_UUID;
         Self::Uuid { uuid, type_id }
     }
 
@@ -378,8 +390,8 @@ impl ErasedHandle {
     #[inline]
     pub fn type_id(&self) -> TypeId {
         match self {
-            Self::Strong(handle) => handle.type_id,
             Self::Uuid { type_id, .. } => *type_id,
+            Self::Strong(handle) => handle.type_id,
         }
     }
 
@@ -402,15 +414,9 @@ impl ErasedHandle {
     #[inline]
     pub fn path(&self) -> Option<&AssetPath<'static>> {
         match self {
-            Self::Strong(handle) => handle.path.as_ref(),
             Self::Uuid { .. } => None,
+            Self::Strong(handle) => handle.path.as_ref(),
         }
-    }
-
-    /// Returns `true` if this is a strong handle.
-    #[inline]
-    pub const fn is_strong(&self) -> bool {
-        matches!(self, Self::Strong(_))
     }
 
     /// Returns `true` if this is a UUID handle.
@@ -419,24 +425,38 @@ impl ErasedHandle {
         matches!(self, Self::Uuid { .. })
     }
 
+    /// Returns `true` if this is a strong handle.
+    #[inline]
+    pub const fn is_strong(&self) -> bool {
+        matches!(self, Self::Strong(..))
+    }
+
     /// Types this handle back **without** checking the asset type.
     #[inline]
     pub fn with_type_unchecked<A: Asset>(self) -> Handle<A> {
         match self {
-            Self::Strong(handle) => Handle::Strong(handle),
             Self::Uuid { uuid, .. } => Handle::Uuid(uuid, PhantomData),
+            Self::Strong(handle) => Handle::Strong(handle),
         }
     }
 
     /// Types this handle back, asserting in debug builds that the type matches.
     #[inline]
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn with_type_debug_checked<A: Asset>(self) -> Handle<A> {
-        debug_assert_eq!(
-            self.type_id(),
-            TypeId::of::<A>(),
-            "The target Handle<{}>'s TypeId does not match this ErasedHandle",
-            core::any::type_name::<A>(),
-        );
+        #[cold]
+        #[inline(never)]
+        #[cfg(debug_assertions)]
+        #[cfg_attr(debug_assertions, track_caller)]
+        fn mismatch(name: &str) -> ! {
+            panic!("The target Handle<{name}>'s TypeId does not match this ErasedHandle")
+        }
+
+        #[cfg(debug_assertions)]
+        if self.type_id() != TypeId::of::<A>() {
+            mismatch(core::any::type_name::<A>());
+        }
+
         self.with_type_unchecked()
     }
 
@@ -479,17 +499,18 @@ impl ErasedHandle {
 impl Debug for ErasedHandle {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let mut writer = f.debug_struct("ErasedHandle");
+
         match self {
+            Self::Uuid { uuid, type_id } => {
+                writer.field("uuid", uuid).field("type", type_id);
+            }
             Self::Strong(handle) => {
                 writer
-                    .field("type_id", &handle.type_id)
                     .field("index", &handle.index)
                     .field("path", &handle.path);
             }
-            Self::Uuid { type_id, uuid } => {
-                writer.field("type_id", type_id).field("uuid", uuid);
-            }
         }
+
         writer.finish()
     }
 }
@@ -497,7 +518,7 @@ impl Debug for ErasedHandle {
 impl Hash for ErasedHandle {
     #[inline]
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.id().hash(state);
+        self.id().hash(state)
     }
 }
 
@@ -560,32 +581,19 @@ impl<A: Asset> TryFrom<ErasedHandle> for Handle<A> {
 impl<A: Asset> PartialEq<ErasedHandle> for Handle<A> {
     #[inline]
     fn eq(&self, other: &ErasedHandle) -> bool {
-        TypeId::of::<A>() == other.type_id() && self.id() == other.id()
+        TypeId::of::<A>() == other.type_id()
+            && match (self, other) {
+                (Handle::Uuid(x, ..), ErasedHandle::Uuid { uuid: y, .. }) => *x == *y,
+                (Handle::Strong(x), ErasedHandle::Strong(y)) => x.index == y.index,
+                _ => false,
+            }
     }
 }
 
 impl<A: Asset> PartialEq<Handle<A>> for ErasedHandle {
     #[inline]
     fn eq(&self, other: &Handle<A>) -> bool {
-        TypeId::of::<A>() == self.type_id() && self.id() == other.id()
-    }
-}
-
-impl<A: Asset> PartialOrd<ErasedHandle> for Handle<A> {
-    #[inline]
-    fn partial_cmp(&self, other: &ErasedHandle) -> Option<core::cmp::Ordering> {
-        if TypeId::of::<A>() != other.type_id() {
-            None
-        } else {
-            self.id().partial_cmp(&other.id())
-        }
-    }
-}
-
-impl<A: Asset> PartialOrd<Handle<A>> for ErasedHandle {
-    #[inline]
-    fn partial_cmp(&self, other: &Handle<A>) -> Option<core::cmp::Ordering> {
-        Some(other.partial_cmp(self)?.reverse())
+        PartialEq::eq(other, self)
     }
 }
 
@@ -599,28 +607,28 @@ impl From<&ErasedHandle> for ErasedAssetId {
 // -----------------------------------------------------------------------------
 // TypedAssetIndex
 
-use crate::ident::{TypedAssetIndex, UuidNotSupportedError};
+use crate::ident::{TypedAssetIndex, TypedIndexError};
 
 impl<A: Asset> TryFrom<&Handle<A>> for TypedAssetIndex {
-    type Error = UuidNotSupportedError;
+    type Error = TypedIndexError;
 
     #[inline]
     fn try_from(handle: &Handle<A>) -> Result<Self, Self::Error> {
         match handle {
+            Handle::Uuid(uuid, ..) => Err(TypedIndexError::uuid(*uuid)),
             Handle::Strong(handle) => Ok(Self::new(handle.index, handle.type_id)),
-            Handle::Uuid(uuid, _) => Err(UuidNotSupportedError(*uuid)),
         }
     }
 }
 
 impl TryFrom<&ErasedHandle> for TypedAssetIndex {
-    type Error = UuidNotSupportedError;
+    type Error = TypedIndexError;
 
     #[inline]
     fn try_from(handle: &ErasedHandle) -> Result<Self, Self::Error> {
         match handle {
+            ErasedHandle::Uuid { uuid, .. } => Err(TypedIndexError::uuid(*uuid)),
             ErasedHandle::Strong(handle) => Ok(Self::new(handle.index, handle.type_id)),
-            ErasedHandle::Uuid { uuid, .. } => Err(UuidNotSupportedError(*uuid)),
         }
     }
 }
@@ -671,6 +679,354 @@ macro_rules! uuid_handle {
     ($uuid:expr) => {
         $crate::handle::Handle::Uuid($crate::uuid::uuid!($uuid), ::core::marker::PhantomData)
     };
+}
+
+// -----------------------------------------------------------------------------
+
+/// A [`Template`] that produces a [`Handle`].
+pub enum HandleTemplate<T: Asset> {
+    /// Creates a [`Handle`] by calling `AssetServer::load` on the given [`AssetPath`].
+    Path(AssetPath<'static>),
+    /// Creates a [`Handle`] by cloning the given [`Handle`] value.
+    Handle(Handle<T>),
+}
+
+impl<T: Asset> Default for HandleTemplate<T> {
+    fn default() -> Self {
+        Self::Handle(Handle::default())
+    }
+}
+
+impl<T: Asset> From<Handle<T>> for HandleTemplate<T> {
+    fn from(value: Handle<T>) -> Self {
+        Self::Handle(value)
+    }
+}
+
+impl<I: Into<AssetPath<'static>>, T: Asset> From<I> for HandleTemplate<T> {
+    fn from(value: I) -> Self {
+        Self::Path(value.into())
+    }
+}
+
+impl<A: Asset> Template for HandleTemplate<A> {
+    type Output = Handle<A>;
+
+    fn build_template(&self, context: &mut TemplateContext) -> ZlimResult<Handle<A>> {
+        use crate::server::AssetServer;
+        let path = match self {
+            Self::Path(path) => path,
+            Self::Handle(handle) => return Ok(handle.clone()),
+        };
+        match context.get_resource::<AssetServer>() {
+            None => Err(ZlimError::error("Missing AssetServer")),
+            Some(server) => Ok(server.load::<A>(path)),
+        }
+    }
+
+    fn clone_template(&self) -> Self {
+        match self {
+            Self::Path(path) => Self::Path(path.clone()),
+            Self::Handle(handle) => Self::Handle(handle.clone()),
+        }
+    }
+}
+
+impl<T: Asset> Unpin for Handle<T> where for<'a> [()]: SpecializeTemplate {}
+
+impl<T: Asset> IntoTemplate for Handle<T> {
+    type Template = HandleTemplate<T>;
+
+    fn into_template(self) -> Self::Template {
+        HandleTemplate::from(self)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// HandleReference
+
+/// A reference to an asset handle used for serialization and deserialization.
+///
+/// - [`HandleReference::Uuid`]: reference the asset by its UUID
+/// - [`HandleReference::Path`]: reference the asset by its path
+///
+/// # Format:
+///
+/// Uuid Handle: `urn:uuid:$uuid`.
+/// For example: `urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
+///
+/// Strong Handle with Path: `$path`
+/// For example: `http://example.png`.
+///
+/// Strong Handle without Path: `urn:uuid:$default_uuid`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HandleReference<'a> {
+    Uuid(Uuid),
+    Path(AssetPath<'a>),
+}
+
+impl<'a> HandleReference<'a> {
+    /// Converts this into an "owned" value.
+    pub fn into_owned(self) -> HandleReference<'static> {
+        match self {
+            Self::Uuid(uuid) => HandleReference::Uuid(uuid),
+            Self::Path(path) => HandleReference::Path(path.into_owned()),
+        }
+    }
+
+    /// Clones this into an "owned" value.
+    pub fn clone_owned(&self) -> HandleReference<'a> {
+        match self {
+            Self::Uuid(uuid) => HandleReference::Uuid(*uuid),
+            Self::Path(path) => HandleReference::Path(path.clone_owned()),
+        }
+    }
+
+    /// Reborrows self with a smaller lifetime.
+    pub fn reborrow(&self) -> HandleReference<'_> {
+        match self {
+            Self::Uuid(uuid) => HandleReference::Uuid(*uuid),
+            Self::Path(path) => HandleReference::Path(path.reborrow()),
+        }
+    }
+}
+
+impl Display for HandleReference<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            HandleReference::Uuid(uuid) => Display::fmt(uuid.as_urn(), f),
+            HandleReference::Path(path) => Display::fmt(path, f),
+        }
+    }
+}
+
+impl<'a> Serialize for HandleReference<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            HandleReference::Uuid(uuid) => {
+                use uuid::fmt::Urn;
+                let mut buffer = [0; Urn::LENGTH];
+                uuid.as_urn()
+                    .encode_lower(&mut buffer[5..])
+                    .serialize(serializer)
+            }
+            HandleReference::Path(path) => {
+                let s = AssetPath::to_string(path);
+                s.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for HandleReference<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ReferenceVisitor;
+
+        impl<'de> Visitor<'de> for ReferenceVisitor {
+            type Value = HandleReference<'de>;
+
+            fn expecting(&self, formatter: &mut Formatter) -> core::fmt::Result {
+                formatter.write_str("a UUID string or an asset path")
+            }
+
+            fn visit_borrowed_str<E: serde::de::Error>(
+                self,
+                v: &'de str,
+            ) -> Result<Self::Value, E> {
+                HandleReference::parse(v).map_err(serde::de::Error::custom)
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match HandleReference::parse(v) {
+                    Ok(x) => Ok(x.into_owned()),
+                    Err(e) => Err(serde::de::Error::custom(e)),
+                }
+            }
+        }
+
+        deserializer.deserialize_str(ReferenceVisitor)
+    }
+}
+
+impl HandleReference<'_> {
+    pub fn parse(s: &str) -> Result<HandleReference<'_>, String> {
+        #[cold]
+        #[inline(never)]
+        fn cold_to_string<E: Display>(e: E) -> String {
+            e.to_string()
+        }
+
+        if s.starts_with("urn:uuid") {
+            use core::str::FromStr;
+            match uuid::fmt::Urn::from_str(s) {
+                Ok(x) => Ok(HandleReference::Uuid(x.into_uuid())),
+                Err(e) => Err(cold_to_string(e)),
+            }
+        } else {
+            match AssetPath::try_parse(s) {
+                Ok(x) => Ok(HandleReference::Path(x)),
+                Err(e) => Err(cold_to_string(e)),
+            }
+        }
+    }
+
+    fn stringify_with_prefix(&self, prefix: &str) -> String {
+        match self {
+            HandleReference::Uuid(uuid) => {
+                use uuid::fmt::Urn;
+                let mut buffer = [0; Urn::LENGTH];
+                let s2 = uuid.as_urn().encode_lower(&mut buffer[5..]);
+                let mut res = String::with_capacity(Urn::LENGTH + 3 + prefix.len());
+                res.push('[');
+                res.push_str(prefix);
+                res.push_str("]|");
+                res.push_str(s2);
+                res
+            }
+            HandleReference::Path(path) => {
+                let s2 = AssetPath::to_string(path);
+                // TODO: This can reduce memory allocation once,
+                // but the code will become more cumbersome.
+                let mut res = String::with_capacity(s2.len() + 3 + prefix.len());
+                res.push('[');
+                res.push_str(prefix);
+                res.push_str("]|");
+                res.push_str(&s2);
+                res
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TypedHandleReference
+
+/// A reference to an asset handle with type id used for serialization and deserialization.
+///
+/// The `asset` field refers to the underlying asset through a [`HandleReference`]:
+/// - [`HandleReference::Uuid`]: reference the asset by its UUID
+/// - [`HandleReference::Path`]: reference the asset by its path
+///
+/// # Format:
+///
+/// Uuid Handle: `[$type]|urn:uuid:$uuid`.
+/// For example: `[Image]|urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
+///
+/// Strong Handle with Path: `[$type]|$path`
+/// For example: `[Image]|http://example.png`.
+///
+/// Strong Handle without Path: `[$type]|urn:uuid:$default_uuid`.
+///
+/// # TypeId & TypePath
+///
+/// The [`TypeId`] is not serialized directly. Instead, it is converted into a
+/// [`TypePath`] and serialized in that form. During deserialization the reverse
+/// lookup is performed via functions such as [`asset::get_type_path_by_type_id`],
+/// which resolves the `type` field back into a [`TypeId`].
+///
+/// Type identifiers are registered by the `init_asset` function, so the lookup
+/// only succeeds for asset types that have been initialized.
+///
+/// When serialized, the type name is mapped to `"ErasedHandle"` (i.e. the struct is
+/// emitted under that name), so that a [`TypedHandleReference`] round-trips through the
+/// same representation regardless of the concrete asset type.
+///
+/// [`asset::get_type_path_by_type_id`]: crate::asset::get_type_path_by_type_id
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedHandleReference<'a> {
+    // serde: "type"
+    pub type_id: TypeId,
+    // serde: "asset"
+    pub reference: HandleReference<'a>,
+}
+
+impl Display for TypedHandleReference<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let id: TypeId = self.type_id;
+        use crate::asset::get_type_path_by_type_id;
+        let path = get_type_path_by_type_id(id).unwrap_or("__unknown__");
+        Display::fmt(&self.reference.stringify_with_prefix(path), f)
+    }
+}
+
+impl<'a> TypedHandleReference<'a> {
+    /// Converts this into an "owned" value.
+    pub fn into_owned(self) -> TypedHandleReference<'static> {
+        TypedHandleReference {
+            type_id: self.type_id,
+            reference: self.reference.into_owned(),
+        }
+    }
+
+    /// Clones this into an "owned" value.
+    pub fn clone_owned(&self) -> TypedHandleReference<'a> {
+        TypedHandleReference {
+            type_id: self.type_id,
+            reference: self.reference.clone_owned(),
+        }
+    }
+}
+
+impl<'a> Serialize for TypedHandleReference<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use crate::asset::get_type_path_by_type_id;
+        use serde::ser::Error;
+
+        let id: TypeId = self.type_id;
+        let Some(path) = get_type_path_by_type_id(id) else {
+            return Err(Error::custom(format!("missing TypeDB for id `{id:?}`")));
+        };
+        self.reference
+            .stringify_with_prefix(path)
+            .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TypedHandleReference<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use crate::asset::get_type_id_by_type_path;
+        let full_path = String::deserialize(deserializer)?;
+
+        #[cold]
+        #[inline(never)]
+        fn invalid_erase_handle(s: &str) -> String {
+            format!("invalid ErasedHandle, expect: `[$type]|$asset`, actual: `{s}`")
+        }
+
+        let Some(s1) = full_path.strip_prefix('[') else {
+            let e = invalid_erase_handle(&full_path);
+            return Err(serde::de::Error::custom(e));
+        };
+
+        let Some((ty, asset)) = s1.split_once("]|") else {
+            let e = invalid_erase_handle(&full_path);
+            return Err(serde::de::Error::custom(e));
+        };
+
+        let Some(type_id) = get_type_id_by_type_path(ty) else {
+            ::core::hint::cold_path();
+            let e = format!("missing Type for path `{ty}`");
+            return Err(serde::de::Error::custom(e));
+        };
+
+        let reference = HandleReference::parse(asset)
+            .map_err(serde::de::Error::custom)?
+            .into_owned();
+
+        Ok(TypedHandleReference { type_id, reference })
+    }
 }
 
 // -----------------------------------------------------------------------------

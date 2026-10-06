@@ -186,6 +186,8 @@ fn init_asset_impl<A: Asset>(world: &mut World) {
         applied first — call `App::build` before this, or order the current plugin \
         after `AssetPlugin` with `AssetPlugin::apply_before::<Self>` in its `build`";
 
+    crate::asset::register_asset_type_path::<A>();
+
     if !world.contains_resource::<Assets<A>>() {
         let assets = Assets::<A>::default();
 
@@ -203,8 +205,9 @@ fn init_asset_impl<A: Asset>(world: &mut World) {
     // provider of its own instead of the one `Assets<A>` owns: the importer's id space is meant to
     // be separate from the app's, which is why there is no `Assets<A>` behind it.
     if let Some(importer) = world.get_resource::<AssetProcessServer>() {
-        let provider =
-            AssetHandleProvider::new(TypeId::of::<A>(), Arc::new(AssetIndexAllocator::new()));
+        let allocator = Arc::new(AssetIndexAllocator::new());
+        let provider = AssetHandleProvider::new(TypeId::of::<A>(), allocator);
+        // Registration is idempotent.
         importer.server().register_handle_provider(provider);
     }
 

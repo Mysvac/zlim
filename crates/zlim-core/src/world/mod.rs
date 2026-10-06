@@ -55,6 +55,7 @@ mod cell;
 mod deferred;
 mod from_world;
 mod non_send;
+mod reflect;
 
 // -----------------------------------------------------------------------------
 // Re-exports

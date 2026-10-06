@@ -18,10 +18,10 @@
 //!
 //! # Serialization priority
 //!
-//! 1. **Registered Serializer First**: if the value's [`TypeDB`] has a
-//!    registered `SerdFunc` (set via `insert_serializer`), use it
-//!    directly — the **fast path** for types with a serde `Serialize`
-//!    implementation.
+//! 1. **Registered Serializer First**: if the value's [`TypeDB`] has a hook
+//!    (set via `insert_serializer`), use it directly — the **fast path** for
+//!    types with a serde `Serialize` implementation. The hook writes through
+//!    an erased serializer, and the caller recovers its own `Ok` afterwards.
 //!
 //! 2. **Reflection Fallback**: otherwise inspect [`Reflect::reflect_ref`]
 //!    and delegate to the kind-specific function:
@@ -39,7 +39,7 @@
 //!
 //! # Opaque fallback
 //!
-//! When an opaque type has no registered `SerdFunc`, the serializer falls
+//! When an opaque type has no registered hook, the serializer falls
 //! back to calling [`Opaque::stringify`] and serializing the result as a
 //! string.  This ensures all reflected types are serializable even without
 //! explicit serde support.
@@ -54,9 +54,7 @@
 
 use core::any::TypeId;
 use core::fmt::Display;
-use core::panic::Location;
-
-use erased_serde::Serialize as ErasedSerialize;
+use core::mem::size_of;
 
 use serde_core::ser::Error;
 use serde_core::ser::{SerializeMap, SerializeSeq, SerializeStruct};
@@ -64,58 +62,14 @@ use serde_core::ser::{SerializeStructVariant, SerializeTuple};
 use serde_core::ser::{SerializeTupleStruct, SerializeTupleVariant};
 use serde_core::{Serialize, Serializer};
 use zlim_log as log;
+use zlim_utils::debug::DebugLocation;
 
 use super::{TypeDB, TypeDatabase};
 use crate::Reflect;
 use crate::info::ReflectKindError;
 use crate::ops::Opaque;
 use crate::ops::ReflectRef;
-
-// -----------------------------------------------------------------------------
-// Register
-// -----------------------------------------------------------------------------
-
-/// A trait for types that support dynamic serialization through reflection.
-///
-/// Implementors serialize data by combining runtime type information
-/// ([`&dyn Reflect`]), the type registry, and a [`serde::Serializer`].
-///
-/// ## Return Value Semantics
-///
-/// The trait returns `Result<Result<T, S::Error>, S>` with three distinct outcomes:
-///
-/// - **`Ok(Ok(serialized))`** → Successful serialization
-/// - **`Ok(Err(error))`** → Type is supported but serialization failed (e.g., invalid data)
-/// - **`Err(serializer)`** → Type is not supported; serializer is returned for alternative strategies
-///
-/// ## Default Implementation
-///
-/// The trait is implemented for `()` as a default processor that always returns `Err(serializer)`
-/// (indicating no support for any type).
-///
-/// This does not mean that serialization is not supported, [`TypeDB`] will still
-/// try using reflect based serialization and default serialization methods.
-///
-/// [`&dyn Reflect`]: crate::Reflect
-/// [`serde::Serializer`]: serde_core::Serializer
-pub trait SerializeProcessor {
-    fn try_serialize<S: Serializer>(
-        &self,
-        value: &dyn Reflect,
-        serializer: S,
-    ) -> Result<Result<S::Ok, S::Error>, S>;
-}
-
-impl SerializeProcessor for () {
-    #[inline(always)]
-    fn try_serialize<S: Serializer>(
-        &self,
-        _: &dyn Reflect,
-        serializer: S,
-    ) -> Result<Result<S::Ok, S::Error>, S> {
-        Err(serializer)
-    }
-}
+use crate::serde::{EMPTY_CONTEXT, ReflectContext, ReflectSerialize};
 
 // -----------------------------------------------------------------------------
 // Register
@@ -124,7 +78,7 @@ impl SerializeProcessor for () {
 /// Logs a message when the same serializer is registered more than once.
 #[cold]
 #[inline(never)]
-fn warn_serializer_dup(ty: &'static str, l: &'static Location<'static>) {
+fn warn_serializer_dup(ty: &'static str, l: DebugLocation) {
     log::trace!("{l}: `{ty}`'s serializer registered repeatedly; ignored.");
 }
 
@@ -135,12 +89,11 @@ impl TypeDB {
         self.serialize.get().is_some()
     }
 
-    /// Registers a `SerdFunc` wrapper for type `T` into this `TypeDB`.
+    /// Registers the [`ReflectSerialize`] hook of `T` into this `TypeDB`.
     ///
-    /// The wrapper downcasts the `&dyn Reflect` to `&T` and returns it as
-    /// `&dyn erased_serde::Serialize`.  Once registered, `ReflectSer`
-    /// uses this function directly (the **fast path**), bypassing the
-    /// kind-specific dispatch.
+    /// The hook is `T`'s own — the blanket implementation, or a hand-written one — so this only
+    /// stores it. Once registered, serializing this type calls the hook directly (the **fast path**),
+    /// bypassing the kind-specific dispatch.
     ///
     /// # Returns
     ///
@@ -151,15 +104,15 @@ impl TypeDB {
     ///
     /// Panics if `self` does not belong to type `T`.
     #[cold]
-    #[track_caller]
     #[inline(never)]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn insert_serializer<T>(&self) -> bool
     where
-        T: TypeDatabase + Serialize,
+        T: TypeDatabase + ReflectSerialize,
     {
         #[cold]
         #[inline(never)]
-        fn panicked(e: &'static str, a: &'static str, l: &'static Location<'static>) -> ! {
+        fn panicked(e: &'static str, a: &'static str, l: DebugLocation) -> ! {
             panic!(
                 "{l}: `insert_serializer` type mismatch — \
                 TypeDB is for `{e}`, but the Serialize need `{a}`."
@@ -167,24 +120,11 @@ impl TypeDB {
         }
 
         if self.id != TypeId::of::<T>() {
-            panicked(self.type_path, T::type_path(), Location::caller());
+            panicked(self.type_path, T::type_path(), DebugLocation::caller());
         }
 
-        fn func<T>(value: &dyn Reflect) -> &dyn ErasedSerialize
-        where
-            T: TypeDatabase + Serialize,
-        {
-            match value.downcast_ref::<T>() {
-                Some(v) => v as &dyn ErasedSerialize,
-                None => {
-                    ::core::hint::cold_path();
-                    unreachable!()
-                }
-            }
-        }
-
-        if self.serialize.set(func::<T>).is_err() {
-            warn_serializer_dup(T::type_path(), Location::caller());
+        if self.serialize.set(T::reflect_serialize).is_err() {
+            warn_serializer_dup(T::type_path(), DebugLocation::caller());
             false
         } else {
             true
@@ -195,10 +135,10 @@ impl TypeDB {
     /// [`TypeDB::of`](TypeDB::of) then calls
     /// `insert_serializer`(Self::insert_serializer).
     #[cold]
-    #[track_caller]
+    #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     pub fn register_serializer<T>() -> bool
     where
-        T: TypeDatabase + Serialize,
+        T: TypeDatabase + ReflectSerialize,
     {
         let db = TypeDB::of::<T>();
         db.insert_serializer::<T>()
@@ -248,116 +188,50 @@ impl TypeDB {
     where
         S: Serializer,
     {
-        TypePathReflectSer::<()>(value, None).serialize(serializer)
+        TypePathReflectSer(value, EMPTY_CONTEXT).serialize(serializer)
     }
 
     /// Serializes a reflected value directly, **without** type path wrapping.
     ///
-    /// # Example
-    ///
-    /// For a struct `A { x: 3, y: 4 }` (regardless of its registered path):
-    ///
-    /// ```text
-    /// {"x": 3, "y": 4}
-    /// ```
-    ///
-    /// This matches standard serde output.  Compare with
-    /// [`reflect_serialize`], which would produce
-    /// `{"my_crate::A": {"x": 3, "y": 4}}`.
-    ///
-    /// # Serialization Rules
-    ///
-    /// Delegates to `ReflectSer`, which follows a two-step priority order:
-    ///
-    /// 1. **Registered Serializer First**: checks whether the value's
-    ///    [`TypeDB`] has a registered `SerdFunc` (set via
-    ///    [`insert_serializer`]).  If present, the function is called
-    ///    directly — this is the **fast path** for types with a serde
-    ///    `Serialize` implementation (e.g. via `#[derive(Serialize)]`).
-    ///
-    /// 2. **Reflection Fallback**: if no `SerdFunc` is registered, inspects
-    ///    [`Reflect::reflect_ref`] and dispatches to the appropriate
-    ///    kind-specific function (`serialize_opaque`, `serialize_struct`,
-    ///    …, `serialize_enum`).  Opaque types fall back to
-    ///    [`Opaque::stringify`].
-    ///
-    /// # Use when
-    ///
-    /// The target type is **already known** from context (e.g. a component
-    /// field in an ECS world, or nested values during recursive
-    /// serialization).
-    ///
-    /// For a self-describing variant that includes the type path, see
-    /// [`reflect_serialize`].
-    ///
-    /// [`reflect_serialize`]: TypeDB::reflect_serialize
-    /// [`insert_serializer`]: TypeDB::insert_serializer
+    /// See [`TypeDB::reflect_serialize`] for the shape of the output, and the
+    /// [module documentation](self) for the dispatch order.
     #[inline]
     pub fn serialize<S>(value: &dyn Reflect, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        ReflectSer::<()>(value, None).serialize(serializer)
+        ReflectSer(value, EMPTY_CONTEXT).serialize(serializer)
     }
 
-    /// Self-describing serializer with specific processor for reflected types.
+    /// Self-describing serializer with a context for reflected types.
     ///
-    /// See [`TypeDB::reflect_serialize`] for details.
+    /// The counterpart of [`reflect_deserialize_with`](TypeDB::reflect_deserialize_with); see
+    /// [`TypeDB::reflect_serialize`] for the output.
     #[inline]
-    pub fn reflect_serialize_with<S, P>(
+    pub fn reflect_serialize_with<S>(
         value: &dyn Reflect,
         serializer: S,
-        processor: &P,
+        ctx: &dyn ReflectContext,
     ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
-        P: SerializeProcessor,
     {
-        TypePathReflectSer::<P>(value, Some(processor)).serialize(serializer)
+        TypePathReflectSer(value, ctx).serialize(serializer)
     }
 
-    /// Serializes a reflected value directly with specific processor, **without** type path wrapping.
+    /// Serializes a reflected value directly with a context, **without** type path wrapping.
     ///
-    /// See [`TypeDB::serialize`] for details.
+    /// See [`TypeDB::serialize`] for the output.
     #[inline]
-    pub fn serialize_with<S, P>(
+    pub fn serialize_with<S>(
         value: &dyn Reflect,
         serializer: S,
-        processor: &P,
+        ctx: &dyn ReflectContext,
     ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
-        P: SerializeProcessor,
     {
-        ReflectSer::<P>(value, Some(processor)).serialize(serializer)
-    }
-
-    /// Creates a [`Serialize`] driver for **self-describing** output.
-    ///
-    /// See [`TypeDB::reflect_serialize`] for details.
-    #[inline]
-    pub fn reflect_serialize_driver<'a, P>(
-        value: &'a dyn Reflect,
-        processor: Option<&'a P>,
-    ) -> impl Serialize + 'a
-    where
-        P: SerializeProcessor,
-    {
-        TypePathReflectSer::<P>(value, processor)
-    }
-
-    /// Creates a [`Serialize`] driver for **type-known** output.
-    ///
-    /// See [`TypeDB::serialize`] for details.
-    #[inline]
-    pub fn serialize_driver<'a, P>(
-        value: &'a dyn Reflect,
-        processor: Option<&'a P>,
-    ) -> impl Serialize + 'a
-    where
-        P: SerializeProcessor,
-    {
-        ReflectSer::<P>(value, processor)
+        ReflectSer(value, ctx).serialize(serializer)
     }
 }
 
@@ -404,7 +278,7 @@ fn maperr<E: Error>(e: E) -> E {
     crate::cfg::debug! {
         if {
             TYPE_INFO_STACK.with_borrow(|stack| {
-                E::custom(format_args!("{e} (stack:\n{stack:?})"))
+                E::custom(format_args!("{e} (stack:\n{stack:?}\n)"))
             })
         } else {
             e
@@ -435,9 +309,9 @@ fn invalid_info<E: Error>(ty: &'static str, error: ReflectKindError) -> E {
 /// Produces `{ "type_path": <payload> }` by delegating the payload to
 /// `ReflectSer`.  This is the counterpart to
 /// [`TypePathReflectDeser`](super::des::TypePathReflectDeser).
-struct TypePathReflectSer<'a, P: SerializeProcessor = ()>(&'a dyn Reflect, Option<&'a P>);
+struct TypePathReflectSer<'a>(&'a dyn Reflect, &'a dyn ReflectContext);
 
-impl<P: SerializeProcessor> Serialize for TypePathReflectSer<'_, P> {
+impl Serialize for TypePathReflectSer<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -452,6 +326,49 @@ impl<P: SerializeProcessor> Serialize for TypePathReflectSer<'_, P> {
 }
 
 // -----------------------------------------------------------------------------
+// UnitOk
+// -----------------------------------------------------------------------------
+
+const _: () = const {
+    assert!(size_of::<()>() == 0);
+};
+
+/// Returns the `Ok` of a serializer that wrote a value whose type has a registered hook.
+///
+/// Such a value is written through its hook, and a hook takes an *erased* serializer — whose `Ok` is
+/// `()` by the nature of the erasure, so the `Ok` the caller asked for is gone by the time the hook
+/// returns. `Serialize::serialize` is shared by every serializer and cannot carry a bound that says
+/// "your `Ok` is `()`", so the two are compared here instead.
+///
+/// A type with no size *is* `()`: nothing else can be held in zero bytes, which is why measuring is
+/// enough. If the caller's `Ok` is that, it is `()`. If it is anything else, this is a serializer
+/// that reflective serialization cannot use, and that is reported rather than returned as a value.
+///
+/// # Errors
+///
+/// Returns `Err` if `S::Ok` is not `()`.
+#[inline]
+fn unit_ok<S: Serializer>(_: ()) -> Result<S::Ok, S::Error> {
+    if const { size_of::<S::Ok>() != 0 } {
+        #[cold]
+        #[inline(never)]
+        fn wrong_ok<E: Error>() -> E {
+            E::custom(
+                "a reflected value with a registered serializer was written through an erased \
+                 serializer, whose `Ok` is `()`, but this serializer's `Ok` is not `()`. Use a \
+                 serializer that produces `()` — `TypeDB::serialize` requires one.",
+            )
+        }
+
+        return Err(wrong_ok());
+    }
+
+    #[expect(unsafe_code, reason = "initialize ZST")]
+    #[expect(clippy::uninit_assumed_init, reason = "ZST")]
+    Ok(unsafe { ::core::mem::MaybeUninit::<S::Ok>::uninit().assume_init() })
+}
+
+// -----------------------------------------------------------------------------
 // ReflectSer — central dispatch wrapper
 // -----------------------------------------------------------------------------
 
@@ -459,33 +376,27 @@ impl<P: SerializeProcessor> Serialize for TypePathReflectSer<'_, P> {
 ///
 /// # Dispatch order
 ///
-/// 1. **Fast path:** if the value's [`TypeDB`] has a registered
-///    `SerdFunc`, call it directly through `erased_serde`.
+/// 1. **Fast path:** if the value's [`TypeDB`] has a registered hook, the value is written through an
+///    erased serializer — a hook is a function pointer, so that is the only serializer it can name.
 /// 2. **Slow path:** inspect [`Reflect::reflect_ref`] and dispatch to the
 ///    kind-specific function (`serialize_opaque`, `serialize_struct`,
 ///    …, `serialize_enum`).
 ///
 /// Used internally for recursive serialization of nested values.
-struct ReflectSer<'a, P: SerializeProcessor = ()>(&'a dyn Reflect, Option<&'a P>);
+struct ReflectSer<'a>(&'a dyn Reflect, &'a dyn ReflectContext);
 
-impl<P: SerializeProcessor> Serialize for ReflectSer<'_, P> {
-    fn serialize<S>(&self, mut serializer: S) -> Result<S::Ok, S::Error>
+impl Serialize for ReflectSer<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        if let Some(processor) = self.1 {
-            match processor.try_serialize(self.0, serializer) {
-                Ok(v) => return v,
-                Err(ser) => serializer = ser,
-            }
-        }
-
-        let type_id = self.0.type_id();
-
-        if let Some(db) = TypeDB::get_by_type(type_id)
+        if let Some(db) = TypeDB::get_by_type(self.0.type_id())
             && let Some(f) = db.serialize.get()
         {
-            return f(self.0).serialize(serializer).map_err(make_error);
+            let mut ser = <dyn erased_serde::Serializer>::erase(serializer);
+            return f(self.0, &mut ser, self.1)
+                .map_err(make_error)
+                .and_then(unit_ok::<S>);
         }
 
         crate::cfg::debug! {
@@ -521,7 +432,7 @@ impl<P: SerializeProcessor> Serialize for ReflectSer<'_, P> {
 /// representation, then serializes that string.
 ///
 /// Types that need custom serialization (e.g. via serde derive) should
-/// register a `SerdFunc` via `insert_serializer`(TypeDB::insert_serializer)
+/// register a hook via `insert_serializer`(TypeDB::insert_serializer)
 /// — those types bypass this path entirely when serialized through an
 /// erased serde context.
 #[cold] // Opaque type should provide serializer, this function is usually unused.
@@ -539,21 +450,20 @@ where
 
 /// Serializes a fixed-size array as a serde tuple.
 #[inline(never)]
-fn serialize_array<S, P>(
+fn serialize_array<S>(
     value: &dyn crate::ops::Array,
     serializer: S,
-    processor: Option<&P>,
+    ctx: &dyn ReflectContext,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    P: SerializeProcessor,
 {
     let len = value.item_len();
     let mut s = serializer.serialize_tuple(len).map_err(maperr)?;
 
     for i in 0..len {
         let item = value.item(i).expect("valid index");
-        s.serialize_element(&ReflectSer(item, processor))?;
+        s.serialize_element(&ReflectSer(item, ctx))?;
     }
 
     s.end().map_err(maperr)
@@ -565,21 +475,20 @@ where
 
 /// Serializes a growable list as a serde sequence.
 #[inline(never)]
-fn serialize_list<S, P>(
+fn serialize_list<S>(
     value: &dyn crate::ops::List,
     serializer: S,
-    processor: Option<&P>,
+    ctx: &dyn ReflectContext,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    P: SerializeProcessor,
 {
     let len = value.item_len();
     let mut s = serializer.serialize_seq(Some(len)).map_err(maperr)?;
 
     for i in 0..len {
         let item = value.item(i).expect("valid index");
-        s.serialize_element(&ReflectSer(item, processor))?;
+        s.serialize_element(&ReflectSer(item, ctx))?;
     }
 
     s.end().map_err(maperr)
@@ -591,19 +500,18 @@ where
 
 /// Serializes a set as a serde sequence.
 #[inline(never)]
-fn serialize_set<S, P>(
+fn serialize_set<S>(
     value: &dyn crate::ops::Set,
     serializer: S,
-    processor: Option<&P>,
+    ctx: &dyn ReflectContext,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    P: SerializeProcessor,
 {
     let len = value.value_len();
     let mut s = serializer.serialize_seq(Some(len)).map_err(maperr)?;
     for v in value.iter_values() {
-        s.serialize_element(&ReflectSer(v, processor))?;
+        s.serialize_element(&ReflectSer(v, ctx))?;
     }
     s.end().map_err(maperr)
 }
@@ -614,19 +522,18 @@ where
 
 /// Serializes a map as a serde map.
 #[inline(never)]
-fn serialize_map<S, P>(
+fn serialize_map<S>(
     value: &dyn crate::ops::Map,
     serializer: S,
-    processor: Option<&P>,
+    ctx: &dyn ReflectContext,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    P: SerializeProcessor,
 {
     let len = value.entry_len();
     let mut s = serializer.serialize_map(Some(len)).map_err(maperr)?;
     for (k, v) in value.iter_entries() {
-        s.serialize_entry(&ReflectSer(k, processor), &ReflectSer(v, processor))?;
+        s.serialize_entry(&ReflectSer(k, ctx), &ReflectSer(v, ctx))?;
     }
     s.end().map_err(maperr)
 }
@@ -647,14 +554,13 @@ where
 ///
 /// All paths use `ReflectSer` for recursive field serialization.
 #[inline(never)]
-fn serialize_tuple<S, P>(
+fn serialize_tuple<S>(
     value: &dyn crate::ops::Tuple,
     serializer: S,
-    processor: Option<&P>,
+    ctx: &dyn ReflectContext,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    P: SerializeProcessor,
 {
     let len = value.field_len();
     let name = value.reflect_type_ident();
@@ -663,19 +569,19 @@ where
         let mut s = serializer.serialize_tuple(len).map_err(maperr)?;
         for i in 0..len {
             let field = value.field(i).expect("valid index");
-            s.serialize_element(&ReflectSer(field, processor))?;
+            s.serialize_element(&ReflectSer(field, ctx))?;
         }
         s.end().map_err(maperr)
     } else if len == 1 {
         let field = value.field(0).expect("valid index");
-        serializer.serialize_newtype_struct(name, &ReflectSer(field, processor))
+        serializer.serialize_newtype_struct(name, &ReflectSer(field, ctx))
     } else {
         let mut s = serializer
             .serialize_tuple_struct(name, len)
             .map_err(maperr)?;
         for i in 0..len {
             let field = value.field(i).expect("valid index");
-            s.serialize_field(&ReflectSer(field, processor))?;
+            s.serialize_field(&ReflectSer(field, ctx))?;
         }
         s.end().map_err(maperr)
     }
@@ -694,14 +600,13 @@ where
 ///
 /// [`StructInfo`]: crate::info::StructInfo
 #[inline(never)]
-fn serialize_struct<S, P>(
+fn serialize_struct<S>(
     value: &dyn crate::ops::Struct,
     serializer: S,
-    processor: Option<&P>,
+    ctx: &dyn ReflectContext,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    P: SerializeProcessor,
 {
     use crate::info::StructInfo;
 
@@ -733,7 +638,7 @@ where
                 struct_info.type_path(),
             )));
         };
-        s.serialize_field(name, &ReflectSer(field, processor))?;
+        s.serialize_field(name, &ReflectSer(field, ctx))?;
     }
 
     s.end().map_err(maperr)
@@ -768,14 +673,13 @@ where
 /// [`EnumInfo`]: crate::info::EnumInfo
 /// [`VariantKind`]: crate::info::VariantKind
 #[inline(never)]
-fn serialize_enum<S, P>(
+fn serialize_enum<S>(
     value: &dyn crate::ops::Enum,
     serializer: S,
-    processor: Option<&P>,
+    ctx: &dyn ReflectContext,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
-    P: SerializeProcessor,
 {
     use crate::info::{EnumInfo, VariantInfo};
 
@@ -838,7 +742,7 @@ where
         VariantInfo::Tuple(_) if is_option => {
             let field = value.field_at(0).expect("valid index");
             debug_assert_eq!(field_len, 1, "Option + Tuple, must be Some(x)");
-            serializer.serialize_some(&ReflectSer(field, processor))
+            serializer.serialize_some(&ReflectSer(field, ctx))
         }
         VariantInfo::Tuple(_) if is_new_type => {
             let field = value.field_at(0).expect("valid index");
@@ -846,7 +750,7 @@ where
                 name,
                 variant_index,
                 variant_name,
-                &ReflectSer(field, processor),
+                &ReflectSer(field, ctx),
             )
         }
         VariantInfo::Tuple(_) => {
@@ -856,7 +760,7 @@ where
 
             for i in 0..field_len {
                 let field = value.field_at(i).expect("valid index");
-                s.serialize_field(&ReflectSer(field, processor))?;
+                s.serialize_field(&ReflectSer(field, ctx))?;
             }
 
             s.end().map_err(maperr)
@@ -869,7 +773,7 @@ where
             for i in 0..field_len {
                 let field = value.field_at(i).expect("valid index");
                 let fname = info.name_at(i).unwrap();
-                s.serialize_field(fname, &ReflectSer(field, processor))?;
+                s.serialize_field(fname, &ReflectSer(field, ctx))?;
             }
 
             s.end().map_err(maperr)

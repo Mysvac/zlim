@@ -151,7 +151,7 @@ fn scene_spawn_condition(queue: If<Res<SceneQueue>>) -> bool {
 
 /// The job that builds what was queued: it resolves the patches it finds ready, and applies them.
 ///
-/// It runs in the [`SpawnScene`] schedule, between `Update` and `PostUpdate`, so a scene queued this
+/// It runs in the `SpawnScene` schedule, between `Update` and `PostUpdate`, so a scene queued this
 /// frame is in the world before transform propagation sees the hierarchy.
 ///
 /// The whole queue is taken before any of it is answered — [`core::mem::take`], so a scene that

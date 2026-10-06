@@ -99,6 +99,6 @@ def_path_fn!(template_, template::Template);
 def_path_fn!(into_template_, template::IntoTemplate);
 def_path_fn!(template_context_, template::TemplateContext);
 def_path_fn!(built_in_template_, template::BuiltInTemplate);
-def_path_fn!(specialize_from_template_, template::SpecializeFromTemplate);
+def_path_fn!(specialize_from_template_, template::SpecializeTemplate);
 def_path_fn!(zlim_result_, error::ZlimResult);
 def_path_fn!(entity_label_, entity::EntityLabel);

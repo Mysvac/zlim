@@ -285,6 +285,10 @@ impl AssetServer {
 
     /// Registers `provider` as the handle provider of the asset type it allocates for.
     ///
+    /// Registration is idempotent: if a provider for the same asset type is already
+    /// registered, the existing one is kept and `provider` is silently discarded.
+    /// The first registration wins.
+    ///
     /// A server hands out a handle for every asset type it loads, and the provider is where those
     /// indexes come from: without one, allocating a handle of that type panics. `Assets<A>` brings
     /// its own provider along when it is registered with
@@ -294,7 +298,7 @@ impl AssetServer {
         self.0
             .write_infos()
             .handle_providers
-            .insert(provider.type_id(), provider);
+            .try_insert(provider.type_id(), || provider);
     }
 
     /// Pre-registers `L`, so that assets resolved to it wait instead of failing until it is
@@ -894,7 +898,7 @@ fn handle_index(handle: &ErasedHandle) -> TypedAssetIndex {
             index: handle.index,
             type_id: handle.type_id,
         },
-        ErasedHandle::Uuid { .. } => unreachable(),
+        _ => unreachable(),
     }
 }
 

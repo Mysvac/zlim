@@ -7,7 +7,9 @@ use atomicow::CowArc;
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 use zlim_core::derive::Error;
+use zlim_reflect::Reflect;
 use zlim_reflect::derive::TypePath;
+use zlim_reflect::ops::Opaque;
 use zlim_utils::str::SmolStr;
 
 // -----------------------------------------------------------------------------
@@ -94,7 +96,9 @@ pub enum ParseAssetPathError {
 /// Windows) into that portable form.
 ///
 /// [`AssetSource`]: crate::source::AssetSource
-#[derive(Default, Clone, PartialEq, Eq, Hash, TypePath)]
+#[derive(Default, Clone, Hash, TypePath)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Reflect)]
+#[reflect(Opaque, Default, Debug, Clone, Eq, Hash, Serialize, Deserialize)]
 #[type_path = "zlim_asset::path::AssetPath"]
 pub struct AssetPath<'a> {
     source: Option<SmolStr>,
@@ -121,6 +125,15 @@ impl AssetPath<'_> {
             source: self.source.clone(),
             path: self.path.clone_owned(),
             label: self.label.as_ref().map(CowArc::clone_owned),
+        }
+    }
+
+    /// Reborrow self as a smaller lifetime.
+    pub fn reborrow(&self) -> AssetPath<'_> {
+        AssetPath {
+            source: self.source.clone(),
+            path: CowArc::Borrowed(&self.path),
+            label: self.label.as_deref().map(CowArc::Borrowed),
         }
     }
 }
@@ -814,17 +827,28 @@ impl<'de> Deserialize<'de> for AssetPath<'static> {
                     }
                 }
             }
-
-            #[inline]
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                self.visit_str(&v)
-            }
         }
 
         deserializer.deserialize_string(AssetPathVisitor)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Opaque
+
+impl Opaque for AssetPath<'static> {
+    fn apply_str(&mut self, v: &str) -> Result<(), String> {
+        match AssetPath::try_parse(v) {
+            Ok(b) => {
+                *self = b.clone_owned();
+                Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn stringify(&self) -> String {
+        AssetPath::to_string(self)
     }
 }
 

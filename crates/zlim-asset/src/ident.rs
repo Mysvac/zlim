@@ -299,8 +299,8 @@ impl AssetIndexAllocator {
 /// This is cheap to [`Copy`]/[`Clone`] and is not directly tied to the lifetime
 /// of the Asset. This means it _can_ point to an [`Asset`] that no longer exists.
 ///
-/// Only [`AssetId::Index`] is runtime-local; [`AssetId::Uuid`] is the form to use for a value that
-/// crosses a process boundary.
+/// Only [`AssetId::Index`] is runtime-local; [`AssetId::Uuid`] is the form to use
+/// for a value that crosses a process boundary.
 ///
 /// For an identifier tied to the lifetime of an asset, see [`Handle`].
 ///
@@ -319,11 +319,9 @@ pub enum AssetId<A: Asset> {
     },
 }
 
-const DEFAULT_D4: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
-
 impl<A: Asset> AssetId<A> {
     /// The UUID used by [`AssetId::default`].
-    pub const DEFAULT_UUID: Uuid = Uuid::from_fields(u32::MAX, u16::MAX, u16::MAX, &DEFAULT_D4);
+    pub const DEFAULT_UUID: Uuid = ErasedAssetId::DEFAULT_UUID;
 
     /// Returns the slot index when this is an [`AssetId::Index`].
     #[inline]
@@ -485,6 +483,9 @@ pub enum ErasedAssetId {
 }
 
 impl ErasedAssetId {
+    /// The UUID used by [`AssetId::default`].
+    pub const DEFAULT_UUID: Uuid = Uuid::from_fields(u32::MAX, u16::MAX, u16::MAX, &[0u8; 8]);
+
     /// The concrete asset type this id refers to.
     #[inline(always)]
     pub const fn type_id(&self) -> TypeId {
@@ -785,13 +786,13 @@ impl From<TypedAssetIndex> for ErasedAssetId {
 }
 
 impl TryFrom<ErasedAssetId> for TypedAssetIndex {
-    type Error = UuidNotSupportedError;
+    type Error = TypedIndexError;
 
     #[inline]
     fn try_from(asset_id: ErasedAssetId) -> Result<Self, Self::Error> {
         match asset_id {
             ErasedAssetId::Index { type_id, index } => Ok(Self { index, type_id }),
-            ErasedAssetId::Uuid { uuid, .. } => Err(UuidNotSupportedError(uuid)),
+            ErasedAssetId::Uuid { uuid, .. } => Err(TypedIndexError::uuid(uuid)),
         }
     }
 }
@@ -801,8 +802,16 @@ impl TryFrom<ErasedAssetId> for TypedAssetIndex {
 
 /// Returned when a UUID asset id is used where an index-backed id is required.
 #[derive(Error, Debug, Clone)]
-#[error("Attempted to create a TypedAssetIndex from a Uuid({_0})")]
-pub struct UuidNotSupportedError(pub(crate) Uuid);
+#[error("Failed to create a TypedAssetIndex: build from uuid `{_0}` .")]
+pub struct TypedIndexError(Uuid);
+
+impl TypedIndexError {
+    #[cold]
+    #[inline(always)]
+    pub fn uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
 
 /// Returned when an [`ErasedAssetId`] is typed back as the wrong asset type.
 #[derive(Error, Debug, Clone)]

@@ -506,7 +506,6 @@ impl<A: Asset> Assets<A> {
     ///
     /// Panics when the number of strong handles already upgraded for the same slot reaches the
     /// per-slot counter limit.
-    #[doc(alias = "get_strong_handle")]
     #[doc(alias = "get_handle")]
     pub fn resolve_handle(&mut self, id: AssetId<A>) -> Option<Handle<A>> {
         if !self.contains(id) {

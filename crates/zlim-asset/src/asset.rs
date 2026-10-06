@@ -1,10 +1,13 @@
 //! The [`Asset`] contract, dependency enumeration, and the [`AssetComponent`] handle-to-id
 //! protocol that change tracking is built on.
 
+use core::any::TypeId;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::{PoisonError, RwLock};
 
 use zlim_core::component::Component;
 use zlim_reflect::TypePath;
+use zlim_utils::ext::{CachePadded, TypeMap};
 use zlim_utils::hash::{HashMap, HashSet};
 
 use crate::handle::{ErasedHandle, Handle};
@@ -188,6 +191,57 @@ pub trait AssetComponent: Component {
 
     /// Returns the id of the referenced asset.
     fn asset_id(&self) -> AssetId<Self::Asset>;
+}
+
+// -----------------------------------------------------------------------------
+
+static TYPE_TO_PATH: CachePadded<RwLock<TypeMap<&'static str>>> =
+    CachePadded::new(RwLock::new(TypeMap::new()));
+
+static PATH_TO_TYPE: CachePadded<RwLock<HashMap<&'static str, TypeId>>> =
+    CachePadded::new(RwLock::new(HashMap::new()));
+
+pub(crate) fn register_asset_type_path<A: Asset>() {
+    let path = A::type_path();
+    let ty = TypeId::of::<A>();
+    TYPE_TO_PATH
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(ty, path);
+    PATH_TO_TYPE
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(path, ty);
+}
+
+/// Looks up the registered [`TypePath`] string for the given [`TypeId`].
+///
+/// This only returns types that have already been registered as assets via
+/// the [`init_asset`] function.
+///
+/// [`init_asset`]: crate::plugin::AppAssetExt::init_asset
+#[inline(never)]
+pub fn get_type_path_by_type_id(ty: TypeId) -> Option<&'static str> {
+    TYPE_TO_PATH
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(ty)
+        .copied()
+}
+
+/// Looks up the [`TypeId`] registered for the given [`TypePath`] string.
+///
+/// This only returns types that have already been registered as assets via
+/// the [`init_asset`] function.
+///
+/// [`init_asset`]: crate::plugin::AppAssetExt::init_asset
+#[inline(never)]
+pub fn get_type_id_by_type_path(ty: &str) -> Option<TypeId> {
+    PATH_TO_TYPE
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(ty)
+        .copied()
 }
 
 // -----------------------------------------------------------------------------
