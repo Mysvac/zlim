@@ -816,7 +816,7 @@ impl<'a> Serialize for AssetPath<'a> {
     where
         S: serde::Serializer,
     {
-        self.stringify().serialize(serializer)
+        serializer.serialize_str(&self.stringify())
     }
 }
 

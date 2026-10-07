@@ -24,17 +24,25 @@
 //! # Templates that are derived automatically
 //!
 //! Every [`Clone`] type is its own [`Template`], and every `Clone + Default` type is its own
-//! [`IntoTemplate`]: such a type is described by itself, and building it just clones it. Most types
-//! therefore already have a template, and a type only needs a template of its own — derived with
-//! `#[derive(IntoTemplate)]`, or written by hand — when one of its fields is itself described by a
-//! template.
+//! [`IntoTemplate`]: such a type is described by itself, and building it just clones it.
 //!
-//! Because of that blanket implementation, the three traits [`IntoTemplate`], [`Default`] and
-//! [`Clone`] cannot all be implemented for the same type: `Default + Clone` already implies
-//! [`IntoTemplate`], so a second implementation would conflict. This is also why [`Template`] has
-//! its own [`Template::clone_template`] method instead of requiring [`Clone`], and why the types
-//! that implement [`Template`] or [`IntoTemplate`] by hand are deliberately not [`Clone`] — or, when
-//! they have to be, not [`Unpin`]; see [`SpecializeTemplate`].
+//! Most types therefore already have a template, and a type only needs a template of its own —
+//! derived with `#[derive(IntoTemplate)]`, or written by hand — when one of its fields is itself
+//! described by a template. See [`IntoTemplate`] for details.
+//!
+//! # Usage
+//!
+//! [`Template`] is currently primarily used by the scene system, so you can
+//! see concrete applications of it in `zlim_scene`.
+//!
+//! Put simply, a scene is a sequence of templates, and the top-level templates
+//! usually produce values of a component / bundle type. Applying a scene works
+//! in three steps: first an empty entity is created, then [`Template::build_template`]
+//! produces the components into a `BundleWriter`, and finally all components are
+//! written into the entity in one go.
+//!
+//! Multi-entity scenes are a nesting of the pattern above; see `zlim_scene` for
+//! the concrete details.
 
 mod collections;
 mod context;
@@ -64,8 +72,8 @@ use crate::error::ZlimResult;
 
 /// A description of a value that is built with the context of the entity it belongs to.
 ///
-/// See the [module documentation](self) for what a template is and how the blanket implementation
-/// relates to [`IntoTemplate`].
+/// See the [module documentation](self) for what a template is and how the blanket
+/// implementation relates to [`IntoTemplate`].
 pub trait Template {
     /// The type of value this template produces.
     type Output;
@@ -138,6 +146,7 @@ pub trait Template {
 /// | *(none)* | the field type's own [`IntoTemplate`] |
 /// | `#[template(built_in)]` | the field type's [`BuiltInTemplate`] |
 /// | `#[template(SomeTemplate)]` | `Into<SomeTemplate>` for the field type |
+/// | `#[template(into = path)]` | Custom `Into::into` implementation |
 ///
 /// ## Custom Template
 ///
@@ -230,6 +239,11 @@ pub trait Template {
 /// //                        -> OptionTemplate<Option<Handle<Image>>> ❌️
 /// ```
 ///
+/// At present, we use [`SpecializeTemplate`] to constrain it, the nested un-specialized
+/// type cannot be annotated with `built_in`. The declaration is similar to :
+///
+/// `impl<T: IntoTemplate + SpecializeTemplate> BuiltInTemplate for Option<T> {}`.
+///
 /// For a type nested more deeply than that, name the target template explicitly and, when the
 /// conversion the derive would use does not produce it, name the function too with `into`:
 ///
@@ -268,8 +282,8 @@ pub trait IntoTemplate: Sized {
 /// Implementing this trait for a type says that its hand-written [`IntoTemplate`] produces a
 /// template other than the type itself — `X` is described by `XTemplate`, not by `X`. That is what
 /// a type which decomposes into fields does, and it is what makes the type usable as the element of
-/// a [`BuiltInTemplate`](collections::BuiltInTemplate) container: rewriting `Option<X>` into
-/// `OptionTemplate<XTemplate>` is only meaningful when `XTemplate` is not `X`.
+/// a [`BuiltInTemplate`] container: rewriting `Option<X>` into `OptionTemplate<XTemplate>` is only
+/// meaningful when `XTemplate` is not `X`.
 ///
 /// # 2. As the `Unpin` opt-out
 ///

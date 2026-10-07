@@ -1,5 +1,4 @@
-//! ECS system abstraction: the [`System`] trait, its [`SystemParam`] extractors,
-//! system construction via [`IntoSystem`], and the scheduler access model.
+//! ECS system abstraction
 //!
 //! # Systems
 //!

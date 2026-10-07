@@ -820,11 +820,13 @@ impl<'a> Serialize for HandleReference<'a> {
             HandleReference::Uuid(uuid) => {
                 use uuid::fmt::Urn;
                 let mut buffer = [0; Urn::LENGTH];
-                uuid.as_urn()
-                    .encode_lower(&mut buffer)
-                    .serialize(serializer)
+                let s = uuid.as_urn().encode_lower(&mut buffer);
+                serializer.serialize_str(s)
             }
-            HandleReference::Path(path) => AssetPath::stringify(path).serialize(serializer),
+            HandleReference::Path(path) => {
+                let s = AssetPath::stringify(path);
+                serializer.serialize_str(&s)
+            }
         }
     }
 }
@@ -863,6 +865,9 @@ impl<'de> Deserialize<'de> for HandleReference<'de> {
 }
 
 impl HandleReference<'_> {
+    /// Try parse a string to [`HandleReference`].
+    ///
+    /// See [`HandleReference`] document for format details.
     pub fn parse(s: &str) -> Result<HandleReference<'_>, String> {
         #[cold]
         #[inline(never)]
@@ -883,6 +888,10 @@ impl HandleReference<'_> {
             }
         }
     }
+}
+
+impl HandleReference<'_> {
+    // fn stringify() // use `ToString::to_string` instead.
 
     fn stringify_with_prefix(&self, prefix: &str) -> String {
         match self {
@@ -985,6 +994,14 @@ impl<'a> TypedHandleReference<'a> {
             reference: self.reference.clone_owned(),
         }
     }
+
+    /// Reborrows self with a smaller lifetime.
+    pub fn reborrow(&self) -> TypedHandleReference<'_> {
+        TypedHandleReference {
+            type_id: self.type_id,
+            reference: self.reference.reborrow(),
+        }
+    }
 }
 
 impl<'a> Serialize for TypedHandleReference<'a> {
@@ -999,9 +1016,8 @@ impl<'a> Serialize for TypedHandleReference<'a> {
         let Some(path) = get_type_path_by_type_id(id) else {
             return Err(Error::custom(format!("missing TypeDB for id `{id:?}`")));
         };
-        self.reference
-            .stringify_with_prefix(path)
-            .serialize(serializer)
+        let s = self.reference.stringify_with_prefix(path);
+        serializer.serialize_str(&s)
     }
 }
 
@@ -1062,3 +1078,36 @@ impl<'de> Deserialize<'de> for TypedHandleReference<'de> {
 }
 
 // -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::HandleReference;
+    use crate::path::AssetPath;
+    use uuid::Uuid;
+
+    #[test]
+    fn handle_reference_ron_roundtrip() {
+        // Uuid variant: serializes to the URN form and parses back to Uuid.
+        let uuid = Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap();
+        let uuid_ref = HandleReference::Uuid(uuid);
+
+        let serialized = ron::to_string(&uuid_ref).unwrap();
+        assert_eq!(
+            serialized,
+            "\"urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8\""
+        );
+
+        let deserialized: HandleReference<'_> = ron::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, uuid_ref);
+        assert!(matches!(deserialized, HandleReference::Uuid(u) if u == uuid));
+
+        // Path variant: serializes to the path string and parses back to Path.
+        let path = AssetPath::parse("http://example.png");
+        let path_ref = HandleReference::Path(path.clone_owned());
+
+        let serialized = ron::to_string(&path_ref).unwrap();
+        let deserialized: HandleReference<'_> = ron::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, path_ref);
+        assert!(matches!(deserialized, HandleReference::Path(_)));
+    }
+}

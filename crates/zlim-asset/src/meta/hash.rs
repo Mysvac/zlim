@@ -1,4 +1,4 @@
-use core::fmt::Display;
+use core::fmt::{Display, Formatter};
 
 use futures_lite::{AsyncRead, AsyncReadExt};
 use serde::de::Visitor;
@@ -20,68 +20,7 @@ use serde::{Deserialize, Serialize};
 pub struct AssetHash(pub [u8; 32]);
 
 // -----------------------------------------------------------------------------
-// Serialize & Deserialize
-
-impl Serialize for AssetHash {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let bytes: &[u8; 32] = &self.0;
-        let mut buffer: [u8; 64] = [0; 64];
-
-        for index in 0..32_usize {
-            buffer[index << 1] = b'A' + (bytes[index] & 0b1111);
-            buffer[(index << 1) + 1] = b'A' + (bytes[index] >> 4);
-        }
-
-        #[expect(unsafe_code, reason = "0x41..=0x50 are all valid UTF-8")]
-        serializer.serialize_str(unsafe { str::from_utf8_unchecked(&buffer) })
-    }
-}
-
-impl<'a> Deserialize<'a> for AssetHash {
-    #[inline]
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'a>,
-    {
-        struct AssetHashVisitor;
-
-        impl<'de> Visitor<'de> for AssetHashVisitor {
-            type Value = AssetHash;
-
-            fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
-                formatter.write_str("a hash string of length 64")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                if let Some(val) = v.as_bytes().as_array::<64>() {
-                    let mut buffer: [u8; 32] = [0; 32];
-
-                    for index in 0..32_usize {
-                        let l = val[index << 1].wrapping_sub(b'A');
-                        let r = (val[(index << 1) + 1].wrapping_sub(b'A')) << 4;
-                        buffer[index] = l | r;
-                    }
-
-                    Ok(AssetHash(buffer))
-                } else {
-                    // `invalid_length` already marked `cold`
-                    Err(serde::de::Error::invalid_length(v.len(), &self))
-                }
-            }
-        }
-
-        deserializer.deserialize_str(AssetHashVisitor)
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Normal
+// Encode & Decode
 
 impl AssetHash {
     /// The all-zero hash.
@@ -110,18 +49,106 @@ impl From<AssetHash> for [u8; 32] {
 }
 
 impl AssetHash {
-    /// Returns a [`Display`] adapter that renders the hash as its 64-character.
-    pub fn display(&self) -> impl Display {
-        let bytes: &[u8; 32] = &self.0;
-        let mut buffer: [u8; 64] = [0; 64];
-
-        for index in 0..32_usize {
+    #[inline(always)]
+    const fn encode<'b>(bytes: &[u8; 32], buffer: &'b mut [u8; 64]) -> &'b str {
+        let mut index: usize = 0;
+        while index < 32 {
             buffer[index << 1] = b'A' + (bytes[index] & 0b1111);
             buffer[(index << 1) + 1] = b'A' + (bytes[index] >> 4);
+            index += 1;
+        }
+        #[expect(unsafe_code, reason = "0x30..=0x3F are all valid UTF-8")]
+        unsafe {
+            str::from_utf8_unchecked(buffer)
+        }
+    }
+
+    #[inline(always)]
+    const fn decode(input: &[u8; 64], output: &mut [u8; 32]) {
+        let mut index: usize = 0;
+        while index < 32 {
+            let l = input[index << 1].wrapping_sub(b'A');
+            let r = (input[(index << 1) + 1].wrapping_sub(b'A')) << 4;
+            output[index] = l | r;
+            index += 1;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Normal
+
+impl Display for AssetHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let mut buffer: [u8; 64] = [0; 64];
+        f.write_str(AssetHash::encode(&self.0, &mut buffer))
+    }
+}
+
+impl AssetHash {
+    /// Serialize self to a String.
+    ///
+    /// See [`AssetHash`] document for details.
+    pub fn stringify(&self) -> String {
+        let mut buffer: [u8; 64] = [0; 64];
+        AssetHash::encode(&self.0, &mut buffer).to_owned()
+    }
+
+    /// Deserialize self from bytes.
+    ///
+    /// See [`AssetHash`] document for details.
+    pub fn parse(bytes: &[u8; 64]) -> Self {
+        let mut buffer = Self([0; 32]);
+        AssetHash::decode(bytes, &mut buffer.0);
+        buffer
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Serialize & Deserialize
+
+impl Serialize for AssetHash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut buffer: [u8; 64] = [0; 64];
+        let s = AssetHash::encode(&self.0, &mut buffer);
+        serializer.serialize_str(s)
+    }
+}
+
+impl<'a> Deserialize<'a> for AssetHash {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'a>,
+    {
+        struct AssetHashVisitor;
+
+        impl<'de> Visitor<'de> for AssetHashVisitor {
+            type Value = AssetHash;
+
+            fn expecting(&self, formatter: &mut Formatter) -> core::fmt::Result {
+                formatter.write_str("a hash string of length 64")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if let Some(val) = v.as_bytes().as_array::<64>() {
+                    let mut buffer: [u8; 32] = [0; 32];
+                    AssetHash::decode(val, &mut buffer);
+                    Ok(AssetHash(buffer))
+                } else {
+                    // `invalid_length` already marked `cold`
+                    Err(serde::de::Error::invalid_length(v.len(), &self))
+                }
+            }
         }
 
-        #[expect(unsafe_code, reason = "0x30..=0x3F are all valid UTF-8")]
-        return String::from(unsafe { str::from_utf8_unchecked(&buffer) });
+        deserializer.deserialize_str(AssetHashVisitor)
     }
 }
 
@@ -238,7 +265,7 @@ mod tests {
 
         for (bytes, pair) in cases {
             let hash = AssetHash(bytes);
-            let text = hash.display().to_string();
+            let text = hash.stringify();
 
             assert_eq!(text.len(), 64);
             assert_eq!(text, pair.repeat(32));
@@ -255,7 +282,7 @@ mod tests {
             (index as u8).wrapping_mul(37).wrapping_add(0x9E)
         }));
 
-        let displayed = hash.display().to_string();
+        let displayed = hash.stringify();
         let serialized = ron::to_string(&hash).expect("an AssetHash serializes");
 
         assert_eq!(displayed, encoded(&hash));
