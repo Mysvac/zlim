@@ -1030,7 +1030,7 @@ impl<'w> EntityCloner<'w> {
             let tree = &mut world.entities;
             let node = unsafe { tree.entities.get_unchecked_mut(index) };
             let parent = node.parent.map(|x| self.mapper.get_mapped(x));
-
+            // reparent without signal
             node.parent = parent;
 
             if let Some(p) = parent {

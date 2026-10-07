@@ -657,7 +657,7 @@ impl AssetSaver for RecordingSaver {
             has_server: context.server().is_some(),
             has_world: context.world().is_some(),
             incomplete: context.is_incomplete(),
-            path: context.path().to_string(),
+            path: context.path().stringify(),
         });
 
         writer

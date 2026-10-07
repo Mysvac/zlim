@@ -752,13 +752,17 @@ impl<T: Asset> IntoTemplate for Handle<T> {
 ///
 /// # Format:
 ///
-/// Uuid Handle: `urn:uuid:$uuid`.
-/// For example: `urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
+/// - Uuid Handle: `urn:uuid:$uuid`.</br>
+///   For example: `urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
 ///
-/// Strong Handle with Path: `$path`
-/// For example: `http://example.png`.
+/// - Strong Handle with Path: `$path`</br>
+///   For example: `http://example.png`.
 ///
-/// Strong Handle without Path: `urn:uuid:$default_uuid`.
+/// - Strong Handle without Path: `urn:uuid:$default_uuid`.</br>
+///   For example: `urn:uuid:ffffffff-ffff-ffff-0000-000000000000`.
+///
+/// Must be free of leading and trailing whitespace, or
+/// deserialization may fail or yield an unexpected asset path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandleReference<'a> {
     Uuid(Uuid),
@@ -810,13 +814,10 @@ impl<'a> Serialize for HandleReference<'a> {
                 use uuid::fmt::Urn;
                 let mut buffer = [0; Urn::LENGTH];
                 uuid.as_urn()
-                    .encode_lower(&mut buffer[5..])
+                    .encode_lower(&mut buffer)
                     .serialize(serializer)
             }
-            HandleReference::Path(path) => {
-                let s = AssetPath::to_string(path);
-                s.serialize(serializer)
-            }
+            HandleReference::Path(path) => AssetPath::stringify(path).serialize(serializer),
         }
     }
 }
@@ -890,7 +891,7 @@ impl HandleReference<'_> {
                 res
             }
             HandleReference::Path(path) => {
-                let s2 = AssetPath::to_string(path);
+                let s2 = AssetPath::stringify(path);
                 // TODO: This can reduce memory allocation once,
                 // but the code will become more cumbersome.
                 let mut res = String::with_capacity(s2.len() + 3 + prefix.len());
@@ -915,13 +916,19 @@ impl HandleReference<'_> {
 ///
 /// # Format:
 ///
-/// Uuid Handle: `[$type]|urn:uuid:$uuid`.
-/// For example: `[Image]|urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
+/// `[$type]|$asset`
 ///
-/// Strong Handle with Path: `[$type]|$path`
-/// For example: `[Image]|http://example.png`.
+/// - Uuid Handle: `[$type]|urn:uuid:$uuid`.</br>
+///   For example: `[Image]|urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
 ///
-/// Strong Handle without Path: `[$type]|urn:uuid:$default_uuid`.
+/// - Strong Handle with Path: `[$type]|$path`</br>
+///   For example: `[Image]|http://example.png`.
+///
+/// - Strong Handle without Path: `[$type]|urn:uuid:$default_uuid`.</br>
+///   For example: `[Image]|urn:uuid:ffffffff-ffff-ffff-0000-000000000000`.
+///
+/// Both `$type` and `$asset` must be free of leading and trailing whitespace,
+/// or deserialization may fail or yield an unexpected asset path.
 ///
 /// # TypeId & TypePath
 ///
@@ -996,36 +1003,54 @@ impl<'de> Deserialize<'de> for TypedHandleReference<'de> {
     where
         D: serde::Deserializer<'de>,
     {
-        use crate::asset::get_type_id_by_type_path;
-        let full_path = String::deserialize(deserializer)?;
-
         #[cold]
         #[inline(never)]
         fn invalid_erase_handle(s: &str) -> String {
             format!("invalid ErasedHandle, expect: `[$type]|$asset`, actual: `{s}`")
         }
 
-        let Some(s1) = full_path.strip_prefix('[') else {
-            let e = invalid_erase_handle(&full_path);
-            return Err(serde::de::Error::custom(e));
-        };
+        struct TypeReferenceVisitor;
 
-        let Some((ty, asset)) = s1.split_once("]|") else {
-            let e = invalid_erase_handle(&full_path);
-            return Err(serde::de::Error::custom(e));
-        };
+        impl<'de> Visitor<'de> for TypeReferenceVisitor {
+            type Value = TypedHandleReference<'de>;
 
-        let Some(type_id) = get_type_id_by_type_path(ty) else {
-            ::core::hint::cold_path();
-            let e = format!("missing Type for path `{ty}`");
-            return Err(serde::de::Error::custom(e));
-        };
+            fn expecting(&self, formatter: &mut Formatter) -> core::fmt::Result {
+                formatter.write_str("handle reference with type: `[$type]|$asset`")
+            }
 
-        let reference = HandleReference::parse(asset)
-            .map_err(serde::de::Error::custom)?
-            .into_owned();
+            fn visit_borrowed_str<E: serde::de::Error>(
+                self,
+                full_path: &'de str,
+            ) -> Result<Self::Value, E> {
+                use crate::asset::get_type_id_by_type_path;
 
-        Ok(TypedHandleReference { type_id, reference })
+                let Some(s1) = full_path.strip_prefix('[') else {
+                    let e = invalid_erase_handle(full_path);
+                    return Err(serde::de::Error::custom(e));
+                };
+
+                let Some((ty, asset)) = s1.split_once("]|") else {
+                    let e = invalid_erase_handle(full_path);
+                    return Err(serde::de::Error::custom(e));
+                };
+
+                let Some(type_id) = get_type_id_by_type_path(ty) else {
+                    ::core::hint::cold_path();
+                    let e = format!("missing Type for path `{ty}`");
+                    return Err(serde::de::Error::custom(e));
+                };
+                let reference = HandleReference::parse(asset).map_err(serde::de::Error::custom)?;
+
+                Ok(TypedHandleReference { type_id, reference })
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                self.visit_borrowed_str(v)
+                    .map(TypedHandleReference::into_owned)
+            }
+        }
+
+        deserializer.deserialize_str(TypeReferenceVisitor)
     }
 }
 

@@ -156,7 +156,6 @@ impl Entities {
 
 impl Entities {
     /// Reserves capacity for at least additional more elements to be inserted.
-    #[cold]
     #[inline(never)]
     fn reserve(&mut self, additional: usize) {
         self.entities.reserve(additional);
@@ -164,11 +163,22 @@ impl Entities {
         self.entities.resize_with(new_len, || DEFAULT_NODE);
     }
 
+    #[cold]
+    #[inline(never)]
+    fn reserve_placeholder() -> ! {
+        panic!("Try to reserve entities to placeholder index `i32::MAX")
+    }
+
     /// Check the capacity to ensure that the target slot exists.
     #[inline(always)]
     fn ensure_exist(&mut self, index: u32) {
         if self.entities.len() <= index as usize {
-            self.reserve(index as usize - self.entities.len() + 1);
+            ::core::hint::cold_path();
+            if index != u32::MAX {
+                self.reserve(index as usize - self.entities.len() + 1);
+            } else {
+                Self::reserve_placeholder();
+            }
         }
     }
 }
@@ -444,6 +454,9 @@ impl Entities {
     /// assert!(world.entities().check_spawnable(id).is_err());
     /// ```
     pub fn check_spawnable(&self, id: EntityId) -> Result<(), EntityError> {
+        // `PLACEHOLDER` always be `Error::Mismatch`
+        // if id == EntityId::PLACEHOLDER { return Err(..); }
+
         let info = self.entities.get(id.index as usize).unwrap_or(DEFAULT_REF);
 
         if info.location.is_some() {

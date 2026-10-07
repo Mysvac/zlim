@@ -578,7 +578,7 @@ fn dependencies_of(processed: &Dir, path: &str) -> Vec<String> {
         .expect("the run recorded its hashes")
         .process_dependencies
         .iter()
-        .map(|dependency| dependency.path.to_string())
+        .map(|dependency| dependency.path.stringify())
         .collect();
 
     dependencies.sort();
@@ -1294,7 +1294,7 @@ impl TransactionLog for RecordingLogWriter {
             self.entries
                 .lock()
                 .unwrap()
-                .push(LogEntry::ProcessingStarted(asset.to_string()));
+                .push(LogEntry::ProcessingStarted(asset.into()));
             Ok(())
         })
     }
@@ -1304,7 +1304,7 @@ impl TransactionLog for RecordingLogWriter {
             self.entries
                 .lock()
                 .unwrap()
-                .push(LogEntry::ProcessingFinished(asset.to_string()));
+                .push(LogEntry::ProcessingFinished(asset.into()));
             Ok(())
         })
     }

@@ -99,7 +99,7 @@ impl AssetMetaCheckMode {
                 if skipped_paths.is_empty() && skipped_prefixes.is_empty() {
                     return true;
                 }
-                let path = path.to_string();
+                let path = path.stringify();
                 if skipped_paths.contains(path.as_str()) {
                     return false;
                 }

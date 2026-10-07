@@ -446,7 +446,7 @@ impl AssetServer {
         if loader_name.is_empty() {
             let minimal = AssetConfigMinimal::from_bytes(&meta_bytes).map_err(|error| {
                 ::core::hint::cold_path();
-                let path = asset_path.to_string().into_boxed_str();
+                let path = asset_path.stringify().into_boxed_str();
                 AssetMetaParseError { path, error }
             })?;
 
@@ -508,7 +508,7 @@ impl AssetServer {
 
         let meta = loader.deserialize_meta(&meta_bytes).map_err(|e| {
             ::core::hint::cold_path();
-            let path = asset_path.to_string().into_boxed_str();
+            let path = asset_path.stringify().into_boxed_str();
             AssetMetaParseError { path, error: e }
         })?;
 

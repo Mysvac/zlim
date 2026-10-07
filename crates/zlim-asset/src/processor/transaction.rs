@@ -152,7 +152,7 @@ impl AssetProcessServer {
 /// A failure is logged and otherwise ignored: the entry is a hint to the next run, and the asset it
 /// belongs to is still reported on its own.
 async fn log_start(log: &mut dyn TransactionLog, path: &AssetPath<'static>) {
-    if let Err(error) = log.start(&path.to_string()).await {
+    if let Err(error) = log.start(&path.stringify()).await {
         log_transaction_error("start", path, error);
     }
 }
@@ -161,7 +161,7 @@ async fn log_start(log: &mut dyn TransactionLog, path: &AssetPath<'static>) {
 ///
 /// A failure is logged and otherwise ignored: the asset itself is still reported on its own.
 async fn log_finish(log: &mut dyn TransactionLog, path: &AssetPath<'static>) {
-    if let Err(error) = log.finish(&path.to_string()).await {
+    if let Err(error) = log.finish(&path.stringify()).await {
         log_transaction_error("finish", path, error);
     }
 }
@@ -177,7 +177,7 @@ async fn log_unrecoverable(log: &mut dyn TransactionLog) {
 }
 
 /// Reports that the `entry` half of `path`'s transaction could not be written.
+#[cold]
 fn log_transaction_error(entry: &str, path: &AssetPath<'static>, error: TransactionError) {
-    ::core::hint::cold_path();
     zlim_log::error!("Failed to write the `{entry}` transaction for '{path}': {error}");
 }

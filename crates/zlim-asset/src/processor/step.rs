@@ -218,7 +218,7 @@ impl AssetProcessServer {
         if !meta_bytes.is_empty() {
             let minimal = AssetConfigMinimal::from_bytes(meta_bytes).map_err(|error| {
                 ::core::hint::cold_path();
-                let path = path.to_string().into_boxed_str();
+                let path = path.stringify().into_boxed_str();
                 let error = AssetMetaParseError { path, error };
                 AssetProcessError::from(AssetError::from(error))
             })?;
@@ -245,7 +245,7 @@ impl AssetProcessServer {
 
                     let meta = found.deserialize_meta(meta_bytes).map_err(|error| {
                         ::core::hint::cold_path();
-                        let path = path.to_string().into_boxed_str();
+                        let path = path.stringify().into_boxed_str();
                         AssetProcessError::from(AssetMetaParseError { path, error })
                     })?;
 
@@ -289,7 +289,7 @@ impl AssetProcessServer {
 
                     let meta = loader.deserialize_meta(meta_bytes).map_err(|error| {
                         ::core::hint::cold_path();
-                        let path = path.to_string().into_boxed_str();
+                        let path = path.stringify().into_boxed_str();
                         AssetProcessError::from(AssetMetaParseError { path, error })
                     })?;
 

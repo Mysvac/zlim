@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use zlim_core::derive::Error;
 use zlim_reflect::Reflect;
 use zlim_reflect::derive::TypePath;
-use zlim_reflect::ops::Opaque;
 use zlim_utils::str::SmolStr;
 
 // -----------------------------------------------------------------------------
@@ -86,7 +85,7 @@ pub enum ParseAssetPathError {
 /// host platform uses (on Windows a `\` is a separator, elsewhere it is an ordinary character)
 /// and [`AssetPath::path`] returns it unchanged.
 ///
-/// The guarantee is on the *textual* form instead: on Windows [`AssetPath::to_string`] — and with
+/// The guarantee is on the *textual* form instead: on Windows [`AssetPath::stringify`] — and with
 /// it [`Debug`], [`Display`] and the [`Serialize`] impl — rewrites the host separator `\` to `/`,
 /// so a path that came from the host serializes to the same text on every platform and can be
 /// deserialized on another one. (A literal `\` inside a Unix path *name* is not portable and is
@@ -237,6 +236,11 @@ impl<'a> AssetPath<'a> {
     ///
     /// This will return a [`ParseAssetPathError`] if `asset_path` is in an invalid format.
     /// Note that some invalid formats are only checked in debug mode, for performance.
+    ///
+    /// Leading and trailing whitespace is **not** trimmed: whitespace is treated as
+    /// ordinary characters and becomes part of the parsed path. Callers are responsible
+    /// for calling `trim_ascii()` themselves when whitespace is not intended, otherwise
+    /// this may produce an unexpected path.
     pub fn try_parse(asset_path: &'a str) -> Result<AssetPath<'a>, ParseAssetPathError> {
         let (source, path, label) = Self::parse_internal(asset_path)?;
         Ok(AssetPath {
@@ -254,6 +258,11 @@ impl<'a> AssetPath<'a> {
     ///
     /// This will return a [`ParseAssetPathError`] if `asset_path` is in an invalid format.
     /// Note that some invalid formats are only checked in debug mode, for performance.
+    ///
+    /// Leading and trailing whitespace is **not** trimmed: whitespace is treated as
+    /// ordinary characters and becomes part of the parsed path. Callers are responsible
+    /// for calling `trim_ascii()` themselves when whitespace is not intended, otherwise
+    /// this may produce an unexpected path.
     pub fn try_parse_static(
         asset_path: &'static str,
     ) -> Result<AssetPath<'static>, ParseAssetPathError> {
@@ -279,6 +288,13 @@ impl<'a> AssetPath<'a> {
     /// Panics if the asset path is in an invalid format.
     ///
     /// Use [`AssetPath::try_parse`] instead for a fallible variant.
+    ///
+    /// # Whitespace
+    ///
+    /// Leading and trailing whitespace is **not** trimmed: whitespace is treated as
+    /// ordinary characters and becomes part of the parsed path. Callers are responsible
+    /// for calling `trim_ascii()` themselves when whitespace is not intended, otherwise
+    /// this may produce an unexpected path.
     #[inline]
     #[track_caller]
     pub fn parse(asset_path: &'a str) -> AssetPath<'a> {
@@ -302,6 +318,13 @@ impl<'a> AssetPath<'a> {
     /// Panics if the asset path is in an invalid format.
     ///
     /// Use [`AssetPath::try_parse_static`] instead for a fallible variant.
+    ///
+    /// # Whitespace
+    ///
+    /// Leading and trailing whitespace is **not** trimmed: whitespace is treated as
+    /// ordinary characters and becomes part of the parsed path. Callers are responsible
+    /// for calling `trim_ascii()` themselves when whitespace is not intended, otherwise
+    /// this may produce an unexpected path.
     #[inline]
     #[track_caller]
     pub fn parse_static(asset_path: &'static str) -> AssetPath<'static> {
@@ -730,11 +753,7 @@ impl<'a> AssetPath<'a> {
     /// On Windows the host separator `\` is rewritten to `/`, so a path produced by the host
     /// serializes to the same text on every platform (and this is therefore what [`Serialize`]
     /// writes). See the separator policy on [`AssetPath`].
-    #[expect(
-        clippy::inherent_to_string_shadow_display,
-        reason = "the inherent method is the documented entry point; format! / Display delegate to it"
-    )]
-    pub fn to_string(&self) -> String {
+    pub fn stringify(&self) -> String {
         use core::fmt::Write;
 
         let source: Option<&str> = self.source.as_deref();
@@ -781,13 +800,13 @@ impl<'a> AssetPath<'a> {
 
 impl<'a> Debug for AssetPath<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&self.to_string(), f)
+        Display::fmt(&self.stringify(), f)
     }
 }
 
 impl<'a> Display for AssetPath<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&self.to_string(), f)
+        Display::fmt(&self.stringify(), f)
     }
 }
 
@@ -797,7 +816,7 @@ impl<'a> Serialize for AssetPath<'a> {
     where
         S: serde::Serializer,
     {
-        self.to_string().serialize(serializer)
+        self.stringify().serialize(serializer)
     }
 }
 
@@ -836,7 +855,7 @@ impl<'de> Deserialize<'de> for AssetPath<'static> {
 // -----------------------------------------------------------------------------
 // Opaque
 
-impl Opaque for AssetPath<'static> {
+impl zlim_reflect::ops::Opaque for AssetPath<'static> {
     fn apply_str(&mut self, v: &str) -> Result<(), String> {
         match AssetPath::try_parse(v) {
             Ok(b) => {
@@ -848,7 +867,7 @@ impl Opaque for AssetPath<'static> {
     }
 
     fn stringify(&self) -> String {
-        AssetPath::to_string(self)
+        AssetPath::stringify(self)
     }
 }
 
@@ -859,6 +878,7 @@ impl Opaque for AssetPath<'static> {
 // `AssetPath<'static>` it is stored in requires that borrow to live for `'static`.
 impl From<&'static str> for AssetPath<'static> {
     #[inline]
+    #[track_caller]
     fn from(asset_path: &'static str) -> Self {
         AssetPath::parse_static(asset_path)
     }
@@ -866,6 +886,7 @@ impl From<&'static str> for AssetPath<'static> {
 
 impl<'a> From<&'a String> for AssetPath<'a> {
     #[inline]
+    #[track_caller]
     fn from(asset_path: &'a String) -> Self {
         AssetPath::parse(asset_path.as_str())
     }
@@ -873,6 +894,7 @@ impl<'a> From<&'a String> for AssetPath<'a> {
 
 impl From<String> for AssetPath<'static> {
     #[inline]
+    #[track_caller]
     fn from(asset_path: String) -> Self {
         AssetPath::parse(asset_path.as_str()).into_owned()
     }
@@ -930,14 +952,14 @@ impl<'a> From<AssetPath<'a>> for PathBuf {
 impl<'a> From<AssetPath<'a>> for String {
     #[inline]
     fn from(value: AssetPath<'a>) -> Self {
-        value.to_string()
+        AssetPath::stringify(&value)
     }
 }
 
 impl<'a> From<&AssetPath<'a>> for String {
     #[inline]
     fn from(value: &AssetPath<'a>) -> Self {
-        value.to_string()
+        AssetPath::stringify(value)
     }
 }
 
@@ -980,12 +1002,12 @@ impl<'a> AssetPath<'a> {
 /// literal an embedded asset is registered under, which may have been written on Windows) into the
 /// portable, `/`-separated form used by [`AssetPath`]'s textual representation. It is **not**
 /// required before parsing a string into an [`AssetPath`], because parsing keeps the host
-/// platform's representation and only [`AssetPath::to_string`] normalizes separators on output
+/// platform's representation and only [`AssetPath::stringify`] normalizes separators on output
 /// (see the separator policy on [`AssetPath`]).
 ///
 /// The rewrite is a pure ASCII byte substitution and therefore infallible. Callers that start
 /// from an [`OsStr`](std::ffi::OsStr) should do the lossy conversion first ([`Path::display`]
-/// / [`OsStr::to_string_lossy`]), which is also what [`AssetPath::to_string`] does; invalid bytes
+/// / [`OsStr::to_string_lossy`]), which is also what [`AssetPath::stringify`] does; invalid bytes
 /// then become `U+FFFD` as usual.
 ///
 /// [`OsStr::to_string_lossy`]: std::ffi::OsStr::to_string_lossy

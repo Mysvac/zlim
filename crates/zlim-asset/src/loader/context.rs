@@ -376,7 +376,7 @@ impl LoadContext<'_> {
 
             let minimal = ProcessedInfoMinimal::from_bytes(&meta_bytes).map_err(|error| {
                 ::core::hint::cold_path();
-                let path: Box<str> = path.to_string().into_boxed_str();
+                let path: Box<str> = path.stringify().into_boxed_str();
                 let err = AssetMetaParseError { path, error };
                 ReadAssetBytesError::AssetMetaParseError(err)
             })?;

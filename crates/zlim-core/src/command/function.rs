@@ -26,6 +26,16 @@ fn check_contains(tree: &Entities, id: EntityId) -> Result<(), ZlimError> {
     }
 }
 
+#[cold]
+#[inline(never)]
+fn try_free_id(world: &mut World, id: EntityId) {
+    if world.entities.check_spawnable(id).is_ok() {
+        // Retrieve reusable entity id.
+        let free = world.entities.free_slot(id.index());
+        world.allocator.free(free);
+    }
+}
+
 /// A [`Command`] that spawns an empty entity at a specific [`EntityId`].
 ///
 /// Returns an error if the target id is not spawnable (already in use
@@ -40,12 +50,7 @@ pub(super) fn spawn_empty_at(entity: EntityId, parent: Option<EntityId>) -> impl
         if let Some(p) = parent
             && let Err(e) = check_contains(&world.entities, p)
         {
-            ::core::hint::cold_path();
-            if world.entities.check_spawnable(entity).is_ok() {
-                // Retrieve reusable entity id.
-                let free = world.entities.free_slot(entity.index());
-                world.allocator.free(free);
-            }
+            try_free_id(world, entity);
             return Err(e);
         }
 
@@ -71,12 +76,7 @@ pub(super) fn spawn_at<B: Bundle>(
         if let Some(p) = parent
             && let Err(e) = check_contains(&world.entities, p)
         {
-            ::core::hint::cold_path();
-            if world.entities.check_spawnable(entity).is_ok() {
-                // Retrieve reusable entity id.
-                let free = world.entities.free_slot(entity.index());
-                world.allocator.free(free);
-            }
+            try_free_id(world, entity);
             return Err(e);
         }
 
