@@ -14,6 +14,7 @@ use crate::resource::Resources;
 use crate::tick::Tick;
 use crate::time::DelayedCommandQueues;
 use crate::utils::DebugCheckedUnwrap;
+use crate::world::World;
 
 /// A cache used to accelerate access to the time API.
 pub(crate) struct TimeCache {
@@ -23,6 +24,7 @@ pub(crate) struct TimeCache {
     pub fixed: &'static UnsafeCell<ResourceCell>,
     pub state: &'static UnsafeCell<ResourceCell>,
     pub snapshot: &'static UnsafeCell<ResourceCell>,
+    pub delayed: &'static UnsafeCell<ResourceCell>,
 }
 
 unsafe impl Sync for TimeCache {}
@@ -38,7 +40,7 @@ impl TimeCache {
         let fixed = UnsafeCell::new(ResourceCell::new(<Time<Fixed>>::REGISTER()));
         let state = UnsafeCell::new(ResourceCell::new(<TimeState>::REGISTER()));
         let snapshot = UnsafeCell::new(ResourceCell::new(<TimeSnapshot>::REGISTER()));
-        let _ = DelayedCommandQueues::REGISTER();
+        let delayed = UnsafeCell::new(ResourceCell::new(DelayedCommandQueues::REGISTER()));
         Self {
             time: Global::alloc_static(time),
             real: Global::alloc_static(real),
@@ -46,6 +48,7 @@ impl TimeCache {
             fixed: Global::alloc_static(fixed),
             state: Global::alloc_static(state),
             snapshot: Global::alloc_static(snapshot),
+            delayed: Global::alloc_static(delayed),
         }
     }
 
@@ -57,6 +60,7 @@ impl TimeCache {
         valid &= resources.insert(TypeId::of::<Time<Virtual>>(), self.virt);
         valid &= resources.insert(TypeId::of::<TimeState>(), self.state);
         valid &= resources.insert(TypeId::of::<TimeSnapshot>(), self.snapshot);
+        valid &= resources.insert(TypeId::of::<DelayedCommandQueues>(), self.delayed);
         assert!(valid);
     }
 }
@@ -131,4 +135,19 @@ impl TimeCache {
     impl_getter_mut!(virtual_time_mut, Time<Virtual>, virt);
     impl_getter_mut!(state_mut, TimeState, state);
     impl_getter_mut!(snapshot_mut, TimeSnapshot, snapshot);
+}
+
+impl World {
+    pub(crate) fn delayed_queue(&mut self) -> Option<ResMut<'_, DelayedCommandQueues>> {
+        let cell = unsafe { &mut *self.time_cache.delayed.get() };
+        debug_assert_eq!(
+            cell.database().type_id,
+            TypeId::of::<DelayedCommandQueues>()
+        );
+        unsafe {
+            let last_run = self.last_run();
+            let this_run = self.this_run_fast();
+            cell.get_mut(last_run, this_run).map(|x| x.into_resource())
+        }
+    }
 }

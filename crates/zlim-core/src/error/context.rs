@@ -6,7 +6,6 @@ use zlim_utils::debug::DebugName;
 
 use crate::job::JobId;
 use crate::system::SystemId;
-use crate::tick::Tick;
 
 /// Context for a [`ZlimError`] to aid in debugging.
 ///
@@ -15,9 +14,9 @@ use crate::tick::Tick;
 #[non_exhaustive]
 pub enum ErrorContext {
     /// An error originated from a job execution.
-    Job { id: JobId, tick: Tick },
+    Job { id: JobId },
     /// An error originated from an System.
-    System { id: SystemId, tick: Tick },
+    System { id: SystemId },
     /// An error originated from a command application.
     Command { name: DebugName },
 }

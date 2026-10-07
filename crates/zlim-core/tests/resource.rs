@@ -45,7 +45,6 @@ struct ReflectedRes {
 #[test]
 fn derive_reflect_flag() {
     let db = ResourceDB::of::<ReflectedRes>();
-    assert!(!db.serialize);
     assert!(db.type_db.is_some());
     assert!(db.reflect.is_some());
     assert!(core::ptr::eq(

@@ -238,12 +238,14 @@ pub(crate) fn apply_delayed_commands(world: &mut World) {
     let cell = world.cell();
     let world = unsafe { cell.data_mut() };
 
-    let Some(queues) = world.get_resource_mut::<DelayedCommandQueues>() else {
+    let Some(queues) = world.delayed_queue() else {
         return;
     };
     if queues.queues.is_empty() {
         return;
     }
+
+    ::core::hint::cold_path();
 
     #[cfg(feature = "trace")]
     let _span = zlim_log::info_span!("apply delayed commands").entered();
@@ -260,7 +262,6 @@ pub(crate) fn apply_delayed_commands(world: &mut World) {
     #[cfg(feature = "tracy")]
     let _tracy = SOURCE.begin();
 
-    ::core::hint::cold_path();
     let queues = queues.into_inner();
 
     // Do not directly use the values recorded in the change detection.
@@ -271,7 +272,9 @@ pub(crate) fn apply_delayed_commands(world: &mut World) {
 
     let world = unsafe { cell.data_mut() };
 
-    let elapsed = world.resource::<Time>().elapsed();
+    const MSG: &str = "If the `DelayedCommands` is used, the `Time` resource must exist.";
+
+    let elapsed = world.time().expect(MSG).elapsed();
 
     let mut commands = world.commands();
 

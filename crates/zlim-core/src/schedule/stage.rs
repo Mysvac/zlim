@@ -113,6 +113,40 @@ register_job!(StageEnd);
 // -----------------------------------------------------------------------------
 // ScheduleStage
 
+/// A stage in a [`Schedule`], used to divide execution into phases.
+///
+/// Each stage has a name, and jobs belonging to it are grouped under a shared
+/// group name so that begin/end markers can be distinguished per stage.
+///
+/// `()` is a special stage, and most jobs are inserted directly into it. It is
+/// anonymous and cannot be given an execution order relative to other stages.
+///
+/// # Example
+///
+/// ```ignore
+/// let run_fixed_main = world.schedule_entry(RunFixedMainLoop);
+///
+/// // Insert ScheduleStage
+/// run_fixed_main.insert_stage(FixedMainLoopStage::BeforeFixedMainLoop);
+/// run_fixed_main.insert_stage(FixedMainLoopStage::FixedMainLoop);
+/// run_fixed_main.insert_stage(FixedMainLoopStage::AfterFixedMainLoop);
+///
+/// // Config Stage order
+/// run_fixed_main.insert_order(&[
+///     // should we use weak_order instead ?
+///     // FixedMainLoopStage::BeforeFixedMainLoop.stage_begin(), // optional
+///     FixedMainLoopStage::BeforeFixedMainLoop.stage_end(),
+///     FixedMainLoopStage::FixedMainLoop.stage_begin(),
+///     FixedMainLoopStage::FixedMainLoop.stage_end(),
+///     FixedMainLoopStage::AfterFixedMainLoop.stage_begin(),
+///     // FixedMainLoopStage::AfterFixedMainLoop.stage_end(),    // optional
+/// ]);
+///
+/// // Insert Job to stage
+/// run_fixed_main.insert_job::<HelloWorld>(FixedMainLoop);
+/// ```
+///
+/// [`Schedule`]: crate::schedule::Schedule
 #[diagnostic::on_unimplemented(
     note = "consider annotating `{Self}` with `#[derive(ScheduleStage)]`"
 )]

@@ -554,15 +554,16 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
                 // no need to add `tracy` as it already be added in `Job::run_raw`.
                 if let Err(e) = job.run_raw(context.world) {
                     ::core::hint::cold_path();
-                    if !matches!(e, SystemError::None) {
-                        ::core::hint::cold_path();
-                        let id = job.id();
-                        let tick = job.last_run();
-                        let ctx = ErrorContext::Job { id, tick };
-                        (context.error_handler)(e.into(), ctx);
-                        return SystemResult::Error;
-                    }
-                    return SystemResult::Skip;
+                    let result = match e {
+                        SystemError::None => return SystemResult::Skip,
+                        SystemError::Runtime(_) => SystemResult::Error,
+                        _ => SystemResult::Skip,
+                    };
+                    ::core::hint::cold_path();
+                    let id = job.id();
+                    let ctx = ErrorContext::Job { id };
+                    (context.error_handler)(e.into(), ctx);
+                    return result;
                 }
                 SystemResult::Ok
             });

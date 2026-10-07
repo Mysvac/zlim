@@ -6,7 +6,6 @@ use std::collections::BTreeSet;
 
 use zlim_utils::hash::FixedState;
 
-use super::StringFmt;
 use crate::component::{ComponentDB, ComponentId};
 
 // -----------------------------------------------------------------------------
@@ -185,6 +184,6 @@ impl FilterParam {
         msg.push_str("Without: [");
         msg.push_str(&without);
         msg.push_str("] } ");
-        StringFmt(msg)
+        msg
     }
 }

@@ -6,13 +6,22 @@ use crate::world::World;
 
 /// The function pointers for [reflected] [resource].
 ///
-/// [reflected]: zlim_reflect::Reflect
+/// [reflected]: Reflect
 /// [resource]: Resource
 pub struct ReflectResource {
+    /// Returns a shared reference to the resource, if present.
     pub reflect: fn(&World) -> Option<&'_ dyn Reflect>,
+
+    /// Returns a `Ref` guard to the resource, if present.
     pub reflect_ref: fn(&World) -> Option<Ref<'_, dyn Reflect>>,
+
+    /// Returns a `Mut` guard to the resource, if present.
     pub reflect_mut: fn(&mut World) -> Option<Mut<'_, dyn Reflect>>,
+
+    /// Removes the resource from the world, returning it if it was present.
     pub remove: fn(&mut World) -> Option<Box<dyn Reflect>>,
+
+    /// Inserts the resource into the world.
     pub insert: fn(&mut World, Box<dyn Reflect>),
 }
 

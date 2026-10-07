@@ -4,7 +4,7 @@ use core::fmt::{Debug, Display, Formatter};
 
 use fixedbitset::FixedBitSet;
 
-use super::{BitSetFmt, StringFmt};
+use super::BitSetFmt;
 use crate::component::{ComponentDB, ComponentId};
 
 /// Component-level access summary for one logical query path.
@@ -330,8 +330,8 @@ impl ComponentAccess {
         }
 
         match self {
-            Self::EntityMut => StringFmt(String::from("EntityMut")),
-            Self::EntityRef => StringFmt(String::from("EntityRef")),
+            Self::EntityMut => String::from("EntityMut"),
+            Self::EntityRef => String::from("EntityRef"),
             Self::Components { reading, writing } => {
                 let mut msg = String::new();
                 msg.push_str("Components { ");
@@ -341,7 +341,7 @@ impl ComponentAccess {
                 msg.push_str("writing: [");
                 msg.push_str(&format_component(writing.ones()));
                 msg.push_str("] }");
-                StringFmt(msg)
+                msg
             }
         }
     }

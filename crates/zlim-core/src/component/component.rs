@@ -122,11 +122,10 @@ pub trait Component: Send + Sync + 'static + Sized {
 
     /// When `true`, this component contains no entity references, so entity
     /// remapping ([`map_entities`](Self::map_entities)) can be skipped when
-    /// the component is cloned into another world.
+    /// the component clone or build_template.
     ///
-    /// `#[derive(Component)]` sets this to `true` automatically unless the
-    /// type has `#[entities]` fields or a custom
-    /// `#[component(map_entities = ...)]` function.
+    /// `#[derive(Component)]` sets this to `true` automatically unless the type
+    /// has `#[entities]` fields or a custom `#[component(map_entities = ...)]` function.
     ///
     /// Defaults to `false` for manual implementations.
     const NO_ENTITY: bool = false;
@@ -142,61 +141,80 @@ pub trait Component: Send + Sync + 'static + Sized {
 
     /// The cloning strategy for this component.
     ///
-    /// `#[derive(Component)]` sets this to `clonable::<Self>()` by default;
-    /// `#[component(copy)]` selects `copyable::<Self>()`, and
-    /// `#[component(cloner = path::function)]` selects a custom cloner.
+    /// - `#[derive(Component)]` sets this to `clonable::<Self>()` by default;
+    /// - `#[component(copy)]` selects `copyable::<Self>()`;
+    /// - `#[component(cloner = path::function)]` selects a custom cloner.
     const CLONER: ComponentCloner;
 
     /// Hook invoked when the component is **first** added to an entity
-    /// (i.e. on entity spawn, or when a brand-new component type is
-    /// inserted).
+    /// (i.e. on entity spawn, or when a brand-new component type is inserted).
     ///
-    /// Called after the component has been written to storage, before
-    /// `on_insert`.
+    /// Called after the component has been written to storage, **before**
+    /// `on_insert`. It does not run when a component the entity already has is
+    /// inserted again — that is an `on_insert` alone.
     const ON_ADD: Option<ComponentHook> = None;
 
     /// Hook invoked when this component instance is created by cloning
     /// another (i.e. entity clone).
     ///
-    /// Called after entity cloning is complete, before `on_add` and
-    /// `on_insert`.
+    /// Called after entity cloning is complete, **before** `on_add` and `on_insert`.
     const ON_CLONE: Option<ComponentHook> = None;
 
     /// Hook invoked on every insertion, including updates to an entity that
-    /// already had this component type (i.e. entity spawn, clone, or
-    /// component insert).
+    /// already had this component type (i.e. entity spawn, clone, or component insert).
     ///
-    /// Called after component initialization is complete, after `on_add`.
+    /// Called after component initialization is complete, last of the three
+    /// initialization hooks: **after** `on_clone` and `on_add`.
+    ///
+    /// When the insertion replaces a value the entity already had, the old value
+    /// is discarded first, so this hook is preceded by `on_discard`.
     const ON_INSERT: Option<ComponentHook> = None;
 
     /// Hook invoked when the component is removed from an entity (i.e.
-    /// component remove or entity despawn).
+    /// component remove, entity clear, or entity despawn).
     ///
-    /// Called before the component is actually removed, after `on_discard`.
+    /// Called before the component is actually removed, **after** `on_despawn` and
+    /// **before** `on_discard`.
     const ON_REMOVE: Option<ComponentHook> = None;
 
     /// Hook invoked when the component value is discarded (i.e. component
-    /// replace, remove, or entity despawn).
+    /// replace, insert, remove, clear, or entity despawn).
     ///
-    /// Called before the component is actually removed, before `on_remove`
-    /// and `on_despawn`.
+    /// Called before the component is actually removed, **after** `on_despawn` and
+    /// `on_remove`.
     const ON_DISCARD: Option<ComponentHook> = None;
 
-    /// Hook invoked when the owning entity is despawned (i.e. entity
-    /// despawn).
+    /// Hook invoked when the owning entity is despawned (i.e. entity despawn).
     ///
-    /// Called before the component is actually dropped, after `on_discard`
-    /// and `on_remove`.
+    /// Called before the component is actually dropped, **before** `on_remove` and
+    /// `on_discard`.
     const ON_DESPAWN: Option<ComponentHook> = None;
 
     /// Remaps entity references inside this component.
     ///
     /// Called during entity cloning / scene instantiation, when the
     /// component's [`EntityId`] values must be translated to the target
-    /// world's entities. The default implementation is a no-op. Override
-    /// this if your component stores [`EntityId`] values that need
-    /// remapping; `#[derive(Component)]` generates it automatically from
-    /// `#[entities]` fields.
+    /// world's entities.
+    ///
+    /// The default implementation is a no-op. Override this if your component stores
+    /// [`EntityId`] values that need remapping; `#[derive(Component)]` generates it
+    /// automatically from `#[entities]` fields.
+    ///
+    /// ```no_run
+    /// use zlim_core::prelude::*;
+    ///
+    /// #[derive(Clone, Component)]
+    /// pub struct LinkSource {
+    ///     #[entities]
+    ///     target: EntityId,
+    /// }
+    ///
+    /// #[derive(Clone, Component)]
+    /// pub struct LinkTarget {
+    ///     #[entities]
+    ///     sources: Vec<EntityId>,
+    /// }
+    /// ```
     ///
     /// [`EntityId`]: crate::entity::EntityId
     #[inline(always)]

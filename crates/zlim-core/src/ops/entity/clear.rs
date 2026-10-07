@@ -87,18 +87,18 @@ impl EntityOwned<'_> {
                 .get_unchecked_mut(TableId::EMPTY)
         };
 
-        // --- trigger on_discard hooks ---
+        // --- trigger on_remove hooks ---
         {
-            for &(id, hook) in old_table.on_discard_hooks() {
+            for &(id, hook) in old_table.on_remove_hooks() {
                 let ctx = HookContext { id, entity, caller };
                 let deferred = unsafe { world_cell.deferred() };
                 hook(deferred, ctx);
             }
         }
 
-        // --- trigger on_remove hooks ---
+        // --- trigger on_discard hooks ---
         {
-            for &(id, hook) in old_table.on_remove_hooks() {
+            for &(id, hook) in old_table.on_discard_hooks() {
                 let ctx = HookContext { id, entity, caller };
                 let deferred = unsafe { world_cell.deferred() };
                 hook(deferred, ctx);

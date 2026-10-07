@@ -34,12 +34,4 @@ impl core::fmt::Debug for BitSetFmt<'_> {
     }
 }
 
-struct StringFmt(String);
-
-impl core::fmt::Display for StringFmt {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
 // -----------------------------------------------------------------------------

@@ -172,9 +172,9 @@ fn remove_moved(this: &mut EntityOwned, new_table_id: TableId, caller: DebugLoca
     let old_table = unsafe { world_cell.data_mut().tables.get_unchecked_mut(old_table_id) };
     let new_table = unsafe { world_cell.data_mut().tables.get_unchecked_mut(new_table_id) };
 
-    // --- trigger on_discard hooks ---
+    // --- trigger on_remove hooks ---
     {
-        for &(id, hook) in old_table.on_discard_hooks() {
+        for &(id, hook) in old_table.on_remove_hooks() {
             if !new_table.contains_component(id) {
                 let ctx = HookContext { id, entity, caller };
                 let deferred = unsafe { world_cell.deferred() };
@@ -183,9 +183,9 @@ fn remove_moved(this: &mut EntityOwned, new_table_id: TableId, caller: DebugLoca
         }
     }
 
-    // --- trigger on_remove hooks ---
+    // --- trigger on_discard hooks ---
     {
-        for &(id, hook) in old_table.on_remove_hooks() {
+        for &(id, hook) in old_table.on_discard_hooks() {
             if !new_table.contains_component(id) {
                 let ctx = HookContext { id, entity, caller };
                 let deferred = unsafe { world_cell.deferred() };

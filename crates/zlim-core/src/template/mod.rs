@@ -1,4 +1,4 @@
-//! The [`Template`] trait, and everything needed to build values with a world.
+//! The Template trait, and everything needed to build values with a world.
 //!
 //! A [`Template`] is something that, given the context of a spawn — the entity it is being applied
 //! to, its world, and the entity references of the scene it belongs to — produces a

@@ -67,7 +67,7 @@ pub fn register_base<R: Resource>() -> &'static ResourceDB {
         return db;
     }
 
-    register_impl::<R>(false, None, None)
+    register_impl::<R>(None, None)
 }
 
 /// Registers a [`Resource`] type `R` **with** reflection support.
@@ -89,7 +89,7 @@ pub fn register_reflect<R: Resource + TypeDatabase>() -> &'static ResourceDB {
     }
     let type_db = Some(TypeDB::of::<R>());
     let reflect = Some(ReflectResource::new::<R>());
-    register_impl::<R>(false, type_db, reflect)
+    register_impl::<R>(type_db, reflect)
 }
 
 #[cold]
@@ -102,7 +102,6 @@ pub fn register_reflect<R: Resource + TypeDatabase>() -> &'static ResourceDB {
 #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
 #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
 fn register_impl<R: Resource>(
-    serialize: bool,
     type_db: Option<&'static TypeDB>,
     reflect: Option<ReflectResource>,
 ) -> &'static ResourceDB {
@@ -117,7 +116,6 @@ fn register_impl<R: Resource>(
         type_id,
         layout: Layout::new::<R>(),
         dropper: Dropper::of::<R>(),
-        serialize,
         type_db,
         reflect: None,
         type_path: "",

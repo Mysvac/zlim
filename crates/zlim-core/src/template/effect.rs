@@ -36,8 +36,8 @@ pub trait TemplateEffect {
 
 /// A [`TemplateEffect`] that does nothing.
 ///
-/// This is the output of a template that acts through the context rather than through the entity's
-/// data — one that attaches an observer, for instance.
+/// This is the output of a template that acts through the context rather
+/// than through the entity's data — one that attaches an observer, for instance.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct EmptyTemplateEffect;
 

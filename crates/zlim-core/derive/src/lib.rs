@@ -24,8 +24,7 @@ mod utils;
 // -----------------------------------------------------------------------------
 // Derive macros
 
-/// Derive macro for `core::error::Error` with optional `Display` and
-/// `ZlimError` conversions.
+/// Derive macro for `core::error::Error` with optional `Display` and `ZlimError` conversions.
 ///
 /// # Generated impls
 ///
@@ -39,9 +38,8 @@ mod utils;
 /// # `#[error(…)]`
 ///
 /// The content inside `#[error(…)]` works like [`format!`]:
-/// field names are available directly, tuple fields need a leading
-/// underscore (`_0`, `_1`, …), and arbitrary expressions are
-/// supported as extra arguments.
+/// field names are available directly, tuple fields need a leading underscore
+/// (`_0`, `_1`, …), and arbitrary expressions are supported as extra arguments.
 ///
 /// ```ignore
 /// #[derive(Error)]
@@ -80,6 +78,19 @@ mod utils;
 ///     Config(String),
 /// }
 /// ```
+///
+/// # `#[zlim_error(severity)]`
+///
+/// Generate `Into<ZlimError>` implementation, with given `severity`.
+///
+/// ```ignore
+/// #[derive(Error)]
+/// #[error(transparent)]
+/// #[zlim_error(warning)]
+/// struct IoError(std::io::Error);
+/// ```
+///
+/// Available severity: "ignore" | "debug" | "info" | "warning" | "error" | "panic".
 ///
 /// # Enums — defaults and overrides
 ///
@@ -176,6 +187,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 ///
 /// This macro automatically implements the `Component` trait for your struct.
 ///
+/// ```ignore
+/// #[derive(Component, Clone)]
+/// struct Position { x: f32, t: f32 }
+/// ```
+///
 /// # Type Attributes (type-level, inside `#[component(...)]`)
 ///
 /// | Attribute | Description |
@@ -193,30 +209,6 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// | `serialize` | Register with serialization support (requires `reflect`). |
 /// | `summary_tick` | Enable summary tick to accelerate change query. |
 ///
-/// # Field attributes
-///
-/// - `#[entities]` — mark a field as containing entities; auto-generates
-///   `map_entities` and sets `NO_ENTITY = false`.  The field type must
-///   implement `MapEntities`.
-///
-/// ```ignore
-/// #[derive(Component, Clone)]
-/// struct Relationship {
-///     #[entities]
-///     target: EntityId,
-/// }
-/// ```
-///
-/// # `map_entities`
-///
-/// `map_entities = path::fn` delegates entity remapping to a user function
-/// with the signature `fn(&mut Self, &mut M) where M: EntityMapper`.  The
-/// generated `Component` impl forwards its `map_entities` call to that
-/// function and sets `NO_ENTITY = false`.
-///
-/// `map_entities` conflicts with `#[entities]` field annotations.
-///
-///
 /// # Cloner
 ///
 /// By default, uses `ComponentCloner::clonable::<Self>()`, which requires
@@ -230,36 +222,107 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 ///
 /// - `copy` and `cloner = …` are mutually exclusive.
 ///
+/// # `map_entities`
+///
+/// `map_entities = path::fn` delegates entity remapping to a user function
+/// with the signature `fn(&mut Self, &mut M) where M: EntityMapper`.  The
+/// generated `Component` impl forwards its `map_entities` call to that
+/// function and sets `NO_ENTITY = false`.
+///
+/// ```ignore
+/// #[derive(Component, Clone)]
+/// #[component(map_entities = map_entities)]
+/// struct Link { target: EntityId }
+///
+/// fn map_entities<M: EntitiyMapper>(this: &mut Position, mapper: &mut M) {
+///     this.target = mapper.get_mapped(this.target);
+/// }
+/// ```
+///
+/// `map_entities` conflicts with `#[entities]` field annotations.
+///
+/// # Hooks
+///
+/// A hook may be given as a path with `on_x = path::fn`, or as a bare `on_x`,
+/// which uses the associated function of the same name on the type itself. The
+/// attribute below could be written either way:
+///
+/// ```ignore
+/// #[derive(Component, Clone)]
+/// #[component(on_insert)]
+/// struct Health { value: f32 }
+///
+/// impl Health {
+///     fn on_insert(world: DeferredWorld, ctx: HookContext) { /* ... */ }
+/// }
+/// ```
+///
+/// See `ComponentHook` for the order the teardown hooks run in.
+///
+/// # Field attributes
+///
+/// `#[entities]` — mark a field as containing entities; auto-generates
+/// `map_entities` and sets `NO_ENTITY = false`.
+/// ```ignore
+/// #[derive(Component, Clone)]
+/// struct Relationship {
+///     #[entities]
+///     target: EntityId,
+/// }
+/// ```
+///
+/// The field type must implement `MapEntities`.
+///
 /// # Required components
 ///
 /// `#[require(A, B)]` declares components that must be present on any entity
-/// with this component.  They are stored in the `Component::REQUIRED`
-/// constant, auto-registered with this component, added to the entity's
-/// table on spawn/insert, and initialised with their [`Default`] values when
-/// not provided explicitly.
+/// with this component.
 ///
-/// Every required component must implement `Default`; transitive requirements
-/// are followed recursively.
+/// They are stored in the `Component::REQUIRED` constant, auto-registered with
+/// this component, added to the entity's table on spawn/insert, and initialised
+/// with their [`Default`] values when not provided explicitly.
 ///
 /// ```ignore
+/// #[derive(Component, Default, Clone)]
+/// struct GlobalTransform { /* ... */ }
+///
 /// #[derive(Component, Clone)]
 /// #[require(GlobalTransform)]
 /// struct Transform { /* ... */ }
 /// ```
 ///
-/// # Examples
+/// # Reflect
+///
+/// `#[component(reflect)]` enable reflect operation for a component:
 ///
 /// ```ignore
-/// #[derive(Component, Clone)]
-/// #[component(on_add = Self::on_add)]
-/// struct Health {
-///     value: u32,
-/// }
-///
-/// impl Health {
-///     fn on_add(world: DeferredWorld, ctx: HookContext) { /* … */ }
-/// }
+/// #[derive(Component, Clone, TypePath, Reflect)]
+/// #[component(reflect)]
+/// struct Location { /* ... */ }
 /// ```
+///
+/// # Serialize
+///
+/// `#[component(serialize)]` enable scene serialization for a component:
+///
+/// ```ignore
+/// #[derive(Default, Component, Clone, TypePath, Reflect)]
+/// #[component(reflect, serialize)]
+/// struct Location { /* ... */ }
+/// ```
+///
+/// Serialization relies on `Reflect`, so a component marked `serialize` must
+/// also be marked `reflect`.
+///
+/// Note that this serialization specifically refers to persistent storage for *scene*
+/// serialization. Even if a component does not implement `serialize`, it can still be
+/// reflectively serialized in other contexts as long as it implements `reflect`.
+///
+/// Scene serialization relies on `Template`, so marking a component `serialize`
+/// requires it to implement `IntoTemplate`. Simple types (`Default + Clone`) get
+/// a default implementation. For complex types — for example those containing
+/// entities or asset handles — it is recommended to use the `IntoTemplate` derive
+/// macro.
 #[proc_macro_derive(Component, attributes(component, entities, require))]
 pub fn derive_component(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -279,14 +342,12 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 /// # Examples
 ///
 /// ```ignore
-/// use zlim_core::prelude::*;
-///
 /// #[derive(Resource)]
-/// struct Player {
-///     name: String,
-///     health: u32,
-///     id: u64,
-/// }
+/// struct Logger { /* ... */ }
+///
+/// #[derive(TypePath, Reflect, Resource)]
+/// #[resource(reflect)]
+/// struct Time { /* ... */ }
 /// ```
 #[proc_macro_derive(Resource, attributes(resource))]
 pub fn derive_resource(input: TokenStream) -> TokenStream {
@@ -396,8 +457,7 @@ pub fn derive_system_param(input: TokenStream) -> TokenStream {
 /// # Field requirements
 ///
 /// Every field type must implement `QueryData`.  Mutable component access
-/// must use `Mut<'w, T>` — raw `&'w mut T` fields
-/// are rejected.
+/// must use `Mut<'w, T>` — raw `&'w mut T` fields are rejected.
 ///
 /// # `#[query_data(readonly)]`
 ///
@@ -474,18 +534,16 @@ pub fn derive_query_data(input: TokenStream) -> TokenStream {
 /// # Generated code
 ///
 /// For a function `test_system`, this macro generates a marker struct named
-/// by the `type` argument that derives `TypePath` and implements
-/// `JobLabel`:
+/// by the `type` argument that derives `TypePath` and implements `JobLabel`:
 ///
 /// - `name()` returns the marker's `TypePath` — the `name` string when
-///   given, otherwise `<Self as TypePath>::type_path()` (i.e.
-///   `module_path!()::TypeName`).
+///   given, otherwise `<Self as TypePath>::type_path()` (i.e. `module_path!()::TypeName`).
+///
 /// - `database()` constructs a `JobDB` whose `ctor` wraps the function
 ///   through `IntoJob`.
 ///
 /// Non-generic functions are additionally registered at program startup
-/// through `zlim_reg::submit!`, so their databases appear in
-/// `JobDB::collect`.
+/// through `zlim_reg::submit!`, so their databases appear in `JobDB::collect`.
 ///
 /// # Arguments
 ///
@@ -766,13 +824,8 @@ pub fn derive_schedule_stage(input: TokenStream) -> TokenStream {
 ///
 /// # Required Traits
 ///
-/// The target type must satisfy the `Message` bounds: `Send`, `Sync`,
-/// `TypePath`, and `'static`.  `TypePath` is usually obtained through
-/// `#[derive(TypePath)]`, so the recommended derive list is
-/// `#[derive(Message)]`.
-///
 /// For generic types the generated impl adds the
-/// `Self: Send + Sync + TypePath + 'static` where-bound.
+/// `Self: Send + Sync + 'static` where-bound.
 ///
 /// # Examples
 ///
@@ -793,12 +846,12 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 ///
 /// # Generated items
 ///
-/// A companion type named `<Type>Template` holds one template field per field of the type, each
-/// typed as the template of that field, and the derive associates the two with
-/// `impl IntoTemplate for <Type>`. The type itself is also made not `Unpin`, which keeps that
-/// association from overlapping with the blanket implementation that every `Clone + Default` type
-/// gets — which also means the three of `IntoTemplate`, `Default` and `Clone` cannot be derived
-/// together.
+/// A companion type named `<Type>Template` holds one template field per field of the type, each typed
+/// as the template of that field, and the derive associates the two with `impl IntoTemplate for <Type>`.
+///
+/// The type itself is also made not `Unpin`, which keeps that association from overlapping with
+/// the blanket implementation that every `Clone + Default` type gets — which also means the three
+/// of `IntoTemplate`, `Default` and `Clone` cannot be derived together.
 ///
 /// The companion template is the shape of the type it produces: a named struct, a tuple struct, a
 /// unit struct, or an enum whose variants are the variants of the type.
@@ -811,13 +864,17 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 /// | `#[template(SomeTemplate)]` | `SomeTemplate` | `Into<SomeTemplate>` for the field type |
 /// | `#[template(built_in)]` | `<FieldType as BuiltInTemplate>::Template` | the field type's `BuiltInTemplate` |
 ///
+/// A field that names its template explicitly — the middle row — needs a conversion into it,
+/// because the template is a different type: `impl From<FieldType> for SomeTemplate`, or the
+/// equivalent `Into`, or with custom conversion through `#[template(into = path)]`;
+///
+/// ## built_in template
+///
 /// `#[template(built_in)]` is what maps a container to the template of its element, so that an
 /// `Option<Handle<Image>>` field becomes an `OptionTemplate<HandleTemplate<Image>>` instead of an
 /// `Option<Handle<Image>>`.
 ///
-/// A field that names its template explicitly — the middle row — needs a conversion into it,
-/// because the template is a different type: `impl From<FieldType> for SomeTemplate`, or the
-/// equivalent `Into`.
+/// See `zlim_core::template` for details.
 ///
 /// ## `into = path`
 ///
@@ -842,12 +899,6 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 /// template still decide the *type* of the template field, and `into` only decides *how* the value
 /// gets there. A field that names its own conversion adds no bound, since making that function
 /// applicable is the user's to do.
-///
-/// # Describing an existing value
-///
-/// Besides the association, the derive implements `From<Type> for TypeTemplate`, which converts a
-/// value into the companion template by converting each field with the rule from the table above,
-/// and `IntoTemplate::into_template`, which is `From::from(self)`.
 ///
 /// # Enum attributes
 ///

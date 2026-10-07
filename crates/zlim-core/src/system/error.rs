@@ -93,10 +93,16 @@ pub enum SystemError {
     None,
     /// A runtime error propagated from within the system.
     ///
+    /// If this error is returned, we will assume that the System *has*
+    /// run, so the delay commands will still be applied (if needed).
+    ///
     /// Severity: Internal ZlimError
     #[error("System runtime error: {_0}")]
     Runtime(ZlimError),
     /// A failure while building one of the system's parameters.
+    ///
+    /// If this error is returned, we will assume that the System has
+    /// been skipped and not run, so we will not apply the delay command.
     ///
     /// Severity: Error (default)
     #[error("System param error: {_0}")]
@@ -132,6 +138,7 @@ impl From<SystemError> for ZlimError {
 
         let mut location = None;
 
+        // Try take internal Error, avoid deep nesting.
         if let SystemError::Runtime(e) = value {
             let dynerr = e.get();
             if dynerr.is::<SystemError>() {

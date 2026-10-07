@@ -158,7 +158,6 @@ impl TickArray {
         unsafe {
             let src = base_ptr.add(last);
             let dst = base_ptr.add(to);
-
             ptr::copy_nonoverlapping::<Tick>(src, dst, 1);
         }
     }

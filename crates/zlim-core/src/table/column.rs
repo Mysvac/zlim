@@ -512,7 +512,6 @@ impl Column {
                 self.changed.realloc(current, new);
             },
             None => unsafe {
-                ::core::hint::cold_path();
                 self.data.dealloc(current.get());
                 self.added.dealloc(current.get());
                 self.changed.dealloc(current.get());

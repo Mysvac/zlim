@@ -81,10 +81,6 @@ pub struct ResourceDB {
 
     // --------------------------------
     // Reflect
-    /// Does the resource need serialization.
-    ///
-    /// Unused, always false.
-    pub serialize: bool,
     /// Cached type database.
     pub type_db: Option<&'static TypeDB>,
     /// Reflect functions.

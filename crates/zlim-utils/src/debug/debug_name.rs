@@ -1,7 +1,5 @@
 use core::fmt::{Debug, Display, Formatter};
 
-const ANONYMOUS_NAME: &str = "_unknown_";
-
 // -----------------------------------------------------------------------------
 // DebugName
 
@@ -66,13 +64,13 @@ impl DebugName {
     ///
     /// ```ignore
     /// let anonymous = DebugName::anonymous();
-    /// assert_eq!(anonymous.to_string(), "_unknown_");
+    /// let x = anonymous.to_string(); // "_unknown_"
     /// ```
     #[inline(always)]
     pub const fn anonymous() -> Self {
         cfg_select! {
-            debug_assertions => Self { name: || { ANONYMOUS_NAME } },
-            feature = "debug" => Self { name: || { ANONYMOUS_NAME } },
+            debug_assertions => Self { name: || { "_unknown_" } },
+            feature = "debug" => Self { name: || { "_unknown_" } },
             _ => Self {},
         }
     }
@@ -141,7 +139,7 @@ impl Display for DebugName {
         cfg_select! {
             debug_assertions => debug_fmt((self.name)(), f),
             feature = "debug" => debug_fmt((self.name)(), f),
-            _ => f.write_str(ANONYMOUS_NAME),
+            _ => f.write_str("_unknown_(requires `debug` feature)"),
         }
     }
 }
@@ -153,7 +151,7 @@ impl Debug for DebugName {
         cfg_select! {
             debug_assertions => debug_fmt((self.name)(), f),
             feature = "debug" => debug_fmt((self.name)(), f),
-            _ => f.write_str(ANONYMOUS_NAME),
+            _ => f.write_str("_unknown_(requires `debug` feature)"),
         }
     }
 }

@@ -6,7 +6,7 @@ use fixedbitset::FixedBitSet;
 use zlim_log as log;
 use zlim_utils::hash::{HashMap, NoopState};
 
-use super::{ComponentAccess, FilterParam, StringFmt};
+use super::{ComponentAccess, FilterParam};
 use crate::resource::{ResourceDB, ResourceId};
 use crate::system::access::BitSetFmt;
 
@@ -538,8 +538,8 @@ impl AccessTable {
         }
 
         match self {
-            Self::WorldMut => StringFmt(String::from("WorldMut")),
-            Self::WorldRef => StringFmt(String::from("WorldRef")),
+            Self::WorldMut => String::from("WorldMut"),
+            Self::WorldRef => String::from("WorldRef"),
             Self::Normal {
                 res_reading,
                 res_writing,
@@ -564,7 +564,7 @@ impl AccessTable {
 
                 msg.push_str("\n\t},");
                 msg.push_str("\n}\n");
-                StringFmt(msg)
+                msg
             }
         }
     }

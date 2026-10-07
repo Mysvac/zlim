@@ -12,13 +12,28 @@ use crate::ops::{EntityMut, EntityOwned, EntityRef};
 /// [reflected]: Reflect
 /// [component]: Component
 pub struct ReflectComponent {
+    /// Returns a shared reference to the component, if present.
     pub reflect: fn(EntityRef<'_>) -> Option<&'_ dyn Reflect>,
+
+    /// Returns a `Ref` guard to the component, if present.
     pub reflect_ref: fn(EntityRef<'_>) -> Option<Ref<'_, dyn Reflect>>,
+
+    /// Returns a `Mut` guard to the component, if present.
     pub reflect_mut: fn(EntityMut<'_>) -> Option<Mut<'_, dyn Reflect>>,
+
+    /// Maps all entity references contained in the component through the mapper.
     pub map_entities: fn(&mut dyn Reflect, &mut dyn EntityMapper),
+
+    /// Removes the component from the entity.
     pub remove: fn(&mut EntityOwned) -> Result<(), EntityError>,
+
+    /// Inserts the component into the entity.
     pub insert: fn(&mut EntityOwned, Box<dyn Reflect>) -> Result<(), EntityError>,
+
+    /// Modifies the component in place, inserting it if it does not exist.
     pub modify: fn(&mut EntityOwned, Box<dyn Reflect>) -> Result<(), EntityError>,
+
+    /// Modifies the component in place, returning `Ok(false)` if it does not exist.
     pub try_modify: fn(&mut EntityOwned, &dyn Reflect) -> Result<bool, ZlimError>,
 }
 

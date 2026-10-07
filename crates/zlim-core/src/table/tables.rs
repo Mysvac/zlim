@@ -64,9 +64,9 @@ impl Debug for Tables {
 impl Tables {
     pub(crate) fn new() -> Self {
         let mut val = Self {
-            tables: Vec::with_capacity(32),
-            mapper: HashMap::with_capacity(32),
-            bundles: Vec::with_capacity(32),
+            tables: Vec::with_capacity(8),
+            mapper: HashMap::with_capacity(8),
+            bundles: Vec::with_capacity(8),
         };
 
         val.tables.push(Table::empty());

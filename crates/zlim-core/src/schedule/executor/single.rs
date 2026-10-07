@@ -125,18 +125,19 @@ impl JobExecutor for SingleThreadedExecutor {
             let func = AssertUnwindSafe(|| unsafe {
                 #[cfg(feature = "trace")]
                 let _span = spans[index].enter();
-
+                // no need to add `tracy` as it already be added in `Job::run_raw`.
                 if let Err(e) = job.run_raw(world.cell()) {
-                    core::hint::cold_path();
-                    if matches!(e, SystemError::None) {
-                        core::hint::cold_path();
-                        let tick = job.last_run();
-                        let id = job.id();
-                        let ctx = ErrorContext::Job { id, tick };
-                        handler(e.into(), ctx);
-                        return SystemResult::Error;
-                    }
-                    return SystemResult::Skip;
+                    ::core::hint::cold_path();
+                    let result = match e {
+                        SystemError::None => return SystemResult::Skip,
+                        SystemError::Runtime(_) => SystemResult::Error,
+                        _ => SystemResult::Skip,
+                    };
+                    ::core::hint::cold_path();
+                    let id = job.id();
+                    let ctx = ErrorContext::Job { id };
+                    handler(e.into(), ctx);
+                    return result;
                 }
                 SystemResult::Ok
             });

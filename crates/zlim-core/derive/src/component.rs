@@ -35,16 +35,25 @@ struct ComponentAttrs {
     required: Vec<Type>,
 }
 
-/// Parses a hook path from a nested meta, supporting both
-/// `on_add = path::function` and `on_add(path::function)` syntax.
+/// Parses a hook from a nested meta.
+///
+/// Two forms are accepted:
+///
+/// - `on_add = path::function` — the hook is the given function;
+/// - a bare `on_add` — the hook is the associated function of the same name on
+///   the type itself, i.e. `Self::on_add`.
 fn parse_hook_expr(meta: &syn::meta::ParseNestedMeta) -> syn::Result<syn::ExprPath> {
     if meta.input.peek(syn::Token![=]) {
         let value = meta.value()?;
         value.parse::<syn::ExprPath>()
     } else {
-        let content;
-        syn::parenthesized!(content in meta.input);
-        content.parse::<syn::ExprPath>()
+        // A bare hook name: the hook lives on the type as `Self::<name>`.
+        let name = meta
+            .path
+            .get_ident()
+            .ok_or_else(|| meta.error("expected a hook name"))?;
+
+        Ok(syn::parse_quote!(Self::#name))
     }
 }
 
@@ -392,6 +401,12 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     // --- required components -------------------------------------------
     let required_tokens = if attrs.required.is_empty() {
         TokenStream::new()
+    } else if attrs.required.len() == 1 {
+        let required_ = crate::path::required_(&zlim_core);
+        let ts = &attrs.required[0];
+        quote! {
+            const REQUIRED: ::core::option::Option<#required_> = ::core::option::Option::Some(#required_::from::<#ts>());
+        }
     } else if attrs.required.len() > 8 * 12 {
         ::core::hint::cold_path();
         const MSG: &str = "too many required components";

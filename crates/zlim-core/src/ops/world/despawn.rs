@@ -130,11 +130,15 @@ pub(crate) fn despawn_internal(this: &mut World, entity: EntityId, caller: Debug
 
         buf.push(entity);
 
-        // Trigger all hook and events
+        // Trigger all hook and events.
+        //
+        // The order is despawn, then remove, then discard: `on_despawn` is what a component wants
+        // to run while the entity as a whole is going away, and it runs first so that it sees the
+        // component — and the entity's other components — before anything is torn down.
         let mut world: DeferredWorld = unsafe { world.deferred() };
-        table.trigger_on_discard(entity, world.reborrow(), caller);
-        table.trigger_on_remove(entity, world.reborrow(), caller);
         table.trigger_on_despawn(entity, world.reborrow(), caller);
+        table.trigger_on_remove(entity, world.reborrow(), caller);
+        table.trigger_on_discard(entity, world.reborrow(), caller);
     }
 
     let mut entities = FastVec::<EntityId, 1>::new();
