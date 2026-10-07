@@ -12,9 +12,7 @@
 //!   everything that needs none.
 //! - [`ReflectSerialize`] / [`ReflectDeserialize`] — the per-type hooks that do the work. Both are
 //!   implemented for every `Reflect` type that is `Serialize` / `Deserialize`, which covers what
-//!   [`TypeDB`](crate::db::TypeDB) registers through
-//!   [`insert_serializer`](crate::db::TypeDB::insert_serializer) and
-//!   [`insert_deserializer`](crate::db::TypeDB::insert_deserializer).
+//!   [`TypeDB`] registers through [`insert_serializer`] and [`insert_deserializer`].
 //! - [`EMPTY_CONTEXT`] — the shared empty context, for the entry points that take none.
 //!
 //! # Which way the context flows
@@ -42,6 +40,10 @@
 //!     }
 //! }
 //! ```
+//!
+//! [`TypeDB`]: crate::db::TypeDB
+//! [`insert_serializer`]: crate::db::TypeDB::insert_serializer
+//! [`insert_deserializer`]: crate::db::TypeDB::insert_deserializer
 
 use core::any::Any;
 use core::any::TypeId;
@@ -73,7 +75,7 @@ use crate::Reflect;
 /// unsafe impl ReflectContext for Registry {}
 ///
 /// fn takes_context(ctx: &dyn ReflectContext) {
-///     assert_eq!(ctx.get::<Registry>().map(|registry| registry.0), Some(7));
+///     assert_eq!(ctx.get::<Registry>().map(|r| r.0), Some(7));
 ///     assert!(ctx.get::<String>().is_none());
 /// }
 ///

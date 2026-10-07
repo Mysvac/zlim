@@ -341,29 +341,20 @@ macro_rules! span_help {
         let fn_ty: &'static str = ::core::any::type_name::<S>();
         let len: usize = <str>::len(fn_ty);
         if len > 3 {
-            // `3` -> `::S`, optional, usually can be optimized by compiler
+            // `3` -> `::S`
             &fn_ty[..len - 3]
         } else {
             fn_ty
         }
     }};
-    (@new, $name:expr, $func:expr, true) => {
+    (@new, $name:expr, $func:expr) => {
         $crate::Span::new($name, $func, ::core::file!(), ::core::line!(), 0, 0)
     };
-    (@new, $name:expr, $func:expr, false) => {
-        $crate::Span::new($name, $func, "", 0, 0, 0)
-    };
-    (@builder_0, $func:expr, true) => {
+    (@builder_0, $func:expr) => {
         $crate::SpanBuilder::location($func, ::core::file!(), ::core::line!())
     };
-    (@builder_0, $func:expr, false) => {
-        $crate::SpanBuilder::new($func)
-    };
-    (@builder_1, $name:expr, $func:expr, true) => {
+    (@builder_1, $name:expr, $func:expr) => {
         $crate::SpanBuilder::location($func, ::core::file!(), ::core::line!()).with_name($name)
-    };
-    (@builder_1, $name:expr, $func:expr, false) => {
-        $crate::SpanBuilder::new($func).with_name($name)
     };
 }
 
@@ -376,40 +367,20 @@ macro_rules! span_help {
     (@func) => {
         ""
     };
-    (@new, $name:expr, $func:expr, true) => {{
+    (@new, $name:expr, $func:expr) => {{
         if cfg!(false) {
             let _ = $name;
             let _ = $func;
         }
         $crate::Span::__no_tracy()
     }};
-    (@new, $name:expr, $func:expr, false) => {{
-        if cfg!(false) {
-            let _ = $name;
-            let _ = $func;
-        }
-        $crate::Span::__no_tracy()
-    }};
-    (@builder_0, $func:expr, true) => {{
+    (@builder_0, $func:expr) => {{
         if cfg!(false) {
             let _ = $func;
         }
         $crate::SpanBuilder::empty()
     }};
-    (@builder_0, $func:expr, false) => {{
-        if cfg!(false) {
-            let _ = $func;
-        }
-        $crate::SpanBuilder::empty()
-    }};
-    (@builder_1, $name:expr, $func:expr, true) => {{
-        if cfg!(false) {
-            let _ = $name;
-            let _ = $func;
-        }
-        $crate::SpanBuilder::empty()
-    }};
-    (@builder_1, $name:expr, $func:expr, false) => {{
+    (@builder_1, $name:expr, $func:expr) => {{
         if cfg!(false) {
             let _ = $name;
             let _ = $func;
@@ -421,44 +392,82 @@ macro_rules! span_help {
 /// Starts a span at the call site.
 ///
 /// The span is described from the call site itself: the enclosing function is parsed out of a type
-/// that the macro declares, and the file and the line come from `file!()` and `line!()`. The
+/// that the macro declares, and the file and the line come from `file!()` and `line!()`. Those two
+/// are what places the span in the profiler's source view, so they are always reported. The
 /// accepted forms are:
 ///
 /// - `span!()` reports the enclosing function as both the function and the name of the span.
 /// - `span!(name)` uses `name` as the name of the span.
 /// - `span!(function = func)` and `span!(function = func, name)` report `func` instead of the
 ///   enclosing function.
-/// - `span!(file = false, ...)` reports neither the file nor the line, which keeps the span out of
-///   the source view of the profiler. This is the one argument that combines with the others, in
-///   either order.
 ///
 /// The macro calls [`Span::new`], so the span allocates its source location on the heap. A location
 /// that is entered over and over should be described once with a [`SpanSource`] instead.
+///
+/// # Examples
+///
+/// The enclosing function is both the function and the name of the span:
+///
+/// ```
+/// let span = zlim_tracy::span!();
+/// # let _ = span;
+/// ```
+///
+/// A name of your own, with the enclosing function still the function:
+///
+/// ```
+/// let span = zlim_tracy::span!("loading");
+/// # let _ = span;
+/// ```
+///
+/// A function of your own, for a span that stands for work done elsewhere:
+///
+/// ```
+/// let span = zlim_tracy::span!(function = "decode");
+/// # let _ = span;
+/// ```
+///
+/// And both:
+///
+/// ```
+/// let span = zlim_tracy::span!(function = "decode", "loading");
+/// # let _ = span;
+/// ```
+///
+/// A span is a guard: it measures until it is dropped, so binding it to `_span` in a block is what
+/// scopes the measurement.
+///
+/// ```
+/// {
+///     let _span = zlim_tracy::span!("outer");
+///     // ... the outer work ...
+/// }
+/// ```
+///
+/// Every form reports the file and the line of the call site, so no form has to be told where it is.
+/// A name that is only known at runtime goes through [`span_builder!`](crate::span_builder) instead,
+/// which takes the name later:
+///
+/// ```
+/// fn start(name: &str) {
+///     let _span = zlim_tracy::span_builder!().with_name(name).build();
+/// }
+///
+/// start("loading");
+/// ```
 #[macro_export]
 macro_rules! span {
     () => {{
-        $crate::span_help!(@new, "", $crate::span_help!(@func), true)
+        $crate::span_help!(@new, "", $crate::span_help!(@func))
     }};
-    (file = false, $(,)?) => {
-        $crate::span_help!(@new, "", $crate::span_help!(@func), false)
-    };
     (function = $func:expr $(,)?) => {
-        $crate::span_help!(@new, "", $func, true)
-    };
-    (file = false, function = $func:expr $(,)?) => {
-        $crate::span_help!(@new, "", $func, false)
-    };
-    (file = false, function = $func:expr, $name:expr $(,)?) => {
-        $crate::span_help!(@new, $name, $func, false)
-    };
-    (file = false, $name:expr $(,)?) => {
-        $crate::span_help!(@new, $name, $crate::span_help!(@func), false)
+        $crate::span_help!(@new, "", $func)
     };
     (function = $func:expr, $name:expr $(,)?) => {
-        $crate::span_help!(@new, $name, $func, true)
+        $crate::span_help!(@new, $name, $func)
     };
     ($name:expr $(,)?) => {
-        $crate::span_help!(@new, $name, $crate::span_help!(@func), true)
+        $crate::span_help!(@new, $name, $crate::span_help!(@func))
     };
 }
 
@@ -469,26 +478,20 @@ macro_rules! span {
 /// runtime — does not have to repeat them by hand:
 ///
 /// ```
-/// let span = zlim_tracy::span_builder!()
+/// let span = zlim_tracy::span_builder!() // `function + file + file`
 ///     .with_name("loading")
 ///     .with_color(0x00FF00)
 ///     .build();
 /// ```
 ///
-/// The accepted forms are:
-///
-/// - `span_builder!()` reports the enclosing function, the file and the line.
-/// - `span_builder!(file = false)` reports the enclosing function only.
+/// There are no arguments: the location is always the call site's.
 ///
 /// The name is set with [`SpanBuilder::with_name`], and the span is started with
 /// [`SpanBuilder::build`].
 #[macro_export]
 macro_rules! span_builder {
     () => {
-        $crate::span_help!(@builder_0, $crate::span_help!(@func), true)
-    };
-    (file = false $(,)?) => {
-        $crate::span_help!(@builder_0, $crate::span_help!(@func), false)
+        $crate::span_help!(@builder_0, $crate::span_help!(@func))
     };
 }
 
@@ -601,21 +604,20 @@ impl SpanSource {
         }
 
         #[cfg(feature = "tracy")]
-        fn alloc_or_empty(mut s: String) -> &'static CStr {
-            if s.is_empty() {
-                return c"";
-            }
-
-            if s.as_bytes().last().copied() != Some(b'\0') {
-                s.push('\0');
-            }
-
-            let bytes = zlim_utils::mem::Global::alloc_str(&s).as_bytes();
-            CStr::from_bytes_until_nul(bytes).expect("the last char is nul")
-        }
-
-        #[cfg(feature = "tracy")]
         {
+            fn alloc_or_empty(mut s: String) -> &'static CStr {
+                if s.is_empty() {
+                    return c"";
+                }
+
+                if s.as_bytes().last().copied() != Some(b'\0') {
+                    s.push('\0');
+                }
+
+                let bytes = zlim_utils::mem::Global::alloc_str(&s).as_bytes();
+                CStr::from_bytes_until_nul(bytes).expect("the last char is nul")
+            }
+
             let name = alloc_or_empty(name);
             let func = alloc_or_empty(func);
             Self::new(name, func, file, line, color).leak()

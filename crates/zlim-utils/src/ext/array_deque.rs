@@ -320,6 +320,8 @@ impl<T, const N: usize> ArrayDeque<T, N> {
     #[must_use]
     #[inline(always)]
     pub const fn new() -> Self {
+        // Do not use `const { assert! }`, which may cause unexpected
+        // compile-time panic (from unreachable code).
         assert! {
             const { N != 0 && N <= (usize::MAX >> 2) },
             "the capacity of ArrayDeque cannot be `0` or exceed `usize::MAX / 4`",

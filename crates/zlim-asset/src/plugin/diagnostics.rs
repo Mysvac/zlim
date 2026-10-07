@@ -17,7 +17,7 @@ impl Plugin for AssetDiagnosticsPlugin {
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
             zlim_log::info!(
-                "`DiagnosticsPlugin` was added as a dependency af `AssetDiagnosticsPlugin`"
+                "`DiagnosticsPlugin` was added as a dependency of `AssetDiagnosticsPlugin`"
             );
         }
 

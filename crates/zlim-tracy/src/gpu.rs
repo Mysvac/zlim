@@ -676,10 +676,7 @@ impl SpanSource {
 /// let span = gpu_span_builder!().with_name("my_work").build(&context).unwrap();
 /// ```
 ///
-/// The accepted forms are:
-///
-/// - `gpu_span_builder!()` reports the enclosing function, the file and the line.
-/// - `gpu_span_builder!(file = false)` reports the enclosing function only.
+/// There are no arguments: the location is always the call site's.
 ///
 /// The name is set with [`GpuSpanBuilder::with_name`], and the span is started with
 /// [`GpuSpanBuilder::build`], which is given the context to report the span to.
@@ -691,8 +688,5 @@ macro_rules! gpu_span_builder {
             ::core::file!(),
             ::core::line!(),
         )
-    };
-    (file = false $(,)?) => {
-        $crate::GpuSpanBuilder::new($crate::span_help!(@func))
     };
 }

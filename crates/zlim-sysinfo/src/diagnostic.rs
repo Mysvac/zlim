@@ -289,7 +289,7 @@ mod normal_impls {
             if !app.contains_plugin::<DiagnosticsPlugin>() {
                 app.add_plugins(DiagnosticsPlugin);
                 zlim_log::info!(
-                    "`DiagnosticsPlugin` was added as a dependency af `SystemInfoDiagnosticsPlugin`"
+                    "`DiagnosticsPlugin` was added as a dependency of `SystemInfoDiagnosticsPlugin`"
                 );
             }
             MainSchedulePlugin::apply_before::<Self>(app);

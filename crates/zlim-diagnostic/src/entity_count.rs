@@ -132,13 +132,13 @@ impl Plugin for EntityCountDiagnosticsPlugin {
         if !app.contains_plugin::<EntityCountPlugin>() {
             app.add_plugins(EntityCountPlugin);
             zlim_log::info!(
-                "`EntityCountPlugin` was added as a dependency af `EntityCountDiagnosticsPlugin`"
+                "`EntityCountPlugin` was added as a dependency of `EntityCountDiagnosticsPlugin`"
             );
         }
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
             zlim_log::info!(
-                "`DiagnosticsPlugin` was added as a dependency af `EntityCountDiagnosticsPlugin`"
+                "`DiagnosticsPlugin` was added as a dependency of `EntityCountDiagnosticsPlugin`"
             );
         }
         MainSchedulePlugin::apply_before::<Self>(app);

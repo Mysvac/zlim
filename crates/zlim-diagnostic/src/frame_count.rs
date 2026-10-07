@@ -151,13 +151,13 @@ impl Plugin for FrameCountDiagnosticsPlugin {
         if !app.contains_plugin::<FrameCountPlugin>() {
             app.add_plugins(FrameCountPlugin);
             zlim_log::info!(
-                "`FrameCountPlugin` was added as a dependency af `FrameCountDiagnosticsPlugin`"
+                "`FrameCountPlugin` was added as a dependency of `FrameCountDiagnosticsPlugin`"
             );
         }
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
             zlim_log::info!(
-                "`DiagnosticsPlugin` was added as a dependency af `FrameCountDiagnosticsPlugin`"
+                "`DiagnosticsPlugin` was added as a dependency of `FrameCountDiagnosticsPlugin`"
             );
         }
 

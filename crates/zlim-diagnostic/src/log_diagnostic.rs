@@ -190,7 +190,7 @@ impl Plugin for LogDiagnosticsPlugin {
         if !app.contains_plugin::<DiagnosticsPlugin>() {
             app.add_plugins(DiagnosticsPlugin);
             zlim_log::info!(
-                "`DiagnosticsPlugin` was added as a dependency af `LogDiagnosticsPlugin`"
+                "`DiagnosticsPlugin` was added as a dependency of `LogDiagnosticsPlugin`"
             );
         }
         MainSchedulePlugin::apply_before::<Self>(app);
