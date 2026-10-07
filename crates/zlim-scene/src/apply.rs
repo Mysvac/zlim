@@ -153,7 +153,7 @@ fn place<'a>(
     source: Source<'a>,
     world: &mut World,
     references: &mut EntityReferences,
-    entities: &mut EntityMap<EntityId>,
+    raw_mapper: &mut EntityMap<EntityId>,
     spawned: &mut Spawned,
     plan: &mut Vec<Planned<'a>>,
 ) {
@@ -171,10 +171,10 @@ fn place<'a>(
             references.set(*reference, entity);
         }
 
-        // The id the document gives this entity is bound here, for the same reason the names are: a
-        // component of one entity may point at another that the document declares later.
+        // The id the document gives this entity is bound here, for the same reason the names are:
+        // a component of one entity may point at another that the document declares later.
         if let EntityTemplate::Entity(id) = scene.id() {
-            entities.set_mapped(id, entity);
+            raw_mapper.set_mapped(id, entity);
         }
     }
 
@@ -202,7 +202,7 @@ fn place<'a>(
             child_source,
             world,
             references,
-            entities,
+            raw_mapper,
             spawned,
             plan,
         );
@@ -217,7 +217,7 @@ fn fill(
     plan: &[Planned<'_>],
     entity: &mut EntityOwned<'_>,
     references: &mut EntityReferences,
-    entities: &mut EntityMap<EntityId>,
+    raw_mapper: &mut EntityMap<EntityId>,
     scratch: &mut BundleScratch,
 ) -> ZlimResult<()> {
     for planned in plan {
@@ -228,7 +228,7 @@ fn fill(
 
             {
                 let mut writer = scratch.writer();
-                let mut context = TemplateContext::new(&mut owned, references, entities);
+                let mut context = TemplateContext::new(&mut owned, references, raw_mapper);
 
                 for layer in &planned.layers {
                     let scene = layer.source.get();
@@ -268,7 +268,7 @@ fn fill(
             let parent = match parent {
                 EntityTemplate::None => None,
                 parent => {
-                    let mut context = TemplateContext::new(&mut owned, references, entities);
+                    let mut context = TemplateContext::new(&mut owned, references, raw_mapper);
                     Some(parent.build_template(&mut context)?)
                 }
             };
@@ -276,12 +276,11 @@ fn fill(
             // An entity this application created has no place in the tree that the rest of the world
             // has seen, so its move needs no signal; one that already existed has, so it does.
             if planned.created {
-                owned
-                    .reparent_without_signal(parent)
-                    .map_err(ZlimError::error)?;
+                owned.reparent_without_signal(parent)
             } else {
-                owned.reparent(parent).map_err(ZlimError::error)?;
+                owned.reparent(parent)
             }
+            .map_err(ZlimError::error)?;
 
             Ok(())
         });
@@ -321,7 +320,7 @@ impl ResolvedScene {
         // The name scope and the id map belong to this application alone: nothing outside reads
         // them, so a failure leaves the world as the only thing to put back.
         let mut references = EntityReferences::new();
-        let mut entities = EntityMap::new();
+        let mut raw_mapper = EntityMap::new();
         let mut scratch = BundleScratch::new();
         let start = spawned.len();
 
@@ -335,14 +334,21 @@ impl ResolvedScene {
                 Source::Own(self),
                 world,
                 &mut references,
-                &mut entities,
+                &mut raw_mapper,
                 spawned,
                 &mut plan,
             )
         });
 
         // --- 3 & 4: the components, then the parent edges ---
-        fill(&plan, entity, &mut references, &mut entities, &mut scratch).inspect_err(move |_| {
+        fill(
+            &plan,
+            entity,
+            &mut references,
+            &mut raw_mapper,
+            &mut scratch,
+        )
+        .inspect_err(move |_| {
             ::core::hint::cold_path();
             entity.world_scope(|world| {
                 for &id in spawned[start..].iter().rev() {
@@ -397,8 +403,8 @@ impl ResolvedScene {
     pub fn apply(&self, entity: &mut EntityOwned<'_>) -> ZlimResult<()> {
         let mut spawned = Vec::with_capacity(self.children().len());
 
-        // The entity is the caller's, and it is still holding it: only what the application spawns
-        // under it is recorded, so a failure leaves the root alone.
+        // The entity is the caller's, and it is still holding it: only what the
+        // application spawns under it is recorded, so a failure leaves the root alone.
         self.apply_internal(entity, &mut spawned, false)
     }
 
@@ -415,8 +421,8 @@ impl ResolvedScene {
         let id = world.try_spawn_empty(parent)?.id();
         let mut spawned = Vec::with_capacity(1 + self.children().len());
 
-        // The handle is released before the application runs: a failed application drops this entity
-        // with the rest, and a handle that outlived it would point at a slot that is gone.
+        // The handle is released before the application runs: a failed application drops this
+        // entity with the rest, and a handle that outlived it would point at a slot that is gone.
         let mut entity = world.entity_owned(id);
         self.apply_internal(&mut entity, &mut spawned, true)?;
 
@@ -448,14 +454,14 @@ impl ResolvedScene {
         // that is what lets one root point at a name or an id another declares. A failure drops them
         // with the entities they were bound to.
         let mut references = EntityReferences::new();
-        let mut entities = EntityMap::new();
+        let mut raw_mapper = EntityMap::new();
         let mut scratch = BundleScratch::new();
         let mut plan = Vec::new();
         let mut idents = Vec::with_capacity(scenes.len());
         let mut ranges = Vec::with_capacity(scenes.len());
 
-        let hint = scenes.iter().map(|scene| 1 + scene.children().len()).sum();
-        let mut spawned = Spawned::with_capacity(hint);
+        let hint: usize = scenes.iter().map(|scene| scene.children().len()).sum();
+        let mut spawned = Spawned::with_capacity(hint + scenes.len());
 
         // Placing first is what lets one root of the list point at another: the ids and names of the
         // whole list are bound before any of them is built, in either order.
@@ -472,7 +478,7 @@ impl ResolvedScene {
                     Source::Own(scene),
                     world,
                     &mut references,
-                    &mut entities,
+                    &mut raw_mapper,
                     &mut spawned,
                     &mut plan,
                 )
@@ -487,10 +493,10 @@ impl ResolvedScene {
                     &plan[range.clone()],
                     &mut entity,
                     &mut references,
-                    &mut entities,
+                    &mut raw_mapper,
                     &mut scratch,
                 ),
-                Err(error) => Err(error.into()),
+                Err(error) => Err(ZlimError::from(error)),
             };
 
             if let Err(error) = result {

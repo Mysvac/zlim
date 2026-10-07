@@ -752,13 +752,13 @@ impl<T: Asset> IntoTemplate for Handle<T> {
 ///
 /// # Format:
 ///
-/// - Uuid Handle: `urn:uuid:$uuid`.</br>
+/// - Uuid Handle: `urn:uuid:$uuid`.<br/>
 ///   For example: `urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
 ///
-/// - Strong Handle with Path: `$path`</br>
+/// - Strong Handle with Path: `$path`<br/>
 ///   For example: `http://example.png`.
 ///
-/// - Strong Handle without Path: `urn:uuid:$default_uuid`.</br>
+/// - Strong Handle without Path: `urn:uuid:$default_uuid`.<br/>
 ///   For example: `urn:uuid:ffffffff-ffff-ffff-0000-000000000000`.
 ///
 /// Must be free of leading and trailing whitespace, or
@@ -918,13 +918,13 @@ impl HandleReference<'_> {
 ///
 /// `[$type]|$asset`
 ///
-/// - Uuid Handle: `[$type]|urn:uuid:$uuid`.</br>
+/// - Uuid Handle: `[$type]|urn:uuid:$uuid`.<br/>
 ///   For example: `[Image]|urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
 ///
-/// - Strong Handle with Path: `[$type]|$path`</br>
+/// - Strong Handle with Path: `[$type]|$path`<br/>
 ///   For example: `[Image]|http://example.png`.
 ///
-/// - Strong Handle without Path: `[$type]|urn:uuid:$default_uuid`.</br>
+/// - Strong Handle without Path: `[$type]|urn:uuid:$default_uuid`.<br/>
 ///   For example: `[Image]|urn:uuid:ffffffff-ffff-ffff-0000-000000000000`.
 ///
 /// Both `$type` and `$asset` must be free of leading and trailing whitespace,

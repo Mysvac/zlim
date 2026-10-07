@@ -37,7 +37,7 @@ where
     fn build_template(&self, context: &mut TemplateContext) -> ZlimResult<Self::Output> {
         let mut value = T::clone(&self.0);
         if !T::NO_ENTITY {
-            Component::map_entities(&mut value, context.entity_mapper);
+            value.map_entities(&mut context.entity_mapper());
         }
         Ok(value)
     }

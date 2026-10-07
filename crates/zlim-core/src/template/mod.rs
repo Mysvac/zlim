@@ -46,8 +46,8 @@ mod tuple;
 mod value;
 
 pub use collections::{BuiltInTemplate, OptionTemplate, VecTemplate};
-pub use context::TemplateContext;
 pub use context::{EntityReference, EntityReferences};
+pub use context::{TemplateContext, TemplateEntityMapper};
 pub use effect::{EmptyTemplateEffect, TemplateEffect};
 pub use entity::EntityTemplate;
 pub use erased::ErasedTemplate;

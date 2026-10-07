@@ -6,7 +6,7 @@ use zlim_utils::hash::HashMap;
 use zlim_utils::hash::NoopState;
 
 use crate::borrow::{Res, ResMut};
-use crate::entity::{EntityId, EntityMap, EntityMapper};
+use crate::entity::{Entities, EntityId, EntityMap, EntityMapper};
 use crate::error::{ZlimError, ZlimResult};
 use crate::ops::EntityOwned;
 use crate::resource::Resource;
@@ -164,6 +164,37 @@ impl Debug for EntityReferences {
 // -----------------------------------------------------------------------------
 // TemplateContext
 
+/// A mapper for template entities that additionally checks whether the mapped
+/// entity actually exists.
+///
+/// Unlike a plain entity map, [`TemplateEntityMapper::get_mapped`] verifies the
+/// mapped entity against the world: if it does not exist, [`EntityId::PLACEHOLDER`]
+/// is returned instead.
+///
+/// [`TemplateEntityMapper::get_mapped`]: EntityMapper::get_mapped
+pub struct TemplateEntityMapper<'a> {
+    entities: &'a Entities,
+    raw_mapper: &'a mut EntityMap<EntityId>,
+}
+
+impl EntityMapper for TemplateEntityMapper<'_> {
+    fn get_mapped(&mut self, source: EntityId) -> EntityId {
+        let r = self.raw_mapper.get_mapped(source);
+        if self.entities.contains(r) {
+            r
+        } else {
+            EntityId::PLACEHOLDER
+        }
+    }
+
+    fn set_mapped(&mut self, source: EntityId, target: EntityId) {
+        self.raw_mapper.set_mapped(source, target);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TemplateContext
+
 /// The context a [`Template`](super::Template) is built with.
 ///
 /// It holds the entity the template is being applied to, the entity references of the scene it
@@ -185,7 +216,7 @@ pub struct TemplateContext<'a, 'w> {
     pub references: &'a mut EntityReferences,
 
     /// The entities the scene describes, keyed by the id they carry in its document.
-    pub entity_mapper: &'a mut EntityMap<EntityId>,
+    pub raw_mapper: &'a mut EntityMap<EntityId>,
 }
 
 impl<'a, 'w> TemplateContext<'a, 'w> {
@@ -194,12 +225,12 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
     pub fn new(
         entity: &'a mut EntityOwned<'w>,
         references: &'a mut EntityReferences,
-        entity_mapper: &'a mut EntityMap<EntityId>,
+        raw_mapper: &'a mut EntityMap<EntityId>,
     ) -> Self {
         Self {
             entity,
             references,
-            entity_mapper,
+            raw_mapper,
         }
     }
 
@@ -228,13 +259,20 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
         }
     }
 
-    /// Returns the entity that the given document id stands for in this application.
+    /// Returns the [`TemplateEntityMapper`].
     ///
-    /// An id the scene does not declare is returned unchanged, so a template that was built in Rust
-    /// rather than read from a document keeps naming whatever entity its id already names.
+    /// An id that has not been registered is returned unchanged, so a template that
+    /// was built in Rust rather than read from a document keeps naming whatever entity
+    /// its id already names.
+    ///
+    /// After mapping, the resulting entity is checked for existence in the scene's
+    /// world: if it does not exist, it is replaced with [`EntityId::PLACEHOLDER`].
     #[inline]
-    pub fn map_entity(&mut self, id: EntityId) -> EntityId {
-        self.entity_mapper.get_mapped(id)
+    pub fn entity_mapper(&mut self) -> TemplateEntityMapper<'_> {
+        TemplateEntityMapper {
+            entities: &self.entity.world().entities,
+            raw_mapper: self.raw_mapper,
+        }
     }
 
     /// Gets read-only access to the world that the current template belongs to.
