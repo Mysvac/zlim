@@ -4,7 +4,8 @@ use core::panic::AssertUnwindSafe;
 
 use futures_lite::future::pending;
 
-use super::{raw_block_on, MainExecutor, LocalExecutor};
+use super::main_executor::MainExecutor;
+use super::{raw_block_on, LocalExecutor};
 
 /// Fake main thread.
 ///

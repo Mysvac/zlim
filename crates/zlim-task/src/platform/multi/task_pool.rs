@@ -18,7 +18,8 @@ use async_task::Task;
 
 use super::fake_main::main_thread_id;
 use super::executors::PoolExecutor;
-use super::{LocalExecutor, MainExecutor, raw_block_on};
+use super::main_executor::MainExecutor;
+use super::{LocalExecutor, raw_block_on};
 
 // -----------------------------------------------------------------------------
 // OnDrop

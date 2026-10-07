@@ -1,4 +1,5 @@
-use super::{LocalExecutor, MainExecutor};
+use super::LocalExecutor;
+use main_executor::MainExecutor;
 
 // -----------------------------------------------------------------------------
 // task_pool
@@ -8,6 +9,7 @@ mod task_pool;
 mod executors;
 mod fake_main;
 mod local_deque;
+mod main_executor;
 
 pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
 

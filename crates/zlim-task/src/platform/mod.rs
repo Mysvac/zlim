@@ -1,9 +1,9 @@
 // -----------------------------------------------------------------------------
-// LocalExecutor & MainExecutor
+// LocalExecutor
 
 mod common;
 
-use common::{LocalExecutor, MainExecutor};
+use common::LocalExecutor;
 
 // -----------------------------------------------------------------------------
 // TaskPool Implementaions

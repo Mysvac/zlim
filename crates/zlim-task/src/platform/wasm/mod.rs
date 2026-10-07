@@ -1,4 +1,4 @@
-use super::{LocalExecutor, MainExecutor};
+use super::LocalExecutor;
 
 // -----------------------------------------------------------------------------
 // task_pool
@@ -11,12 +11,12 @@ pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
 // tick_local
 
 /// Drives local tasks to completion.
-/// 
-/// This function continuously ticks executors in a loop
-/// until all queued tasks have been processed.
-/// 
-/// For single threaded mode, this function drives both
-/// `LocalExecutor` and `MainExecutor`.
+///
+/// This function continuously ticks the executor in a loop until all queued tasks have
+/// been processed.
+///
+/// There is no main-thread executor on WASM: every task, including one submitted with
+/// `spawn_to_main`, belongs to the thread-local `LocalExecutor`.
 ///
 /// # Example
 ///
@@ -28,13 +28,7 @@ pub use task_pool::{TaskPool, TaskPoolBuilder, Scope};
 /// zlim_task::run_local(); // drive the task to completion
 /// ```
 pub fn run_local() {
-    let mut has_task: bool = true;
-
-    while has_task {
-        has_task = false;
-        has_task |= MainExecutor::try_tick();
-        has_task |= LocalExecutor::try_tick();
-    }
+    while LocalExecutor::try_tick() {}
 }
 
 // -----------------------------------------------------------------------------
@@ -91,8 +85,8 @@ where
 
 /// Directly marks the current thread as the main thread.
 ///
-/// In single-threaded mode this is a no-op: there is no separate
-/// `MainExecutor` driver thread to avoid, so there is nothing to set up.
+/// On WASM this is a no-op: every thread runs its own tasks, so there is no
+/// main-thread executor to designate a driver for.
 /// (The `zlim_main` macro inserts this call for API parity.)
 #[inline(always)]
 pub fn designate_main_thread() {

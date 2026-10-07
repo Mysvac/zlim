@@ -12,7 +12,15 @@ Provides a unified task pool interface so the implementation can be extended lat
 
 ## Architecture
 
+| Function | Multi-threaded | Single-threaded / WASM |
+|----------|----------------|------------------------|
+| `spawn` | pool executor — any worker thread | current thread's executor |
+| `spawn_local` | current thread's executor | current thread's executor |
+| `spawn_to_main` | main-thread executor | current thread's executor |
+
 ```text
+        multi-threaded mode
+
 ┌─────────────────────────────────────────────────────┐
 │                      TaskPool                       │
 │  ┌──────────┐  ┌─────────────┐  ┌────────────────┐  │
@@ -22,9 +30,10 @@ Provides a unified task pool interface so the implementation can be extended lat
 │       │              │                  │           │
 │  ┌────▼──────┐ ┌─────▼───────┐  ┌───────▼────────┐  │
 │  │ Pool Exec.│ │ Local Exec. │  │  Main Executor │  │
-│  │           │ │   Executor  │  │                │  │
-│  │ working-  │ │             │  │                │  │
-│  │ stealing  │ │ Background  │  │   Background   │  │
+│  │           │ │             │  │                │  │
+│  │ working-  │ │             │  │  driven by the │  │
+│  │ stealing  │ │ current     │  │  main thread   │  │
+│  │           │ │ thread      │  │  only          │  │
 │  └───────────┘ └─────────────┘  └────────────────┘  │
 │  ┌──────────────────────────────────────────────┐   │
 │  │                  Scope                       │   │
@@ -35,19 +44,31 @@ Provides a unified task pool interface so the implementation can be extended lat
 └─────────────────────────────────────────────────────┘
 ```
 
+Single-threaded and WASM mode have no pool executor and no main-thread executor: all three
+functions are `spawn_local`, and a task runs on the thread that queued it, when that thread
+drives its executor.
+
+`MainExecutor` is deliberately global and is only compiled into multi-threaded mode. It has
+exactly one driver there — the fake main thread, or the thread marked by [`designate_main_thread`].
+Nothing else may drive it, which is why the other two modes route `spawn_to_main` to the local
+executor instead: a scope's bookkeeping lives on its own thread's stack, so a task must not be
+taken by another thread.
+
 - Semantically, `spawn` creates a task that may be executed by any thread, so it requires `Send`.
 
-- Semantically, `spawn_local` creates a task that runs on the current thread, so it does not require `Send`.
+- `spawn_local` creates a task that runs on the current thread, so it does not require `Send`.
 
-- `spawn_to_main` sends a task to the main thread for execution, which also requires `Send`.
+- `spawn_to_main` sends a task to the main thread for execution, which also requires `Send`. Where
+  there is no separate main thread, it is `spawn_local` — the `Send` bound remains only for interface compatibility.
 
-These only differ meaningfully in multi-threaded mode; in single-threaded mode all three are equivalent.
-
-All of the functions above return a `Task<T>` handle that implements `Future`. You can cancel a task with `Task::cancel`, or drop the handle with `Task::detach` without affecting the task's execution (the task's return value is discarded).
+All of the functions above return a `Task<T>` handle that implements `Future`. You can cancel a task
+with `Task::cancel`, or drop the handle with `Task::detach` without affecting the task's execution
+(the task's return value is discarded).
 
 The Scope family likewise has three functions: `spawn`, `spawn_local`, and `spawn_to_main`.
 
-The difference is that a Scope blocks until all of its inner tasks complete, then directly returns `Vec<T>`. Therefore, a scope can create tasks that hold non-`'static` parameters.
+The difference is that a Scope blocks until all of its inner tasks complete, then directly returns `Vec<T>`.
+Therefore, a scope can create tasks that hold non-`'static` parameters.
 
 ## Modes
 
@@ -55,19 +76,33 @@ The difference is that a Scope blocks until all of its inner tasks complete, the
 
 The default mode on Windows, Linux, macOS, and Android.
 
-Worker threads use a work-stealing scheduler: each worker has its own local queue, plus a shared global queue, and steals work across threads through random selection.
+Worker threads use a work-stealing scheduler: each worker has its own local queue, plus a shared global queue,
+and steals work across threads through random selection.
 
 Each pool creates at least one worker thread; idle workers sleep and are woken one by one to avoid thundering herds.
 
-By default, multi-threaded mode starts a **fake main thread** on the first `TaskPool` creation: it owns the global `MainExecutor` and keeps polling it until the process exits. Therefore, regardless of which thread created the task pool, `spawn_to_main` tasks are always routed to this thread, which ensures consistent behavior in test environments.
+By default, multi-threaded mode starts a **fake main thread** on the first `TaskPool` creation:
+it owns the global `MainExecutor` and keeps polling it until the process exits. Therefore,
+regardless of which thread created the task pool, `spawn_to_main` tasks are always routed to this thread,
+which ensures consistent behavior in test environments.
 
-In real applications, however, it is recommended to call [`designate_main_thread`] at the very beginning of the program to mark the current thread as the main thread; in that case, creating a `TaskPool` will not spawn the fake main thread. The `#[zlim_main]` macro provided by the `zlim_app` module calls it automatically at the start of the main function.
+That is also what makes the global executor safe: the fake main thread is its **only** driver.
+Single-threaded and WASM mode have no such thread, which is why they have no `MainExecutor` at all.
 
-Note that `designate_main_thread` should not be used in test environments. Test cases run on various child threads; marking a child thread with `designate_main_thread` can easily cause long sleeps (deadlocks).
+In real applications, however, it is recommended to call [`designate_main_thread`] at the very beginning of the program
+to mark the current thread as the main thread; in that case, creating a `TaskPool` will not spawn the fake main thread.
+The `#[zlim_main]` macro provided by the `zlim_app` module calls it automatically at the start of the main function.
+
+Note that `designate_main_thread` should not be used in test environments. Test cases run on various child threads;
+marking a child thread with `designate_main_thread` can easily cause long sleeps (deadlocks).
 
 ### Single-Threaded Mode
 
-The fallback mode for unknown platforms. All tasks execute on the current thread — no background threads.
+The fallback mode for unknown platforms.
+All tasks execute on the current thread — no background threads, and no main-thread executor.
+
+`spawn`, `spawn_local` and `spawn_to_main` are all the same function here: the task is queued
+on the current thread's executor and runs when that thread drives it.
 
 The pool must be explicitly driven via [`run_local`] or [`TaskPool::scope`] to make progress.
 
@@ -97,19 +132,28 @@ Therefore, blocking on a `Task` returned by `spawn` will very likely deadlock. I
 
 ### Scoped Tasks
 
-`TaskPool::scope` is used to create scoped tasks. Unlike `TaskPool::spawn`, the scope itself drives local task execution, guaranteeing that tasks complete.
+`TaskPool::scope` is used to create scoped tasks. Unlike `TaskPool::spawn`,
+the scope itself drives local task execution, guaranteeing that tasks complete.
 
-In single-threaded mode (including WASM), all tasks created by `scope` go to the local queue, regardless of which `spawn` function is used.
+In single-threaded mode (including WASM), all tasks created by `scope` go to the local queue,
+regardless of which `spawn` function is used — there is nowhere else for them to go.
 
-Multi-threaded mode is more complex: `spawn` sends the task to any worker thread, `spawn_local` puts it in the current thread's local queue, and `spawn_to_main` sends it to the "main thread".
+Multi-threaded mode is more complex: `spawn` sends the task to any worker thread,
+`spawn_local` puts it in the current thread's local queue, and `spawn_to_main` sends it to the "main thread".
 
-Thanks to the main thread (a dedicated fake one unless [`designate_main_thread`] was called up front), none of the three usually deadlocks. But be aware of the program's semantics: consider handing the main-function logic to the main thread at startup (via `spawn_to_main`).
+Thanks to the main thread (a dedicated fake one unless [`designate_main_thread`] was called up front),
+none of the three usually deadlocks. But be aware of the program's semantics: consider handing the
+main-function logic to the main thread at startup (via `spawn_to_main`).
 
 ## Performance
 
-- **Single-threaded mode**: task dispatch is roughly 2× faster than `bevy_tasks`. Tasks go straight into a thread-local block-list (`BlockList`), avoiding the many atomic-operation overheads of `async_executor`. Execution speed is theoretically identical, but thanks to the faster dispatch and the compact storage, small tasks run about **10% faster** in practice.
+- **Single-threaded mode**: task dispatch is roughly 2× faster than `bevy_tasks`.
+  Tasks go straight into a thread-local block-list (`BlockList`), avoiding the many atomic-operation overheads of `async_executor`.
+  Execution speed is theoretically identical, but thanks to the faster dispatch and the compact storage,
+  small tasks run about **10% faster** in practice.
 
-- **Multi-threaded mode**: task dispatch is roughly 4× faster than `bevy_tasks`. Compute-bound tasks (where computation dominates dispatch overhead) take roughly the same time.
+- **Multi-threaded mode**: task dispatch is roughly 4× faster than `bevy_tasks`.
+  Compute-bound tasks (where computation dominates dispatch overhead) take roughly the same time.
 
 ## Examples
 
@@ -125,7 +169,8 @@ let task = pool.spawn(async { 1 + 1 });
 // !Send + 'static — stays on the current thread
 let task = pool.spawn_local(async { 2 });
 
-// Send + 'static — sent to the main thread, wakes the main waker
+// Send + 'static — sent to the main thread, wakes the main waker.
+// In single-threaded / WASM mode this is `spawn_local`.
 let task = pool.spawn_to_main(async { 3 - 1 });
 ```
 
@@ -138,7 +183,7 @@ let pool = TaskPool::new();
 let results: Vec<i32> = pool.scope(|scope| {
     scope.spawn(async { 1 + 1 });     // → worker threads
     scope.spawn_local(async { 2 });   // → current thread
-    scope.spawn_to_main(async { 3 - 1 }); // → main thread
+    scope.spawn_to_main(async { 3 - 1 }); // → main thread (current thread in single/WASM mode)
 });
 
 assert_eq!(&results, &[2, 2, 2]);
@@ -172,7 +217,8 @@ Three global singleton pools for different workloads:
 | [`AsyncTaskPool`] | Compute-intensive tasks that may span multiple frames | 25% of available (≥ 1) |
 | [`IoTaskPool`] | IO-bound tasks with potentially long waits | 25% of available (≥ 1) |
 
-Each pool is lazily initialized: the first call to `get()` (or any `Deref` usage) implicitly creates a `TaskPool` with the default configuration shown above. No explicit setup is required for typical use:
+Each pool is lazily initialized: the first call to `get()` (or any `Deref` usage) implicitly creates a
+`TaskPool` with the default configuration shown above. No explicit setup is required for typical use:
 
 ```rust, ignore
 use zlim_task::{MainTaskPool, TaskPool};
@@ -204,7 +250,9 @@ assert!(did_init); // true on first call, false if already initialized
 
 ### TaskPoolConfigs
 
-[`TaskPoolConfigs`] initializes all three global pools in one call, splitting the available threads according to its per-pool [`TaskPoolConfig`] fields — by default `25%` for `IoTaskPool`, `25%` for `AsyncTaskPool`, and the remaining threads for `MainTaskPool`:
+[`TaskPoolConfigs`] initializes all three global pools in one call, splitting the available threads according
+to its per-pool [`TaskPoolConfig`] fields — by default `25%` for `IoTaskPool`, `25%` for `AsyncTaskPool`, and
+the remaining threads for `MainTaskPool`:
 
 ```rust
 use zlim_task::TaskPoolConfigs;
@@ -212,9 +260,13 @@ use zlim_task::TaskPoolConfigs;
 TaskPoolConfigs::default().apply();
 ```
 
-Call it once during startup, before any pool is first accessed (e.g. via `MainTaskPool::get()`). In single-threaded / WASM mode it is a no-op; in a test environment it returns early if a pool was already initialized.
+Call it once during startup, before any pool is first accessed (e.g. via `MainTaskPool::get()`).
+In single-threaded / WASM mode it is a no-op; in a test environment it returns early if a pool was already initialized.
 
-Note: if you use `MainTaskPool`, `AsyncTaskPool`, or other global pools with implicit initialization, make sure their "first access" happens before other task pools are created — unless [`designate_main_thread`] was called up front, the fake main thread is started by the first `TaskPool` creation, and `spawn_to_main` tasks are routed to it.
+Note: in multi-threaded mode, if you use `MainTaskPool`, `AsyncTaskPool`, or other global pools
+with implicit initialization, make sure their "first access" happens before other task pools are
+created — unless [`designate_main_thread`] was called up front, the fake main thread is started
+by the first `TaskPool` creation, and `spawn_to_main` tasks are routed to it.
 
 ## ParallelSlice
 
@@ -230,7 +282,9 @@ let pos   = data.par_position(|v| *v > 5);   // Some(1)
 let doubled: Vec<_> = data.par_map(|v| *v * 2);
 ```
 
-When the `multi_thread` cfg path is enabled, work is distributed across worker threads via [`MainTaskPool`]. When multi-threading is disabled (single-threaded or WASM builds), the methods fall back to sequential iteration.
+When the `multi_thread` cfg path is enabled, work is distributed across worker threads via
+[`MainTaskPool`]. When multi-threading is disabled (single-threaded or WASM builds), the methods
+fall back to sequential iteration.
 
 ## block_on
 
@@ -246,7 +300,8 @@ async executors to avoid deadlock.
   `LocalExecutor` are driven while blocking.
 - On a **worker thread**, the pool executor and the `LocalExecutor` are
   driven while blocking.
-- In single-threaded / WASM mode, the executors are driven while blocking.
+- In single-threaded / WASM mode, the `LocalExecutor` is driven while blocking —
+  it is the only executor there.
 
 The thread is parked via `futures_lite::future::block_on` by default, or
 `async_io::block_on` when the `async_io` feature is enabled.

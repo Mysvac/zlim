@@ -12,7 +12,15 @@
 
 ## 架构
 
+| 函数 | 多线程模式 | 单线程 / WASM 模式 |
+|------|-----------|-------------------|
+| `spawn` | 池执行器 —— 任意工作线程 | 当前线程的执行器 |
+| `spawn_local` | 当前线程的执行器 | 当前线程的执行器 |
+| `spawn_to_main` | 主线程执行器 | 当前线程的执行器 |
+
 ```text
+              多线程模式
+
 ┌─────────────────────────────────────────────────────┐
 │                      TaskPool                       │
 │  ┌──────────┐  ┌─────────────┐  ┌────────────────┐  │
@@ -22,9 +30,9 @@
 │       │              │                  │           │
 │  ┌────▼──────┐ ┌─────▼───────┐  ┌───────▼────────┐  │
 │  │ Pool Exec.│ │ Local Exec. │  │  Main Executor │  │
-│  │           │ │   Executor  │  │                │  │
-│  │ working-  │ │             │  │                │  │
-│  │ stealing  │ │ Background  │  │   Background   │  │
+│  │           │ │             │  │                │  │
+│  │ working-  │ │ 当前线程    │  │  仅由主线程    │  │
+│  │ stealing  │ │             │  │  驱动          │  │
 │  └───────────┘ └─────────────┘  └────────────────┘  │
 │  ┌──────────────────────────────────────────────┐   │
 │  │                  Scope                       │   │
@@ -35,13 +43,16 @@
 └─────────────────────────────────────────────────────┘
 ```
 
+单线程模式与 WASM 模式既没有池执行器，也没有主线程执行器：三个函数都是 `spawn_local`，任务在本地执行。
+
+对现场模式中会多出*任务池执行器*和*主线程执行器*，以完全驱动并行操作。
+
 - `spawn` 在语义上，表示生成一个任务，由任意线程执行，因此需要 `Send` 约束。
 
 - `spawn_local` 在语义上，表示生成一个任务并在当前线程执行，因此不需要 `Send`。
 
-- `spawn_to_main` 则是将任务送往主线程执行，同样需要 `Send` 约束。
-
-这仅在多线程模式中有实际差异，单线程模式中三者是一致的。
+- `spawn_to_main` 则是将任务送往主线程执行，同样需要 `Send` 约束。当不存在独立的主线程
+  时，它就是 `spawn_local` —— 保留 `Send` 约束只是为了接口一致。
 
 上述函数都返回一个实现了 `Future` 的 `Task<T>` 句柄。可使用 `Task::cancel`
 取消任务，或使用 `Task::detach` 丢弃句柄但不影响任务的执行（任务的返回值将被丢弃）。
@@ -63,19 +74,21 @@ Windows、Linux、macOS 和 Android 上的默认模式。
 每个池至少创建一个工作线程；工作线程空闲时休眠，逐个唤醒以避免惊群效应。
 
 默认情况下，多线程模式会在第一次创建 `TaskPool` 时启动一个虚假的主线程,
-它独占全局 `MainExecutor` 并持续轮询直到进程结束。因此无论哪个线程创建了任务池，
-`spawn_to_main` 的任务都会被送往此线程执行，这保证了测试环境的行为一致性。
+它独占全局 `MainExecutor` 并持续轮询直到进程结束，从而使程序支持单元测试的并行执行。
 
-但在真实应用中，推荐在程序代码的开头通过 [`designate_main_thread`] 将当前线程标记为主线程，
-此时创建 `TaskPool` 将不会启动虚拟主线程。`zlim_app` 模块提供的 `#[zlim_main]` 宏
-会自动在主函数开头调用它。
+但在真实应用中，可以在程序代码的开头通过 [`designate_main_thread`] 将当前线程标记为主线程，
+此时创建 `TaskPool` 将不会额外启动虚拟主线程。`zlim_app` 模块提供的 `#[zlim_main]` 宏会
+自动在主函数开头调用它。
 
 注意 `designate_main_thread` 不应在测试环境中使用。测试用例分散在各个子线程执行，将子
 线程标记为 `designate_main_thread` 很容易导致程序出现长久睡眠（死锁）。
 
 ### 单线程模式
 
-未知平台的回退模式。所有任务都在当前线程执行——没有后台线程。
+未知平台的回退模式。所有任务都在当前线程执行——没有后台线程，也没有主线程执行器。
+
+`spawn`、`spawn_local` 与 `spawn_to_main` 在这里是同一个函数：任务进入当前线程的执行器，
+由该线程驱动执行器时运行。
 
 必须通过 [`run_local`] 或 [`TaskPool::scope`] 显式驱动池才能取得进展。
 
@@ -109,7 +122,7 @@ Windows、Linux、macOS 和 Android 上的默认模式。
 `TaskPool::scope` 用于创建作用域任务。与 `TaskPool::spawn` 不同，作用域本身
 会驱动本地任务执行，保证任务得以完成。
 
-单线程模式（包括 WASM）中 `scope` 创建的任务都会在本地队列，无论使用哪个 `spawn` 函数。
+单线程模式（包括 WASM）中 `scope` 创建的任务都会进入本地队列，无论使用哪个 `spawn` 函数。
 
 多线程模式中，`spawn` 会将任务送往任意工作线程，`spawn_local` 送入当前线程的
 本地队列，而 `spawn_to_main` 则送往“主线程”。
@@ -135,7 +148,8 @@ let task = pool.spawn(async { 1 + 1 });
 // !Send + 'static —— 留在当前线程
 let task = pool.spawn_local(async { 2 });
 
-// Send + 'static —— 发送到主线程，唤醒主线程 waker
+// Send + 'static —— 发送到主线程，唤醒主线程 waker。
+// 单线程 / WASM 模式下等同于 `spawn_local`。
 let task = pool.spawn_to_main(async { 3 - 1 });
 ```
 
@@ -148,7 +162,7 @@ let pool = TaskPool::new();
 let results: Vec<i32> = pool.scope(|scope| {
     scope.spawn(async { 1 + 1 });     // → 工作线程
     scope.spawn_local(async { 2 });   // → 当前线程
-    scope.spawn_to_main(async { 3 - 1 }); // → 主线程
+    scope.spawn_to_main(async { 3 - 1 }); // → 主线程（单线程 / WASM 下即当前线程）
 });
 
 assert_eq!(&results, &[2, 2, 2]);
@@ -231,7 +245,7 @@ TaskPoolConfigs::default().apply();
 在单线程 / WASM 模式下它是 no-op；在测试环境中，如果某个池已被初始化，
 `apply` 会直接返回。
 
-注意：如果通过隐式初始化使用 `MainTaskPool`、`AsyncTaskPool` 等全局池，
+注意：在多线程模式下，如果通过隐式初始化使用 `MainTaskPool`、`AsyncTaskPool` 等全局池，
 请保证它们的"第一次获取"先于其他任务池——除非先调用 [`designate_main_thread`]，
 虚假主线程由第一个创建的 `TaskPool` 启动，`spawn_to_main` 的任务会路由到该线程。
 
@@ -264,7 +278,7 @@ assert_eq!(result, 42);
 - **主线程**上（多线程模式）：阻塞期间同时驱动 `MainExecutor` 与
   `LocalExecutor`。
 - **工作线程**上：阻塞期间同时驱动池执行器与 `LocalExecutor`。
-- 单线程 / WASM 模式下：阻塞期间驱动执行器。
+- 单线程 / WASM 模式下：阻塞期间驱动 `LocalExecutor` —— 那是那里唯一的执行器。
 
 底层通过 `futures_lite` 的 `block_on` 实现；启用 `async_io` feature
 时改用 `async_io::block_on`。
