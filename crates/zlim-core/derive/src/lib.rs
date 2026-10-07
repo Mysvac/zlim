@@ -819,6 +819,30 @@ pub fn derive_message(input: TokenStream) -> TokenStream {
 /// because the template is a different type: `impl From<FieldType> for SomeTemplate`, or the
 /// equivalent `Into`.
 ///
+/// ## `into = path`
+///
+/// Any row can add `into = path`, which names the function that converts the field in place of the
+/// conversion that row would otherwise use. The function is called with the field and returns the
+/// template value:
+///
+/// ```ignore
+/// fn to_degrees(radians: f32) -> DegreesTemplate {
+///     DegreesTemplate(radians.to_degrees())
+/// }
+///
+/// #[derive(IntoTemplate)]
+/// struct Aim {
+///     // Instead of needing `Into<DegreesTemplate>` for `f32`.
+///     #[template(DegreesTemplate, into = to_degrees)]
+///     angle: f32,
+/// }
+/// ```
+///
+/// It composes with the rest of the attribute rather than replacing it: `built_in` and a named
+/// template still decide the *type* of the template field, and `into` only decides *how* the value
+/// gets there. A field that names its own conversion adds no bound, since making that function
+/// applicable is the user's to do.
+///
 /// # Describing an existing value
 ///
 /// Besides the association, the derive implements `From<Type> for TypeTemplate`, which converts a

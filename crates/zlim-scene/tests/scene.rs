@@ -1168,20 +1168,60 @@ fn a_document_id_resolves_to_the_entity_the_scene_spawned() {
     );
 }
 
-/// A document id that names no entity of the document is kept as it is, which is what lets a
-/// template built in Rust keep naming the entity its id already names.
+/// A document id that names no entity of the document, but does name an entity that exists in the
+/// world, is kept as it is — which is what lets a template built in Rust keep naming the entity its
+/// id already names.
 #[test]
-fn an_id_no_document_declares_is_kept() {
-    let declared = EntityId::from_bits(0x0000_0001_0000_0001).unwrap();
-    let unknown = EntityId::from_bits(0x0000_0009_0000_0001).unwrap();
+fn an_id_naming_a_live_entity_outside_the_document_is_kept() {
+    // A document id from a namespace the world's allocator never hands out, so the entity the scene
+    // spawns cannot collide with it.
+    let declared = EntityId::from_bits(0x0000_7fff_0000_0001).unwrap();
 
     let mut world = World::alloc();
-    let scene = document_scene(declared, unknown);
 
+    // A real entity the document never declares, and knows nothing about.
+    let outside = world
+        .try_spawn_empty(None)
+        .expect("the world accepts it")
+        .id();
+    assert!(
+        world.entities().contains(outside),
+        "the test needs an id a live entity has"
+    );
+
+    let scene = document_scene(declared, outside);
+    let id = ResolvedScene::spawn(&scene, &mut world, None).expect("the scene spawns");
+
+    // The document's own id maps to the entity the scene spawned — it is not `outside` — while the
+    // id it does not declare names a live entity, so it is carried through unchanged.
+    assert_ne!(id, outside, "the scene spawned its own entity");
+    assert_eq!(
+        world.entity_ref(id).get::<DocumentLink>(),
+        Some(&DocumentLink { to: outside })
+    );
+}
+
+/// A document id that names neither an entity of the document nor one that exists is replaced with
+/// [`EntityId::PLACEHOLDER`], so a dangling reference is not carried into the world unnoticed.
+#[test]
+fn an_id_naming_no_live_entity_becomes_a_placeholder() {
+    let declared = EntityId::from_bits(0x0000_0001_0000_0001).unwrap();
+    // Index 9 is never allocated by a fresh world, so this names nothing at all.
+    let dangling = EntityId::from_bits(0x0000_0009_0000_0001).unwrap();
+
+    let mut world = World::alloc();
+    assert!(
+        !world.entities().contains(dangling),
+        "the test needs an id no live entity has"
+    );
+
+    let scene = document_scene(declared, dangling);
     let id = ResolvedScene::spawn(&scene, &mut world, None).expect("the scene spawns");
 
     assert_eq!(
         world.entity_ref(id).get::<DocumentLink>(),
-        Some(&DocumentLink { to: unknown })
+        Some(&DocumentLink {
+            to: EntityId::PLACEHOLDER
+        })
     );
 }

@@ -47,8 +47,8 @@ struct Holder<T> {
     value: T,
 }
 
-/// A generic type whose field asks for the built-in template, which the derive constrains with
-/// `BuiltInTemplate` rather than `IntoTemplate`.
+/// A generic type whose field asks for the built-in template,
+/// which the derive constrains with `BuiltInTemplate` rather than `IntoTemplate`.
 #[derive(IntoTemplate, Debug, PartialEq)]
 struct Bagged<T> {
     #[template(built_in)]
@@ -94,6 +94,31 @@ impl From<u32> for Twice {
 struct Doubled {
     #[template(Twice)]
     value: u32,
+}
+
+/// The conversion a field with `into = ...` would otherwise have to get from `Into`.
+fn quadrupled(value: u32) -> Twice {
+    Twice(value * 4)
+}
+
+/// `into = path` names the function in place of the conversion the field would otherwise use, so
+/// the field needs no `Into` impl for the named template.
+#[derive(IntoTemplate, Debug, PartialEq)]
+struct Quadrupled {
+    #[template(Twice, into = quadrupled)]
+    value: u32,
+}
+
+/// `into = path` also works with `built_in`, where it replaces the `BuiltInTemplate` conversion.
+#[derive(IntoTemplate, Debug, PartialEq)]
+struct Dropped {
+    #[template(built_in, into = dropped)]
+    items: Vec<EntityId>,
+}
+
+/// Stands in for the `BuiltInTemplate` conversion of a `Vec<EntityId>` field.
+fn dropped(_items: Vec<EntityId>) -> VecTemplate<EntityTemplate> {
+    VecTemplate(Vec::new())
 }
 
 /// An enum, which needs a variant marked with `#[default]`.
@@ -163,6 +188,40 @@ fn a_tuple_struct_template_builds_a_tuple_struct() {
 
     let template = PairTemplate(EntityTemplate::Entity(entity), 3.0);
     assert_eq!(build(&mut world, &template), Pair(entity, 3.0));
+}
+
+/// `into = path` is what converts the field, so it replaces the `Into` conversion the named
+/// template would otherwise need — and it is the function that decides the value.
+#[test]
+fn an_into_function_decides_the_conversion() {
+    let mut world = World::alloc();
+
+    // `Doubled` converts with `Into` and doubles; `Quadrupled` converts with its own function.
+    let doubled = Doubled { value: 21 }.into_template();
+    assert_eq!(doubled.value, Twice(21));
+    assert_eq!(build(&mut world, &doubled), Doubled { value: 42 });
+
+    let quadrupled = Quadrupled { value: 21 }.into_template();
+    // `quadrupled` runs on the source value and produces the template value; building that
+    // template then doubles it again, because that is what `Twice` itself does.
+    assert_eq!(quadrupled.value, Twice(84));
+    assert_eq!(build(&mut world, &quadrupled), Quadrupled { value: 168 });
+}
+
+/// `into = path` replaces the `BuiltInTemplate` conversion of a `built_in` field.
+#[test]
+fn an_into_function_replaces_the_built_in_conversion() {
+    let mut world = World::alloc();
+    let entity = world.spawn_empty(None).id();
+    let source = Dropped {
+        items: vec![entity, entity],
+    };
+
+    // The named function ignores the field's contents, so the template comes out empty even though
+    // the field holds two references. `VecTemplate` is not `PartialEq`, so the length is what is
+    // checked.
+    let template = source.into_template();
+    assert!(template.items.0.is_empty());
 }
 
 /// The template of a unit struct is a unit struct.

@@ -204,6 +204,46 @@ pub trait Template {
 ///     image: Option<Handle<Image>>
 /// }
 /// ```
+///
+/// ### It rewrites one layer only
+///
+/// `built_in` applies to a container with a *single* layer of nesting: [`Option<T>`] and [`Vec<T>`].
+/// It rewrites exactly that layer, turning the field into `OptionTemplate<T::Template>` and
+/// `VecTemplate<T::Template>` respectively:
+///
+/// ```rust, ignore
+/// // Option<T>  ->  OptionTemplate<T::Template>
+/// #[template(built_in)] field: Option<Handle<Image>>
+/// //                        -> OptionTemplate<HandleTemplate<Image>> ✅️
+///
+/// // Vec<T>  ->  VecTemplate<T::Template>
+/// #[template(built_in)] field: Vec<Handle<Image>>
+/// //                        -> VecTemplate<HandleTemplate<Image>> ✅️
+/// ```
+///
+/// It does **not** reach further down, so a doubly-nested container is only half rewritten: the
+/// element is converted with its own [`IntoTemplate`], and a collection's [`IntoTemplate`] is the
+/// blanket one, whose template is the collection itself.
+///
+/// ```rust, ignore
+/// #[template(built_in)] field: Option<Option<Handle<Image>>>
+/// //                        -> OptionTemplate<Option<Handle<Image>>> ❌️
+/// ```
+///
+/// For a type nested more deeply than that, name the target template explicitly and, when the
+/// conversion the derive would use does not produce it, name the function too with `into`:
+///
+/// ```rust, ignore
+/// #[derive(IntoTemplate)]
+/// struct Widget {
+///     #[template(OptionTemplate<OptionTemplate<HandleTemplate<Image>>>, into = nest_image)]
+///     image: Option<Option<Handle<Image>>>,
+/// }
+///
+/// fn nest_image(image: Option<Option<Handle<Image>>>) -> OptionTemplate<OptionTemplate<HandleTemplate<Image>>> {
+///     // ...
+/// }
+/// ```
 pub trait IntoTemplate: Sized {
     /// The template that produces this type.
     type Template: Template<Output = Self>;
@@ -217,34 +257,52 @@ pub trait IntoTemplate: Sized {
     fn into_template(self) -> Self::Template;
 }
 
-/// The condition that keeps a hand-written template from overlapping the blanket implementation.
+/// Marks a type whose template is *not* itself.
+///
+/// # 1. As a marker: `IntoTemplate::Template` is not `Self`
 ///
 /// [`Template`] is implemented for every [`Clone`] type and [`IntoTemplate`] for every
 /// `Clone + Default` one, so a type that provides either by hand has to stay out of those
-/// implementations: exactly one of [`Clone`] or [`Unpin`] must not hold for it. A type that has to
-/// be [`Clone`] — an [`EntityTemplate`], or a type with a derived template — is instead made not
-/// [`Unpin`], with
+/// implementations — exactly one of [`Clone`] or [`Unpin`] must not hold for it.
+///
+/// Implementing this trait for a type says that its hand-written [`IntoTemplate`] produces a
+/// template other than the type itself — `X` is described by `XTemplate`, not by `X`. That is what
+/// a type which decomposes into fields does, and it is what makes the type usable as the element of
+/// a [`BuiltInTemplate`](collections::BuiltInTemplate) container: rewriting `Option<X>` into
+/// `OptionTemplate<XTemplate>` is only meaningful when `XTemplate` is not `X`.
+///
+/// # 2. As the `Unpin` opt-out
+///
+/// A type that has to be [`Clone`] — an [`EntityTemplate`], or a type with a derived template — is
+/// instead made not [`Unpin`], with
 ///
 /// ```ignore
 /// impl Unpin for MyTemplate where for<'a> [()]: SpecializeTemplate {}
 /// ```
 ///
-/// whose condition never holds, because this trait is never implemented. The type is then
+/// whose condition never holds, because this trait is not implemented for `[()]`. The type is then
 /// considered not [`Unpin`], and the hand-written implementation stands on its own.
 ///
-/// Nothing is supposed to implement this trait; it exists so that the unsatisfied condition above
-/// is reported with a useful message.
+/// This is a use of the trait's *absence*, and it says nothing about the type's template: a type
+/// that only needs the opt-out leaves the trait unimplemented. Nothing implements it for the sake of
+/// the condition — the condition exists so that an unsatisfied one is reported with a useful
+/// message.
 #[diagnostic::on_unimplemented(
-    message = "this type has no `IntoTemplate` implementation, and it needs one \
-               to be described by a template",
-    label = "the template of this type is unknown",
-    note = "a `Clone + Default` type has a template automatically, so this is either a type that \
-            is deliberately not `Unpin`, or a field type that has no template of its own. A field \
-            without a template can be given one with `#[template(SomeTemplate)]`, or with \
-            `#[template(built_in)]` for the built-in collection templates",
-    note = "`IntoTemplate` uses pseudo-specialization: the hand-written implementations are kept \
-            apart from the automatic one by making their types not `Unpin`, which the condition of \
-            this trait expresses"
+    message = "`{Self}` has no template of its own: it is described by the template every \
+               `Clone + Default` type gets, which is the type itself",
+    label = "this type is its own template",
+    note = "implement `SpecializeTemplate` for a type whose `IntoTemplate` produces a template \
+            other than the type itself — that is what a type which decomposes into fields does. \
+            `#[derive(IntoTemplate)]` records it, and so must a hand-written `IntoTemplate`: \
+            `impl SpecializeTemplate for MyType ()`",
+    note = "the trait is not needed to opt a type out of the blanket implementations. That use is \
+            the `Unpin` condition `for<'a> [()]: SpecializeTemplate`, which relies on the trait \
+            *not* being implemented, so a type that only needs the opt-out leaves it alone",
+    note = "`#[template(built_in)]` requires it of the container's inner type: `Option<T>` and \
+            `Vec<T>` are only rewritten into `OptionTemplate<T::Template>` and \
+            `VecTemplate<T::Template>` when `T` has a dedicated template, so `built_in` means \
+            nothing without one. If the field holds plain values, drop `built_in` and let the \
+            container be its own template"
 )]
 pub trait SpecializeTemplate: Sized {}
 

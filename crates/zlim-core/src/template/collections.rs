@@ -1,4 +1,4 @@
-use super::{IntoTemplate, Template, TemplateContext};
+use super::{IntoTemplate, SpecializeTemplate, Template, TemplateContext};
 use crate::error::ZlimResult;
 
 // -----------------------------------------------------------------------------
@@ -14,7 +14,21 @@ use crate::error::ZlimResult;
 /// This trait names that template, and `#[template(built_in)]` on a field is what asks the derive
 /// to use it. See [`IntoTemplate`] document for details.
 ///
+/// # The element has to be specialized
+///
+/// The rewrite is only meaningful when the element's template is not the element itself, which is
+/// what [`SpecializeTemplate`] records; the impls below require it. Without the bound,
+/// `Option<T>` would rewrite to `OptionTemplate<T>` for a plain `T` — the same type it started as,
+/// wearing a different name — and the field would silently lose the element's own template.
+///
 /// [`Option<Handle<T>>`]: crate::template
+#[diagnostic::on_unimplemented(
+    label = "this container has no built-in template",
+    note = "`#[template(built_in)]` turns `Option<T>` into `OptionTemplate<T::Template>` \
+            and `Vec<T>` into `VecTemplate<T::Template>`. It needs `T` to implement \
+            `SpecializeTemplate` — a `Clone + Default` type is its own template, so there \
+            is nothing to rewrite and `built_in` would be a no-op"
+)]
 pub trait BuiltInTemplate: Sized {
     /// The template considered built in for this type.
     type Template: Template<Output = Self>;
@@ -22,7 +36,7 @@ pub trait BuiltInTemplate: Sized {
     fn built_in_template(self) -> Self::Template;
 }
 
-impl<T: IntoTemplate> BuiltInTemplate for Option<T> {
+impl<T: IntoTemplate + SpecializeTemplate> BuiltInTemplate for Option<T> {
     type Template = OptionTemplate<T::Template>;
 
     fn built_in_template(self) -> Self::Template {
@@ -30,7 +44,7 @@ impl<T: IntoTemplate> BuiltInTemplate for Option<T> {
     }
 }
 
-impl<T: IntoTemplate> BuiltInTemplate for Vec<T> {
+impl<T: IntoTemplate + SpecializeTemplate> BuiltInTemplate for Vec<T> {
     type Template = VecTemplate<T::Template>;
 
     fn built_in_template(self) -> Self::Template {

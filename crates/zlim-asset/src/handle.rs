@@ -697,6 +697,9 @@ impl<T: Asset> Default for HandleTemplate<T> {
     }
 }
 
+// Do not implement `Clone`: a `Clone + Unpin` type gets
+// a `Template` implementation automatically (the blanket impl).
+
 impl<T: Asset> From<Handle<T>> for HandleTemplate<T> {
     fn from(value: Handle<T>) -> Self {
         Self::Handle(value)
@@ -732,7 +735,11 @@ impl<A: Asset> Template for HandleTemplate<A> {
     }
 }
 
+/// Pseudo specialization
 impl<T: Asset> Unpin for Handle<T> where for<'a> [()]: SpecializeTemplate {}
+
+/// Tag specialized IntoTemplate
+impl<T: Asset> SpecializeTemplate for Handle<T> {}
 
 impl<T: Asset> IntoTemplate for Handle<T> {
     type Template = HandleTemplate<T>;

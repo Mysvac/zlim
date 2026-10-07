@@ -58,6 +58,7 @@ impl<T> From<T> for ComponentTemplate<T> {
 
 #[cfg(test)]
 mod tests {
+    use super::ComponentTemplate;
     use crate::component::Component;
     use crate::entity::{EntityId, EntityMap, EntityMapper};
     use crate::template::{EntityReferences, Template, TemplateContext};
@@ -75,33 +76,48 @@ mod tests {
 
     /// One value serves every application, each pointing at the entity its own scene spawned.
     #[test]
-    fn a_component_template_maps_the_entities_it_carries() {
-        let document_id = EntityId::from_bits(0x0000_0001_0000_0001).unwrap();
-        let template = super::ComponentTemplate(Link { to: document_id });
+    fn component_template_map_entity() {
+        let document_id = EntityId::new(1, 1.try_into().unwrap());
+        let template = ComponentTemplate(Link { to: document_id });
 
         let mut world = World::alloc();
         let target = world.spawn_empty(None).id();
 
         let mut entities = EntityMap::with_capacity(1);
+        let mut references = EntityReferences::new();
         entities.set_mapped(document_id, target);
+
+        let mut entity = world.spawn_empty(None);
+        let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
+
+        let built = template.build_template(&mut context).unwrap();
+
+        assert_eq!(built, Link { to: target });
+    }
+
+    /// For an undeclared entity id, if the entity exists it is kept as-is.
+    #[test]
+    fn component_template_undeclared_id_spawned() {
+        let mut world = World::alloc();
+
+        let target = world.spawn_empty(None).id();
+        let template = ComponentTemplate(Link { to: target });
+
+        let mut entities = EntityMap::new();
         let mut references = EntityReferences::new();
         let mut entity = world.spawn_empty(None);
         let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
 
-        let built = template
-            .build_template(&mut context)
-            .expect("the template is expected to build");
-        assert_eq!(built, Link { to: target });
+        let built = template.build_template(&mut context).unwrap();
 
-        // The original value is untouched, so the template can be applied again.
-        assert_eq!(template.0.to, document_id);
+        assert_eq!(built, Link { to: target });
     }
 
-    /// An id no scene declared is kept, which is what lets a template built in Rust work.
+    /// For an undeclared entity id, if the entity does not exist it is replaced with PLACEHOLDER.
     #[test]
-    fn an_undeclared_id_is_kept() {
-        let id = EntityId::from_bits(0x0000_0002_0000_0003).unwrap();
-        let template = super::ComponentTemplate(Link { to: id });
+    fn component_template_undeclared_id_not_spawned() {
+        let id = EntityId::new(2, 3.try_into().unwrap());
+        let template = ComponentTemplate(Link { to: id });
 
         let mut world = World::alloc();
         let mut entities = EntityMap::new();
@@ -109,9 +125,13 @@ mod tests {
         let mut entity = world.spawn_empty(None);
         let mut context = TemplateContext::new(&mut entity, &mut references, &mut entities);
 
-        let built = template
-            .build_template(&mut context)
-            .expect("the template is expected to build");
-        assert_eq!(built, Link { to: id });
+        let built = template.build_template(&mut context).unwrap();
+
+        assert_eq!(
+            built,
+            Link {
+                to: EntityId::PLACEHOLDER
+            }
+        );
     }
 }

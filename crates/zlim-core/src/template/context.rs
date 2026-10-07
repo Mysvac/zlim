@@ -206,8 +206,9 @@ impl EntityMapper for TemplateEntityMapper<'_> {
 ///   error, because an entity invented on the spot would be one nothing describes;
 /// - an *id* ([`EntityMap`]) is what a component carries after it was serialized by reflection — a
 ///   document id, meaningful only within the scene it came from. An id the scene does not declare is
-///   kept as it is, which is what lets a template that was never part of a document (everything
-///   built in Rust) work unchanged.
+///   kept when it names an entity that still exists, which is what lets a template that was never
+///   part of a document (everything built in Rust) work unchanged; one that names nothing at all
+///   becomes [`EntityId::PLACEHOLDER`] rather than a dangling reference.
 pub struct TemplateContext<'a, 'w> {
     /// The entity the template is being applied to.
     pub entity: &'a mut EntityOwned<'w>,

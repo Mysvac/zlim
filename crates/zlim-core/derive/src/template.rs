@@ -26,14 +26,12 @@
 //! - [`into_template_impls`] — the `From`/`IntoTemplate` pair, which converts a value.
 //! - [`not_unpin_impl`] — the `Unpin` opt-out that makes the others legal.
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::parse::ParseStream;
 use syn::spanned::Spanned;
-use syn::{
-    Data, DeriveInput, Fields, Generics, Ident, Path, Visibility, WhereClause, WherePredicate,
-    parse_quote,
-};
+use syn::{Data, DeriveInput, Fields, Generics, Ident, Path};
+use syn::{Visibility, WhereClause, WherePredicate, parse_quote};
 
 use crate::path;
 use crate::utils::contains_any_idents;
@@ -50,43 +48,67 @@ const DEFAULT_ATTRIBUTE: &str = "default";
 /// The `#[template(built_in)]` option, which uses the built-in template of the field type.
 const BUILT_IN_OPTION: &str = "built_in";
 
-/// Which template a field is described by.
+/// The `#[template(into = path)]` option, which names the function a field converts with.
+const INTO_OPTION: &str = "into";
+
+/// Which template a field is described by, and what converts the field into it.
 ///
-/// `#[template(...)]` selects this, and it decides two things at once: the type of the template
-/// field, and how `From` converts the field into it.
+/// `#[template(...)]` selects this: the variant decides the type of the template field, and the
+/// `Option<Path>` is the `into = path` function, which replaces whatever conversion the variant
+/// would otherwise use.
 #[derive(Clone)]
 enum TemplateChoice {
-    /// The field type's own `IntoTemplate`.
-    Canonical,
+    /// The field type's own `IntoTemplate`, converted with that same `IntoTemplate` — or with the
+    /// function named by `into = path`.
+    Canonical(Option<Path>),
 
     /// The field type's `BuiltInTemplate`, which is what maps a container to the template of its
-    /// element.
-    BuiltIn,
+    /// element, converted with that same `BuiltInTemplate` — or with the function named by
+    /// `into = path`.
+    ///
+    /// The [`Span`] is the `built_in` word the user wrote. See [`TemplateChoice::span`] for where it
+    /// ends up and why.
+    BuiltIn(Span, Option<Path>),
 
-    /// The template named on the field, which the field converts into with `Into`.
-    Named(Path),
+    /// The template named on the field, converted into with `Into` — or with the function named by
+    /// `into = path`.
+    Named(Path, Option<Path>),
 }
 
 impl TemplateChoice {
-    /// The bound `field` needs for this choice to hold, if any.
+    /// The [`Span`] the generated template field should carry, so that the choice points back at the
+    /// attribute that made it.
+    ///
+    /// Only `built_in` needs one: what the field's type turns out to be is decided by a
+    /// `BuiltInTemplate` impl somewhere else entirely, so without this there is nothing in the source
+    /// to point at. The other choices name their template themselves, or take it from the field's own
+    /// `IntoTemplate`, and so are readable where they are written.
+    fn span(&self) -> Option<Span> {
+        match self {
+            Self::BuiltIn(span, _) => Some(*span),
+            Self::Canonical(_) | Self::Named(_, _) => None,
+        }
+    }
+
+    /// The bound the field needs for this choice, if any.
     ///
     /// This is only about the fields that mention a type parameter: a field of a concrete type
-    /// already satisfies whatever it needs. A field named explicitly carries no bound, because it
-    /// is the deriving type's own business to convert into it.
+    /// already satisfies whatever it needs. A field that names its own conversion carries no bound,
+    /// because the function it names is the user's to make applicable.
     fn constraint(&self, field: &syn::Type, zlim_core: &Path) -> Option<WherePredicate> {
         match self {
-            Self::Canonical => {
+            Self::Canonical(_) => {
                 let into_template_ = path::into_template_(zlim_core);
                 Some(parse_quote! { #field: #into_template_ })
             }
-            Self::BuiltIn => {
+            Self::BuiltIn(_, _) => {
                 // `BuiltInTemplate` is what says the field has a template of its own to fall back
                 // to, and the trait is what pins that template's output, so the bound is the whole
                 // requirement.
                 let built_in_template_ = path::built_in_template_(zlim_core);
                 Some(parse_quote! { #field: #built_in_template_ })
             }
-            Self::Named(_) => None,
+            Self::Named(_, _) => None,
         }
     }
 }
@@ -290,6 +312,31 @@ fn template_path(context: &ExpandContext<'_>, ast: &DeriveInput) -> TokenStream 
     quote!(#template_ident #args)
 }
 
+/// Marks the deriving type as one whose template is not itself.
+///
+/// The generated `IntoTemplate` produces `<Type>Template`, so `Type` is exactly the case
+/// [`SpecializeTemplate`] describes. Recording it is what lets the type be used as the element of a
+/// `#[template(built_in)]` container, whose rewrite into `OptionTemplate<TypeTemplate>` would
+/// otherwise be indistinguishable from rewriting it into `OptionTemplate<Type>`.
+///
+/// The impl has to name the type and its generics: `Self` is not valid in the self type of an impl
+/// block. Unlike the `Unpin` opt-out it carries no condition of its own, so the deriving type's own
+/// `where` clause is used as it stands.
+///
+/// [`SpecializeTemplate`]: crate::template::SpecializeTemplate
+fn specialize_template_impl(
+    generics: &Generics,
+    type_ident: &Ident,
+    zlim_core: &Path,
+) -> TokenStream {
+    let specialize_from_template_ = path::specialize_from_template_(zlim_core);
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+
+    quote! {
+        impl #impl_generics #specialize_from_template_ for #type_ident #type_generics #where_clause {}
+    }
+}
+
 /// The `Unpin` opt-out: the condition never holds, which is what keeps the generated
 /// `IntoTemplate` impl out of the blanket implementation for `Clone + Default` types.
 ///
@@ -421,6 +468,7 @@ fn template_for_struct(
     let trait_impls = trait_impls(context, &ast.generics, parts, build, clone);
     let default_impl = default_impl(context, &ast.generics, parts, default);
     let into_template_impls = into_template_impls(context, &ast.generics, conversion);
+    let specialize = specialize_template_impl(&ast.generics, context.type_ident, context.zlim_core);
     let not_unpin = not_unpin_impl(&ast.generics, context.type_ident, context.zlim_core);
 
     Ok(quote! {
@@ -428,6 +476,7 @@ fn template_for_struct(
         #trait_impls
         #default_impl
         #into_template_impls
+        #specialize
         #not_unpin
     })
 }
@@ -575,6 +624,7 @@ fn template_for_enum(
     let trait_impls = trait_impls(context, &ast.generics, parts, build, clone);
     let default_impl = default_impl(context, &ast.generics, parts, default);
     let into_template_impls = into_template_impls(context, &ast.generics, conversion);
+    let specialize = specialize_template_impl(&ast.generics, context.type_ident, context.zlim_core);
     let not_unpin = not_unpin_impl(&ast.generics, context.type_ident, context.zlim_core);
     let declaration = template_enum_declaration(
         &context.template_ident,
@@ -589,6 +639,7 @@ fn template_for_enum(
         #trait_impls
         #default_impl
         #into_template_impls
+        #specialize
         #not_unpin
     })
 }
@@ -735,7 +786,16 @@ impl TemplateParts {
             };
 
             let template_type = field_template_type(&field.ty, &choice, &parts.zlim_core);
-            let declaration = match &field.ident {
+
+            // The field's type is what a reader wants to see, and an editor shows it for the field
+            // *name*. Spanning the name at the `built_in` word is therefore what makes the choice
+            // discoverable: hovering that word reports the template this field ended up with, which
+            // is otherwise stated nowhere near the field.
+            let name = field.ident.clone().map(|name| match choice.span() {
+                Some(span) => Ident::new(&name.to_string(), span),
+                None => name,
+            });
+            let declaration = match &name {
                 Some(name) => quote!(#visibility #name: #template_type),
                 None => quote!(#visibility #template_type),
             };
@@ -916,70 +976,148 @@ impl FieldChoice {
     /// The expression that describes this field with a template.
     fn conversion(&self, access: &TokenStream, zlim_core: &Path) -> TokenStream {
         match &self.choice {
-            TemplateChoice::Canonical => {
-                let into_template_ = path::into_template_(zlim_core);
-                quote!(#into_template_::into_template(#access))
-            }
-            TemplateChoice::BuiltIn => {
-                let built_in_template_ = path::built_in_template_(zlim_core);
-                quote!(#built_in_template_::built_in_template(#access))
-            }
-            TemplateChoice::Named(_) => quote!(::core::convert::Into::into(#access)),
+            TemplateChoice::Canonical(into) => match into {
+                Some(into) => quote!(#into(#access)),
+                None => {
+                    let into_template_ = path::into_template_(zlim_core);
+                    quote!(#into_template_::into_template(#access))
+                }
+            },
+            TemplateChoice::BuiltIn(_, into) => match into {
+                Some(into) => quote!(#into(#access)),
+                None => {
+                    let built_in_template_ = path::built_in_template_(zlim_core);
+                    quote!(#built_in_template_::built_in_template(#access))
+                }
+            },
+            TemplateChoice::Named(_, into) => match into {
+                Some(into) => quote!(#into(#access)),
+                None => quote!(::core::convert::Into::into(#access)),
+            },
         }
     }
 }
 
 /// The type of one template field.
+///
+/// The `built_in` span is deliberately *not* used here: it belongs on the field name instead, which
+/// is what an editor reads to show the field's type. Spanning the type itself put every token of
+/// `<Field as BuiltInTemplate>::Template` at the attribute, which an editor resolves to the `as`
+/// keyword and the trait rather than to the type.
 fn field_template_type(
     field_type: &syn::Type,
     choice: &TemplateChoice,
     zlim_core: &Path,
 ) -> TokenStream {
     match choice {
-        TemplateChoice::Canonical => {
+        TemplateChoice::Canonical(_) => {
             let into_template_ = path::into_template_(zlim_core);
             quote!(<#field_type as #into_template_>::Template)
         }
-        TemplateChoice::BuiltIn => {
+        TemplateChoice::BuiltIn(_, _) => {
             let built_in_template_ = path::built_in_template_(zlim_core);
             quote!(<#field_type as #built_in_template_>::Template)
         }
-        TemplateChoice::Named(named) => quote!(#named),
+        TemplateChoice::Named(named, _) => quote!(#named),
     }
 }
 
 /// Reads the `#[template(...)]` attribute of one field.
+///
+/// The attribute body is a comma-separated list of items, each of which is one of two shapes:
+///
+/// - `built_in`, which picks the field type's `BuiltInTemplate`, or the path of the template type;
+/// - `into = path`, which names the function the field converts with.
+///
+/// They compose: the first says *what* the field converts into, the second *how*, so `into` just
+/// fills in the option the chosen variant carries.
 fn field_choice(field: &syn::Field) -> syn::Result<TemplateChoice> {
-    let mut choice = TemplateChoice::Canonical;
-
     for attr in &field.attrs {
         if !attr.path().is_ident(TEMPLATE_ATTRIBUTE) {
             continue;
         }
-        attr.parse_args_with(|stream: ParseStream| {
-            let forked = stream.fork();
-            if let Ok(option) = forked.parse::<Ident>()
-                && option == BUILT_IN_OPTION
-            {
-                stream.parse::<Ident>()?;
-                choice = TemplateChoice::BuiltIn;
-                return Ok(());
-            }
 
-            match stream.parse::<Path>() {
-                Ok(named) => {
-                    choice = TemplateChoice::Named(named);
-                    Ok(())
-                }
-                Err(_) => Err(syn::Error::new(
-                    attr.span(),
-                    "expected `built_in` or the path of a template type",
-                )),
-            }
-        })?;
+        let mut built_in: Option<Span> = None;
+        let mut named: Option<Path> = None;
+        let mut into: Option<Path> = None;
+
+        attr.parse_args_with(
+            syn::punctuated::Punctuated::<FieldOption, syn::Token![,]>::parse_terminated,
+        )?
+        .into_iter()
+        .for_each(|option| match option {
+            FieldOption::BuiltIn(span) => built_in = Some(span),
+            FieldOption::Template(path) => named = Some(path),
+            FieldOption::Into(path) => into = Some(path),
+        });
+
+        return Ok(match (named, built_in) {
+            (Some(named), _) => TemplateChoice::Named(named, into),
+            (None, Some(span)) => TemplateChoice::BuiltIn(span, into),
+            (None, None) => TemplateChoice::Canonical(into),
+        });
     }
 
-    Ok(choice)
+    Ok(TemplateChoice::Canonical(None))
+}
+
+/// One item of a `#[template(...)]` attribute body.
+enum FieldOption {
+    /// `built_in`, with the span of the word so the choice can point back at it.
+    BuiltIn(Span),
+
+    /// The path of the template type.
+    Template(Path),
+
+    /// `into = path`, the function the field converts with.
+    Into(Path),
+}
+
+impl syn::parse::Parse for FieldOption {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        // Every item starts with an ident: a template path, `built_in`, or `into`. `Path::parse`
+        // reads just the first segment when an `=` follows, so parsing the path and looking at what
+        // comes next tells all three apart without having to put anything back.
+        let path: Path = input.parse()?;
+
+        let Some(first) = path.get_ident() else {
+            // Already a qualified path, so it can only be a template.
+            return Ok(Self::Template(path));
+        };
+        let first = first.clone();
+
+        if input.peek(syn::Token![=]) {
+            input.parse::<syn::Token![=]>()?;
+            if first != INTO_OPTION {
+                return Err(syn::Error::new(
+                    first.span(),
+                    "the only option that takes a value is `into = path`",
+                ));
+            }
+            return Ok(Self::Into(input.parse()?));
+        }
+
+        if path.segments.len() == 1 && first == BUILT_IN_OPTION {
+            return Ok(Self::BuiltIn(first.span()));
+        }
+
+        if input.peek(syn::Token![::]) {
+            // `into::x` and `built_in::x` are ordinary paths.
+            let mut segments = path.segments;
+            let leading_colon = path.leading_colon;
+            segments.push(input.parse::<syn::PathSegment>()?);
+            while input.peek(syn::Token![::]) {
+                input.parse::<syn::Token![::]>()?;
+                segments.push(input.parse::<syn::PathSegment>()?);
+            }
+            return Ok(Self::Template(Path {
+                leading_colon,
+                segments,
+            }));
+        }
+
+        Ok(Self::Template(path))
+    }
 }
 
 /// The name one field is bound by: its own name when it has one, a positional name otherwise.
