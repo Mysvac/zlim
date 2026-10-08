@@ -27,7 +27,7 @@ cargo fmt --all -- --check
 cargo test --workspace
 
 # 5. Doc-tests + verify doc links
-cargo doc -p zlim-internal --no-deps
+cargo doc -p zlim --no-deps
 ```
 
 Quick check for a single crate (substitute the crate name):

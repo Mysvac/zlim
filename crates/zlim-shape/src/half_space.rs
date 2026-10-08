@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::ops;
 use zlim_math::{Vec3, Vec3A, Vec4, Vec4Swizzles};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath};
 
 /// A region of 3D space, specifically an open set whose border is a bisecting 2D plane.
 ///
@@ -28,8 +28,9 @@ use zlim_reflect::derive::TypePath;
 /// It is used to define a `ViewFrustum`, but is also a useful mathematical primitive for
 /// rendering tasks such as light computation.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_shape::HalfSpace"]
+#[reflect(Debug, Default, Clone, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct HalfSpace {
     normal_d: Vec4,

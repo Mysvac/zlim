@@ -1,7 +1,7 @@
 use zlim_math::Vec2;
 use zlim_math::ops;
 
-use crate::{Capsule2d, Circle, CircularSegment, Rectangle};
+use crate::{Arc2d, Capsule2d, Circle, CircularSegment, Rectangle};
 use crate::{Primitive2d, RegularPolygon, Rhombus, Triangle2d};
 
 /// A primitive that can be resized uniformly.
@@ -72,7 +72,7 @@ impl Inset for Rectangle {
 
 impl Inset for CircularSegment {
     fn inset(self, distance: f32) -> Self {
-        let old_arc = self.arc;
+        let old_arc = Arc2d::from(self);
         let radius = old_arc.radius - distance;
         let apothem = old_arc.apothem() + distance;
         // https://en.wikipedia.org/wiki/Circular_segment

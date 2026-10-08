@@ -8,9 +8,7 @@
 
 use core::fmt::{Debug, Display, Formatter};
 
-use serde::{Deserialize, Serialize};
 use zlim_math::ops;
-use zlim_reflect::derive::TypePath;
 
 use crate::interval::Interval;
 
@@ -20,8 +18,6 @@ use crate::interval::Interval;
 /// This type expresses the relationship of a value to a fixed collection of values. It is a kind
 /// of summary used intermediately by sampling operations.
 #[derive(Debug, Copy, Clone, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cores::InterpolationDatum"]
 pub enum InterpolationDatum<T> {
     /// This value lies exactly on a value in the family.
     Exact(T),
@@ -67,8 +63,6 @@ impl<T> InterpolationDatum<T> {
 /// [`domain`]: EvenCore::domain
 /// [`sample_with`]: EvenCore::sample_with
 #[derive(Debug, Clone, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cores::EvenCore"]
 pub struct EvenCore<T> {
     /// The domain over which the samples are taken, which corresponds to the domain of the curve
     /// formed by interpolating them.
@@ -235,8 +229,6 @@ pub fn even_interp(domain: Interval, samples: usize, t: f32) -> InterpolationDat
 /// [`sample_with`]: UnevenCore::sample_with
 /// [the provided constructor]: UnevenCore::new
 #[derive(Debug, Clone)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cores::UnevenCore"]
 pub struct UnevenCore<T> {
     /// The times for the samples of this curve.
     ///
@@ -387,14 +379,12 @@ impl<T> UnevenCore<T> {
 ///
 /// [sampling width]: ChunkedUnevenCore::width
 #[derive(Debug, Clone)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cores::ChunkedUnevenCore"]
 pub struct ChunkedUnevenCore<T> {
     /// The times, one for each sample.
     ///
     /// # Invariants
-    /// This must always have a length of at least 2, be sorted, and have no duplicated or
-    /// non-finite times.
+    /// This must always have a length of at least 2, be sorted,
+    /// and have no duplicated or non-finite times.
     pub times: Vec<f32>,
 
     /// The values that are used in sampling. Each width-worth of these correspond to a single sample.

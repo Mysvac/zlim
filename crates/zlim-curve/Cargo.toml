@@ -9,11 +9,11 @@ exclude = ["README.zh.md"]
 
 [dependencies]
 
-zlim-reflect = { path = "../zlim-reflect", default-features = false }
 zlim-math = { path = "../zlim-math", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
+# zlim-reflect = { path = "../zlim-reflect", default-features = false }
 
-serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+# serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 itertools = { version = "0.15", default-features = false, features = ["use_alloc"] }
 
 [dev-dependencies]

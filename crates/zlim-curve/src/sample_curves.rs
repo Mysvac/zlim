@@ -3,9 +3,7 @@
 use core::any::type_name;
 use core::fmt::{self, Debug};
 
-use serde::{Deserialize, Serialize};
 use zlim_math::StableInterpolate;
-use zlim_reflect::derive::TypePath;
 
 use super::cores::{EvenCore, EvenCoreError, UnevenCore, UnevenCoreError};
 use super::{Curve, Interval};
@@ -14,8 +12,7 @@ use super::{Curve, Interval};
 // SampleCurve
 
 /// A curve that is defined by explicit neighbor interpolation over a set of evenly-spaced samples.
-#[derive(Clone, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::sample_curves::SampleCurve"]
+#[derive(Clone)]
 pub struct SampleCurve<T, I> {
     pub(crate) core: EvenCore<T>,
     pub(crate) interpolation: I,
@@ -85,8 +82,7 @@ where
 /// interpolated automatically using [a particularly well-behaved interpolation].
 ///
 /// [a particularly well-behaved interpolation]: StableInterpolate
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::sample_curves::SampleAutoCurve"]
+#[derive(Clone, Debug)]
 pub struct SampleAutoCurve<T> {
     pub(crate) core: EvenCore<T>,
 }
@@ -132,8 +128,7 @@ impl<T> SampleAutoCurve<T> {
 
 /// A curve that is defined by interpolation over unevenly spaced samples with explicit
 /// interpolation.
-#[derive(Clone, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::sample_curves::UnevenSampleCurve"]
+#[derive(Clone)]
 pub struct UnevenSampleCurve<T, I> {
     pub(crate) core: UnevenCore<T>,
     pub(crate) interpolation: I,
@@ -220,8 +215,7 @@ impl<T, I> UnevenSampleCurve<T, I> {
 /// interpolated automatically using [a particularly well-behaved interpolation].
 ///
 /// [a particularly well-behaved interpolation]: StableInterpolate
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::sample_curves::UnevenSampleAutoCurve"]
+#[derive(Clone, Debug)]
 pub struct UnevenSampleAutoCurve<T> {
     pub(crate) core: UnevenCore<T>,
 }

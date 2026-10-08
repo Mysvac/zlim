@@ -306,11 +306,12 @@ impl Dir3A {
     /// Returns `self` after an approximate normalization, assuming the value is already nearly normalized.
     /// Useful for preventing numerical error accumulation.
     ///
-    /// See [`Dir3::fast_renormalize`] for an example of when such error accumulation might occur.
+    /// See `Dir3::fast_renormalize` for an example of when such error accumulation might occur.
     #[inline]
     pub fn fast_renormalize(self) -> Self {
         let length_squared = self.0.length_squared();
-        // Based on a Taylor approximation of the inverse square root, see [`Dir3::fast_renormalize`] for more details.
+        // Based on a Taylor approximation of the inverse square root,
+        // see `Dir3::fast_renormalize` for more details.
         Self(self * (0.5 * (3.0 - length_squared)))
     }
 }

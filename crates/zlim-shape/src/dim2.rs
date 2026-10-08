@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir2, InvalidDirectionError, Isometry2d};
 use zlim_math::{Rot2, Vec2};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath, impl_reflect};
 
 use super::WindingOrder;
 use super::polygon::is_polygon_simple;
@@ -17,8 +17,10 @@ use crate::{Inset, Primitive2d, Ray2d};
 
 /// A circle primitive, representing the set of points some distance from the origin
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Circle"]
+#[repr(transparent)]
 pub struct Circle {
     /// The radius of the circle
     pub radius: f32,
@@ -99,7 +101,8 @@ impl Measured2d for Circle {
 /// **Warning:** Arcs with negative angle or radius, or with angle greater than an entire circle, are not officially supported.
 /// It is recommended to normalize arcs to have an angle in [0, 2π].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Arc2d"]
 #[doc(alias("CircularArc", "CircleArc"))]
 pub struct Arc2d {
@@ -264,12 +267,14 @@ impl Arc2d {
 /// an entire circle, are not officially supported. We recommend normalizing circular sectors
 /// to have an angle in [0, 2π].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::CircularSector"]
 pub struct CircularSector {
-    /// The arc defining the sector
-    #[serde(flatten)]
-    pub arc: Arc2d,
+    /// The radius of the circle sector
+    pub radius: f32,
+    /// Half the angle defining the arc
+    pub half_angle: f32,
 }
 
 impl Primitive2d for CircularSector {}
@@ -284,20 +289,33 @@ impl Default for CircularSector {
 impl From<Arc2d> for CircularSector {
     #[inline]
     fn from(arc: Arc2d) -> Self {
-        Self { arc }
+        Self {
+            radius: arc.radius,
+            half_angle: arc.half_angle,
+        }
+    }
+}
+
+impl From<CircularSector> for Arc2d {
+    #[inline]
+    fn from(sector: CircularSector) -> Self {
+        Self {
+            radius: sector.radius,
+            half_angle: sector.half_angle,
+        }
     }
 }
 
 impl Measured2d for CircularSector {
     #[inline]
     fn area(&self) -> f32 {
-        self.arc.radius.squared() * self.arc.half_angle
+        self.radius.squared() * self.half_angle
     }
 
     #[inline]
     fn perimeter(&self) -> f32 {
-        if self.half_angle() >= PI {
-            self.arc.radius * 2.0 * PI
+        if self.half_angle >= PI {
+            self.radius * 2.0 * PI
         } else {
             2.0 * self.radius() + self.arc_length()
         }
@@ -305,19 +323,18 @@ impl Measured2d for CircularSector {
 }
 
 impl CircularSector {
-    /// Create a new [`CircularSector`] from a `radius` and an `angle`
+    /// Create a new [`CircularSector`] from a `radius` and an `half_angle`
     #[inline]
-    pub const fn new(radius: f32, angle: f32) -> Self {
-        Self {
-            arc: Arc2d::new(radius, angle),
-        }
+    pub const fn new(radius: f32, half_angle: f32) -> Self {
+        Self { radius, half_angle }
     }
 
     /// Create a new [`CircularSector`] from a `radius` and an `angle` in radians.
     #[inline]
     pub const fn from_radians(radius: f32, angle: f32) -> Self {
         Self {
-            arc: Arc2d::from_radians(radius, angle),
+            radius,
+            half_angle: angle / 2.0,
         }
     }
 
@@ -325,7 +342,8 @@ impl CircularSector {
     #[inline]
     pub const fn from_degrees(radius: f32, angle: f32) -> Self {
         Self {
-            arc: Arc2d::from_degrees(radius, angle),
+            radius,
+            half_angle: angle.to_radians() / 2.0,
         }
     }
 
@@ -335,32 +353,33 @@ impl CircularSector {
     #[inline]
     pub const fn from_turns(radius: f32, fraction: f32) -> Self {
         Self {
-            arc: Arc2d::from_turns(radius, fraction),
+            radius,
+            half_angle: fraction * PI,
         }
     }
 
     /// Get half the angle of the sector
     #[inline]
     pub const fn half_angle(&self) -> f32 {
-        self.arc.half_angle
+        self.half_angle
     }
 
     /// Get the angle of the sector
     #[inline]
     pub const fn angle(&self) -> f32 {
-        self.arc.angle()
+        self.half_angle * 2.0
     }
 
     /// Get the radius of the sector
     #[inline]
     pub const fn radius(&self) -> f32 {
-        self.arc.radius
+        self.radius
     }
 
     /// Get the length of the arc defining the sector
     #[inline]
     pub const fn arc_length(&self) -> f32 {
-        self.arc.length()
+        self.angle() * self.radius
     }
 
     /// Get half the length of the chord defined by the sector
@@ -368,7 +387,7 @@ impl CircularSector {
     /// See [`Arc2d::half_chord_length`]
     #[inline]
     pub fn half_chord_length(&self) -> f32 {
-        self.arc.half_chord_length()
+        self.radius * ops::sin(self.half_angle)
     }
 
     /// Get the length of the chord defined by the sector
@@ -376,7 +395,7 @@ impl CircularSector {
     /// See [`Arc2d::chord_length`]
     #[inline]
     pub fn chord_length(&self) -> f32 {
-        self.arc.chord_length()
+        2.0 * self.half_chord_length()
     }
 
     /// Get the midpoint of the chord defined by the sector
@@ -384,7 +403,7 @@ impl CircularSector {
     /// See [`Arc2d::chord_midpoint`]
     #[inline]
     pub fn chord_midpoint(&self) -> Vec2 {
-        self.arc.chord_midpoint()
+        self.apothem() * Vec2::Y
     }
 
     /// Get the length of the apothem of this sector
@@ -392,7 +411,12 @@ impl CircularSector {
     /// See [`Arc2d::apothem`]
     #[inline]
     pub fn apothem(&self) -> f32 {
-        self.arc.apothem()
+        let sign = if self.half_angle <= FRAC_PI_2 {
+            1.0
+        } else {
+            -1.0
+        };
+        sign * ops::sqrt(self.radius.squared() - self.half_chord_length().squared())
     }
 
     /// Get the length of the sagitta of this sector
@@ -400,7 +424,7 @@ impl CircularSector {
     /// See [`Arc2d::sagitta`]
     #[inline]
     pub fn sagitta(&self) -> f32 {
-        self.arc.sagitta()
+        self.radius - self.apothem()
     }
 }
 
@@ -419,12 +443,14 @@ impl CircularSector {
 /// an entire circle, are not officially supported. We recommend normalizing circular segments
 /// to have an angle in [0, 2π].
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::CircularSegment"]
 pub struct CircularSegment {
-    /// The arc defining the segment
-    #[serde(flatten)]
-    pub arc: Arc2d,
+    /// The radius of the circle segment
+    pub radius: f32,
+    /// Half the angle defining the arc
+    pub half_angle: f32,
 }
 
 impl Primitive2d for CircularSegment {}
@@ -439,14 +465,27 @@ impl Default for CircularSegment {
 impl From<Arc2d> for CircularSegment {
     #[inline]
     fn from(arc: Arc2d) -> Self {
-        Self { arc }
+        Self {
+            radius: arc.radius,
+            half_angle: arc.half_angle,
+        }
+    }
+}
+
+impl From<CircularSegment> for Arc2d {
+    #[inline]
+    fn from(segment: CircularSegment) -> Self {
+        Self {
+            radius: segment.radius,
+            half_angle: segment.half_angle,
+        }
     }
 }
 
 impl Measured2d for CircularSegment {
     #[inline]
     fn area(&self) -> f32 {
-        0.5 * self.arc.radius.squared() * (self.arc.angle() - ops::sin(self.arc.angle()))
+        0.5 * self.radius.squared() * (self.angle() - ops::sin(self.angle()))
     }
 
     #[inline]
@@ -459,16 +498,15 @@ impl CircularSegment {
     /// Create a new [`CircularSegment`] from a `radius`, and a `half_angle` in radians.
     #[inline]
     pub const fn new(radius: f32, half_angle: f32) -> Self {
-        Self {
-            arc: Arc2d::new(radius, half_angle),
-        }
+        Self { radius, half_angle }
     }
 
     /// Create a new [`CircularSegment`] from a `radius` and an `angle` in radians.
     #[inline]
     pub const fn from_radians(radius: f32, angle: f32) -> Self {
         Self {
-            arc: Arc2d::from_radians(radius, angle),
+            radius,
+            half_angle: angle / 2.0,
         }
     }
 
@@ -476,7 +514,8 @@ impl CircularSegment {
     #[inline]
     pub const fn from_degrees(radius: f32, angle: f32) -> Self {
         Self {
-            arc: Arc2d::from_degrees(radius, angle),
+            radius,
+            half_angle: angle.to_radians() / 2.0,
         }
     }
 
@@ -486,39 +525,40 @@ impl CircularSegment {
     #[inline]
     pub const fn from_turns(radius: f32, fraction: f32) -> Self {
         Self {
-            arc: Arc2d::from_turns(radius, fraction),
+            radius,
+            half_angle: fraction * PI,
         }
     }
 
     /// Get the half-angle of the segment
     #[inline]
     pub const fn half_angle(&self) -> f32 {
-        self.arc.half_angle
+        self.half_angle
     }
 
     /// Get the angle of the segment
     #[inline]
     pub const fn angle(&self) -> f32 {
-        self.arc.angle()
+        self.half_angle * 2.0
     }
 
     /// Get the radius of the segment
     #[inline]
     pub const fn radius(&self) -> f32 {
-        self.arc.radius
+        self.radius
     }
 
     /// Get the length of the arc defining the segment
     #[inline]
     pub const fn arc_length(&self) -> f32 {
-        self.arc.length()
+        self.angle() * self.radius
     }
 
     /// Get half the length of the segment's base, also known as its chord
     #[inline]
     #[doc(alias = "half_base_length")]
     pub fn half_chord_length(&self) -> f32 {
-        self.arc.half_chord_length()
+        self.radius * ops::sin(self.half_angle)
     }
 
     /// Get the length of the segment's base, also known as its chord
@@ -526,14 +566,14 @@ impl CircularSegment {
     #[doc(alias = "base_length")]
     #[doc(alias = "base")]
     pub fn chord_length(&self) -> f32 {
-        self.arc.chord_length()
+        2.0 * self.half_chord_length()
     }
 
     /// Get the midpoint of the segment's base, also known as its chord
     #[inline]
     #[doc(alias = "base_midpoint")]
     pub fn chord_midpoint(&self) -> Vec2 {
-        self.arc.chord_midpoint()
+        self.apothem() * Vec2::Y
     }
 
     /// Get the length of the apothem of this segment,
@@ -542,7 +582,12 @@ impl CircularSegment {
     /// See [`Arc2d::apothem`]
     #[inline]
     pub fn apothem(&self) -> f32 {
-        self.arc.apothem()
+        let sign = if self.half_angle <= FRAC_PI_2 {
+            1.0
+        } else {
+            -1.0
+        };
+        sign * ops::sqrt(self.radius.squared() - self.half_chord_length().squared())
     }
 
     /// Get the length of the sagitta of this segment, also known as its height
@@ -551,7 +596,7 @@ impl CircularSegment {
     #[inline]
     #[doc(alias = "height")]
     pub fn sagitta(&self) -> f32 {
-        self.arc.sagitta()
+        self.radius - self.apothem()
     }
 }
 
@@ -564,7 +609,8 @@ impl CircularSegment {
 /// if the ellipse is not a circle, the inset shape is not actually an ellipse (although it
 /// may look like one) but can also be a lens-like shape.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Ellipse"]
 pub struct Ellipse {
     /// Half of the width and height of the ellipse.
@@ -710,7 +756,8 @@ impl Measured2d for Ellipse {
 
 /// A primitive shape formed by the region between two circles, also known as a ring.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Annulus"]
 #[doc(alias = "Ring")]
 pub struct Annulus {
@@ -805,7 +852,8 @@ impl Measured2d for Annulus {
 /// A four sided polygon, centered on the origin, where opposite sides are parallel but without
 /// requiring right angles.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Rhombus"]
 #[doc(alias = "Diamond")]
 pub struct Rhombus {
@@ -937,7 +985,8 @@ impl Measured2d for Rhombus {
 /// An unbounded plane in 2D space. It forms a separating surface through the origin,
 /// stretching infinitely far
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Plane2d"]
 pub struct Plane2d {
     /// The normal of the plane. The plane will be placed perpendicular to this direction
@@ -974,7 +1023,8 @@ impl Plane2d {
 ///
 /// For a finite line: [`Segment2d`]
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Line2d"]
 pub struct Line2d {
     /// The direction of the line. The line extends infinitely in both the given direction
@@ -984,12 +1034,19 @@ pub struct Line2d {
 
 impl Primitive2d for Line2d {}
 
+impl Default for Line2d {
+    fn default() -> Self {
+        Self { direction: Dir2::X }
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Segment2d
 
 /// A line segment defined by two endpoints in 2D space.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Segment2d"]
 #[doc(alias = "LineSegment2d")]
 pub struct Segment2d {
@@ -1295,7 +1352,8 @@ impl From<(Vec2, Vec2)> for Segment2d {
 
 /// A series of connected line segments in 2D space.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Polyline2d"]
 pub struct Polyline2d {
     /// The vertices of the polyline
@@ -1347,7 +1405,8 @@ impl Polyline2d {
 
 /// A triangle in 2D space
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Triangle2d"]
 pub struct Triangle2d {
     /// The vertices of the triangle
@@ -1516,7 +1575,8 @@ impl Measured2d for Triangle2d {
 
 /// A rectangle primitive, which is like a square, except that the width and height can be different
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Rectangle"]
 #[doc(alias = "Quad")]
 pub struct Rectangle {
@@ -1603,7 +1663,8 @@ impl Measured2d for Rectangle {
 
 /// A polygon with N vertices.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Polygon"]
 pub struct Polygon {
     /// The vertices of the `Polygon`
@@ -1648,7 +1709,8 @@ impl From<ConvexPolygon> for Polygon {
 
 /// A convex polygon with `N` vertices.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::ConvexPolygon"]
 pub struct ConvexPolygon {
     /// The vertices of the [`ConvexPolygon`].
@@ -1734,7 +1796,8 @@ impl TryFrom<Polygon> for ConvexPolygon {
 
 /// A polygon centered on the origin where all vertices lie on a circle, equally far apart.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::RegularPolygon"]
 pub struct RegularPolygon {
     /// The circumcircle on which all vertices lie
@@ -1876,7 +1939,8 @@ impl Measured2d for RegularPolygon {
 ///
 /// A two-dimensional capsule is defined as a neighborhood of points at a distance (radius) from a line
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim2::Capsule2d"]
 #[doc(alias = "stadium", alias = "pill")]
 pub struct Capsule2d {
@@ -1989,6 +2053,14 @@ impl<P: Primitive2d + Measured2d> Measured2d for Ring<P> {
     #[inline]
     fn perimeter(&self) -> f32 {
         self.outer_shape.perimeter() + self.inner_shape.perimeter()
+    }
+}
+
+impl_reflect! {
+    #[reflect(Clone)]
+    pub struct Ring<P: Primitive2d + Clone> {
+        pub outer_shape: P,
+        pub inner_shape: P,
     }
 }
 

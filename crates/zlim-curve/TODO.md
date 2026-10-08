@@ -1,0 +1,1 @@
+- [ ] Figure out which types in `zlim-curve` actually need reflection and serialization.

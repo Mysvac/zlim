@@ -6,10 +6,8 @@ use core::fmt::{Display, Formatter};
 use core::iter::once;
 
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Vec2, VectorSpace};
-use zlim_reflect::derive::TypePath;
 
 // -----------------------------------------------------------------------------
 // CubicBezier
@@ -52,8 +50,7 @@ use zlim_reflect::derive::TypePath;
 /// let bezier = CubicBezier::new(points).to_curve().unwrap();
 /// let positions: Vec<_> = bezier.iter_positions(100).collect();
 /// ```
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::CubicBezier"]
+#[derive(Clone, Debug)]
 pub struct CubicBezier<P: VectorSpace> {
     /// The control points of the Bezier curve.
     pub control_points: Vec<[P; 4]>,
@@ -137,8 +134,7 @@ impl core::error::Error for CubicBezierError {}
 /// the final curve segment connects the last control point to the first.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::CubicHermite"]
+#[derive(Clone, Debug)]
 pub struct CubicHermite<P: VectorSpace> {
     /// The control points of the Hermite curve.
     pub control_points: Vec<(P, P)>,
@@ -251,8 +247,7 @@ impl<P: VectorSpace<Scalar = f32>> CyclicCubicGenerator<P> for CubicHermite<P> {
 /// the final curve segment connects the last control point to the first.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::CubicCardinalSpline"]
+#[derive(Clone, Debug)]
 pub struct CubicCardinalSpline<P: VectorSpace> {
     /// Tension
     pub tension: f32,
@@ -397,8 +392,7 @@ impl<P: VectorSpace<Scalar = f32>> CyclicCubicGenerator<P> for CubicCardinalSpli
 /// is used to form a cyclic curve, the three additional segments used to close the curve come last.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::CubicBSpline"]
+#[derive(Clone, Debug)]
 pub struct CubicBSpline<P: VectorSpace> {
     /// The control points of the spline
     pub control_points: Vec<P>,
@@ -573,8 +567,7 @@ impl core::error::Error for CubicNurbsError {}
 /// continuity makes it useful for camera paths. Knot multiplicity of 2 in intermediate knots reduces the
 /// continuity to C1, and knot multiplicity of 3 reduces the continuity to C0. The curve is always at least
 /// C0, meaning it has no jumps or holes.
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::CubicNurbs"]
+#[derive(Clone, Debug)]
 pub struct CubicNurbs<P: VectorSpace> {
     /// The control points of the NURBS
     pub control_points: Vec<P>,
@@ -805,8 +798,7 @@ impl<P: VectorSpace<Scalar = f32>> RationalGenerator<P> for CubicNurbs<P> {
 /// formed with [`to_curve_cyclic`], the final segment connects the last control point with the first.
 ///
 /// [`to_curve_cyclic`]: CyclicCubicGenerator::to_curve_cyclic
-#[derive(Clone, Debug, TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::LinearSpline"]
+#[derive(Clone, Debug)]
 pub struct LinearSpline<P: VectorSpace> {
     /// The control points of the linear spline.
     pub points: Vec<P>,
@@ -932,8 +924,6 @@ pub trait CyclicCubicGenerator<P: VectorSpace> {
 ///
 /// [compound curve]: CubicCurve
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::CubicSegment"]
 pub struct CubicSegment<P: VectorSpace> {
     /// Polynomial coefficients for the segment.
     pub coeff: [P; 4],
@@ -1093,8 +1083,6 @@ impl CubicSegment<Vec2> {
 /// Use any struct that implements the [`CubicGenerator`] trait to create a new curve, such as
 /// [`CubicBezier`].
 #[derive(Clone, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::CubicCurve"]
 pub struct CubicCurve<P: VectorSpace> {
     /// The segments comprising the curve. This must always be nonempty.
     segments: Vec<CubicSegment<P>>,
@@ -1250,8 +1238,6 @@ pub trait RationalGenerator<P: VectorSpace> {
 ///
 /// [compound curves]: RationalCurve
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::RationalSegment"]
 pub struct RationalSegment<P: VectorSpace> {
     /// The coefficients matrix of the cubic curve.
     pub coeff: [P; 4],
@@ -1382,8 +1368,6 @@ impl<P: VectorSpace<Scalar = f32>> RationalSegment<P> {
 /// Use any struct that implements the [`RationalGenerator`] trait to create a new curve, such as
 /// [`CubicNurbs`], or convert [`CubicCurve`] using `into/from`.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::cubic_splines::RationalCurve"]
 pub struct RationalCurve<P: VectorSpace> {
     /// The segments comprising the curve. This must always be nonempty.
     segments: Vec<RationalSegment<P>>,

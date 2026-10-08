@@ -69,10 +69,8 @@
 //! [`sample_clamped`]: `Curve::sample_clamped`
 //! [`sample_unchecked`]: `Curve::sample_unchecked`
 
-use serde::{Deserialize, Serialize};
 use zlim_math::{Dir2, Dir3, Dir3A, Isometry2d, Isometry3d, Sum};
 use zlim_math::{Quat, Rot2, Vec2, Vec3, Vec3A, Vec4, VectorSpace};
-use zlim_reflect::derive::TypePath;
 
 use crate::{Curve, CurveExt, FunctionCurve, Interval};
 
@@ -329,8 +327,6 @@ zlim_utils::range_invoke!(impl_ease_tuple, 12);
 /// [`sample`]: EasingCurve::sample
 /// [`sample_clamped`]: EasingCurve::sample_clamped
 #[derive(Clone, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::easing::EasingCurve"]
 pub struct EasingCurve<T> {
     start: T,
     end: T,
@@ -378,8 +374,6 @@ where
 ///
 /// [CSS step function specification]: https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function/steps#description
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::easing::JumpAt"]
 pub enum JumpAt {
     /// Indicates that the first step happens when the animation begins.
     ///
@@ -464,8 +458,6 @@ impl JumpAt {
 /// [unit interval]: `Interval::UNIT`
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
-#[type_path = "zlim_curve::easing::EaseFunction"]
 #[non_exhaustive]
 // Note: Graphs are auto-generated via `tools/build-easefunction-graphs`.
 pub enum EaseFunction {

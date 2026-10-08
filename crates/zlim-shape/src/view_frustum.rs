@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Mat4, Vec3};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::HalfSpace;
 
@@ -45,8 +45,9 @@ use crate::HalfSpace;
 /// Which improves depth precision when used with a floating-point depth
 /// buffer, because floating-point numbers have higher density near 0.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_shape::ViewFrustum"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ViewFrustum {
     /// The six half-spaces making up the frustum
     pub half_spaces: [HalfSpace; 6],

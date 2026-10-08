@@ -99,42 +99,39 @@ impl Bounded2d for CircularSector {
         }
 
         // Otherwise, we use the same logic as for Arc2d, above, just with the circle's center as an additional possibility.
-        let mut bounds = arc_bounding_points(self.arc, isometry.rotation);
+        let mut bounds = arc_bounding_points(Arc2d::from(*self), isometry.rotation);
         bounds.push(Vec2::ZERO);
 
         Aabb2d::from_point_cloud(Isometry2d::from_translation(isometry.translation), &bounds)
     }
 
     fn bounding_circle(&self, isometry: impl Into<Isometry2d>) -> BoundingCircle {
-        if self.arc.is_major() {
+        let arc = Arc2d::from(*self);
+        if arc.is_major() {
             let isometry = isometry.into();
 
             // If the arc is major, that is, greater than a semicircle,
             // then bounding circle is just the circle defining the sector.
-            BoundingCircle::new(isometry.translation, self.arc.radius)
+            BoundingCircle::new(isometry.translation, self.radius)
         } else {
             // However, when the arc is minor,
             // we need our bounding circle to include both endpoints of the arc as well as the circle center.
             // This means we need the circumcircle of those three points.
             // The circumcircle will always have a greater curvature than the circle itself, so it will contain
             // the entire circular sector.
-            Triangle2d::new(
-                Vec2::ZERO,
-                self.arc.left_endpoint(),
-                self.arc.right_endpoint(),
-            )
-            .bounding_circle(isometry)
+            Triangle2d::new(Vec2::ZERO, arc.left_endpoint(), arc.right_endpoint())
+                .bounding_circle(isometry)
         }
     }
 }
 
 impl Bounded2d for CircularSegment {
     fn aabb_2d(&self, isometry: impl Into<Isometry2d>) -> Aabb2d {
-        self.arc.aabb_2d(isometry)
+        Arc2d::from(*self).aabb_2d(isometry)
     }
 
     fn bounding_circle(&self, isometry: impl Into<Isometry2d>) -> BoundingCircle {
-        self.arc.bounding_circle(isometry)
+        Arc2d::from(*self).bounding_circle(isometry)
     }
 }
 

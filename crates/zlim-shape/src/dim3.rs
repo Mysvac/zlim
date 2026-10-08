@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use zlim_math::ops::{self, FloatPow};
 use zlim_math::{Dir3, InvalidDirectionError, Isometry3d, Mat3};
 use zlim_math::{Quat, Vec2, Vec3};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath, impl_reflect};
 
 use super::Circle;
 use crate::measure::{Measured2d, Measured3d};
@@ -15,7 +15,8 @@ use crate::{Primitive2d, Primitive3d, Ray3d};
 
 /// A sphere primitive, representing the set of all points some distance from the origin
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Sphere"]
 #[repr(transparent)]
 pub struct Sphere {
@@ -84,7 +85,8 @@ impl Measured3d for Sphere {
 
 /// A bounded plane in 3D space. It forms a surface starting from the origin with a defined height and width.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Plane3d"]
 pub struct Plane3d {
     /// The normal of the plane. The plane will be placed perpendicular to this direction
@@ -164,7 +166,8 @@ impl Measured2d for Plane3d {
 /// An unbounded plane in 3D space. It forms a separating surface through the origin,
 /// stretching infinitely far
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::InfinitePlane3d"]
 pub struct InfinitePlane3d {
     /// The normal of the plane. The plane will be placed perpendicular to this direction
@@ -337,7 +340,8 @@ impl InfinitePlane3d {
 ///
 /// For a finite line: [`Segment3d`]
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Line3d"]
 pub struct Line3d {
     /// The direction of the line
@@ -346,12 +350,19 @@ pub struct Line3d {
 
 impl Primitive3d for Line3d {}
 
+impl Default for Line3d {
+    fn default() -> Self {
+        Self { direction: Dir3::X }
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Segment3d
 
 /// A line segment defined by two endpoints in 3D space.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Debug, Default, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Segment3d"]
 #[doc(alias = "LineSegment3d")]
 pub struct Segment3d {
@@ -593,7 +604,8 @@ impl From<(Vec3, Vec3)> for Segment3d {
 
 /// A series of connected line segments in 3D space.
 #[derive(Clone, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Polyline3d"]
 pub struct Polyline3d {
     /// The vertices of the polyline
@@ -644,7 +656,8 @@ impl Polyline3d {
 /// A cuboid primitive, which is like a cube, except that the x, y, and z dimensions are not
 /// required to be the same.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Cuboid"]
 pub struct Cuboid {
     /// Half of the width, height and depth of the cuboid
@@ -732,7 +745,8 @@ impl Measured3d for Cuboid {
 
 /// A cylinder primitive centered on the origin
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Cylinder"]
 pub struct Cylinder {
     /// The radius of the cylinder
@@ -806,7 +820,8 @@ impl Measured3d for Cylinder {
 /// A 3D capsule primitive centered on the origin
 /// A three-dimensional capsule is defined as a surface at a distance (radius) from a line
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Capsule3d"]
 pub struct Capsule3d {
     /// The radius of the capsule
@@ -872,7 +887,8 @@ impl Measured3d for Capsule3d {
 ///
 /// The cone is oriented with its tip pointing towards the Y axis.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Cone"]
 pub struct Cone {
     /// The radius of the base
@@ -950,7 +966,8 @@ impl Measured3d for Cone {
 /// A conical frustum can be created
 /// by slicing off a section of a cone.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::ConicalFrustum"]
 pub struct ConicalFrustum {
     /// The radius of the top of the frustum
@@ -1059,7 +1076,8 @@ pub enum TorusKind {
 /// A torus primitive, often representing a ring or donut shape
 /// The set of points some distance from a circle centered at the origin
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Torus"]
 pub struct Torus {
     /// The radius of the tube of the torus
@@ -1166,7 +1184,8 @@ impl Measured3d for Torus {
 
 /// A 3D triangle primitive.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Triangle3d"]
 pub struct Triangle3d {
     /// The vertices of the triangle.
@@ -1358,7 +1377,8 @@ impl Measured2d for Triangle3d {
 
 /// A tetrahedron primitive.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[type_path = "zlim_shape::dim3::Tetrahedron"]
 pub struct Tetrahedron {
     /// The vertices of the tetrahedron.
@@ -1498,6 +1518,14 @@ impl<T: Primitive2d + Measured2d> Measured3d for Extrusion<T> {
     /// Get the volume of the extrusion
     fn volume(&self) -> f32 {
         2. * self.base_shape.area() * self.half_depth
+    }
+}
+
+impl_reflect! {
+    #[reflect(Clone)]
+    pub struct Extrusion<T: Primitive2d + Clone> {
+        pub base_shape: T,
+        pub half_depth: f32,
     }
 }
 
