@@ -42,7 +42,7 @@ macro_rules! def_path_fn {
     };
 }
 
-def_path_fn!(zlim_error, error::ZlimError);
+def_path_fn!(zlim_result, __macro_exports__::ZlimResult);
 def_path_fn!(bundle_, bundle::Bundle);
 def_path_fn!(bundle_writer_, bundle::BundleWriter);
 def_path_fn!(component_collector_, component::ComponentCollector);
@@ -100,5 +100,4 @@ def_path_fn!(into_template_, template::IntoTemplate);
 def_path_fn!(template_context_, template::TemplateContext);
 def_path_fn!(built_in_template_, template::BuiltInTemplate);
 def_path_fn!(specialize_from_template_, template::SpecializeTemplate);
-def_path_fn!(zlim_result_, error::ZlimResult);
 def_path_fn!(entity_label_, entity::EntityLabel);

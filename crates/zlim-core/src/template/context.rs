@@ -1,13 +1,13 @@
 use core::fmt::{Debug, Display, Formatter};
 use core::hash::{Hash, Hasher};
 
+use zlim_error::{ZlimError, ZlimResult};
 use zlim_utils::hash::FixedState;
 use zlim_utils::hash::HashMap;
 use zlim_utils::hash::NoopState;
 
 use crate::borrow::{Res, ResMut};
 use crate::entity::{Entities, EntityId, EntityMap, EntityMapper};
-use crate::error::{ZlimError, ZlimResult};
 use crate::ops::EntityOwned;
 use crate::resource::Resource;
 use crate::world::World;

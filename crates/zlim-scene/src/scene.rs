@@ -6,7 +6,7 @@
 
 use zlim_asset::assets::Assets;
 use zlim_asset::server::AssetServer;
-use zlim_core::error::ZlimResult;
+use zlim_error::ZlimResult;
 
 use crate::dependency::SceneDependencies;
 use crate::patch::ScenePatch;

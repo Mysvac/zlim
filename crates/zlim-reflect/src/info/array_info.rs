@@ -23,6 +23,10 @@ pub struct ArrayInfo {
     len: usize,
     generics: Generics,
     attributes: Attributes,
+    /// Serde type info used for serialization and deserialization.
+    ///
+    /// Usually `None`, meaning the reflected structure is used directly.
+    serde_info: Option<&'static TypeInfo>,
 }
 
 impl ArrayInfo {
@@ -42,6 +46,7 @@ impl ArrayInfo {
             len,
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
+            serde_info: None,
         }
     }
 
@@ -73,6 +78,39 @@ impl ArrayInfo {
     #[inline]
     pub fn item_info(&self) -> &'static TypeInfo {
         (self.item_info)()
+    }
+}
+
+impl ArrayInfo {
+    /// Sets the serde type info, overriding the reflected representation.
+    #[inline]
+    pub const fn with_serde_info(self, info: &'static TypeInfo) -> Self {
+        Self {
+            serde_info: Some(info),
+            ..self
+        }
+    }
+
+    /// Returns the serde type info, if any.
+    #[inline]
+    pub const fn serde_info(&self) -> Option<&'static TypeInfo> {
+        self.serde_info
+    }
+
+    /// Creates an [`ArrayInfo`] without the [`Array`] requirement.
+    ///
+    /// Otherwise identical to [`ArrayInfo::new`].
+    #[inline]
+    pub const fn dynamic<TArray: Reflect + TypePath, TItem: Reflect + Typed>(len: usize) -> Self {
+        Self {
+            ty: Type::of::<TArray>(),
+            item_id: TypeId::of::<TItem>(),
+            item_info: TItem::type_info,
+            len,
+            generics: Generics::EMPTY,
+            attributes: Attributes::EMPTY,
+            serde_info: None,
+        }
     }
 }
 

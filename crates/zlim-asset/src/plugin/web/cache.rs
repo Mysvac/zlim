@@ -7,7 +7,7 @@ use zlim_utils::{format_smol, hash::FixedState};
 const CACHE_DIR: &str = ".web-asset-cache";
 
 fn build_path(url: &str) -> PathBuf {
-    let url = url.trim();
+    let url = url.trim_ascii();
 
     let hash = FixedState.hash_one(url);
     let len = url.len();

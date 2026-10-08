@@ -3,6 +3,7 @@ use std::{format, string::String};
 use serde::{Deserialize, Serialize};
 use zlim_math::StableInterpolate;
 use zlim_math::{Vec3, Vec4, ops};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::color_difference::EuclideanDistance;
 use crate::{Alpha, Gray, LinearRgba, Luminance, Mix, Xyza};
@@ -22,6 +23,9 @@ use crate::{impl_componentwise_vector_space, impl_from_via};
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Srgba"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Srgba {
     /// The red channel. [0.0, 1.0] for SDR colors.
     pub red: f32,

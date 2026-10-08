@@ -30,8 +30,7 @@ fn set_hook() {
             let default_hook = std::panic::take_hook();
             #[expect(clippy::print_stderr, reason = "panic output")]
             std::panic::set_hook(Box::new(move |info| {
-                if zlim_core::cfg::backtrace!()
-                    && zlim_core::error::handler::PANIC_BACKTRACE_CAPTURED.replace(false)
+                if zlim_error::handler::PANIC_BACKTRACE_CAPTURED.replace(false)
                     && let Some(msg) = info.payload_as_str()
                 {
                     std::eprintln!("{msg}\n\n\tdefault panic hook was skipped due to `PanicHandlerPlugin`");
@@ -47,7 +46,7 @@ fn set_hook() {
             let default_hook = std::panic::take_hook();
             #[expect(clippy::print_stderr, reason = "panic output")]
             std::panic::set_hook(Box::new(move |info| {
-                if zlim_core::error::handler::PANIC_BACKTRACE_CAPTURED.replace(false)
+                if zlim_error::handler::PANIC_BACKTRACE_CAPTURED.replace(false)
                     && let Some(msg) = info.payload_as_str()
                 {
                     std::eprintln!("{msg}\n\n\tdefault panic hook was skipped due to `PanicHandlerPlugin`");

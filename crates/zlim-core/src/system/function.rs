@@ -1,11 +1,11 @@
 //! Function-based systems: converting closures and functions into [`System`]s.
 
+use zlim_error::Severity;
 use zlim_utils::debug::DebugName;
 
 use super::IntoSystem;
 use super::{AccessTable, SystemFlags, SystemMeta};
 use super::{System, SystemId, SystemInput, SystemParam};
-use crate::error::Severity;
 use crate::system::SystemError;
 use crate::tick::Tick;
 use crate::world::WorldCell;
@@ -396,7 +396,7 @@ impl<M: 'static, F: SystemFunction<M> + 'static> System for FunctionSystem<M, F>
                 Err(e) => {
                     core::hint::cold_path();
                     if e.severity == Severity::Ignore {
-                        return Err(SystemError::None);
+                        return Err(SystemError::Skipped);
                     } else {
                         ::core::hint::cold_path();
                         let debug_name = self.meta.id.debug_name();

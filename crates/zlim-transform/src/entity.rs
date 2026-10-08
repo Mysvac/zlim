@@ -2,9 +2,9 @@ use crate::{GlobalTransform, Transform};
 
 use zlim_core::command::{EntityCommand, EntityCommands};
 use zlim_core::entity::{EntityError, EntityId};
-use zlim_core::error::ZlimError;
 use zlim_core::ops::EntityOwned;
 use zlim_core::tick::DetectChangesMut;
+use zlim_error::ZlimError;
 
 // -----------------------------------------------------------------------------
 // EntityTransformExt

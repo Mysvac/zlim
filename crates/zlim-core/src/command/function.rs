@@ -1,11 +1,11 @@
 //! Convenience `Command` / `EntityCommand` constructor functions.
 
+use zlim_error::{IntoZlimResult, ZlimError};
 use zlim_utils::debug::DebugLocation;
 
 use crate::bundle::Bundle;
 use crate::command::{Command, EntityCommand};
 use crate::entity::{Entities, EntityId};
-use crate::error::{IntoZlimResult, ZlimError};
 use crate::message::Message;
 use crate::ops::EntityOwned;
 use crate::resource::Resource;

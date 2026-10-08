@@ -71,13 +71,11 @@ thread_local! {
     /// std::panic::set_hook(Box::new(|info| {
     ///     let captured = PANIC_BACKTRACE_CAPTURED.replace(false);
     ///
-    ///     if captured {
+    ///     if captured && let Some(msg) = info.payload_as_str() {
     ///         // The ErrorHandler already reported the full error (message +
     ///         // captured stack). Print only the clean message and skip the
     ///         // default hook output.
-    ///         if let Some(msg) = info.payload_as_str() {
-    ///             eprintln!("{msg}");
-    ///         }
+    ///         std::eprintln!("{msg}");
     ///     } else {
     ///         // Unexpected panic: keep the default hook's full output.
     ///         default_hook(info);
@@ -94,8 +92,8 @@ macro_rules! inner {
     ($call:path, $e:ident, $c:ident) => {
         $call!(
             "Encountered an error in {} `{}`:\n\t{}",
-            $c.kind(),
-            $c.name(),
+            $c.kind,
+            $c.name,
             $e,
         );
     };

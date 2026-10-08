@@ -2,13 +2,13 @@
 
 use core::fmt::{Debug, Formatter};
 use core::panic::{RefUnwindSafe, UnwindSafe};
+use zlim_error::{ErrorHandler, IntoZlimResult};
 
 use super::CommandQueue;
 use super::function as func;
 use crate::bundle::Bundle;
 use crate::command::{Command, EntityCommand};
 use crate::entity::{EntityError, EntityId};
-use crate::error::{ErrorHandler, IntoZlimResult};
 use crate::message::Message;
 use crate::resource::Resource;
 use crate::schedule::ScheduleLabel;

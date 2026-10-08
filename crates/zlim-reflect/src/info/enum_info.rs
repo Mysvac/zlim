@@ -1,8 +1,9 @@
 use zlim_utils::mem::Global;
 
-use super::{Attributes, Generics, Type, VariantInfo};
+use super::{Attributes, Generics, Type, TypeInfo, VariantInfo};
 use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
+use crate::Reflect;
 use crate::ops::Enum;
 use crate::path::TypePath;
 
@@ -18,6 +19,10 @@ pub struct EnumInfo {
     variant_names: &'static [&'static str],
     generics: Generics,
     attributes: Attributes,
+    /// Serde type info used for serialization and deserialization.
+    ///
+    /// Usually `None`, meaning the reflected structure is used directly.
+    serde_info: Option<&'static TypeInfo>,
 }
 
 impl EnumInfo {
@@ -39,6 +44,7 @@ impl EnumInfo {
             variant_names: Global::alloc_slice(variant_names.as_slice()),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
+            serde_info: None,
         }
     }
 
@@ -95,6 +101,40 @@ impl EnumInfo {
     /// Returns the full path for a variant name, e.g. `Type::Variant`.
     pub fn variant_path(&self, name: &str) -> String {
         crate::path::concat(&[self.type_path(), "::", name])
+    }
+}
+
+impl EnumInfo {
+    /// Sets the serde type info, overriding the reflected representation.
+    #[inline]
+    pub const fn with_serde_info(self, info: &'static TypeInfo) -> Self {
+        Self {
+            serde_info: Some(info),
+            ..self
+        }
+    }
+
+    /// Returns the serde type info, if any.
+    #[inline]
+    pub const fn serde_info(&self) -> Option<&'static TypeInfo> {
+        self.serde_info
+    }
+
+    /// Creates an [`EnumInfo`] without the [`Enum`] requirement.
+    ///
+    /// Otherwise identical to [`EnumInfo::new`].
+    #[inline]
+    pub fn dynamic<TEnum: Reflect + TypePath>(variants: &[VariantInfo]) -> Self {
+        let variant_names: Vec<&'static str> = variants.iter().map(|v| v.name()).collect();
+
+        Self {
+            ty: Type::of::<TEnum>(),
+            variants: Global::alloc_slice(variants),
+            variant_names: Global::alloc_slice(variant_names.as_slice()),
+            generics: Generics::EMPTY,
+            attributes: Attributes::EMPTY,
+            serde_info: None,
+        }
     }
 }
 

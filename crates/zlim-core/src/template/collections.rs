@@ -1,5 +1,5 @@
 use super::{IntoTemplate, SpecializeTemplate, Template, TemplateContext};
-use crate::error::ZlimResult;
+use zlim_error::ZlimResult;
 
 // -----------------------------------------------------------------------------
 // BuiltInTemplate

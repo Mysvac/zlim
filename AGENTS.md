@@ -74,6 +74,7 @@ zlim (root facade crate, src/lib.rs)
     ├── zlim-utils      (foundational utilities, crates/zlim-utils/)
     ├── zlim-log        (tracing-based logging, crates/zlim-log/)
     ├── zlim-task       (async task pool, crates/zlim-task/)
+    ├── zlim-error      (standard zlim error, crates/zlim-error/)
     ├── zlim-reflect    (reflection system & stable type paths, crates/zlim-reflect/)
     ├── zlim-math       (math library on glam, crates/zlim-math/)
     ├── zlim-shape      (shape primitives, crates/zlim-shape/)
@@ -134,13 +135,12 @@ Auxiliary:
   - **Purpose**: async task pool: work-stealing thread pool, Scope, global singleton pool.
   - **Dependencies**: `zlim-cfg`, `zlim-os`, `zlim-utils`, async-task, futures-lite.
 
+- **`zlim-error`**
+  - **Purpose**: Common types of errors, `ZlimError` container and `Error` macro.
+  - **Dependencies**: `zlim-utils`, `zlim-log`.
+
 - **`zlim-reflect`**
-  - **Purpose**: runtime reflection: `Reflect` trait, `TypeInfo`, type operations — and the stable
-    type paths the whole engine names types by: the `TypePath` trait, `#[derive(TypePath)]`, the
-    `concat` helper and `PathCell`. Types are named by their type path and their short type name,
-    which is what the registries and the `.meta` format identify them by, instead of
-    `std::any::type_name`. The two derives are independent: `#[derive(Reflect)]` does not implement
-    `TypePath`, so a type that is only named derives `TypePath` alone.
+  - **Purpose**: runtime reflection: `Reflect`, `TypePath`, `TypeDB` and type erased operations.
   - **Dependencies**: `zlim-reflect-derive`, `zlim-utils`, serde_core, erased-serde, and the optional
     glam and uuid.
 
@@ -217,8 +217,10 @@ Auxiliary:
 
 #### Embedded Derive Crates
 
-- `zlim-core/derive` 
+- `zlim-error/derive`
   - `#[derive(Error)]` macro
+
+- `zlim-core/derive` 
   - `#[derive(Bundle)]` macro
   - `#[derive(Component)]` macro
   - `#[derive(Resource)]` macro
@@ -227,6 +229,8 @@ Auxiliary:
   - `#[derive(ScheduleLabel)]` macro
   - `#[derive(ScheduleStage)]` macro
   - `#[derive(Message)]` macro
+  - `#[derive(IntoTemplate)]` macro
+  - `#[derive(EntityLabel)]` macro
   - `#[job_fn]` macro
   - `job!` macro
   - `job_group!` macro
@@ -303,33 +307,5 @@ All use `zlim-derive-utils::crate_path` to resolve paths, enabling correct
 11. **Module READMEs**: Every module needs an English `README.md` and a
     Chinese `README.zh.md`, but they should be written only after the
     module's own code is complete.
-
-### zlim-core Module Overview
-
-| Module | Status | Description |
-|--------|--------|-------------|
-| `entity` | ✅ Implemented | EntityId (index+version dual-word), lock-free allocator (Arc-based), EntityMap/EntityMapper |
-| `component` | ✅ Implemented | Component trait (6 lifecycle hooks), ComponentDB global registry, `register_component!` macro |
-| `tick` | ✅ Implemented | 32-bit Tick change detection (wrap-around safe), TicksRef/TicksMut/TicksSlice types, DetectChanges trait |
-| `error` | ✅ Implemented | ZlimError (heap-allocated + Severity), `#[derive(Error)]` proc-macro |
-| `job` | ✅ Implemented | Job trait + JobDB/JobLabel/JobGroup + `#[job_fn]`/`job!`/`job_group!` macros |
-| `world` | ✅ Implemented | World struct, WorldCell (three-level safe access: read_only/data_mut/full_mut), DeferredWorld, NonSendWorld |
-| `table` | ✅ Implemented | Dense columnar storage Table (organized by archetype), Column (BlobArray + TickArray), TableId, Tables manager |
-| `bundle` | ✅ Implemented | Bundle trait (collect/write), tuple impls (0..=12), `#[derive(Bundle)]` |
-| `borrow` | ✅ Implemented | Ref/Mut/SliceRef/SliceMut + corresponding Untyped* variants, integrated change detection |
-| `resource` | ✅ Implemented | Resource trait + ResourceDB global registry, Resources with per-type storage slots, `register_resource!` macro |
-| `ops` | ✅ Implemented | Entity/EntityRef/EntityMut/EntityOwned type definitions; implementation of Common Methods |
-| `schedule` | ✅ Implemented | Schedule (job/group insertion by name or label, ordering, executors) + Schedules collection (owned by World) |
-| `message` | ✅ Implemented | Message trait + `#[derive(Message)]`, double-buffered MessageQueue, Messages registry, MessageWriter/Reader/Mutator system params |
-| `system` | ✅ Implemented | System trait + SystemParam/IntoSystem, params (Res/Query/Local/…), invoke / invoke_once / invoke_handle caching |
-| `query` | ✅ Implemented | Query/QueryData/QueryFilter, QueryState, caches, Single, iteration (iter/slice/single) |
-| `command` | ✅ Implemented | Deferred command system: Commands, command queue, deferred world mutations |
-| `time` | ✅ Implemented | Time/Real/Virtual/Fixed clocks, Timer, Stopwatch, run conditions, delayed commands |
-| `clone` | ✅ Implemented | Entity cloning: ComponentCloner, per-type clone strategies |
-| `label` | ✅ Implemented | Interned label primitives (ScheduleLabel and other label traits) |
-| `init` | ✅ Implemented | Global application initialization (startup CTOR collection) |
-
-> Scenes used to live here as a placeholder; they are now the `zlim-scene` crate, on top of the
-> `template` and `bundle` modules.
 
 ---

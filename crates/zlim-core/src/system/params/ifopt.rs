@@ -1,6 +1,7 @@
 use core::ops::{Deref, DerefMut};
 
-use crate::error::Severity;
+use zlim_error::Severity;
+
 use crate::system::SystemParam;
 use crate::system::{AccessTable, SystemParamError};
 use crate::tick::Tick;

@@ -1,6 +1,6 @@
 //! Errors produced by entity-targeted and single-target query APIs.
 
-use zlim_core_derive::Error;
+use zlim_error::derive::Error;
 
 use crate::entity::EntityId;
 

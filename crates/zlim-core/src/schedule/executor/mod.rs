@@ -14,11 +14,11 @@ use fixedbitset::FixedBitSet;
 use zlim_utils::mem::Bump;
 
 use super::Node;
-use crate::error::ErrorHandler;
 use crate::job::Job;
 use crate::schedule::InternedScheduleLabel;
 use crate::system::{AccessTable, SystemFlags};
 use crate::world::World;
+use zlim_error::ErrorHandler;
 
 // -----------------------------------------------------------------------------
 // ConflictTable
@@ -313,7 +313,7 @@ impl Default for ExecutorKind {
 /// [`JobSchedule`] and invoking systems in a valid order while handling
 /// errors through the provided [`ErrorHandler`].
 ///
-/// [`ErrorHandler`]: crate::error::ErrorHandler
+/// [`ErrorHandler`]: zlim_error::ErrorHandler
 pub trait JobExecutor: Send + Sync {
     /// Returns the executor flavor.
     fn kind(&self) -> ExecutorKind;

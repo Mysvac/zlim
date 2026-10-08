@@ -1,8 +1,8 @@
-use crate::entity::{EntityId, EntityMapper};
-use crate::error::{ZlimError, ZlimResult};
+use zlim_error::{ZlimError, ZlimResult};
 
 use super::context::EntityReference;
 use super::{IntoTemplate, SpecializeTemplate, Template, TemplateContext};
+use crate::entity::{EntityId, EntityMapper};
 
 // -----------------------------------------------------------------------------
 // EntityTemplate

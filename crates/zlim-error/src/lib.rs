@@ -11,7 +11,7 @@
 //! plus an explicit [`Severity`]:
 //!
 //! ```rust
-//! use zlim_core::error::{Severity, ZlimError};
+//! use zlim_error::{Severity, ZlimError};
 //!
 //! let err = ZlimError::warning("disk is nearly full".to_string());
 //! assert_eq!(err.severity(), Severity::Warning);
@@ -57,27 +57,34 @@
 //! # Error handling
 //!
 //! Fallible functions return [`ZlimResult<T>`] and convert into it through
-//! [`IntoZlimResult`], which is implemented for:
+//! [`IntoZlimResult`], whose output type says what the caller wants to know.
 //!
-//! - `T` — success, unchanged;
-//! - `Result<T, E>` — the error is converted via `E: Into<ZlimError>`;
-//! - `ControlFlow<B, C>` — `Continue` passes through, `Break` becomes an
-//!   error.
+//! `IntoZlimResult<()>` is what a command asks for:
 //!
-//! When a job, system, or command fails, the executor builds an [`ErrorContext`]
-//! (`Job`, `System`, or `Command`, plus the tick/id of the failing construct) and
-//! invokes the world's [`ErrorHandler`] through [`World::error_handler`].
+//! - `()` — `Ok(())`;
+//! - `Result<(), E>` — the value, or the error via `E: Into<ZlimError>`;
+//!
+//! `IntoZlimResult<bool>` is what a job asks for, so the answer is the truth
+//! value the job gates on:
+//!
+//! - `()` — `Ok(true)`; running without failing counts as pass;
+//! - `bool` — `Ok(self)`; the value is the answer;
+//! - `Result<(), E>` / `Result<bool, E>` — the value, or the converted error.
+//!
+//! A `false` is not an error: it is `Ok(false)`, a successful conversion whose
+//! value means "skip". Only a real failure produces `Err`, which is what the
+//! caller routes to its error handler.
 //!
 //! The default handler, [`default_error_handler`], dispatches by severity:
 //! logs `debug`/`info`/`warn`/`error` at the matching level, **panics** for
 //! [`Severity::Panic`], and drops [`Severity::Ignore`].
 //!
-//! Custom handlers (e.g. telemetry or crash reporting) can be set through
-//! [`World::set_error_handler`]
+//! Custom handlers (e.g. telemetry or crash reporting) are installed on the
+//! world, through `zlim_core`'s `World::set_error_handler`.
 //!
 //! # The `#[derive(Error)]` macro
 //!
-//! Deriving [`Error`](derive@Error) on a struct or enum generates:
+//! Deriving [`Error`](derive::Error) on a struct or enum generates:
 //!
 //! - **Always** — an implementation of `core::error::Error` (which also
 //!   requires the type to implement `Debug`, so derive `Debug` alongside).
@@ -94,7 +101,8 @@
 //! variants can override them:
 //!
 //! ```rust
-//! use zlim_core::error::{Error, Severity, ZlimError, ZlimResult};
+//! use zlim_error::derive::Error;
+//! use zlim_error::{Severity, ZlimError, ZlimResult};
 //!
 //! #[derive(Debug, Error)]
 //! #[error("validation failed")]
@@ -119,9 +127,6 @@
 //!
 //! let _ = ZlimError::from(ValidationError::NegativeAge(-1)); // `From` was derived
 //! ```
-//!
-//! [`World::error_handler`]: crate::world::World::error_handler
-//! [`World::set_error_handler`]: crate::world::World::set_error_handler
 
 // -----------------------------------------------------------------------------
 // Modules
@@ -136,11 +141,23 @@ pub mod handler;
 // -----------------------------------------------------------------------------
 // Exports
 
-pub use crate::derive::Error;
+// pub use crate::derive::Error;
 pub use context::ErrorContext;
 pub use handler::{ErrorHandler, default_error_handler};
 pub use payload::PanicPayload;
 pub use result::{IntoZlimResult, ZlimResult};
 pub use zlim_error::{Severity, ZlimError};
+
+/// zlim-error macros
+pub mod derive {
+    #[doc(inline)]
+    pub use zlim_error_derive::Error;
+}
+
+/// zlim-error preludes
+pub mod prelude {
+    #[doc(no_inline)]
+    pub use crate::{ZlimError, ZlimResult};
+}
 
 // -----------------------------------------------------------------------------

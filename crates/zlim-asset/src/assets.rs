@@ -14,7 +14,8 @@ use core::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use uuid::Uuid;
-use zlim_core::derive::{Error, Resource};
+use zlim_core::derive::Resource;
+use zlim_error::derive::Error;
 use zlim_utils::hash::HashMap;
 use zlim_utils::hash::map::Entry as MapEntry;
 use zlim_utils::sync::SpinLock;

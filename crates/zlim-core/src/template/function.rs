@@ -1,4 +1,4 @@
-use crate::error::ZlimResult;
+use zlim_error::ZlimResult;
 
 use super::{Template, TemplateContext};
 

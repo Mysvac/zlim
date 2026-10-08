@@ -1,4 +1,4 @@
-use zlim_core::error::Error;
+use zlim_error::derive::Error;
 
 // -----------------------------------------------------------------------------
 // MetaParseError

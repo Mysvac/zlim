@@ -20,6 +20,10 @@ pub struct SetInfo {
     value_info: fn() -> &'static TypeInfo,
     generics: Generics,
     attributes: Attributes,
+    /// Serde type info used for serialization and deserialization.
+    ///
+    /// Usually `None`, meaning the reflected structure is used directly.
+    serde_info: Option<&'static TypeInfo>,
 }
 
 impl SetInfo {
@@ -38,6 +42,7 @@ impl SetInfo {
             value_info: TValue::type_info,
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
+            serde_info: None,
         }
     }
 
@@ -57,6 +62,38 @@ impl SetInfo {
     #[inline]
     pub fn value_info(&self) -> &'static TypeInfo {
         (self.value_info)()
+    }
+}
+
+impl SetInfo {
+    /// Sets the serde type info, overriding the reflected representation.
+    #[inline]
+    pub const fn with_serde_info(self, info: &'static TypeInfo) -> Self {
+        Self {
+            serde_info: Some(info),
+            ..self
+        }
+    }
+
+    /// Returns the serde type info, if any.
+    #[inline]
+    pub const fn serde_info(&self) -> Option<&'static TypeInfo> {
+        self.serde_info
+    }
+
+    /// Creates a [`SetInfo`] without the [`Set`] requirement.
+    ///
+    /// Otherwise identical to [`SetInfo::new`].
+    #[inline]
+    pub const fn dynamic<TSet: Reflect + TypePath, TValue: Reflect + Typed>() -> Self {
+        Self {
+            ty: Type::of::<TSet>(),
+            value_id: TypeId::of::<TValue>(),
+            value_info: TValue::type_info,
+            generics: Generics::EMPTY,
+            attributes: Attributes::EMPTY,
+            serde_info: None,
+        }
     }
 }
 

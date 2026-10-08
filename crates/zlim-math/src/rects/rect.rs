@@ -1,7 +1,7 @@
 use crate::{IRect, URect, Vec2};
 
 use serde::{Deserialize, Serialize};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath};
 
 /// A rectangle defined by two opposite corners.
 ///
@@ -13,8 +13,9 @@ use zlim_reflect::derive::TypePath;
 /// the minimum and maximum corners.
 #[repr(C)]
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
 #[type_path = "zlim_math::Rect"]
+#[reflect(Default, Clone, Serialize, Deserialize)]
 pub struct Rect {
     /// The minimum corner point of the rect.
     pub min: Vec2,

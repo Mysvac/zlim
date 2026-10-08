@@ -201,7 +201,7 @@ fn trait_impls(
     let (impl_generics, type_generics, _) = generics.split_for_impl();
     let template_ = path::template_(context.zlim_core);
     let template_context_ = path::template_context_(context.zlim_core);
-    let zlim_result_ = path::zlim_result_(context.zlim_core);
+    let zlim_result_ = path::zlim_result(context.zlim_core);
 
     // Building the template builds each of its fields, so every field template has to be a
     // `Template`. That cannot be deduced from the bounds on the field types, so the predicate goes

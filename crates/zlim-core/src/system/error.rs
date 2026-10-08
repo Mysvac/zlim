@@ -1,10 +1,10 @@
 //! Error types produced by system construction and execution.
 
-use zlim_core_derive::Error;
+use zlim_error::derive::Error;
+use zlim_error::{Severity, ZlimError};
 use zlim_utils::debug::DebugName;
 
 use super::SystemId;
-use crate::error::{Severity, ZlimError};
 
 // -----------------------------------------------------------------------------
 // SystemParamError
@@ -22,8 +22,8 @@ pub struct SystemParamError {
     pub info: Box<str>, // not `String`, reduce struct size
     /// Severity classification of the failure.
     ///
-    /// If it is [`Severity::Ignore`], then it error will be
-    /// converted to [`SystemError::None`] during system call.
+    /// If it is [`Severity::Ignore`], this error will be converted
+    /// to [`SystemError::Skipped`] during system call.
     pub severity: Severity,
 }
 
@@ -83,14 +83,14 @@ impl SystemParamError {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum SystemError {
-    /// Not an error; usually used to indicate conditional execution.
+    /// The system was skipped, usually because a run condition said so.
     ///
     /// If this error is returned, we will assume that the System has
     /// been skipped and not run, so we will not apply the delay command.
     ///
     /// Severity: Ignore
-    #[error("Not an error; usually used to indicate conditional execution.")]
-    None,
+    #[error("System skipped; usually used to indicate conditional execution.")]
+    Skipped,
     /// A runtime error propagated from within the system.
     ///
     /// If this error is returned, we will assume that the System *has*
@@ -124,7 +124,7 @@ impl From<SystemError> for ZlimError {
     #[inline(never)]
     fn from(mut value: SystemError) -> Self {
         let severity = match &value {
-            SystemError::None => Severity::Ignore,
+            SystemError::Skipped => Severity::Ignore,
             SystemError::Runtime(e) => e.severity(),
             SystemError::Param(e) => e.severity,
             SystemError::Unregistered(_) => Severity::Warning,

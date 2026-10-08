@@ -186,6 +186,56 @@ impl TypeInfo {
 }
 
 // -----------------------------------------------------------------------------
+// serde info
+
+impl TypeInfo {
+    /// Returns the serde type info of this type, if any.
+    pub fn serde_info(&self) -> Option<&'static TypeInfo> {
+        match self {
+            Self::Opaque(info) => info.serde_info(),
+            Self::Struct(info) => info.serde_info(),
+            Self::Tuple(info) => info.serde_info(),
+            Self::Array(info) => info.serde_info(),
+            Self::List(info) => info.serde_info(),
+            Self::Map(info) => info.serde_info(),
+            Self::Set(info) => info.serde_info(),
+            Self::Enum(info) => info.serde_info(),
+        }
+    }
+
+    /// Follows the chain of serde type infos to its end, returning the final
+    /// `TypeInfo` used for serialization/deserialization.
+    ///
+    /// Panics if the chain exceeds 64 links, which likely indicates a cycle.
+    pub fn schema_info(&'static self) -> &'static TypeInfo {
+        const MAX_NEXT: usize = 64usize;
+        let Some(mut info) = self.serde_info() else {
+            return self;
+        };
+
+        ::core::hint::cold_path();
+        let mut count = 0usize;
+        while count < MAX_NEXT {
+            count += 1;
+            let Some(inner) = self.serde_info() else {
+                return info;
+            };
+            ::core::hint::cold_path();
+            info = inner;
+        }
+
+        #[cold]
+        #[inline(never)]
+        fn overflow(info: &TypeInfo) -> ! {
+            let name = info.type_path();
+            panic!("serde info overflow (possible cycle, >64 entries): `{name:?}`")
+        }
+
+        overflow(self)
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Typed
 
 /// A static accessor to compile-time type information.

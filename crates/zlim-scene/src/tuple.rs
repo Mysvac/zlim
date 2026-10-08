@@ -1,6 +1,6 @@
 //! Tuple implementations of [`Scene`] and [`SceneList`].
 
-use zlim_core::error::ZlimResult;
+use zlim_error::ZlimResult;
 
 use crate::dependency::SceneDependencies;
 use crate::resolved::ResolvedScene;

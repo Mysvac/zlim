@@ -27,7 +27,7 @@ use core::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use zlim_core::derive::Resource;
-use zlim_core::error::Error;
+use zlim_error::derive::Error;
 use zlim_reflect::TypePath;
 use zlim_task::IoTaskPool;
 use zlim_utils::ext::CachePadded;

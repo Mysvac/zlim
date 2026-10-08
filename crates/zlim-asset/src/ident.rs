@@ -8,7 +8,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use uuid::Uuid;
-use zlim_core::derive::Error;
+use zlim_error::derive::Error;
 use zlim_utils::str::SmolStr;
 use zlim_utils::sync::SegQueue;
 

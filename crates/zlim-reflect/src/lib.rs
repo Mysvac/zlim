@@ -29,7 +29,6 @@ pub mod path;
 pub mod remote;
 pub mod serde;
 
-#[doc(hidden)]
 pub mod impls;
 
 // -----------------------------------------------------------------------------

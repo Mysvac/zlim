@@ -12,8 +12,8 @@
 
 use std::sync::Arc;
 
-use zlim_core::derive::Error;
-use zlim_core::error::ZlimError;
+use zlim_error::ZlimError;
+use zlim_error::derive::Error;
 
 // -----------------------------------------------------------------------------
 // Phase Wrapper Errors
@@ -314,7 +314,7 @@ impl_into_asset_error!(AssetWriterError);
 mod loader {
     use super::AssetError;
     use crate::path::AssetPath;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error that can occur during asset loading.
     #[derive(Error, Debug, Clone)]
@@ -350,7 +350,7 @@ pub use loader::*;
 mod saver {
     use super::AssetError;
     use crate::path::AssetPath;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error that can occur during asset saving.
     #[derive(Error, Debug, Clone)]
@@ -385,7 +385,7 @@ pub use saver::*;
 
 mod transformer {
     use super::AssetError;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error that can occur during asset transforming.
     #[derive(Error, Debug, Clone)]
@@ -424,7 +424,7 @@ impl_into_asset_error!(AssetMetaParseError);
 
 mod ambiguous {
     use super::AssetError;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error that occurs when a short type name selects several registered types.
     ///
@@ -483,7 +483,7 @@ mod missing {
     use crate::ident::AssetSourceId;
     use crate::path::AssetPath;
     use core::any::TypeId;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error returned when an [`AssetSource`] does not exist for a given id.
     ///
@@ -814,7 +814,7 @@ pub use missing::*;
 mod path {
     use super::AssetError;
     use crate::path::AssetPath;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error returned when an asset is read or written with an empty path.
     #[derive(Error, Debug, Clone)]
@@ -845,7 +845,7 @@ pub use path::*;
 mod invalid_load {
     use super::AssetError;
     use crate::path::AssetPath;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// Error returned when an asset configured to be ignored is loaded directly.
     #[derive(Error, Debug, Clone)]
@@ -868,7 +868,7 @@ pub use invalid_load::*;
 
 mod settings {
     use super::AssetError;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error that occurs when settings of another type are passed into a loader or a processor.
     ///
@@ -913,7 +913,7 @@ mod meta_io {
     use super::{AssetReaderError, AssetWriterError};
     use super::{MissingAssetLoader, MissingAssetSource, MissingAssetWriter};
     use crate::path::AssetPath;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error that occurs when the metadata of an asset cannot be read.
     #[derive(Error, Debug, Clone)]
@@ -998,7 +998,7 @@ pub use meta_io::*;
 mod wait {
     use super::AssetError;
     use std::sync::Arc;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error when attempting to wait asynchronously for an [`Asset`] to load.
     ///
@@ -1031,7 +1031,7 @@ mod read_asset_bytes {
     use super::{AssetError, AssetMetaParseError, MissingAssetSource};
     use super::{AssetReaderError, MissingProcessedAssetReader};
     use crate::path::AssetPath;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error produced when calling [`LoadContext::read_asset_bytes`].
     ///
@@ -1106,7 +1106,7 @@ pub use read_asset_bytes::ReadAssetBytesError;
 mod load_direct {
     use super::{AssetError, AssetLoadError};
     use crate::path::AssetPath;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error produced when loading a nested asset through
     /// [`NestedLoadBuilder`].
@@ -1168,7 +1168,7 @@ mod handle {
     use super::AssetError;
     use crate::path::AssetPath;
     use core::any::TypeId;
-    use zlim_core::derive::Error;
+    use zlim_error::derive::Error;
 
     /// An error that occurs when the requested handle type doesn't match the actual loaded asset type.
     #[derive(Error, Debug, Clone)]

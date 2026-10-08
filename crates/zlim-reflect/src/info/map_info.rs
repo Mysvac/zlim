@@ -22,6 +22,10 @@ pub struct MapInfo {
     value_info: fn() -> &'static TypeInfo,
     generics: Generics,
     attributes: Attributes,
+    /// Serde type info used for serialization and deserialization.
+    ///
+    /// Usually `None`, meaning the reflected structure is used directly.
+    serde_info: Option<&'static TypeInfo>,
 }
 
 impl MapInfo {
@@ -43,6 +47,7 @@ impl MapInfo {
             value_info: TValue::type_info,
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
+            serde_info: None,
         }
     }
 
@@ -80,6 +85,44 @@ impl MapInfo {
     #[inline]
     pub fn value_info(&self) -> &'static TypeInfo {
         (self.value_info)()
+    }
+}
+
+impl MapInfo {
+    /// Sets the serde type info, overriding the reflected representation.
+    #[inline]
+    pub const fn with_serde_info(self, info: &'static TypeInfo) -> Self {
+        Self {
+            serde_info: Some(info),
+            ..self
+        }
+    }
+
+    /// Returns the serde type info, if any.
+    #[inline]
+    pub const fn serde_info(&self) -> Option<&'static TypeInfo> {
+        self.serde_info
+    }
+
+    /// Creates a [`MapInfo`] without the [`Map`] requirement.
+    ///
+    /// Otherwise identical to [`MapInfo::new`].
+    #[inline]
+    pub const fn dynamic<
+        TMap: Reflect + TypePath,
+        TKey: Reflect + Typed,
+        TValue: Reflect + Typed,
+    >() -> Self {
+        Self {
+            ty: Type::of::<TMap>(),
+            key_id: TypeId::of::<TKey>(),
+            value_id: TypeId::of::<TValue>(),
+            key_info: TKey::type_info,
+            value_info: TValue::type_info,
+            generics: Generics::EMPTY,
+            attributes: Attributes::EMPTY,
+            serde_info: None,
+        }
     }
 }
 

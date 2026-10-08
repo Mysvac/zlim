@@ -1,4 +1,5 @@
 use core::fmt::{Debug, Display, Formatter};
+use std::borrow::Cow;
 
 // -----------------------------------------------------------------------------
 // DebugName
@@ -152,6 +153,22 @@ impl Debug for DebugName {
             debug_assertions => debug_fmt((self.name)(), f),
             feature = "debug" => debug_fmt((self.name)(), f),
             _ => f.write_str("_unknown_(requires `debug` feature)"),
+        }
+    }
+}
+
+impl From<DebugName> for String {
+    fn from(value: DebugName) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<DebugName> for Cow<'static, str> {
+    fn from(value: DebugName) -> Self {
+        cfg_select! {
+            debug_assertions => value.to_string().into(),
+            feature = "debug" => value.to_string().into(),
+            _ => Cow::Borrow("_unknown_(requires `debug` feature)"),
         }
     }
 }

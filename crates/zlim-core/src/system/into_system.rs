@@ -547,9 +547,8 @@ where
         input: <Self::Input as SystemInput>::Data<'_>,
         world: WorldCell<'_>,
     ) -> Result<Self::Output, SystemError> {
-        let condition = unsafe { self.a.run_raw((), world)? };
-        if condition {
-            Err(SystemError::None)
+        if unsafe { self.a.run_raw((), world)? } {
+            Err(SystemError::Skipped)
         } else {
             unsafe { self.b.run_raw(input, world) }
         }

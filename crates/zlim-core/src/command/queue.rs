@@ -8,10 +8,10 @@ use core::ptr;
 use core::ptr::NonNull;
 use std::panic::catch_unwind;
 
+use zlim_error::PanicPayload;
 use zlim_utils::debug::{DebugLocation, DebugName};
 
 use super::Command;
-use crate::error::PanicPayload;
 use crate::world::{World, WorldCell};
 
 // -----------------------------------------------------------------------------

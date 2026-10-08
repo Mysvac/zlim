@@ -3,9 +3,9 @@
 use core::marker::PhantomData;
 
 use zlim_core::component::Component;
-use zlim_core::error::ZlimResult;
 use zlim_core::template::TemplateContext;
 use zlim_core::template::{ErasedTemplate, FnTemplate, IntoTemplate, Template, TemplateEffect};
+use zlim_error::ZlimResult;
 
 use crate::dependency::SceneDependencies;
 use crate::resolved::ResolvedScene;
@@ -202,8 +202,8 @@ where
 ///
 /// ```rust
 /// use zlim_scene::{PatchTemplate, ResolveContext, ResolvedScene, Scene};
+/// use zlim_error::ZlimResult;
 /// use zlim_core::template::{Template, TemplateContext};
-/// use zlim_core::error::ZlimResult;
 /// use zlim_core::derive::Component;
 ///
 /// #[derive(Component, Clone, Default, Debug, PartialEq)]

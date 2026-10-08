@@ -2,11 +2,11 @@
 
 #![expect(clippy::module_inception, reason = "For better structure.")]
 
+use zlim_error::{ErrorContext, ErrorHandler};
+use zlim_error::{IntoZlimResult, ZlimError};
 use zlim_utils::debug::{DebugLocation, DebugName};
 
 use crate::entity::{EntityError, EntityId};
-use crate::error::{ErrorContext, ErrorHandler};
-use crate::error::{IntoZlimResult, ZlimError};
 use crate::ops::EntityOwned;
 use crate::world::World;
 
@@ -104,11 +104,11 @@ pub trait Command: Send + Sized + 'static {
     ///
     /// Converts this command into one with `Output = ()`.  If [`apply`]
     /// returns an error, the provided handler is invoked with the error and
-    /// a [`Command`] context.
+    /// an [`ErrorContext`] whose `kind` is `"command"`.
     ///
     /// [`apply`]: Self::apply
-    /// [`Command`]: crate::error::ErrorContext::Command
-    /// [`ErrorHandler`]: crate::error::ErrorHandler
+    /// [`ErrorContext`]: zlim_error::ErrorContext
+    /// [`ErrorHandler`]: zlim_error::ErrorHandler
     #[inline]
     #[cfg_attr(any(debug_assertions, feature = "debug"), track_caller)]
     fn handle_error_with(self, handler: ErrorHandler) -> impl Command<Output = ()> {
@@ -116,11 +116,14 @@ pub trait Command: Send + Sized + 'static {
         let caller = DebugLocation::caller();
         move |world: &mut World| {
             if let Err(e) = self.apply(world).into_zlim_result() {
-                let name = DebugName::type_name::<Self>();
+                let context = ErrorContext {
+                    kind: "command",
+                    name: DebugName::type_name::<Self>().into(),
+                };
                 #[cfg(not(any(debug_assertions, feature = "debug")))]
-                handler(e, ErrorContext::Command { name });
+                handler(e, context);
                 #[cfg(any(debug_assertions, feature = "debug"))]
-                handler(e.with_location(caller), ErrorContext::Command { name });
+                handler(e.with_location(caller), context);
             }
         }
     }
@@ -139,11 +142,14 @@ pub trait Command: Send + Sized + 'static {
         let caller = DebugLocation::caller();
         move |world: &mut World| {
             if let Err(e) = self.apply(world).into_zlim_result() {
-                let name = DebugName::type_name::<Self>();
+                let context = ErrorContext {
+                    kind: "command",
+                    name: DebugName::type_name::<Self>().into(),
+                };
                 #[cfg(not(any(debug_assertions, feature = "debug")))]
-                (world.error_handler())(e, ErrorContext::Command { name });
+                (world.error_handler())(e, context);
                 #[cfg(any(debug_assertions, feature = "debug"))]
-                (world.error_handler())(e.with_location(caller), ErrorContext::Command { name });
+                (world.error_handler())(e.with_location(caller), context);
             }
         }
     }

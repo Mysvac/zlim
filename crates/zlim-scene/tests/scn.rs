@@ -6,8 +6,8 @@ use zlim_asset::plugin::AssetPlugin;
 use zlim_asset::server::AssetServer;
 use zlim_core::derive::{Component, IntoTemplate};
 use zlim_core::entity::EntityId;
-use zlim_core::error::ZlimResult;
 use zlim_core::world::World;
+use zlim_error::ZlimResult;
 
 use zlim_scene::{ResolveContext, ResolvedScene, Scene, ScenePatch};
 use zlim_scene::{ScenePlugin, WorldSceneExt, scn, scn_list};

@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use zlim_core::bundle::BundleScratch;
 use zlim_core::entity::{EntityId, EntityMap, EntityMapper};
-use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::ops::EntityOwned;
 use zlim_core::template::{EntityReferences, EntityTemplate};
 use zlim_core::template::{ErasedTemplate, Template, TemplateContext};
 use zlim_core::world::World;
+use zlim_error::{ZlimError, ZlimResult};
 use zlim_utils::hash::{HashSet, NoopState};
 
 use crate::resolved::ResolvedScene;

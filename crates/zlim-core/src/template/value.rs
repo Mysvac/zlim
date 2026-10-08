@@ -1,7 +1,8 @@
 //! The template of a *value*: a component that describes itself.
 
+use zlim_error::ZlimResult;
+
 use crate::component::Component;
-use crate::error::ZlimResult;
 use crate::template::{Template, TemplateContext};
 
 // -----------------------------------------------------------------------------

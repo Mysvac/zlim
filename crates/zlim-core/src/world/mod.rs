@@ -99,8 +99,8 @@ use crate::query::QueryCache;
 use crate::system::SystemCache;
 use crate::time::TimeCache;
 
-use crate::error::ErrorHandler;
-use crate::error::default_error_handler;
+use zlim_error::ErrorHandler;
+use zlim_error::default_error_handler;
 
 // -----------------------------------------------------------------------------
 // WorldId
@@ -321,7 +321,7 @@ impl World {
     /// The error handler is invoked when the job or command return a
     /// [`ZlimError`].
     ///
-    /// [`ZlimError`]: crate::error::ZlimError
+    /// [`ZlimError`]: zlim_error::ZlimError
     #[inline(always)]
     pub fn error_handler(&self) -> ErrorHandler {
         self.error_handler.unwrap_or(default_error_handler)

@@ -158,3 +158,22 @@ mod signals {
 }
 
 // -----------------------------------------------------------------------------
+
+use crate::system::If;
+
+/// A job condition used to check wheather there is a new message.
+///
+/// ```ignore
+/// #[job_fn(type = Example, run_if = on_message::<ClampTickSignal>)]
+/// fn custom_clamp_tick(res: ResMut<MyRes>, reader: MessageReader<ClampTickSignal>) {
+///     res.clamp_tick( todo! () );
+/// }
+/// ```
+pub fn on_message<T: Message>(mut reader: If<MessageReader<T>>) -> bool {
+    // We need to consume `Reader`, cannot use `is_empty()` instead.
+    // The count is optimized to `O(1)`, see `MessageIterator` for details.
+    reader.read_with_key().count() != 0
+    // `read_with_key`: the `read()` is built through `read_with_key()`
+}
+
+// -----------------------------------------------------------------------------

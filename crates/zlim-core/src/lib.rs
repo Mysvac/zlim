@@ -9,7 +9,6 @@
 pub mod cfg {
     zlim_cfg::define_alias! {
         #[cfg(any(feature = "debug", debug_assertions))] => debug,
-        #[cfg(feature = "backtrace")] => backtrace,
     }
 }
 
@@ -30,7 +29,6 @@ pub mod clone;
 pub mod command;
 pub mod component;
 pub mod entity;
-pub mod error;
 pub mod init;
 pub mod job;
 pub mod label;
@@ -53,6 +51,7 @@ pub mod world;
 /// Internal module, public for derive macros.
 #[doc(hidden)]
 pub mod __macro_exports__ {
+    pub use zlim_error::ZlimResult;
     pub use zlim_ptr::OwningPtr;
     pub use zlim_reflect::Reflect;
     pub use zlim_reflect::TypePath;
@@ -88,7 +87,7 @@ pub mod derive {
     #[doc(no_inline)]
     pub use crate::register_resource;
     #[doc(inline)]
-    pub use zlim_core_derive::{Bundle, Error, IntoTemplate};
+    pub use zlim_core_derive::{Bundle, IntoTemplate};
     #[doc(inline)]
     pub use zlim_core_derive::{Component, Message, Resource};
     #[doc(inline)]
@@ -116,10 +115,6 @@ pub mod prelude {
     pub use crate::world::{DeferredWorld, World, WorldCell};
     #[doc(no_inline)]
     pub use crate::world::{FromWorld, NonSendWorld, WorldId};
-
-    // implicit use zlim_core_derive::Error
-    #[doc(no_inline)]
-    pub use crate::error::{Error, Severity, ZlimError};
 
     // implicit use zlim_core_derive::Resource
     #[doc(no_inline)]

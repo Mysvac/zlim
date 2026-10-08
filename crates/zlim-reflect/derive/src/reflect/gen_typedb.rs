@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -59,13 +61,16 @@ fn enum_deps(derive: &ReflectEnum) -> TokenStream {
     let meta = derive.meta();
     let zlim_reflect = meta.zlim_reflect();
     let type_db = crate::path::type_db(zlim_reflect);
+
+    let mut type_set: BTreeSet<String> = BTreeSet::new();
+
     // A remote field is registered as its wrapper: that is the type reflection sees for it, and
     // the remote type itself is not reflected at all.
     let dependencies = derive
         .variants
         .iter()
         .flat_map(|variant| variant.active_fields())
-        .flat_map(|field| field_deps(field, &type_db));
+        .flat_map(|field| field_deps(field, &type_db, &mut type_set));
 
     quote! { #(#dependencies)* }
 }
@@ -74,16 +79,30 @@ fn struct_deps(derive: &ReflectStruct) -> TokenStream {
     let meta = derive.meta();
     let zlim_reflect = meta.zlim_reflect();
     let type_db = crate::path::type_db(zlim_reflect);
+
+    let mut type_set: BTreeSet<String> = BTreeSet::new();
+
     // A remote field is registered as its wrapper, as in `enum_deps`.
     let dependencies = derive
         .active_fields()
-        .flat_map(|field| field_deps(field, &type_db));
+        .flat_map(|field| field_deps(field, &type_db, &mut type_set));
 
     quote! { #(#dependencies)* }
 }
 
-fn field_deps(field: &StructField<'_>, type_db: &TokenStream) -> Vec<TokenStream> {
+fn field_deps(
+    field: &StructField<'_>,
+    type_db: &TokenStream,
+    set: &mut BTreeSet<String>,
+) -> Vec<TokenStream> {
     let ty = field.reflected_ty();
+
+    if !set.insert(ty.to_string()) {
+        // already registered, skip if it does not contains attributes.
+        if !field.defaultable() && !field.serializable() && !field.deserializable() {
+            return Vec::new();
+        }
+    }
 
     let mut deps = vec![quote! { let __db_deps_ = #type_db::register::<#ty>(); }];
 

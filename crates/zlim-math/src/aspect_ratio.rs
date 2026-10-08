@@ -3,7 +3,7 @@
 use core::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::Vec2;
 
@@ -11,9 +11,10 @@ use crate::Vec2;
 // AspectRatio
 
 /// An `AspectRatio` is the ratio of width to height.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
 #[type_path = "zlim_math::AspectRatio"]
+#[reflect(Debug, Clone, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct AspectRatio(f32);
 

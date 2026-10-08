@@ -82,6 +82,8 @@
 // -----------------------------------------------------------------------------
 // Types
 
+use zlim_core::derive::Resource;
+
 pub use change_detection_impls::TransformChangeDetection;
 pub use propagation_impls::TransformPropagation;
 pub use transform_change_root::TransformChangeRoot;
@@ -174,10 +176,7 @@ pub use transform_change_root::TransformChangeRoot;
 /// [`Default`]: Self::Default
 /// [`PropagateUp`]: Self::PropagateUp
 /// [`PropagateAll`]: Self::PropagateAll
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-#[derive(zlim_core::derive::Resource)]
-#[derive(zlim_reflect::derive::TypePath)]
-#[type_path = "zlim_transform::TransformPropagateStrategy"]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Resource)]
 pub enum TransformPropagateStrategy {
     #[default]
     Default,

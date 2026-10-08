@@ -10,8 +10,8 @@ use zlim_asset::assets::Assets;
 use zlim_asset::server::AssetServer;
 use zlim_core::command::{Command, Commands, EntityCommands};
 use zlim_core::entity::EntityId;
-use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::world::World;
+use zlim_error::{ZlimError, ZlimResult};
 
 use crate::patch::ScenePatch;
 use crate::resolved::ResolvedScene;

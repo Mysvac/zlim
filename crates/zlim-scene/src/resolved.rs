@@ -11,9 +11,9 @@ use zlim_asset::handle::Handle;
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::{HashSet, NoopState};
 
-use zlim_core::error::ZlimError;
 use zlim_core::template::{EntityReference, EntityTemplate};
 use zlim_core::template::{ErasedTemplate, Template, TemplateEffect};
+use zlim_error::ZlimError;
 
 use crate::patch::ScenePatch;
 

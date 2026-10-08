@@ -5,10 +5,10 @@ use core::ops::{Deref, DerefMut};
 
 use super::iter::QueryIter;
 use super::{QueryData, QueryFilter, QuerySingleError, QueryState};
-use crate::error::Severity;
 use crate::system::{AccessTable, SystemParam, SystemParamError};
 use crate::tick::Tick;
 use crate::world::{World, WorldCell};
+use zlim_error::Severity;
 
 /// A system parameter that guarantees exactly one matching query item.
 ///

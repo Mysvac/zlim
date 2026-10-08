@@ -1,8 +1,8 @@
 //! Integration tests for the `#[derive(Error)]` macro.
 
 use core::error::Error;
-use zlim_core::derive::Error;
-use zlim_core::error::{IntoZlimResult, Severity, ZlimError, ZlimResult};
+use zlim_error::derive::Error;
+use zlim_error::{IntoZlimResult, Severity, ZlimError, ZlimResult};
 
 // -----------------------------------------------------------------------------
 // Struct — Error + Display
@@ -38,7 +38,9 @@ fn zlim_error_conversion() {
 
 #[test]
 fn into_zlim_result_for_struct() {
-    let result: ZlimResult<()> = Err(WarnError).into_zlim_result();
+    // `Err` alone leaves the `Ok` type open, and both `Result<(), E>` and
+    // `Result<bool, E>` convert into `ZlimResult<()>`, so name it.
+    let result: ZlimResult<()> = Err::<(), _>(WarnError).into_zlim_result();
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().severity(), Severity::Warning);
 }
@@ -114,10 +116,8 @@ fn enum_default_display() {
 #[test]
 fn enum_override_display() {
     assert_eq!(DbError::ConnectionRefused.to_string(), "connection refused");
-    assert_eq!(
-        DbError::Timeout(5000).to_string(),
-        "query timed out after 5000 ms"
-    );
+    let timeout = DbError::Timeout(5000).to_string();
+    assert_eq!(timeout, "query timed out after 5000 ms");
 }
 
 #[test]
@@ -134,8 +134,8 @@ fn enum_override_severity() {
 
 #[test]
 fn enum_into_zlim_result() {
-    let result: ZlimResult<()> = Err(DbError::ConnectionRefused).into_zlim_result();
-    assert!(result.is_err());
+    let result: ZlimResult<()> = Err::<(), _>(DbError::ConnectionRefused).into_zlim_result();
+    assert!(result.is_err_and(|e| e.severity() == Severity::Error));
 }
 
 // -----------------------------------------------------------------------------
@@ -255,19 +255,6 @@ struct BraceError {
 fn escaped_braces() {
     let err = BraceError { field: "x".into() };
     assert_eq!(err.to_string(), "set { x }");
-}
-
-// -----------------------------------------------------------------------------
-// IntoZlimResult blanket check
-// -----------------------------------------------------------------------------
-
-fn accepts_into_zlim_result(_: impl IntoZlimResult<()>) {}
-
-#[test]
-fn into_zlim_result_is_callable() {
-    accepts_into_zlim_result(Err(WarnError));
-    accepts_into_zlim_result(Err(DbError::NotFound));
-    accepts_into_zlim_result(Err(ParseError::UnexpectedEof));
 }
 
 // -----------------------------------------------------------------------------

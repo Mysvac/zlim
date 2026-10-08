@@ -14,7 +14,7 @@
 use core::fmt::Debug;
 use core::ops::{Deref, DerefMut};
 
-use zlim_core_derive::Error;
+use zlim_error::derive::Error;
 use zlim_utils::hash::HashMap;
 
 use super::{InternedScheduleLabel, Schedule, ScheduleLabel};

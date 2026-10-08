@@ -24,10 +24,10 @@ use zlim_asset::server::AssetServer;
 use zlim_core::borrow::Res;
 use zlim_core::derive::job_fn;
 use zlim_core::entity::EntityId;
-use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::resource::Resource;
 use zlim_core::system::If;
 use zlim_core::world::World;
+use zlim_error::{ZlimError, ZlimResult};
 use zlim_reflect::TypePath;
 
 use crate::patch::{SceneListPatch, ScenePatch};

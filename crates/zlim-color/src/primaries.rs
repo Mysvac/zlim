@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use zlim_math::{DMat3, DVec3, Mat3};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::Xyza;
 
@@ -17,6 +18,9 @@ use crate::Xyza;
 ///
 /// [CIE 1931 xy chromaticity diagram]: https://en.wikipedia.org/wiki/CIE_1931_color_space
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Chromaticity"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Chromaticity {
     /// The x chromaticity coordinate. Physical colors are in `[0.0, 0.8]`.
     pub x: f32,
@@ -74,6 +78,9 @@ impl Default for Chromaticity {
 ///
 /// Together they define what a linear RGB color looks like, aside from overall brightness.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::RgbPrimaries"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct RgbPrimaries {
     /// The chromaticity of the red primary.
     pub red: Chromaticity,

@@ -4,6 +4,7 @@ use core::any::Any;
 use core::panic::AssertUnwindSafe;
 use std::collections::{BTreeSet, VecDeque};
 
+use zlim_error::{ErrorContext, ErrorHandler, PanicPayload};
 use zlim_task::{MainTaskPool, Scope};
 use zlim_utils::exp::SyncUnsafeCell;
 use zlim_utils::sync::{SegQueue, SpinLock};
@@ -11,7 +12,6 @@ use zlim_utils::vec::FastVec;
 
 use super::{ConflictTable, ExecutorKind, JobExecutor, JobSchedule, JobScheduleView};
 
-use crate::error::{ErrorContext, ErrorHandler, PanicPayload};
 use crate::job::Job;
 use crate::schedule::InternedScheduleLabel;
 use crate::system::{SystemError, SystemFlags};
@@ -555,13 +555,15 @@ impl<'scope, 'env: 'scope, 'sys: 'scope> Context<'scope, 'env, 'sys> {
                 if let Err(e) = job.run_raw(context.world) {
                     ::core::hint::cold_path();
                     let result = match e {
-                        SystemError::None => return SystemResult::Skip,
+                        SystemError::Skipped => return SystemResult::Skip,
                         SystemError::Runtime(_) => SystemResult::Error,
                         _ => SystemResult::Skip,
                     };
                     ::core::hint::cold_path();
-                    let id = job.id();
-                    let ctx = ErrorContext::Job { id };
+                    let ctx = ErrorContext {
+                        kind: "job",
+                        name: job.id().to_string().into(),
+                    };
                     (context.error_handler)(e.into(), ctx);
                     return result;
                 }

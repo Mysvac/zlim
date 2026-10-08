@@ -9,6 +9,7 @@ pub use zlim_log as log;
 pub use zlim_os as os;
 pub use zlim_utils as utils;
 
+pub use zlim_error as error;
 pub use zlim_reflect as reflect;
 pub use zlim_task as task;
 pub use zlim_tracy as tracy;
@@ -54,6 +55,8 @@ pub mod derive {
     #[doc(no_inline)]
     pub use zlim_core::derive::*;
     #[doc(no_inline)]
+    pub use zlim_error::derive::*;
+    #[doc(no_inline)]
     pub use zlim_reflect::derive::*;
     #[doc(no_inline)]
     pub use zlim_scene::derive::*;
@@ -88,6 +91,8 @@ pub mod prelude {
     pub use zlim_color::prelude::*;
     #[doc(no_inline)]
     pub use zlim_core::prelude::*;
+    #[doc(no_inline)]
+    pub use zlim_error::prelude::*;
     #[doc(no_inline)]
     pub use zlim_log::prelude::*;
     #[doc(no_inline)]

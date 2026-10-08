@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Vec3, Vec4};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::{Alpha, ColorToComponents, Gray, Hue, Hwba};
 use crate::{Lcha, LinearRgba, Mix, Saturation, Srgba, Xyza};
@@ -18,6 +19,9 @@ use crate::{impl_from_via, impl_stable_interpolate_via_mix};
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Hsva"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Hsva {
     /// The hue channel. [0.0, 360.0]
     pub hue: f32,

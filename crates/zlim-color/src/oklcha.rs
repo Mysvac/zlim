@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{FloatPow, Vec3, Vec4, ops};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::color_difference::EuclideanDistance;
 use crate::{Alpha, ColorToComponents, Gray, Hsla, Hsva, Hue, Hwba};
@@ -17,6 +18,9 @@ use crate::{impl_from_via, impl_stable_interpolate_via_mix};
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Oklcha"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Oklcha {
     /// The 'lightness' channel. [0.0, 1.0]
     pub lightness: f32,

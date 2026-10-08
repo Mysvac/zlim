@@ -1,6 +1,6 @@
 //! Topological sorting and cycle detection.
 
-use zlim_core_derive::Error;
+use zlim_error::derive::Error;
 use zlim_utils::hash::{HashMap, HashSet};
 
 use super::{DiGraph, Node, SccIterator};

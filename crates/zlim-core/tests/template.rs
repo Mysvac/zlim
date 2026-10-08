@@ -2,11 +2,11 @@
 
 use zlim_core::derive::IntoTemplate;
 use zlim_core::entity::{EntityId, EntityMap};
-use zlim_core::error::ZlimResult;
 use zlim_core::template::IntoTemplate as _;
 use zlim_core::template::{EntityReference, EntityReferences, EntityTemplate};
 use zlim_core::template::{Template, TemplateContext, VecTemplate};
 use zlim_core::world::World;
+use zlim_error::ZlimResult;
 
 // -----------------------------------------------------------------------------
 // Test types

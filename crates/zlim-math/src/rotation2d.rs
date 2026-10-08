@@ -2,10 +2,107 @@ use core::f32::consts::TAU;
 
 use glam::FloatExt;
 use serde::{Deserialize, Serialize};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::ops;
 use crate::prelude::{Mat2, Vec2};
+
+mod adapter {
+    use zlim_reflect::{Reflect, ops::ApplyError};
+
+    #[derive(serde::Deserialize)]
+    pub(super) struct Rot2 {
+        cos: f32,
+        sin: f32,
+    }
+
+    #[inline]
+    fn normalize(x: &mut super::Rot2) -> bool {
+        let recip = x.length_recip();
+        if crate::ops::abs(recip - 1.0) < 2e-4 {
+            return true;
+        }
+        if recip > 0.0 && recip.is_finite() {
+            *x = super::Rot2 {
+                sin: x.sin * recip,
+                cos: x.cos * recip,
+            };
+            true
+        } else {
+            ::core::hint::cold_path();
+            false
+        }
+    }
+
+    impl TryFrom<Rot2> for super::Rot2 {
+        type Error = String;
+        #[inline]
+        fn try_from(value: Rot2) -> Result<Self, String> {
+            #[cold]
+            #[inline(never)]
+            fn failed(v: super::Rot2) -> String {
+                format!("invalid Rot2 `{v:?}`, normalize failed")
+            }
+
+            let mut x = Self {
+                cos: value.cos,
+                sin: value.sin,
+            };
+
+            if normalize(&mut x) {
+                Ok(x)
+            } else {
+                Err(failed(x))
+            }
+        }
+    }
+
+    pub(super) fn on_apply(reflect: &mut super::Rot2) {
+        if !normalize(reflect) {
+            ::core::hint::cold_path();
+            *reflect = super::Rot2::IDENTITY;
+        }
+    }
+
+    pub(super) fn reflect_apply(
+        this: &mut super::Rot2,
+        other: &dyn Reflect,
+    ) -> Result<(), ApplyError> {
+        zlim_reflect::impls::struct_apply(this, other)?;
+        on_apply(this);
+        Ok(())
+    }
+
+    pub(super) fn from_reflect(
+        mut value: Box<dyn Reflect>,
+    ) -> Result<Box<super::Rot2>, Box<dyn Reflect>> {
+        match value.downcast::<super::Rot2>() {
+            Ok(v) => return Ok(v),
+            Err(e) => value = e,
+        }
+        let Ok(s) = value.reflect_ref().as_struct() else {
+            return Err(value);
+        };
+        if s.field_len() != 2 {
+            return Err(value);
+        }
+        let Some(sin) = s.field("sin") else {
+            return Err(value);
+        };
+        let Some(&sin) = sin.downcast_ref::<f32>() else {
+            return Err(value);
+        };
+        let Some(cos) = s.field("cos") else {
+            return Err(value);
+        };
+        let Some(&cos) = cos.downcast_ref::<f32>() else {
+            return Err(value);
+        };
+        let mut x = super::Rot2 { sin, cos };
+        on_apply(&mut x);
+        Ok(Box::new(x))
+    }
+}
 
 /// A 2D rotation.
 ///
@@ -32,9 +129,12 @@ use crate::prelude::{Mat2, Vec2};
 /// #[cfg(feature = "approx")]
 /// assert_relative_eq!(rotation1 * Vec2::X, Vec2::Y);
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
 #[type_path = "zlim_math::Rot2"]
+#[reflect(Default, Clone, Debug, Serialize, Deserialize)]
+#[serde(try_from = "adapter::Rot2")]
+#[reflect(from_reflect = adapter::from_reflect, reflect_apply = adapter::reflect_apply)]
 #[doc(alias = "rotation", alias = "rotation2d", alias = "rotation_2d")]
 pub struct Rot2 {
     /// The cosine of the rotation angle.

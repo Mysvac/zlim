@@ -1,10 +1,8 @@
 //! Implementation of the `#[derive(Error)]` proc-macro.
 
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields, Ident};
-
-use crate::path;
 
 // -----------------------------------------------------------------------------
 // Internal expansion
@@ -18,7 +16,7 @@ pub fn expand(input: &DeriveInput) -> TokenStream {
         Ok(tokens) => tokens,
         Err(e) => return e.into_compile_error(),
     };
-    let type_zlim_error = match parse_zlim_error_attr(&input.attrs) {
+    let type_severity = match parse_zlim_error_attr(&input.attrs) {
         Ok(sev) => sev,
         Err(e) => return e.into_compile_error(),
     };
@@ -36,7 +34,7 @@ pub fn expand(input: &DeriveInput) -> TokenStream {
     };
 
     // 3. Optional: Into<ZlimError> via From impl
-    let zlim_impls = match gen_zlim_into(input, name, &type_zlim_error) {
+    let zlim_impls = match gen_zlim_into(input, name, &type_severity) {
         Ok(ts) => ts,
         Err(e) => return e.into_compile_error(),
     };
@@ -68,28 +66,14 @@ fn find_error_attr(attrs: &[syn::Attribute]) -> Result<Option<ErrorAttr>, syn::E
     for attr in attrs {
         if attr.path().is_ident("error") {
             let tokens: TokenStream = attr.parse_args()?;
-
-            // `transparent` is a bare identifier; a format template always
-            // starts with a string literal, so the two forms cannot collide.
-            if is_bare_ident(&tokens, "transparent") {
+            if tokens.to_string() == "transparent" {
                 return Ok(Some(ErrorAttr::Transparent));
+            } else {
+                return Ok(Some(ErrorAttr::Format(tokens)));
             }
-
-            return Ok(Some(ErrorAttr::Format(tokens)));
         }
     }
     Ok(None)
-}
-
-/// Returns `true` when `tokens` consists of exactly one identifier equal to
-/// `expected`.
-fn is_bare_ident(tokens: &TokenStream, expected: &str) -> bool {
-    let mut iter = tokens.clone().into_iter();
-
-    match (iter.next(), iter.next()) {
-        (Some(TokenTree::Ident(ident)), None) => ident == expected,
-        _ => false,
-    }
 }
 
 /// Parse `#[zlim_error(severity)]`.  Returns an error for invalid severity
@@ -98,12 +82,13 @@ fn is_bare_ident(tokens: &TokenStream, expected: &str) -> bool {
 /// Accepted severity identifiers match the `ZlimError` constructors:
 /// `ignore`, `debug`, `info`, `warning`, `error`, `panic`.
 fn parse_zlim_error_attr(attrs: &[syn::Attribute]) -> Result<Option<Ident>, syn::Error> {
+    const SEV: &str = "ignore | debug | info | warning | error | panic";
+
     for attr in attrs {
         if attr.path().is_ident("zlim_error") {
             let severity: Ident = attr.parse_args().map_err(|_| {
-                const E: &str =
-                    "expected `#[zlim_error(ignore | debug | info | warning | error | panic)]`";
-                syn::Error::new_spanned(attr, E)
+                let msg = format!("expected `#[zlim_error({SEV})]`");
+                syn::Error::new_spanned(attr, msg)
             })?;
 
             let s = severity.to_string();
@@ -112,10 +97,8 @@ fn parse_zlim_error_attr(attrs: &[syn::Attribute]) -> Result<Option<Ident>, syn:
                 "ignore" | "debug" | "info" | "warning" | "error" | "panic" => {}
                 "warn" => return Err(syn::Error::new_spanned(&severity, "use `warning` instead")),
                 _ => {
-                    let message = format!(
-                        "invalid severity `{s}`; expected one of `ignore`, `debug`, `info`, `warning`, `error`, `panic`"
-                    );
-                    return Err(syn::Error::new_spanned(&severity, message));
+                    let msg = format!("invalid severity `{s}`; expected one of `{SEV}`");
+                    return Err(syn::Error::new_spanned(&severity, msg));
                 }
             }
 
@@ -227,6 +210,7 @@ fn gen_enum_display(
 
     for v in &data.variants {
         let vname = &v.ident;
+
         let Some(attr) = find_error_attr(&v.attrs)? else {
             if has_default {
                 continue;
@@ -314,33 +298,41 @@ fn is_single_tuple_field(fields: &Fields) -> bool {
 // -----------------------------------------------------------------------------
 // Into<ZlimError> via From impl
 
+/// `::zlim_error` or `::zlim::error`
+fn zlim_error_crate() -> syn::Path {
+    zlim_derive_utils::crate_path("zlim_error")
+}
+
+/// ZlimError type
+fn zlim_error(path: &syn::Path) -> TokenStream {
+    quote! { #path::ZlimError }
+}
+
 /// Generate `From<Type> for ZlimError` (which provides `Into<ZlimError>`).
 fn gen_zlim_into(
     input: &DeriveInput,
     name: &Ident,
-    type_zlim_error: &Option<Ident>,
+    type_severity: &Option<Ident>,
 ) -> Result<TokenStream, syn::Error> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let severity_opt = match &input.data {
-        Data::Struct(_) => type_zlim_error.clone(),
-        Data::Enum(data) => {
-            return gen_enum_from_impl(input, name, type_zlim_error, data);
-        }
-        Data::Union(_) => None,
+
+    const E: &str = "Error derive does not support unions";
+    match &input.data {
+        Data::Struct(_) => {}
+        Data::Enum(data) => return gen_enum_from_impl(input, name, type_severity, data),
+        Data::Union(_) => return Err(syn::Error::new_spanned(input, E)),
     };
 
-    let Some(severity) = severity_opt else {
+    let Some(severity) = type_severity else {
         return Ok(TokenStream::new());
     };
 
-    let zlim_core = path::zlim_core_path();
     Ok(gen_struct_from_impl(
         name,
         &impl_generics,
         &ty_generics,
         &where_clause,
-        &zlim_core,
-        &severity,
+        severity,
     ))
 }
 
@@ -400,19 +392,20 @@ fn gen_enum_from_impl(
         unreachable!("coverage check guarantees a missing variant exists");
     }
 
-    let zlim_core = path::zlim_core_path();
+    let zlim_error_crate = zlim_error_crate();
+    let zlim_error = zlim_error(&zlim_error_crate);
+
     let specific_arms = arm_data
         .into_iter()
-        .map(|(pat, sev)| quote! { #pat => #zlim_core::error::ZlimError::#sev(err), });
+        .map(|(pat, sev)| quote! { #pat => #zlim_error::#sev(err), });
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let zlim_error_path = path::zlim_error(&zlim_core);
 
     let from_body = if let Some(def_sev) = default_sev {
         quote! {
             match err {
                 #(#specific_arms)*
-                _ => #zlim_error_path::#def_sev(err),
+                _ => #zlim_error::#def_sev(err),
             }
         }
     } else {
@@ -425,10 +418,9 @@ fn gen_enum_from_impl(
 
     Ok(quote! {
         #[automatically_derived]
-        impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error_path #where_clause {
+        impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error #where_clause {
             #[cold]
             #[track_caller]
-            #[inline(never)]
             fn from(err: #name #ty_generics) -> Self {
                 #from_body
             }
@@ -445,20 +437,18 @@ fn gen_struct_from_impl(
     impl_generics: &syn::ImplGenerics,
     ty_generics: &syn::TypeGenerics,
     where_clause: &Option<&syn::WhereClause>,
-    zlim_core: &syn::Path,
     severity: &Ident,
 ) -> TokenStream {
-    let zlim_error_path = path::zlim_error(zlim_core);
-    let from_body = quote! { #zlim_error_path::#severity(err) };
+    let zlim_error_crate = zlim_error_crate();
+    let zlim_error = zlim_error(&zlim_error_crate);
 
     quote! {
         #[automatically_derived]
-        impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error_path #where_clause {
+        impl #impl_generics ::core::convert::From<#name #ty_generics> for #zlim_error #where_clause {
             #[cold]
             #[track_caller]
-            #[inline(never)]
             fn from(err: #name #ty_generics) -> Self {
-                #from_body
+                #zlim_error::#severity(err)
             }
         }
     }

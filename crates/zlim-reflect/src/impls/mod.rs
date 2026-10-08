@@ -51,11 +51,13 @@ pub const fn reflect_hasher() -> FixedHasher {
 }
 
 /// Returns `true` when `value`'s type is exactly `to`.
+#[doc(hidden)]
 #[inline(always)]
 pub fn is_convertable(value: &dyn Reflect, to: TypeId) -> bool {
     value.type_id() == to
 }
 
+#[doc(hidden)]
 #[inline(never)]
 pub fn reflect_clone_field<T: Reflect>(field: &T) -> Result<T, CloneError> {
     let cloned = field.reflect_clone()?;

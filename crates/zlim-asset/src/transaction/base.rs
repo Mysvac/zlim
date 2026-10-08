@@ -1,6 +1,6 @@
 //! The transaction log: what tells an interrupted import run apart from a finished one.
 
-use zlim_core::derive::Error;
+use zlim_error::derive::Error;
 use zlim_utils::hash::HashSet;
 
 use crate::utils::BoxedFuture;

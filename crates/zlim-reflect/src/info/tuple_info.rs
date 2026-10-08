@@ -1,8 +1,9 @@
 use zlim_utils::mem::Global;
 
-use super::{Attributes, Generics, Type, UnnamedField};
+use super::{Attributes, Generics, Type, TypeInfo, UnnamedField};
 use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
+use crate::Reflect;
 use crate::ops::Tuple;
 use crate::path::TypePath;
 
@@ -16,6 +17,10 @@ pub struct TupleInfo {
     fields: &'static [UnnamedField],
     generics: Generics,
     attributes: Attributes,
+    /// Serde type info used for serialization and deserialization.
+    ///
+    /// Usually `None`, meaning the reflected structure is used directly.
+    serde_info: Option<&'static TypeInfo>,
 }
 
 impl TupleInfo {
@@ -35,6 +40,7 @@ impl TupleInfo {
             fields: Global::alloc_slice(fields),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
+            serde_info: None,
         }
     }
 
@@ -60,6 +66,37 @@ impl TupleInfo {
 }
 
 impl TupleInfo {
+    /// Sets the serde type info, overriding the reflected representation.
+    #[inline]
+    pub const fn with_serde_info(self, info: &'static TypeInfo) -> Self {
+        Self {
+            serde_info: Some(info),
+            ..self
+        }
+    }
+
+    /// Returns the serde type info, if any.
+    #[inline]
+    pub const fn serde_info(&self) -> Option<&'static TypeInfo> {
+        self.serde_info
+    }
+
+    /// Creates a [`TupleInfo`] without the [`Tuple`] requirement.
+    ///
+    /// Otherwise identical to [`TupleInfo::new`].
+    #[inline]
+    pub fn dynamic<T: Reflect + TypePath>(fields: &[UnnamedField]) -> Self {
+        Self {
+            ty: Type::of::<T>(),
+            fields: Global::alloc_slice(fields),
+            generics: Generics::EMPTY,
+            attributes: Attributes::EMPTY,
+            serde_info: None,
+        }
+    }
+}
+
+impl TupleInfo {
     // A small optimization to avoid lock overhead.
     // See `src/impls/primitive/tuple.rs`.
     pub(crate) const UNIT: Self = Self {
@@ -67,6 +104,7 @@ impl TupleInfo {
         fields: &[],
         generics: Generics::EMPTY,
         attributes: Attributes::EMPTY,
+        serde_info: None,
     };
 }
 

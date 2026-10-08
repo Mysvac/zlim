@@ -40,7 +40,7 @@
 use core::future::Future;
 use std::path::{Path, PathBuf};
 
-use zlim_core::derive::Error;
+use zlim_error::derive::Error;
 
 use super::future::WriteAllFuture;
 use crate::utils::BoxedFuture;

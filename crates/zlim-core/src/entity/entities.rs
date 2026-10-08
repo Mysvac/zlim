@@ -11,7 +11,7 @@ use core::iter::FusedIterator;
 use core::num::NonZeroU32;
 use std::collections::BTreeSet;
 
-use zlim_core_derive::Error;
+use zlim_error::derive::Error;
 use zlim_utils::hash::HashMap;
 
 use super::{EntityId, Location};

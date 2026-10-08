@@ -1,6 +1,6 @@
 //! The [`SceneList`](crate::SceneList) trait: a description of a list of entities, one [`Scene`](crate::Scene) each.
 
-use zlim_core::error::ZlimResult;
+use zlim_error::ZlimResult;
 
 use crate::dependency::SceneDependencies;
 use crate::resolved::ResolvedScene;

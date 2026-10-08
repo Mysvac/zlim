@@ -5,13 +5,14 @@
 
 use serde::{Deserialize, Serialize};
 use zlim_math::{Vec3, Vec4, ops};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::{Alpha, ColorToComponents, Gray, Hue, Lcha};
 use crate::{LinearRgba, Mix, Srgba, Xyza};
 use crate::{impl_from_via, impl_stable_interpolate_via_mix};
 
 // -----------------------------------------------------------------------------
-// Laba
+// Hwba
 
 /// Color in Hue-Whiteness-Blackness (HWB) color space with alpha.
 ///
@@ -23,6 +24,9 @@ use crate::{impl_from_via, impl_stable_interpolate_via_mix};
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Hwba"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Hwba {
     /// The hue channel. [0.0, 360.0]
     pub hue: f32,

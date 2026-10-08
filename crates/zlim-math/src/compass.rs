@@ -2,7 +2,7 @@ use core::ops::Neg;
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
-use zlim_reflect::derive::TypePath;
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::Dir2;
 
@@ -22,9 +22,10 @@ use crate::Dir2;
 ///          ▼
 ///          S (South) -Y
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
 #[type_path = "zlim_math::CompassQuadrant"]
+#[reflect(Debug, Clone, Eq, Hash, Serialize, Deserialize)]
 pub enum CompassQuadrant {
     /// Corresponds to [`Dir2::Y`] and [`Dir2::NORTH`]
     North,
@@ -124,9 +125,10 @@ impl CompassQuadrant {
 ///          ▼
 ///          S (South) -Y
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TypePath, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
 #[type_path = "zlim_math::CompassOctant"]
+#[reflect(Debug, Clone, Eq, Hash, Serialize, Deserialize)]
 pub enum CompassOctant {
     /// Corresponds to [`Dir2::Y`] and [`Dir2::NORTH`]
     North,

@@ -592,6 +592,7 @@ pub trait Reflect: DynamicTypePath + DynamicTyped + Send + Sync + Any {
         p.debug_assert_aligned::<Self>();
         unsafe { p.deref::<Self>() }
     }
+
     /// Constructs `Self` from a boxed reflected value.
     ///
     /// # Rules

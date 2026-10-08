@@ -1,4 +1,5 @@
 //! The [`ZlimError`] type, [`Severity`], and result-conversion traits.
+#![expect(unsafe_code, reason = "optimize size")]
 
 use core::error::Error;
 use core::fmt::{Debug, Display};
@@ -17,18 +18,32 @@ use zlim_utils::debug::DebugLocation;
 /// [`Severity`], allowing error handling systems to categorize and respond to
 /// errors appropriately.
 ///
+/// Besides the boxed error, a `ZlimError` may carry:
+///
+/// - a [`Backtrace`] — gated by the **`backtrace`** feature and by the global
+///   severity threshold ([`ZlimError::set_backtrace_threshold`]);
+///
+/// - `built_at` — the [`DebugLocation`] of the constructor call, always stored,
+///   shown in `Display`/`Debug` only under **`debug`** or **`debug_assertions`**;
+///
+/// - `location` — the [`DebugLocation`] of the underlying error, always stored,
+///   overridable via [`ZlimError::with_location`], default is same as `built_at`.
+///
 /// # Examples
 ///
 /// ```
-/// use zlim_core::error::ZlimError;
+/// use zlim_error::ZlimError;
+/// use zlim_utils::debug::DebugLocation;
+/// // create a ZlimError from any value that implement `Error`.
+/// let _ = ZlimError::warning("a error with `warning` severity");
+/// let _ = ZlimError::error("a error with `error` severity");
+/// let x = ZlimError::panic("a error with `panic` severity");
 ///
-/// fn validate_value(val: i64) -> Result<(), ZlimError> {
-///     if val < 0 {
-///         let msg = format!("Value cannot be negative: {val}");
-///         return Err(ZlimError::info(msg));
-///     }
-///     Ok(())
-/// }
+/// // override dynamic location
+/// let x = x.with_location(DebugLocation::caller());
+///
+/// // display
+/// std::eprintln!("{x}");
 /// ```
 #[repr(transparent)]
 pub struct ZlimError(NonNull<()>, PhantomData<Box<InnerError>>);
@@ -252,7 +267,7 @@ impl ZlimError {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_core::error::{ZlimError, Severity};
+    /// # use zlim_error::{Severity, ZlimError};
     /// #
     /// let err = ZlimError::panic("something broke".to_string());
     /// assert_eq!(err.severity(), Severity::Panic);
@@ -277,7 +292,7 @@ impl ZlimError {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_core::error::{ZlimError, Severity};
+    /// # use zlim_error::{Severity, ZlimError};
     /// #
     /// let err = ZlimError::panic("something broke".to_string()).with_severity(Severity::Warning);
     /// assert_eq!(err.severity(), Severity::Warning);
@@ -302,7 +317,7 @@ impl ZlimError {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_core::error::{ZlimError, Severity};
+    /// # use zlim_error::{Severity, ZlimError};
     /// #
     /// let e1 = ZlimError::info("something broke").merge_severity(Severity::Warning);
     /// assert_eq!(e1.severity(), Severity::Warning);
@@ -324,7 +339,7 @@ impl ZlimError {
     /// # Examples
     ///
     /// ```
-    /// # use zlim_core::error::{ZlimError, Severity};
+    /// # use zlim_error::{Severity, ZlimError};
     /// #
     /// let e = ZlimError::info("something broke")
     ///     .map_severity(|e| e.max(Severity::Warning));
@@ -411,7 +426,7 @@ mod backtrace_impls {
         "zlim_core::job::into_job::",
         "zlim_core::system::function::",
         "zlim_core::schedule::executor::",
-        "zlim_core::error::zlim_error::ZlimError::new_boxed",
+        "zlim_error::zlim_error::ZlimError::new_boxed",
         "zlim_task::platform::",
         "futures_lite::future::",
         "async_task::raw::",
@@ -483,7 +498,7 @@ mod backtrace_impls {
                 }
 
                 // Separate the beginning part, for example:
-                // "  5: zlim_core::error::zlim_error::ZlimError::panic"
+                // "  5: zlim_core::job::into_job::IntoJobResult::into_job_result"
                 //     ↑
                 if let Some(index) = line.find(": ") {
                     let pattern = line[(index + 2)..].trim_start();
@@ -515,6 +530,7 @@ mod backtrace_impls {
         ) -> Self {
             let ptr: *mut InnerError = Box::leak(Box::new(InnerError {
                 content,
+                built_at: location,
                 location,
                 backtrace,
             }));

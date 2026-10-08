@@ -1,6 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use zlim_math::{Vec3, Vec4, ops};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::color_difference::EuclideanDistance;
 use crate::{Alpha, ColorToComponents, ColorToPacked, Gray, Luminance, Mix};
@@ -18,8 +19,10 @@ use crate::{impl_componentwise_stable_interpolate, impl_componentwise_vector_spa
 /// <div>
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Pod, Zeroable, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[derive(TypePath, Reflect, Serialize, Deserialize)]
+#[type_path = "zlim_color::LinearRgba"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 #[repr(C)]
 pub struct LinearRgba {
     /// The red channel. [0.0, 1.0] for SDR colors.

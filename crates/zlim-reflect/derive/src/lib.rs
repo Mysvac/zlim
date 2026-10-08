@@ -156,7 +156,7 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 ///
 /// Skip one only when you are providing the implementation.
 ///
-/// # Two rules for the kind traits
+/// # The rule for the kind traits
 ///
 /// **A kind trait can only be skipped on the kind that generates it.** The type
 /// decides which one the macro emits, so `Struct = false` belongs on a
@@ -170,23 +170,6 @@ pub fn derive_type_path(input: TokenStream) -> TokenStream {
 ///
 /// A unit struct (`struct Foo;`) reflects as `Opaque`, so it follows that rule
 /// too — `Struct = false` on it is an error.
-///
-/// **A kind trait can only be skipped together with `Reflect`.** The generated
-/// `Reflect` dispatches `reflect_kind` / `reflect_ref` / `reflect_mut` /
-/// `reflect_owned` to the kind trait, so it cannot be compiled without it. Write
-/// both by hand and turn off both:
-///
-/// ```rust, ignore
-/// #[derive(Reflect)]
-/// #[reflect(Reflect = false, Struct = false)]
-/// struct Point { x: f32, y: f32 }
-///
-/// impl Struct for Point { /* ... */ }
-/// impl Reflect for Point { /* ... */ }
-/// ```
-///
-/// These are checked before anything is generated, so a type that gets one wrong
-/// reports that one thing instead of a page of "trait bound is not satisfied".
 ///
 /// # The other two
 ///

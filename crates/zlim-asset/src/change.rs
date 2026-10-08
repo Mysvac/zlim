@@ -25,7 +25,7 @@ use zlim_core::borrow::ResMut;
 use zlim_core::derive::Resource;
 use zlim_core::entity::EntityId;
 use zlim_core::job::job_fn;
-use zlim_core::message::{ClampTickSignal, MessageReader};
+use zlim_core::message::{ClampTickSignal, MessageReader, on_message};
 use zlim_core::query::QueryFilter;
 use zlim_core::resource::ResourceDB;
 use zlim_core::system::{AccessTable, ComponentAccess, FilterParamBuilder, If};
@@ -83,7 +83,7 @@ impl<A: Asset> Default for AssetChanges<A> {
 /// Clamps every recorded change tick — including `last_change` — against the `now` of each
 /// [`ClampTickSignal`], so that the ticks kept in an `AssetChanges` table cannot grow without
 /// bound.
-#[job_fn(type = ClampAssetChangesTick<A: Asset>)]
+#[job_fn(type = ClampAssetChangesTick<A: Asset>, run_if = on_message::<ClampTickSignal>)]
 fn clamp_asset_changes<A: Asset>(
     mut changes: If<ResMut<AssetChanges<A>>>,
     mut queue: MessageReader<ClampTickSignal>,
@@ -217,14 +217,29 @@ unsafe impl<A: AssetComponent> QueryFilter for AssetChanged<A> {
         cache: &mut Self::Cache<'w>,
         table: &'w Table,
     ) -> bool {
-        if let Some(col) = table.get_table_col(state.component) {
-            let column = unsafe { table.get_column(col) };
-            cache.data = Some(NonNull::from_ref(column));
-            true
-        } else {
+        let Some(col) = table.get_table_col(state.component) else {
             cache.data = None;
-            false
-        }
+            return false;
+        };
+
+        let column = unsafe { table.get_column(col) };
+        cache.data = Some(NonNull::from_ref(column));
+
+        let Some(cell) = state.resource else {
+            return false;
+        };
+
+        let changes = unsafe {
+            let cell = &*cell.get();
+            let Some(ptr) = cell.get_data() else {
+                return false;
+            };
+            ptr.debug_assert_aligned::<AssetChanges<A::Asset>>();
+            ptr.deref::<AssetChanges<A::Asset>>()
+        };
+
+        let change = changes.last_change;
+        !cache.last_run.is_newer_than(change, cache.this_run)
     }
 
     unsafe fn filter<'w>(
@@ -250,22 +265,10 @@ unsafe impl<A: AssetComponent> QueryFilter for AssetChanged<A> {
 
             let Some(cell) = cell.get_data() else {
                 ::core::hint::cold_path();
-                zlim_log::error_once!(
-                    "The `AssetChanged<{}>` query filter was used, but the corresponding \
-                    `AssetChanges<{}>` resource was removed after being inserted, which will \
-                    cause subsequent queries to always fail.",
-                    ::core::any::type_name::<A>(),
-                    <A::Asset as TypePath>::type_name(),
-                );
                 return false;
             };
 
             let changes = cell.deref::<AssetChanges<A::Asset>>();
-
-            let change = changes.last_change;
-            if cache.last_run.is_newer_than(change, cache.this_run) {
-                return false; // No changes
-            }
 
             let column = &*column.as_ptr();
             let ptr = column.get_data(table_row.0 as usize);

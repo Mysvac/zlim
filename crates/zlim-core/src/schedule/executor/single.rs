@@ -3,9 +3,10 @@
 use core::any::Any;
 use core::panic::AssertUnwindSafe;
 
+use zlim_error::PanicPayload;
+use zlim_error::{ErrorContext, ErrorHandler};
+
 use super::{ExecutorKind, JobExecutor, JobSchedule, JobScheduleView};
-use crate::error::PanicPayload;
-use crate::error::{ErrorContext, ErrorHandler};
 use crate::job::Job;
 use crate::schedule::InternedScheduleLabel;
 use crate::system::{SystemError, SystemFlags};
@@ -129,13 +130,15 @@ impl JobExecutor for SingleThreadedExecutor {
                 if let Err(e) = job.run_raw(world.cell()) {
                     ::core::hint::cold_path();
                     let result = match e {
-                        SystemError::None => return SystemResult::Skip,
+                        SystemError::Skipped => return SystemResult::Skip,
                         SystemError::Runtime(_) => SystemResult::Error,
                         _ => SystemResult::Skip,
                     };
                     ::core::hint::cold_path();
-                    let id = job.id();
-                    let ctx = ErrorContext::Job { id };
+                    let ctx = ErrorContext {
+                        kind: "job",
+                        name: job.id().to_string().into(),
+                    };
                     handler(e.into(), ctx);
                     return result;
                 }

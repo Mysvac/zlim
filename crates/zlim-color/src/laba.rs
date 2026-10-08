@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Vec3, Vec4, ops};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::impl_componentwise_stable_interpolate;
 use crate::{Alpha, ColorToComponents, Gray, Hsla, Hsva, Hwba};
@@ -17,6 +18,9 @@ use crate::{impl_componentwise_vector_space, impl_from_via};
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Laba"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Laba {
     /// The lightness channel. [0.0, 1.5]
     pub lightness: f32,

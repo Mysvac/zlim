@@ -3,7 +3,8 @@ use zlim_utils::mem::Global;
 use super::{Attributes, Generics, NamedField, Type};
 use super::{impl_attributes_fn, impl_with_attributes};
 use super::{impl_generics_fn, impl_type_fn, impl_with_generics};
-use crate::ops::Struct;
+use crate::info::TypeInfo;
+use crate::ops::{Reflect, Struct};
 use crate::path::TypePath;
 
 // -----------------------------------------------------------------------------
@@ -18,6 +19,10 @@ pub struct StructInfo {
     field_names: &'static [&'static str],
     generics: Generics,
     attributes: Attributes,
+    /// Serde type info used for serialization and deserialization.
+    ///
+    /// Usually `None`, meaning the reflected structure is used directly.
+    serde_info: Option<&'static TypeInfo>,
 }
 
 impl StructInfo {
@@ -40,6 +45,7 @@ impl StructInfo {
             field_names: Global::alloc_slice(name.as_slice()),
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
+            serde_info: None,
         }
     }
 
@@ -95,3 +101,37 @@ impl StructInfo {
 }
 
 // -----------------------------------------------------------------------------
+
+impl StructInfo {
+    /// Sets the serde type info, overriding the reflected representation.
+    #[inline]
+    pub fn with_serde_info(self, info: &'static TypeInfo) -> Self {
+        Self {
+            serde_info: Some(info),
+            ..self
+        }
+    }
+
+    /// Returns the serde type info, if any.
+    #[inline]
+    pub fn serde_info(&self) -> Option<&'static TypeInfo> {
+        self.serde_info
+    }
+
+    /// Creates a [`StructInfo`] without the [`Struct`] requirement.
+    ///
+    /// Otherwise identical to [`StructInfo::new`].
+    #[inline]
+    pub fn dynamic<T: Reflect + TypePath>(fields: &[NamedField]) -> Self {
+        let name: Vec<&'static str> = fields.iter().map(|f| f.name()).collect();
+
+        Self {
+            ty: Type::of::<T>(),
+            fields: Global::alloc_slice(fields),
+            field_names: Global::alloc_slice(name.as_slice()),
+            generics: Generics::EMPTY,
+            attributes: Attributes::EMPTY,
+            serde_info: None,
+        }
+    }
+}

@@ -2,8 +2,9 @@
 
 use core::any::Any;
 
+use zlim_error::ZlimResult;
+
 use crate::bundle::BundleWriter;
-use crate::error::ZlimResult;
 use crate::template::{Template, TemplateContext, TemplateEffect};
 
 // -----------------------------------------------------------------------------

@@ -1,10 +1,10 @@
+use zlim_error::ZlimError;
 use zlim_reflect::Reflect;
 use zlim_reflect::ops::ApplyError;
 
 use crate::borrow::{Mut, Ref};
 use crate::component::Component;
 use crate::entity::{EntityError, EntityMapper};
-use crate::error::ZlimError;
 use crate::ops::{EntityMut, EntityOwned, EntityRef};
 
 /// The function pointers for [reflected] [component].

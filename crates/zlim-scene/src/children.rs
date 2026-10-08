@@ -1,8 +1,8 @@
 //! The two ways a scene describes the hierarchy: its children, and its parent.
 
 use zlim_core::entity::EntityId;
-use zlim_core::error::ZlimResult;
 use zlim_core::template::{EntityReference, EntityTemplate};
+use zlim_error::ZlimResult;
 
 use crate::dependency::SceneDependencies;
 use crate::resolved::ResolvedScene;

@@ -17,7 +17,7 @@
 //!   `Result<bool, E>` (where `E: Into<ZlimError>`).
 //!   Every form is mapped into the scheduler's standard `Result<(), SystemError>`,
 //!   with failures wrapped in the standard [`ZlimError`]. A `false` / `Ok(false)`
-//!   result maps to [`SystemError::None`] — a benign early exit that prevents
+//!   result maps to [`SystemError::Skipped`] — a benign early exit that prevents
 //!   dependent jobs from running.
 //!
 //! # Job groups
@@ -194,9 +194,9 @@
 //! [`World`]: crate::world::World
 //! [`System`]: crate::system::System
 //! [`IntoSystem`]: crate::system::IntoSystem
-//! [`SystemError::None`]: crate::system::SystemError::None
+//! [`SystemError::Skipped`]: crate::system::SystemError::Skipped
 //! [`Schedule`]: crate::schedule::Schedule
-//! [`ZlimError`]: crate::error::ZlimError
+//! [`ZlimError`]: zlim_error::ZlimError
 
 mod db;
 mod group;

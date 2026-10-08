@@ -89,7 +89,13 @@ const KIND_TRAITS: &[(&str, fn(&TypeSkips) -> bool, &str)] = &[
     ("Enum", |s| s.enum_, "an enum"),
 ];
 
-/// Rejects opt-outs that cannot apply to this type.
+/// Rejects a kind opt-out that names a kind this type does not generate.
+///
+/// Only the matching kind trait is meaningful — the type decides which one the
+/// macro emits — so `Tuple = false` on an enum is a mistake, not a request. A
+/// correct opt-out is left alone: skipping your own kind trait is allowed and
+/// keeps the generated `Reflect`, which only needs the `Self: Struct` bound to
+/// hold, whether that impl came from the macro or from the user.
 fn check_skips(derive: &ReflectDerive<'_>) -> syn::Result<()> {
     let skips = &derive.meta().attrs().skips;
     let ident = derive.meta().ident();
@@ -103,7 +109,6 @@ fn check_skips(derive: &ReflectDerive<'_>) -> syn::Result<()> {
         ReflectDerive::UnitStruct(_) | ReflectDerive::Opaque(_) => "Opaque",
     };
 
-    // 1. An opt-out that names some other kind.
     if let Some((skip, applies_to)) = KIND_TRAITS
         .iter()
         .find(|(name, set, _)| *name != kind_trait && set(skips))
@@ -113,21 +118,6 @@ fn check_skips(derive: &ReflectDerive<'_>) -> syn::Result<()> {
             "`{ident}` cannot use `#[reflect({skip} = false)]`: its reflection kind is \
              `{kind_trait}`, so `{kind_trait}` is the only kind trait the macro generates for \
              it. `#[reflect({skip} = false)]` applies to {applies_to}."
-        );
-        return Err(syn::Error::new(ident.span(), msg));
-    }
-
-    // 2. A kind trait switched off while `Reflect` still asks for it.
-    if !skips.reflect
-        && let Some((trait_name, _, _)) = KIND_TRAITS
-            .iter()
-            .find(|(name, set, _)| *name == kind_trait && set(skips))
-    {
-        let msg = format!(
-            "`{ident}` cannot use `#[reflect({trait_name} = false)]` on its own: the generated \
-             `Reflect` dispatches its kind methods to `{trait_name}`, so it cannot be compiled \
-             without that impl. Turn off `Reflect` as well — \
-             `#[reflect(Reflect = false, {trait_name} = false)]` — and write both by hand."
         );
         return Err(syn::Error::new(ident.span(), msg));
     }

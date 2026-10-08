@@ -50,7 +50,7 @@ use core::task::{Context, Poll};
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 
-use zlim_core::derive::Error;
+use zlim_error::derive::Error;
 
 use super::future::ReadAllFuture;
 use crate::utils::{BoxedFuture, PathStream};

@@ -65,7 +65,7 @@ pub use value::ComponentTemplate;
 
 pub use crate::derive::IntoTemplate;
 
-use crate::error::ZlimResult;
+use zlim_error::ZlimResult;
 
 // -----------------------------------------------------------------------------
 // Template
@@ -360,10 +360,10 @@ impl<T: Clone + Default + Unpin> IntoTemplate for T {
 
 #[cfg(test)]
 mod tests {
+    use zlim_error::ZlimResult;
 
     use crate::derive::Resource;
     use crate::entity::{EntityId, EntityMap};
-    use crate::error::ZlimResult;
     use crate::world::World;
 
     use super::Template;

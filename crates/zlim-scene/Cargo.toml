@@ -13,6 +13,8 @@ zlim-scene-derive = { path = "derive" }
 
 zlim-core = { path = "../zlim-core", default-features = false }
 
+zlim-error = { path = "../zlim-error", default-features = false }
+
 zlim-utils = { path = "../zlim-utils", default-features = false }
 
 zlim-reflect = { path = "../zlim-reflect", default-features = false }

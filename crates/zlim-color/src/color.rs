@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{MismatchedUnitsError, TryStableInterpolate};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::color_difference::EuclideanDistance;
 use crate::{Alpha, Hsla, Hsva, Hue, Hwba, Laba, Lcha, LinearRgba, Luminance, Mix};
@@ -48,6 +49,9 @@ use crate::{Okhsla, Okhsva, Okhwba, Oklaba, Oklcha, Saturation, Srgba, Xyza};
 /// To avoid the cost of repeated conversion, and ensure consistent results where that is desired,
 /// first convert this [`Color`] into your desired color space.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Color"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub enum Color {
     /// A color in the sRGB color space with alpha.
     Srgba(Srgba),

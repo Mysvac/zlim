@@ -21,11 +21,12 @@ debug = [
     "zlim-core/debug",
     "zlim-math/debug",
     "zlim-transform/debug",
+    "zlim-error/debug",
     "zlim-asset/debug",
 ]
 
 backtrace = [
-    "zlim-core/backtrace",
+    "zlim-error/backtrace",
     "zlim-app/backtrace",
 ]
 
@@ -81,9 +82,10 @@ zlim-os = { path = "../zlim-os", default-features = false }
 zlim-utils = { path = "../zlim-utils", default-features = false }
 zlim-log = { path = "../zlim-log", default-features = false }
 
-zlim-reflect = { path = "../zlim-reflect", default-features = false }
 zlim-task = { path = "../zlim-task", default-features = false }
+zlim-error = { path = "../zlim-error", default-features = false }
 zlim-tracy = { path = "../zlim-tracy", default-features = false }
+zlim-reflect = { path = "../zlim-reflect", default-features = false }
 
 zlim-core = { path = "../zlim-core", default-features = false }
 

@@ -3,7 +3,6 @@ use core::any::TypeId;
 use core::fmt::{Debug, Formatter};
 use std::collections::BTreeSet;
 
-use zlim_core::error::ErrorHandler;
 use zlim_core::job::JobLabel;
 use zlim_core::message::Message;
 use zlim_core::resource::Resource;
@@ -13,6 +12,7 @@ use zlim_core::schedule::ScheduleLabel;
 use zlim_core::schedule::ScheduleStage;
 use zlim_core::world::FromWorld;
 use zlim_core::world::World;
+use zlim_error::ErrorHandler;
 use zlim_log::LogConfig;
 use zlim_task::TaskPoolConfigs;
 use zlim_utils::ext::TypeMap;

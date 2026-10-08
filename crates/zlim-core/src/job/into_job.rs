@@ -1,9 +1,9 @@
 //! Conversion of functions and systems into boxed jobs.
 
+use zlim_error::IntoZlimResult;
 use zlim_utils::debug::DebugLocation;
 
 use super::{Job, JobId};
-use crate::error::{IntoZlimResult, ZlimError};
 use crate::system::{AccessTable, SystemFlags};
 use crate::system::{IntoSystem, System, SystemError};
 use crate::tick::Tick;
@@ -14,39 +14,27 @@ use crate::world::{World, WorldCell};
 
 /// Converts a job function's return value into a [`Result<(), SystemError>`].
 ///
-/// Job functions may return `()`, `bool`, `Result<(), E>`, or
-/// `Result<bool, E>`; this trait normalizes those into the scheduler's error
-/// convention. A `false` / `Ok(false)` result is mapped to
-/// [`SystemError::None`] — a benign early exit that prevents dependent jobs
-/// from running — while `()` / `Ok(())` map to success.
+/// A job's output has to answer one question: should this job run? The return
+/// conventions that can answer it are `()` (run, since it succeeded), `bool`
+/// (the answer itself), and the `Result` forms of either (the answer, unless
+/// something failed). All of them are covered by `IntoZlimResult<bool>`.
+///
+/// `Ok(true)` runs the job. `Ok(false)` is mapped to [`SystemError::Skipped`] — the
+/// job is skipped, and since it is reported as skipped rather than run, its
+/// delayed commands are not applied and dependents do not run. An `Err` is a
+/// real failure and is reported to the error handler.
 pub trait IntoJobResult {
     /// Converts `this` into a scheduler result.
     fn into_job_result(this: Self, location: DebugLocation) -> Result<(), SystemError>;
 }
 
-impl<T: IntoZlimResult<()>> IntoJobResult for T {
+impl<T: IntoZlimResult<bool>> IntoJobResult for T {
     #[inline(always)]
     fn into_job_result(this: Self, location: DebugLocation) -> Result<(), SystemError> {
         match this.into_zlim_result() {
-            Ok(()) => Ok(()),
-            Err(e) => Err(SystemError::Runtime(e.with_location(location))),
-        }
-    }
-}
-
-impl IntoJobResult for bool {
-    #[inline(always)]
-    fn into_job_result(this: Self, _: DebugLocation) -> Result<(), SystemError> {
-        if this { Ok(()) } else { Err(SystemError::None) }
-    }
-}
-
-impl<E: Into<ZlimError>> IntoJobResult for Result<bool, E> {
-    fn into_job_result(this: Self, location: DebugLocation) -> Result<(), SystemError> {
-        match this {
             Ok(true) => Ok(()),
-            Ok(false) => Err(SystemError::None),
-            Err(e) => Err(SystemError::Runtime(e.into().with_location(location))),
+            Ok(false) => Err(SystemError::Skipped),
+            Err(e) => Err(SystemError::Runtime(e.with_location(location))),
         }
     }
 }
@@ -236,7 +224,8 @@ fn tracy_span_source(
 #[cfg(test)]
 mod tests {
     use crate::schedule::AnonymousSchedule;
-    use crate::{derive::job, error::ZlimError, world::World};
+    use crate::{derive::job, world::World};
+    use zlim_error::ZlimError;
 
     job! {
         type: TestError,

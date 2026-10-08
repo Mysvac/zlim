@@ -10,11 +10,11 @@ use zlim_asset::path::AssetPath;
 use zlim_core::bundle::{Bundle, BundleScratch};
 use zlim_core::component::Component;
 use zlim_core::entity::{EntityId, EntityMap};
-use zlim_core::error::ZlimResult;
 use zlim_core::message::{MessageQueue, ReparentSignal};
 use zlim_core::template::{ComponentTemplate, EntityReference, EntityReferences, EntityTemplate};
 use zlim_core::template::{Template, TemplateContext, TemplateEffect, template};
 use zlim_core::world::World;
+use zlim_error::ZlimResult;
 
 use zlim_scene::{
     EntityScene, InitTemplate, InsertTemplate, PatchIntoTemplate, PatchTemplate, ResolveContext,
@@ -986,7 +986,7 @@ fn a_failed_application_drops_what_it_pushed() {
     let mut scene = ResolvedScene::new();
     scene.push_template(template(move |_| Ok(Tracked(flag.clone()))));
     scene.push_template(template(|_| {
-        Err::<Scale, _>(zlim_core::error::ZlimError::error("boom"))
+        Err::<Scale, _>(zlim_error::ZlimError::error("boom"))
     }));
 
     assert!(
@@ -1014,7 +1014,7 @@ fn a_failed_application_takes_back_what_it_spawned() {
     scene.push_template(template(|_| Ok(Scale(1.0))));
     let mut child = ResolvedScene::new();
     child.push_template(template(|_| {
-        Err::<Marker, _>(zlim_core::error::ZlimError::error("boom"))
+        Err::<Marker, _>(zlim_error::ZlimError::error("boom"))
     }));
     scene.add_child(child);
 
@@ -1053,7 +1053,7 @@ fn a_failed_batch_takes_back_every_root_it_spawned() {
 
     let mut bad = ResolvedScene::new();
     bad.push_template(template(|_| {
-        Err::<Marker, _>(zlim_core::error::ZlimError::error("boom"))
+        Err::<Marker, _>(zlim_error::ZlimError::error("boom"))
     }));
 
     assert!(
@@ -1081,7 +1081,7 @@ fn a_failed_spawn_drops_the_entity_it_spawned() {
 
     let mut scene = ResolvedScene::new();
     scene.push_template(template(|_| {
-        Err::<Marker, _>(zlim_core::error::ZlimError::error("boom"))
+        Err::<Marker, _>(zlim_error::ZlimError::error("boom"))
     }));
 
     assert!(scene.spawn(&mut world, None).is_err(), "the template fails");

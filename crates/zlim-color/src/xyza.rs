@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use zlim_math::{Vec3, Vec4};
+use zlim_reflect::derive::{Reflect, TypePath};
 
 use crate::impl_componentwise_stable_interpolate;
 use crate::impl_componentwise_vector_space;
@@ -20,6 +21,9 @@ use crate::{Alpha, ColorToComponents, Gray, LinearRgba, Luminance, Mix};
 ///
 /// [CIE 1931]: https://en.wikipedia.org/wiki/CIE_1931_color_space
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(TypePath, Reflect)]
+#[type_path = "zlim_color::Xyza"]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Xyza {
     /// The x-axis. [0.0, 0.9505] for SDR colors.
     pub x: f32,

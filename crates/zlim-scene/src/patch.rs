@@ -9,9 +9,9 @@ use zlim_asset::handle::{ErasedHandle, Handle};
 use zlim_asset::path::AssetPath;
 use zlim_asset::server::AssetServer;
 use zlim_core::entity::EntityId;
-use zlim_core::error::{ZlimError, ZlimResult};
 use zlim_core::ops::EntityOwned;
 use zlim_core::world::World;
+use zlim_error::{ZlimError, ZlimResult};
 use zlim_reflect::TypePath;
 
 use crate::dependency::SceneDependencies;
