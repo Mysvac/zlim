@@ -25,7 +25,7 @@ pub struct MapInfo {
     /// Serde type info used for serialization and deserialization.
     ///
     /// Usually `None`, meaning the reflected structure is used directly.
-    serde_info: Option<&'static TypeInfo>,
+    schema_info: Option<&'static TypeInfo>,
 }
 
 impl MapInfo {
@@ -47,7 +47,7 @@ impl MapInfo {
             value_info: TValue::type_info,
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            serde_info: None,
+            schema_info: None,
         }
     }
 
@@ -89,19 +89,19 @@ impl MapInfo {
 }
 
 impl MapInfo {
-    /// Sets the serde type info, overriding the reflected representation.
+    /// Sets the schema type info, overriding the reflected representation.
     #[inline]
-    pub const fn with_serde_info(self, info: &'static TypeInfo) -> Self {
+    pub const fn with_schema_info(self, info: &'static TypeInfo) -> Self {
         Self {
-            serde_info: Some(info),
+            schema_info: Some(info),
             ..self
         }
     }
 
-    /// Returns the serde type info, if any.
+    /// Returns the schema type info, if any.
     #[inline]
-    pub const fn serde_info(&self) -> Option<&'static TypeInfo> {
-        self.serde_info
+    pub const fn schema_info(&self) -> Option<&'static TypeInfo> {
+        self.schema_info
     }
 
     /// Creates a [`MapInfo`] without the [`Map`] requirement.
@@ -121,7 +121,7 @@ impl MapInfo {
             value_info: TValue::type_info,
             generics: Generics::EMPTY,
             attributes: Attributes::EMPTY,
-            serde_info: None,
+            schema_info: None,
         }
     }
 }

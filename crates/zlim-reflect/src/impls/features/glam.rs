@@ -19,7 +19,7 @@ macro_rules! impl_simple_typed {
                         StructInfo::new::<Self>(&[
                             $(NamedField::new::<$field>($name)),*
                         ])
-                        .with_serde_info({
+                        .with_schema_info({
                             let info = TypeInfo::Tuple(
                                 TupleInfo::dynamic::<Self>(&[
                                     $(UnnamedField::new::<$field>($index)),*
@@ -51,7 +51,7 @@ macro_rules! impl_mat_typed {
                         StructInfo::new::<Self>(&[
                             $(NamedField::new::<$vec>($name)),*
                         ])
-                        .with_serde_info({
+                        .with_schema_info({
                             let info = TypeInfo::Tuple(
                                 TupleInfo::dynamic::<Self>(&[
                                     $(UnnamedField::new::<$scalar>($elem)),*
@@ -82,7 +82,7 @@ macro_rules! impl_affine_typed {
                         StructInfo::new::<Self>(&[
                             $(NamedField::new::<$vec>($name)),*
                         ])
-                        .with_serde_info({
+                        .with_schema_info({
                             let info = TypeInfo::Tuple(
                                 TupleInfo::dynamic::<Self>(&[
                                     $(UnnamedField::new::<$scalar>($elem)),*
@@ -877,20 +877,20 @@ mod tests {
             panic!("expected the reflected info to be a struct, got {ty:?}");
         };
 
-        let serde_info = info
-            .serde_info()
+        let schema_info = info
+            .schema_info()
             .expect("a serde info must be attached when Typed = false");
-        let TypeInfo::Tuple(tuple) = serde_info else {
-            panic!("expected a tuple serde info, got {serde_info:?}");
+        let TypeInfo::Tuple(tuple) = schema_info else {
+            panic!("expected a tuple serde info, got {schema_info:?}");
         };
 
         assert_eq!(info.field_len(), fields, "reflected field count");
         assert_eq!(tuple.field_len(), fields, "serde field count");
-        assert_eq!(field_len(ty), field_len(serde_info));
+        assert_eq!(field_len(ty), field_len(schema_info));
     }
 
     #[test]
-    fn integer_vectors_reflect_as_structs_with_tuple_serde_info() {
+    fn integer_vectors_reflect_as_structs_with_tuple_schema_info() {
         check(I8Vec3::type_info(), 3);
         check(I16Vec2::type_info(), 2);
         check(IVec4::type_info(), 4);
@@ -902,7 +902,7 @@ mod tests {
     }
 
     #[test]
-    fn float_and_bool_vectors_reflect_as_structs_with_tuple_serde_info() {
+    fn float_and_bool_vectors_reflect_as_structs_with_tuple_schema_info() {
         check(Vec2::type_info(), 2);
         check(Vec3::type_info(), 3);
         check(Vec4::type_info(), 4);
@@ -913,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn quaternions_reflect_as_structs_with_tuple_serde_info() {
+    fn quaternions_reflect_as_structs_with_tuple_schema_info() {
         check(Quat::type_info(), 4);
         check(DQuat::type_info(), 4);
     }
@@ -926,9 +926,9 @@ mod tests {
         let TypeInfo::Struct(info) = ty else {
             panic!("expected the reflected info to be a struct, got {ty:?}");
         };
-        let serde_info = info.serde_info().expect("a matrix carries a serde info");
-        let TypeInfo::Tuple(tuple) = serde_info else {
-            panic!("expected a tuple serde info, got {serde_info:?}");
+        let schema_info = info.schema_info().expect("a matrix carries a serde info");
+        let TypeInfo::Tuple(tuple) = schema_info else {
+            panic!("expected a tuple serde info, got {schema_info:?}");
         };
 
         assert_eq!(info.field_len(), columns, "reflected field count");
@@ -980,11 +980,11 @@ mod tests {
         let TypeInfo::Struct(info) = ty else {
             panic!("expected the reflected info to be a struct, got {ty:?}");
         };
-        let serde_info = info
-            .serde_info()
+        let schema_info = info
+            .schema_info()
             .expect("an affine type carries a serde info");
-        let TypeInfo::Tuple(tuple) = serde_info else {
-            panic!("expected a tuple serde info, got {serde_info:?}");
+        let TypeInfo::Tuple(tuple) = schema_info else {
+            panic!("expected a tuple serde info, got {schema_info:?}");
         };
 
         assert_eq!(info.field_len(), 2, "matrix + translation");
@@ -1073,7 +1073,7 @@ mod tests {
         let TypeInfo::Struct(info) = Vec3::type_info() else {
             panic!("expected a struct");
         };
-        let TypeInfo::Tuple(tuple) = info.serde_info().expect("serde info") else {
+        let TypeInfo::Tuple(tuple) = info.schema_info().expect("serde info") else {
             panic!("expected a tuple serde info");
         };
 

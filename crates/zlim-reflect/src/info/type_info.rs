@@ -190,45 +190,73 @@ impl TypeInfo {
 
 impl TypeInfo {
     /// Returns the serde type info of this type, if any.
-    pub fn serde_info(&self) -> Option<&'static TypeInfo> {
+    fn try_schema_info(&self) -> Option<&'static TypeInfo> {
         match self {
-            Self::Opaque(info) => info.serde_info(),
-            Self::Struct(info) => info.serde_info(),
-            Self::Tuple(info) => info.serde_info(),
-            Self::Array(info) => info.serde_info(),
-            Self::List(info) => info.serde_info(),
-            Self::Map(info) => info.serde_info(),
-            Self::Set(info) => info.serde_info(),
-            Self::Enum(info) => info.serde_info(),
+            Self::Opaque(info) => info.schema_info(),
+            Self::Struct(info) => info.schema_info(),
+            Self::Tuple(info) => info.schema_info(),
+            Self::Array(info) => info.schema_info(),
+            Self::List(info) => info.schema_info(),
+            Self::Map(info) => info.schema_info(),
+            Self::Set(info) => info.schema_info(),
+            Self::Enum(info) => info.schema_info(),
         }
     }
 
-    /// Follows the chain of serde type infos to its end, returning the final
+    /// Follows the chain of schema type infos to its end, returning the final
     /// `TypeInfo` used for serialization/deserialization.
     ///
+    /// Returns self if there is not specialized schema information.
+    ///
+    /// # Panics
+    ///
     /// Panics if the chain exceeds 64 links, which likely indicates a cycle.
+    ///
+    /// # Why we need a Schema info
+    ///
+    /// # Why we need a schema info
+    ///
+    /// Schemas (e.g. JSON Schema) are useful for remote calls and agent/MCP
+    /// scenarios. Ideally, a schema could be built directly from the reflected
+    /// [`TypeInfo`]. In practice, however, some types have a serialization
+    /// schema that does **not** match their reflected type info — glam's math
+    /// types are a typical example.
+    ///
+    /// There are two ways to resolve this:
+    ///
+    /// 1. Drop the default serialization of those types and use reflected
+    ///    serialization instead. This is roughly what Bevy does. It costs
+    ///    performance, and still breaks when a user relies on the default
+    ///    serialization inside a nested type.
+    ///
+    /// 2. Attach an independent, optional schema info to the type. That is the
+    ///    approach taken here: consumers that depend on the serialization
+    ///    structure (like JSON Schema) should read [`schema_info`] instead of
+    ///    the raw [`TypeInfo`].
+    ///
+    /// [`schema_info`]: TypeInfo::schema_info
     pub fn schema_info(&'static self) -> &'static TypeInfo {
-        const MAX_NEXT: usize = 64usize;
-        let Some(mut info) = self.serde_info() else {
+        let Some(mut info) = self.try_schema_info() else {
             return self;
         };
 
         ::core::hint::cold_path();
-        let mut count = 0usize;
-        while count < MAX_NEXT {
-            count += 1;
-            let Some(inner) = self.serde_info() else {
-                return info;
-            };
-            ::core::hint::cold_path();
-            info = inner;
+
+        let mut limit = 64usize;
+
+        while limit > 0 {
+            limit -= 1;
+            match self.try_schema_info() {
+                None => return info,
+                Some(inner) => info = inner,
+            }
         }
 
         #[cold]
         #[inline(never)]
         fn overflow(info: &TypeInfo) -> ! {
             let name = info.type_path();
-            panic!("serde info overflow (possible cycle, >64 entries): `{name:?}`")
+            panic!("schema info overflow (possible cycle, >64 entries): `{name:?}`")
         }
 
         overflow(self)
@@ -252,10 +280,15 @@ pub trait Typed: TypePath {
 // -----------------------------------------------------------------------------
 // DynamicTyped
 
+mod sealed {
+    pub trait Sealed {}
+    impl<T: super::Typed> Sealed for T {}
+}
+
 /// Provide dynamic dispatch for types that implement [`Typed`].
 ///
 /// Auto impl for all types that implemented [`Typed`].
-pub trait DynamicTyped {
+pub trait DynamicTyped: sealed::Sealed {
     /// Provide dynamic dispatch for types that implement [`Typed`].
     ///
     /// When you hold a `dyn Reflect` object,

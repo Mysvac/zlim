@@ -111,10 +111,15 @@ pub trait TypePath: 'static {
 // -----------------------------------------------------------------------------
 // DynamicTypePath
 
+mod sealed {
+    pub trait Sealed {}
+    impl<T: super::TypePath> Sealed for T {}
+}
+
 /// Provide dynamic dispatch for types that implement [`TypePath`].
 ///
 /// Auto impl for all types that implemented [`TypePath`].
-pub trait DynamicTypePath {
+pub trait DynamicTypePath: sealed::Sealed {
     /// Returns the fully qualified path with generics of the underlying type.
     ///
     /// See [`TypePath::type_path`].
