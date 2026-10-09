@@ -58,7 +58,7 @@ pub use context::{EntityReference, EntityReferences};
 pub use context::{TemplateContext, TemplateEntityMapper};
 pub use effect::{EmptyTemplateEffect, TemplateEffect};
 pub use entity::EntityTemplate;
-pub use erased::ErasedTemplate;
+pub use erased::{ErasedTemplate, ReflectTemplate};
 pub use function::{FnTemplate, template};
 pub use tuple::TemplateTuple;
 pub use value::ComponentTemplate;

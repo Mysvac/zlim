@@ -64,10 +64,7 @@ impl FreshAllocator {
 
         // if `next` is `u32::MAX`, `try_update` return Err. So we won't get placeholder.
         match self.next.try_update(Relaxed, Relaxed, |v| v.checked_add(1)) {
-            Ok(index) => EntityId {
-                index,
-                generation: NonZeroU32::MIN,
-            },
+            Ok(index) => EntityId::new(index, NonZeroU32::MIN),
             Err(_) => Self::on_overflow(),
         }
     }
@@ -100,10 +97,9 @@ impl Iterator for FreshEntityIter {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|index| EntityId {
-            index,
-            generation: NonZeroU32::MIN,
-        })
+        self.0
+            .next()
+            .map(|index| EntityId::new(index, NonZeroU32::MIN))
     }
 
     #[inline]

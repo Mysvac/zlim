@@ -101,7 +101,7 @@ impl<'w> HierarchyQuery<'w> {
             return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation() {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
@@ -128,7 +128,7 @@ impl<'w> HierarchyQuery<'w> {
             return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation() {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;

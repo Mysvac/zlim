@@ -107,7 +107,7 @@ unsafe impl QueryData for Parent {
     ) -> Option<Self::Item<'w>> {
         let node = unsafe { cache.get(entity.index() as usize) };
 
-        debug_assert_eq!(node.generation, entity.generation());
+        debug_assert_eq!(node.generation.get(), entity.generation());
         debug_assert!(node.location.is_some());
 
         Some(Parent(node.parent))
@@ -153,7 +153,7 @@ impl Iterator for ParentSlice<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let &entity = self.entities.next()?;
         let node = unsafe { self.inventory.get(entity.index() as usize) };
-        debug_assert_eq!(node.generation, entity.generation());
+        debug_assert_eq!(node.generation.get(), entity.generation());
         Some(Parent(node.parent))
     }
 
@@ -262,7 +262,7 @@ unsafe impl QueryData for Children<'_> {
     ) -> Option<Self::Item<'w>> {
         let node = unsafe { cache.get(entity.index() as usize) };
 
-        debug_assert_eq!(node.generation, entity.generation());
+        debug_assert_eq!(node.generation.get(), entity.generation());
         debug_assert!(node.location.is_some());
 
         Some(Children(&node.children))
@@ -308,7 +308,7 @@ impl<'w> Iterator for ChildrenSlice<'w> {
     fn next(&mut self) -> Option<Self::Item> {
         let &entity = self.entities.next()?;
         let node = unsafe { self.inventory.get(entity.index() as usize) };
-        debug_assert_eq!(node.generation, entity.generation());
+        debug_assert_eq!(node.generation.get(), entity.generation());
         Some(Children(&node.children))
     }
 

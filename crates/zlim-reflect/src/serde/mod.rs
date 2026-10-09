@@ -48,14 +48,15 @@
 use core::any::Any;
 use core::any::TypeId;
 
-use erased_serde::Deserializer as ErasedDeserializer;
-use erased_serde::Error as ErasedError;
-use erased_serde::Serializer as ErasedSerializer;
 use serde_core::de::Deserialize;
 use serde_core::ser::Serialize;
 use zlim_ptr::Ptr;
 
 use crate::Reflect;
+
+pub use erased_serde::Deserializer as ErasedDeserializer;
+pub use erased_serde::Error as ErasedError;
+pub use erased_serde::Serializer as ErasedSerializer;
 
 // -----------------------------------------------------------------------------
 // ReflectContext

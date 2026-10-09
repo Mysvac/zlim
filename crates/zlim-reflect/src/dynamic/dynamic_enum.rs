@@ -91,7 +91,7 @@ impl From<DynamicStruct> for DynamicVariant {
 /// // Create a tuple variant with concrete values.
 /// let mut tuple = DynamicTuple::new();
 /// tuple.push(Box::new(42i32));
-/// let dyn_enum = DynamicEnum::new(0, "Some", DynamicVariant::Tuple(tuple));
+/// let dyn_enum = DynamicEnum::new(1, "Some", DynamicVariant::Tuple(tuple));
 /// assert_eq!(dyn_enum.field_len(), 1);
 /// ```
 pub struct DynamicEnum {

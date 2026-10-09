@@ -171,7 +171,7 @@ impl TypeDB {
     /// 2. Serializes the payload via `ReflectSer`, which follows the
     ///    two-step priority order described in [`serialize`].
     ///
-    /// This is the counterpart to [`reflect_deserialize`].
+    /// This is the counterpart to [`serialize_tagged`].
     ///
     /// # Use when
     ///
@@ -182,54 +182,46 @@ impl TypeDB {
     /// If the target type is already known, use [`serialize`] instead.
     ///
     /// [`serialize`]: TypeDB::serialize()
-    /// [`reflect_deserialize`]: TypeDB::reflect_deserialize
+    /// [`serialize_tagged`]: TypeDB::serialize_tagged
     #[inline]
-    pub fn reflect_serialize<S>(value: &dyn Reflect, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize_tagged<S>(value: &dyn Reflect, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        TypePathReflectSer(value, EMPTY_CONTEXT).serialize(serializer)
+        TaggedReflectSerData(value, EMPTY_CONTEXT).serialize(serializer)
     }
 
     /// Serializes a reflected value directly, **without** type path wrapping.
     ///
-    /// See [`TypeDB::reflect_serialize`] for the shape of the output.
+    /// See [`TypeDB::serialize_tagged`] for the shape of the output.
     #[inline]
     pub fn serialize<S>(value: &dyn Reflect, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        ReflectSer(value, EMPTY_CONTEXT).serialize(serializer)
+        ReflectSerData(value, EMPTY_CONTEXT).serialize(serializer)
     }
 
-    /// Self-describing serializer with a context for reflected types.
+    /// Create a Self-describing serialize driver than implement [`Serialize`].
     ///
-    /// See [`TypeDB::reflect_serialize`] for the output.
+    /// See [`TypeDB::serialize_tagged`] for details.
     #[inline]
-    pub fn reflect_serialize_with<S>(
-        value: &dyn Reflect,
-        serializer: S,
-        ctx: &dyn ReflectContext,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        TypePathReflectSer(value, ctx).serialize(serializer)
+    pub fn serialize_data_tagged<'a>(
+        value: &'a dyn Reflect,
+        ctx: &'a dyn ReflectContext,
+    ) -> TaggedReflectSerData<'a> {
+        TaggedReflectSerData(value, ctx)
     }
 
-    /// Serializes a reflected value directly with a context, **without** type path wrapping.
+    /// Create a serialize driver than implement [`Serialize`].
     ///
-    /// See [`TypeDB::serialize`] for the output.
+    /// See [`TypeDB::serialize`] for details.
     #[inline]
-    pub fn serialize_with<S>(
-        value: &dyn Reflect,
-        serializer: S,
-        ctx: &dyn ReflectContext,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        ReflectSer(value, ctx).serialize(serializer)
+    pub fn serialize_data<'a>(
+        value: &'a dyn Reflect,
+        ctx: &'a dyn ReflectContext,
+    ) -> ReflectSerData<'a> {
+        ReflectSerData(value, ctx)
     }
 }
 
@@ -307,9 +299,9 @@ fn invalid_info<E: Error>(ty: &'static str, error: ReflectKindError) -> E {
 /// Produces `{ "type_path": <payload> }` by delegating the payload to
 /// `ReflectSer`.  This is the counterpart to
 /// [`TypePathReflectDeser`](super::des::TypePathReflectDeser).
-struct TypePathReflectSer<'a>(&'a dyn Reflect, &'a dyn ReflectContext);
+pub struct TaggedReflectSerData<'a>(&'a dyn Reflect, &'a dyn ReflectContext);
 
-impl Serialize for TypePathReflectSer<'_> {
+impl Serialize for TaggedReflectSerData<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -317,7 +309,7 @@ impl Serialize for TypePathReflectSer<'_> {
         let mut s = serializer.serialize_map(Some(1))?;
 
         let type_path = self.0.reflect_type_path();
-        s.serialize_entry(type_path, &ReflectSer(self.0, self.1))?;
+        s.serialize_entry(type_path, &ReflectSerData(self.0, self.1))?;
 
         s.end()
     }
@@ -380,9 +372,9 @@ fn unit_ok<S: Serializer>(_: ()) -> Result<S::Ok, S::Error> {
 ///    …, `serialize_enum`).
 ///
 /// Used internally for recursive serialization of nested values.
-struct ReflectSer<'a>(&'a dyn Reflect, &'a dyn ReflectContext);
+pub struct ReflectSerData<'a>(&'a dyn Reflect, &'a dyn ReflectContext);
 
-impl Serialize for ReflectSer<'_> {
+impl Serialize for ReflectSerData<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -460,7 +452,7 @@ where
 
     for i in 0..len {
         let item = value.item(i).expect("valid index");
-        s.serialize_element(&ReflectSer(item, ctx))?;
+        s.serialize_element(&ReflectSerData(item, ctx))?;
     }
 
     s.end().map_err(maperr)
@@ -485,7 +477,7 @@ where
 
     for i in 0..len {
         let item = value.item(i).expect("valid index");
-        s.serialize_element(&ReflectSer(item, ctx))?;
+        s.serialize_element(&ReflectSerData(item, ctx))?;
     }
 
     s.end().map_err(maperr)
@@ -508,7 +500,7 @@ where
     let len = value.value_len();
     let mut s = serializer.serialize_seq(Some(len)).map_err(maperr)?;
     for v in value.iter_values() {
-        s.serialize_element(&ReflectSer(v, ctx))?;
+        s.serialize_element(&ReflectSerData(v, ctx))?;
     }
     s.end().map_err(maperr)
 }
@@ -530,7 +522,7 @@ where
     let len = value.entry_len();
     let mut s = serializer.serialize_map(Some(len)).map_err(maperr)?;
     for (k, v) in value.iter_entries() {
-        s.serialize_entry(&ReflectSer(k, ctx), &ReflectSer(v, ctx))?;
+        s.serialize_entry(&ReflectSerData(k, ctx), &ReflectSerData(v, ctx))?;
     }
     s.end().map_err(maperr)
 }
@@ -566,19 +558,19 @@ where
         let mut s = serializer.serialize_tuple(len).map_err(maperr)?;
         for i in 0..len {
             let field = value.field(i).expect("valid index");
-            s.serialize_element(&ReflectSer(field, ctx))?;
+            s.serialize_element(&ReflectSerData(field, ctx))?;
         }
         s.end().map_err(maperr)
     } else if len == 1 {
         let field = value.field(0).expect("valid index");
-        serializer.serialize_newtype_struct(name, &ReflectSer(field, ctx))
+        serializer.serialize_newtype_struct(name, &ReflectSerData(field, ctx))
     } else {
         let mut s = serializer
             .serialize_tuple_struct(name, len)
             .map_err(maperr)?;
         for i in 0..len {
             let field = value.field(i).expect("valid index");
-            s.serialize_field(&ReflectSer(field, ctx))?;
+            s.serialize_field(&ReflectSerData(field, ctx))?;
         }
         s.end().map_err(maperr)
     }
@@ -635,7 +627,7 @@ where
                 struct_info.type_path(),
             )));
         };
-        s.serialize_field(name, &ReflectSer(field, ctx))?;
+        s.serialize_field(name, &ReflectSerData(field, ctx))?;
     }
 
     s.end().map_err(maperr)
@@ -739,7 +731,7 @@ where
         VariantInfo::Tuple(_) if is_option => {
             let field = value.field_at(0).expect("valid index");
             debug_assert_eq!(field_len, 1, "Option + Tuple, must be Some(x)");
-            serializer.serialize_some(&ReflectSer(field, ctx))
+            serializer.serialize_some(&ReflectSerData(field, ctx))
         }
         VariantInfo::Tuple(_) if is_new_type => {
             let field = value.field_at(0).expect("valid index");
@@ -747,7 +739,7 @@ where
                 name,
                 variant_index,
                 variant_name,
-                &ReflectSer(field, ctx),
+                &ReflectSerData(field, ctx),
             )
         }
         VariantInfo::Tuple(_) => {
@@ -757,7 +749,7 @@ where
 
             for i in 0..field_len {
                 let field = value.field_at(i).expect("valid index");
-                s.serialize_field(&ReflectSer(field, ctx))?;
+                s.serialize_field(&ReflectSerData(field, ctx))?;
             }
 
             s.end().map_err(maperr)
@@ -770,7 +762,7 @@ where
             for i in 0..field_len {
                 let field = value.field_at(i).expect("valid index");
                 let fname = info.name_at(i).unwrap();
-                s.serialize_field(fname, &ReflectSer(field, ctx))?;
+                s.serialize_field(fname, &ReflectSerData(field, ctx))?;
             }
 
             s.end().map_err(maperr)

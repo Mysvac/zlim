@@ -43,6 +43,9 @@ mod world;
 // Layer 4 — the asset side: the patches, and the cached-scene half of resolving.
 mod patch;
 
+// Layer 4 — the document half: a scene read from a document, arranged into the resolved form.
+mod dynamic;
+
 // Layer 5 — queueing, and the job that builds what was queued.
 mod plugin;
 mod spawn;

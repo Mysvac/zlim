@@ -3,6 +3,7 @@
 use core::any::Any;
 
 use zlim_error::ZlimResult;
+use zlim_reflect::Reflect;
 
 use crate::bundle::BundleWriter;
 use crate::template::{Template, TemplateContext, TemplateEffect};
@@ -44,3 +45,24 @@ where
         Box::new(Template::clone_template(self))
     }
 }
+
+// -----------------------------------------------------------------------------
+// ReflectTemplate
+
+/// [`ErasedTemplate`] + [`Reflect`]
+pub trait ReflectTemplate: ErasedTemplate {
+    fn as_reflect(&self) -> &dyn Reflect;
+    fn as_reflect_mut(&mut self) -> &mut dyn Reflect;
+}
+
+impl<T: ErasedTemplate + Reflect> ReflectTemplate for T {
+    fn as_reflect(&self) -> &dyn Reflect {
+        self
+    }
+
+    fn as_reflect_mut(&mut self) -> &mut dyn Reflect {
+        self
+    }
+}
+
+// -----------------------------------------------------------------------------

@@ -58,6 +58,10 @@ zlim 引擎的基础工具库。
 - `SyncUnsafeCell` —— 不稳定特性 `core::cell::SyncUnsafeCell` 的临时实现。
 - `SyncView` —— 不稳定特性 `core::sync::SyncView` 的临时实现。
 
+## serde
+
+- `BorrowedStr` —— 反序列化工具，支持无拷贝的字符串反序列化。
+
 ## macros
 
 - `range_invoke!` —— 基于范围的重复宏调用。

@@ -53,7 +53,7 @@ impl<'a> ComponentCollector<'a> {
         if self.collected.insert(id) {
             let db = self
                 .components
-                .and_then(|infos| infos.get_by_id(id))
+                .map(|infos| infos.get_by_id(id))
                 .unwrap_or_else(|| ComponentDB::get_by_id(id));
 
             if let Some(required) = db.required {

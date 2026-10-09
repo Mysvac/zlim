@@ -906,10 +906,7 @@ impl<'w> EntityCloner<'w> {
 
                 let column = unsafe { table.get_column_mut(table_col) };
 
-                let info = unsafe {
-                    let components = &self.world.read_only().components;
-                    components.get_by_id(id).debug_checked_unwrap()
-                };
+                let info = unsafe { self.world.read_only().components.get_by_id(id) };
 
                 let type_id = info.type_id;
                 let cloner = info.cloner;

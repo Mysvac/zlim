@@ -253,6 +253,15 @@ impl<T> EntityMap<T> {
     pub fn remove(&mut self, k: EntityId) -> Option<T> {
         self.0.remove(&k)
     }
+
+    /// Gets the given key's corresponding entry in the map for in-place manipulation.
+    #[inline(always)]
+    pub fn entry(
+        &mut self,
+        k: EntityId,
+    ) -> zlim_utils::hash::map::Entry<'_, EntityId, T, SparseState> {
+        self.0.entry(k)
+    }
 }
 
 impl<T: Debug> Debug for EntityMap<T> {

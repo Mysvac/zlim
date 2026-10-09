@@ -25,7 +25,7 @@ use crate::component::{ComponentId, Components};
 use crate::entity::EntityId;
 use crate::table::ident::MovedEntityRow;
 use crate::tick::Tick;
-use crate::utils::{DebugCheckedUnwrap, SlicePool};
+use crate::utils::SlicePool;
 use crate::world::DeferredWorld;
 
 // -----------------------------------------------------------------------------
@@ -227,7 +227,7 @@ impl Table {
         let mut on_despawn = Vec::new();
 
         idents.iter().enumerate().for_each(|(index, &id)| {
-            let info = unsafe { dbs.get_by_id(id).debug_checked_unwrap() };
+            let info = dbs.get_by_id(id);
             let type_id = info.type_id;
             let layout = info.layout;
             let dropper = info.dropper;

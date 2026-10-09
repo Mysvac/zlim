@@ -13,7 +13,8 @@ use zlim_utils::mem::Global;
 use super::db::{ID_REGISTRY, PATH_REGISTRY, TYPE_REGISTRY};
 use super::{Component, ComponentDB, ComponentId};
 use crate::component::ReflectComponent;
-use crate::template::{ComponentTemplate, ErasedTemplate};
+use crate::template::ComponentTemplate;
+use crate::template::ReflectTemplate;
 use crate::utils::Dropper;
 
 // -----------------------------------------------------------------------------
@@ -90,7 +91,9 @@ pub fn register_serialize<C: Component + TypeDatabase + Clone>() -> &'static Com
     unsafe_code,
     reason = "`ComponentTemplate<C>` is `repr(transparent)` over `C`"
 )]
-fn into_template<C: Component + Clone>(value: Box<dyn Reflect>) -> Box<dyn ErasedTemplate> {
+fn into_template<C: Reflect + Component + Clone>(
+    value: Box<dyn Reflect>,
+) -> Box<dyn ReflectTemplate> {
     #[cold]
     #[inline(never)]
     fn failed(name: DebugName) -> ! {
@@ -118,7 +121,7 @@ fn into_template<C: Component + Clone>(value: Box<dyn Reflect>) -> Box<dyn Erase
 #[cfg_attr(target_os = "macos", unsafe(link_section = "__TEXT,__zlim_init"))]
 #[cfg_attr(target_os = "ios", unsafe(link_section = "__TEXT,__zlim_init"))]
 fn register_impl<C: Component>(
-    into_template: Option<fn(Box<dyn Reflect>) -> Box<dyn ErasedTemplate>>,
+    into_template: Option<fn(Box<dyn Reflect>) -> Box<dyn ReflectTemplate>>,
     type_db: Option<&'static TypeDB>,
     reflect: Option<ReflectComponent>,
 ) -> &'static ComponentDB {
@@ -136,6 +139,7 @@ fn register_impl<C: Component>(
         cloner: C::CLONER,
         required: C::REQUIRED,
         summary_tick: C::SUMMARY_TICK,
+        no_entity: C::NO_ENTITY,
         serialize: into_template.is_some(),
         type_db,
         reflect: None,

@@ -12,7 +12,7 @@ use zlim_utils::hash::HashMap;
 use super::{Component, ComponentHook, ComponentId, Required};
 use crate::clone::ComponentCloner;
 use crate::component::ReflectComponent;
-use crate::template::ErasedTemplate;
+use crate::template::ReflectTemplate;
 use crate::utils::Dropper;
 
 // -----------------------------------------------------------------------------
@@ -66,6 +66,7 @@ pub struct ComponentDB {
     // --------------------------------
     // Change Detection
     pub summary_tick: bool,
+    pub no_entity: bool,
 
     // --------------------------------
     // Reflect
@@ -76,7 +77,7 @@ pub struct ComponentDB {
     /// Reflect functions.
     pub reflect: Option<&'static ReflectComponent>,
     /// Turns a deserialized component value into the template that describes it.
-    pub into_template: Option<fn(Box<dyn Reflect>) -> Box<dyn ErasedTemplate>>,
+    pub into_template: Option<fn(Box<dyn Reflect>) -> Box<dyn ReflectTemplate>>,
 
     // --------------------------------
     // Hook

@@ -171,9 +171,7 @@ impl BundleScratch {
     #[cold]
     pub fn manual_drop(&mut self, components: &Components) {
         for cell in self.components.drain(..) {
-            let db = components
-                .get_by_id(cell.id)
-                .unwrap_or_else(|| ComponentDB::get_by_id(cell.id));
+            let db = components.get_by_id(cell.id);
 
             if let Some(dropper) = db.dropper {
                 // SAFETY: `cell.data` points to a value of this component that was
@@ -526,13 +524,6 @@ fn insert_moved(
     let world_cell = this.world;
     let components = unsafe { &world_cell.read_only().components };
 
-    let get_required = |id: ComponentId| {
-        components
-            .get_by_id(id)
-            .unwrap_or_else(|| ComponentDB::get_by_id(id))
-            .required
-    };
-
     // old table reference may be invalid after new table created.
     let (_, location) = unsafe { this.storage.take().debug_checked_unwrap() };
     let old_table_id = location.table_id;
@@ -586,7 +577,7 @@ fn insert_moved(
                 writer.write_raw(cell.type_id, OwningPtr::new(cell.data));
             }
             for cell in &data.components {
-                if let Some(required) = get_required(cell.id) {
+                if let Some(required) = components.get_by_id(cell.id).required {
                     required.write(&mut writer);
                 }
             }

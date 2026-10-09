@@ -79,7 +79,7 @@ impl TypeDB {
     /// Registers the [`ReflectDeserialize`] hook of `T` into this `TypeDB`.
     ///
     /// The wrapper calls `T::deserialize` through an
-    /// [`erased_serde::Deserializer`].  Once registered, `ReflectDeser`
+    /// [`erased_serde::Deserializer`].  Once registered, `ReflectDesSeed`
     /// uses this function directly (the **fast path**), bypassing the
     /// kind-specific visitor.
     ///
@@ -161,13 +161,13 @@ impl TypeDB {
     ///
     /// # Deserialization Rules
     ///
-    /// Internally delegates to `TypePathReflectDeser`, which:
+    /// Internally delegates to `TaggedReflectDesSeed`, which:
     ///
     /// 1. Reads the type path key via `TypePathDeser` → `&'static TypeDB`.
-    /// 2. Reads the value via `ReflectDeser`, following the two-step
+    /// 2. Reads the value via `ReflectDesSeed`, following the two-step
     ///    priority order described in [`deserialize`].
     ///
-    /// This is the counterpart to [`reflect_serialize`].
+    /// This is the counterpart to [`serialize_tagged`].
     ///
     /// # Use when
     ///
@@ -176,13 +176,13 @@ impl TypeDB {
     /// If the target type is already known, use [`deserialize`] instead.
     ///
     /// [`deserialize`]: TypeDB::deserialize()
-    /// [`reflect_serialize`]: TypeDB::reflect_serialize
+    /// [`serialize_tagged`]: TypeDB::serialize_tagged
     #[inline]
-    pub fn reflect_deserialize<'de, D>(deserializer: D) -> Result<Box<dyn Reflect>, D::Error>
+    pub fn deserialize_tagged<'de, D>(deserializer: D) -> Result<Box<dyn Reflect>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        TypePathReflectDeser(EMPTY_CONTEXT).deserialize(deserializer)
+        TaggedReflectDesSeed(EMPTY_CONTEXT).deserialize(deserializer)
     }
 
     /// Type-known deserializer, **without** type path resolution.
@@ -196,12 +196,12 @@ impl TypeDB {
     /// {"x": 3, "y": 4}
     /// ```
     ///
-    /// This matches standard serde input.  Compare with [`reflect_deserialize`],
+    /// This matches standard serde input.  Compare with [`deserialize_tagged`],
     /// which would expect `{"my_crate::A": {"x": 3, "y": 4}}`.
     ///
     /// # Deserialization Rules
     ///
-    /// Delegates to `ReflectDeser`, which follows a two-step priority
+    /// Delegates to `ReflectDesSeed`, which follows a two-step priority
     /// order:
     ///
     /// 1. **Registered Deserializer First**: checks whether this `TypeDB`
@@ -226,46 +226,35 @@ impl TypeDB {
     /// The input contains only the payload — no type path key.
     ///
     /// For a self-describing variant that reads the type from the input, see
-    /// [`reflect_deserialize`].
+    /// [`deserialize_tagged`].
     ///
-    /// [`reflect_deserialize`]: TypeDB::reflect_deserialize
+    /// [`deserialize_tagged`]: TypeDB::deserialize_tagged
     /// [`insert_deserializer`]: TypeDB::insert_deserializer
     #[inline]
     pub fn deserialize<'de, D>(&'static self, deserializer: D) -> Result<Box<dyn Reflect>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        ReflectDeser(self, EMPTY_CONTEXT).deserialize(deserializer)
+        ReflectDesSeed(self, EMPTY_CONTEXT).deserialize(deserializer)
     }
 
-    /// Self-describing deserializer with a context for reflected types.
+    /// Create a Self-describing deserialize driver than implement [`DeserializeSeed`].
     ///
-    /// The counterpart of [`reflect_serialize_with`](TypeDB::reflect_serialize_with); see
-    /// [`TypeDB::reflect_deserialize`] for the input.
+    /// See [`TypeDB::deserialize_tagged`] for details.
     #[inline]
-    pub fn reflect_deserialize_with<'de, D>(
-        deserializer: D,
-        ctx: &dyn ReflectContext,
-    ) -> Result<Box<dyn Reflect>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        TypePathReflectDeser(ctx).deserialize(deserializer)
+    pub fn deserialize_seed_tagged(ctx: &dyn ReflectContext) -> TaggedReflectDesSeed<'_> {
+        TaggedReflectDesSeed(ctx)
     }
 
-    /// Type-known deserializer with a context, **without** type path resolution.
+    /// Create a deserialize driver than implement [`DeserializeSeed`].
     ///
-    /// See [`TypeDB::deserialize`] for the input.
+    /// See [`TypeDB::deserialize`] for details.
     #[inline]
-    pub fn deserialize_with<'de, D>(
+    pub fn deserialize_seed<'de>(
         &'static self,
-        deserializer: D,
-        ctx: &dyn ReflectContext,
-    ) -> Result<Box<dyn Reflect>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        ReflectDeser(self, ctx).deserialize(deserializer)
+        ctx: &'de dyn ReflectContext,
+    ) -> ReflectDesSeed<'de> {
+        ReflectDesSeed(self, ctx)
     }
 }
 
@@ -432,17 +421,17 @@ impl<'de> DeserializeSeed<'de> for TypePathDeser {
 }
 
 // -----------------------------------------------------------------------------
-// TypePathReflectDeser
+// TaggedReflectDesSeed
 // -----------------------------------------------------------------------------
 
 /// Top-level entry for self-describing formats.
 ///
 /// Deserializes a single-entry map `{type_path: payload}` where `type_path`
 /// is resolved to a `&TypeDB` via [`TypePathDeser`] and the payload is
-/// deserialized via [`ReflectDeser`].
-struct TypePathReflectDeser<'a>(&'a dyn ReflectContext);
+/// deserialized via [`ReflectDesSeed`].
+pub struct TaggedReflectDesSeed<'a>(&'a dyn ReflectContext);
 
-impl<'de> Visitor<'de> for TypePathReflectDeser<'_> {
+impl<'de> Visitor<'de> for TaggedReflectDesSeed<'_> {
     type Value = Box<dyn Reflect>;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -455,7 +444,7 @@ impl<'de> Visitor<'de> for TypePathReflectDeser<'_> {
             .next_key_seed(TypePathDeser)?
             .ok_or_else(|| Error::invalid_length(0, &"a single entry"))?;
 
-        let value = map.next_value_seed(ReflectDeser(db, self.0))?;
+        let value = map.next_value_seed(ReflectDesSeed(db, self.0))?;
 
         if map.next_key::<IgnoredAny>()?.is_some() {
             return Err(Error::invalid_length(2, &"a single entry"));
@@ -465,7 +454,7 @@ impl<'de> Visitor<'de> for TypePathReflectDeser<'_> {
     }
 }
 
-impl<'de> DeserializeSeed<'de> for TypePathReflectDeser<'_> {
+impl<'de> DeserializeSeed<'de> for TaggedReflectDesSeed<'_> {
     type Value = Box<dyn Reflect>;
 
     #[inline]
@@ -475,7 +464,7 @@ impl<'de> DeserializeSeed<'de> for TypePathReflectDeser<'_> {
 }
 
 // -----------------------------------------------------------------------------
-// ReflectDeser
+// ReflectDesSeed
 // -----------------------------------------------------------------------------
 
 /// Central deserialization dispatcher.
@@ -490,9 +479,9 @@ impl<'de> DeserializeSeed<'de> for TypePathReflectDeser<'_> {
 /// The context is `'static` because a hook is a function pointer and
 /// [`ReflectDeserialize::reflect_deserialize`] names the deserializer's lifetime as `'static`, which
 /// ties the whole chain to it.
-struct ReflectDeser<'a>(&'static TypeDB, &'a dyn ReflectContext);
+pub struct ReflectDesSeed<'a>(&'static TypeDB, &'a dyn ReflectContext);
 
-impl<'de> DeserializeSeed<'de> for ReflectDeser<'_> {
+impl<'de> DeserializeSeed<'de> for ReflectDesSeed<'_> {
     type Value = Box<dyn Reflect>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
@@ -711,7 +700,7 @@ impl<'de> Visitor<'de> for ArrayVisitor<'_> {
             );
 
             for index in 0..len {
-                let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+                let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                     return Err(make_error(format!(
                         "invalid length, expected: `{len}`, actual: `{}`.",
                         index - 1
@@ -739,7 +728,7 @@ impl<'de> Visitor<'de> for ArrayVisitor<'_> {
             let mut dynamic = DynamicArray::with_capacity(len);
 
             for index in 0..len {
-                let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+                let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                     return Err(make_error(format!(
                         "invalid length, expected: `{len}`, actual: `{}`.",
                         index - 1
@@ -815,7 +804,7 @@ impl<'de> Visitor<'de> for ListVisitor<'_> {
         // If the container supports Default, construct it directly and mutate in-place (faster).
         if let Some(default) = self.0.default() {
             let mut boxed: Box<dyn List> = default.reflect_owned().into_list().unwrap();
-            while let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? {
+            while let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? {
                 if let Err(e) = boxed.push_back(v) {
                     return Err(invalid_convert(self.0.type_path, &*e));
                 }
@@ -827,7 +816,7 @@ impl<'de> Visitor<'de> for ListVisitor<'_> {
             let hint = seq.size_hint().unwrap_or(0);
 
             let mut dynamic = DynamicList::with_capacity(hint);
-            while let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? {
+            while let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? {
                 dynamic.push(v);
             }
 
@@ -890,7 +879,7 @@ impl<'de> Visitor<'de> for SetVisitor<'_> {
         // If the container supports Default, construct it directly and mutate in-place (faster).
         if let Some(default) = self.0.default() {
             let mut boxed: Box<dyn Set> = default.reflect_owned().into_set().unwrap();
-            while let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? {
+            while let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? {
                 if let Err(e) = boxed.insert_value(v) {
                     return Err(invalid_convert(self.0.type_path, &*e));
                 }
@@ -901,7 +890,7 @@ impl<'de> Visitor<'de> for SetVisitor<'_> {
             ::core::hint::cold_path();
             let hint = seq.size_hint().unwrap_or(0);
             let mut dynamic = DynamicSet::with_capacity(hint);
-            while let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? {
+            while let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? {
                 dynamic.insert(v);
             }
 
@@ -925,7 +914,7 @@ impl<'de> Visitor<'de> for SetVisitor<'_> {
 ///
 /// | Phase | Condition | Strategy |
 /// |-------|-----------|----------|
-/// | Native | `TypeDB::default()` exists | Create empty native map. For each key-value pair: deserialize key via `ReflectDeser(key_db)`, value via `ReflectDeser(val_db)`, insert with `Map::insert_entry`. |
+/// | Native | `TypeDB::default()` exists | Create empty native map. For each key-value pair: deserialize key via `ReflectDesSeed(key_db)`, value via `ReflectDesSeed(val_db)`, insert with `Map::insert_entry`. |
 /// | Dynamic | No default | Build a [`DynamicMap`], insert entries, convert via [`TypeDB::from_reflect`]. |
 ///
 /// Key/value `TypeDB` lookups use [`MapInfo::key_id`] / [`MapInfo::value_id`].
@@ -970,8 +959,8 @@ impl<'de> Visitor<'de> for MapVisitor<'_> {
         if let Some(default) = self.0.default() {
             let mut boxed: Box<dyn Map> = default.reflect_owned().into_map().unwrap();
 
-            while let Some(key) = map.next_key_seed(ReflectDeser(key_db, self.1))? {
-                let value = map.next_value_seed(ReflectDeser(val_db, self.1))?;
+            while let Some(key) = map.next_key_seed(ReflectDesSeed(key_db, self.1))? {
+                let value = map.next_value_seed(ReflectDesSeed(val_db, self.1))?;
                 if let Err((k, v)) = boxed.insert_entry(key, value) {
                     ::core::hint::cold_path();
                     return Err(invalid_key_value(self.0.type_path, &*k, &*v));
@@ -984,8 +973,8 @@ impl<'de> Visitor<'de> for MapVisitor<'_> {
             ::core::hint::cold_path();
             let hint = map.size_hint().unwrap_or(0);
             let mut dynamic = DynamicMap::with_capacity(hint);
-            while let Some(key) = map.next_key_seed(ReflectDeser(key_db, self.1))? {
-                let value = map.next_value_seed(ReflectDeser(val_db, self.1))?;
+            while let Some(key) = map.next_key_seed(ReflectDesSeed(key_db, self.1))? {
+                let value = map.next_value_seed(ReflectDesSeed(val_db, self.1))?;
                 dynamic.insert(key, value);
             }
 
@@ -1078,7 +1067,7 @@ impl<'de> Visitor<'de> for TupleVisitor<'_> {
                 let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                     return Err(missing_type_db(field.type_info().type_path()));
                 };
-                let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+                let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                     return Err(make_error(format!(
                         "invalid length, expected: `{len}`, actual: `{}`.",
                         index - 1
@@ -1110,7 +1099,7 @@ impl<'de> Visitor<'de> for TupleVisitor<'_> {
                 let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                     return Err(missing_type_db(field.type_info().type_path()));
                 };
-                let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+                let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                     return Err(make_error(format!(
                         "invalid length, expected: `{len}`, actual: `{}`.",
                         index - 1
@@ -1129,6 +1118,54 @@ impl<'de> Visitor<'de> for TupleVisitor<'_> {
                 Ok(boxed) => Ok(boxed),
                 Err(e) => Err(invalid_convert(self.0.type_path, &*e)),
             }
+        }
+    }
+
+    fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use crate::dynamic::DynamicTuple;
+        use crate::info::TupleInfo;
+        use crate::ops::Tuple;
+
+        let info: &TupleInfo = self
+            .0
+            .type_info
+            .as_tuple()
+            .map_err(|e| invalid_info(self.0.type_path, e))?;
+
+        if info.field_len() != 1 {
+            return Err(make_error("a newtype struct describes exactly one field"));
+        }
+        let field = info.field(0).expect("checked above");
+        let Some(db) = TypeDB::get_by_type(field.type_id()) else {
+            return Err(missing_type_db(field.type_info().type_path()));
+        };
+
+        // The value has already been entered as a newtype struct, so what is left to read is the
+        // inner value itself — which is what the field's own `TypeDB` describes.
+        let value = ReflectDesSeed(db, self.1).deserialize(deserializer)?;
+
+        if let Some(default) = self.0.default() {
+            let mut boxed: Box<dyn Tuple> = default.reflect_owned().into_tuple().unwrap();
+            let item = boxed.field_mut(0).expect("valid index");
+            if let Err(e) = item.reflect_assign(value) {
+                ::core::hint::cold_path();
+                // In theory the types match, so `reflect_apply` is only a fallback.
+                if let Err(e) = item.reflect_apply(&*e) {
+                    return Err(make_error(e));
+                }
+            }
+            return Ok(boxed);
+        }
+
+        let mut dynamic = DynamicTuple::with_capacity(1);
+        dynamic.push(value);
+
+        match self.0.from_reflect(Box::new(dynamic)) {
+            Ok(boxed) => Ok(boxed),
+            Err(e) => Err(invalid_convert(self.0.type_path, &*e)),
         }
     }
 }
@@ -1205,7 +1242,7 @@ impl<'de> Visitor<'de> for StructVisitor<'_> {
                 let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                     return Err(missing_type_db(field.type_info().type_path()));
                 };
-                let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+                let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                     return Err(make_error(format!(
                         "invalid length, expected: `{len}`, actual: `{}`.",
                         index - 1
@@ -1237,7 +1274,7 @@ impl<'de> Visitor<'de> for StructVisitor<'_> {
                 let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                     return Err(missing_type_db(field.type_info().type_path()));
                 };
-                let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+                let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                     return Err(make_error(format!(
                         "invalid length, expected: `{len}`, actual: `{}`.",
                         index - 1
@@ -1291,7 +1328,7 @@ impl<'de> Visitor<'de> for StructVisitor<'_> {
                 let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                     return Err(missing_type_db(field.type_info().type_path()));
                 };
-                let v = map.next_value_seed(ReflectDeser(db, self.1))?;
+                let v = map.next_value_seed(ReflectDesSeed(db, self.1))?;
 
                 let item = boxed.field_at_mut(index).expect("valid index");
                 if let Err(e) = item.reflect_assign(v) {
@@ -1316,7 +1353,7 @@ impl<'de> Visitor<'de> for StructVisitor<'_> {
                 let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                     return Err(missing_type_db(field.type_info().type_path()));
                 };
-                let value = map.next_value_seed(ReflectDeser(db, self.1))?;
+                let value = map.next_value_seed(ReflectDesSeed(db, self.1))?;
 
                 dynamic.insert(Cow::Owned(key), value);
             }
@@ -1340,7 +1377,7 @@ impl<'de> Visitor<'de> for StructVisitor<'_> {
 ///   type has a default constructor, uses it directly.
 /// - **`visit_some`**: Looks up the `Some` variant in [`EnumInfo`], resolves
 ///   the inner type's `TypeDB`, deserializes the inner value via
-///   `ReflectDeser`, wraps in a [`DynamicTuple`], and converts to the
+///   `ReflectDesSeed`, wraps in a [`DynamicTuple`], and converts to the
 ///   native type via [`TypeDB::from_reflect`].
 struct OptionVisitor<'a>(&'static TypeDB, &'a dyn ReflectContext);
 
@@ -1362,7 +1399,7 @@ impl<'de> Visitor<'de> for OptionVisitor<'_> {
             ::core::hint::cold_path();
             match self
                 .0
-                .from_reflect(Box::new(DynamicEnum::new(1, "None", ())))
+                .from_reflect(Box::new(DynamicEnum::new(0, "None", ())))
             {
                 Ok(ret) => Ok(ret),
                 Err(e) => Err(invalid_convert(self.0.type_path, &*e)),
@@ -1398,10 +1435,10 @@ impl<'de> Visitor<'de> for OptionVisitor<'_> {
                     return Err(make_error(format!("no TypeDB found for type `{path}`")));
                 };
 
-                let field = ReflectDeser(db, self.1).deserialize(deserializer)?;
+                let field = ReflectDesSeed(db, self.1).deserialize(deserializer)?;
                 let mut variant = DynamicTuple::with_capacity(1);
                 variant.push(field);
-                let dynamic = DynamicEnum::new(0, "Some", variant);
+                let dynamic = DynamicEnum::new(1, "Some", variant);
 
                 match self.0.from_reflect(Box::new(dynamic)) {
                     Ok(ret) => Ok(ret),
@@ -1563,7 +1600,7 @@ impl<'de> Visitor<'de> for EnumVisitor<'_> {
                     let path = field_info.type_info().type_path();
                     return Err(make_error(format!("no TypeDB found for type `{path}`")));
                 };
-                let value = variant.newtype_variant_seed(ReflectDeser(db, self.1))?;
+                let value = variant.newtype_variant_seed(ReflectDesSeed(db, self.1))?;
                 let mut dynamic = DynamicTuple::with_capacity(1);
                 dynamic.push(value);
                 DynamicVariant::Tuple(dynamic)
@@ -1626,7 +1663,7 @@ impl<'de> Visitor<'de> for TupleVariantVisitor<'_> {
             let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                 return Err(missing_type_db(field.type_info().type_path()));
             };
-            let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+            let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                 return Err(make_error(format!(
                     "invalid length, expected: `{len}`, actual: `{}`.",
                     index - 1
@@ -1682,7 +1719,7 @@ impl<'de> Visitor<'de> for StructVariantVisitor<'_> {
             let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                 return Err(missing_type_db(field.type_info().type_path()));
             };
-            let Some(v) = seq.next_element_seed(ReflectDeser(db, self.1))? else {
+            let Some(v) = seq.next_element_seed(ReflectDesSeed(db, self.1))? else {
                 return Err(make_error(format!(
                     "invalid length, expected: `{len}`, actual: `{}`.",
                     index - 1
@@ -1716,7 +1753,7 @@ impl<'de> Visitor<'de> for StructVariantVisitor<'_> {
             let Some(db) = TypeDB::get_by_type(field.type_id()) else {
                 return Err(missing_type_db(field.type_info().type_path()));
             };
-            let value = map.next_value_seed(ReflectDeser(db, self.1))?;
+            let value = map.next_value_seed(ReflectDesSeed(db, self.1))?;
 
             dynamic.insert(Cow::Owned(key), value);
         }

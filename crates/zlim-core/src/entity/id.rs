@@ -5,6 +5,7 @@ use core::fmt::{Debug, Display};
 use core::hash::Hash;
 use core::mem;
 use core::num::NonZeroU32;
+use core::num::NonZeroU64;
 
 use serde::{Deserialize, Serialize};
 use zlim_reflect::ops::Opaque;
@@ -17,14 +18,36 @@ use crate::table::{TableId, TableRow};
 
 /// A unique identifier for an entity.
 ///
-/// Composed of a 32-bit index and a non-zero 32-bit generation. The index
-/// names the slot the entity occupies, while the generation distinguishes
-/// between successive occupants of that slot.
+/// Composed of a 32-bit index and a 32-bit generation. The index names the
+/// slot the entity occupies, while the generation distinguishes between
+/// successive occupants of that slot.
 ///
 /// Entities are frequently created and destroyed, which requires efficient
 /// reuse of identifiers. The generation prevents a stale handle from
 /// accessing data that now belongs to a different entity: when a slot is
 /// recycled its generation is advanced, so old handles no longer match.
+///
+/// # What is guaranteed
+///
+/// The two halves are not held to the same standard, and knowing which is
+/// which matters when reading a value that did not come from a live entity:
+///
+/// - **The bit pattern is never all-zero.** That is the only invariant the
+///   type itself carries: it is stored as a [`NonZeroU64`], so an `EntityId`
+///   always exists and is never mistaken for an absent one.
+/// - **The generation of a live entity is non-zero.** An allocator never
+///   hands out generation `0`, so an id taken from a spawned entity has a
+///   non-zero high half. Note this is a fact about how ids are *produced*,
+///   not something the type checks — [`from_bits`](Self::from_bits) accepts
+///   any non-zero pattern.
+/// - **A deserialized id is only the first of the two.** Scenes remap their
+///   entity ids while loading (see [`SceneEntityMapper`]), so the value
+///   [`from_bits`](Self::from_bits) is given is whatever the document held,
+///   and the only thing that can be relied on is that it is not all-zero.
+///   Do not read a zero generation as proof that no entity was meant.
+///
+/// [`NonZeroU64`]: core::num::NonZeroU64
+/// [`SceneEntityMapper`]: crate::scene::SceneEntityMapper
 ///
 /// The struct is guaranteed to have the same representation as a `u64`
 /// (8-byte aligned) to enable efficient bitwise operations and
@@ -47,27 +70,18 @@ use crate::table::{TableId, TableRow};
 /// ```
 ///
 /// [`to_bits`]: Self::to_bits
-#[repr(C, align(8))]
 #[derive(TypePath, Reflect, Clone, Copy)]
 #[reflect(Opaque, Debug, Clone, Eq, Hash, Serialize, Deserialize)]
 #[type_path = "zlim_core::entity::EntityId"]
-pub struct EntityId {
-    #[cfg(target_endian = "little")]
-    pub(super) index: u32,
-    pub(super) generation: NonZeroU32,
-    #[cfg(target_endian = "big")]
-    pub(super) index: u32,
-}
+#[repr(transparent)]
+pub struct EntityId(NonZeroU64);
 
 impl EntityId {
     /// A placeholder handle representing an invalid or uninitialized entity.
     ///
     /// Its index is `u32::MAX` and its generation is `u32::MAX`; it is never
     /// equal to a handle returned for a live entity.
-    pub const PLACEHOLDER: Self = Self {
-        index: u32::MAX,
-        generation: NonZeroU32::MAX,
-    };
+    pub const PLACEHOLDER: Self = Self(NonZeroU64::MAX);
 
     /// Creates a EntityId with the given `index` and `generation`.
     ///
@@ -75,7 +89,20 @@ impl EntityId {
     /// only be used for debugging or creating placeholders.
     #[inline(always)]
     pub const fn new(index: u32, generation: NonZeroU32) -> Self {
-        Self { index, generation }
+        let x = generation.get() as u64;
+        unsafe { Self(NonZeroU64::new_unchecked((index as u64) | (x << 32))) }
+    }
+
+    /// Returns the next generation of self.
+    #[must_use]
+    #[inline(always)]
+    pub const fn next_generation(self) -> Self {
+        const MASK: u64 = 1u64 << 32;
+        let mut value = self.0.get().wrapping_add(MASK);
+        if value < MASK {
+            value += value;
+        }
+        unsafe { Self(NonZeroU64::new_unchecked(value)) }
     }
 
     /// Returns the raw index of this entity.
@@ -96,13 +123,17 @@ impl EntityId {
     /// ```
     #[inline(always)]
     pub const fn index(self) -> u32 {
-        self.index
+        self.0.get() as u32
     }
 
     /// Returns the raw generation of this entity.
     ///
-    /// The result is always non-zero; it is advanced whenever the slot is
-    /// recycled so stale handles no longer match.
+    /// Non-zero for an id that came from a live entity, because an allocator
+    /// never hands out generation `0`; it is advanced whenever the slot is
+    /// recycled so stale handles no longer match. A value rebuilt by
+    /// [`from_bits`](Self::from_bits) can still carry a zero generation, since
+    /// that constructor only rejects an all-zero bit pattern — see the
+    /// type-level note on [what is guaranteed](Self#what-is-guaranteed).
     ///
     /// # Example
     ///
@@ -113,11 +144,11 @@ impl EntityId {
     /// let id = world.spawn_empty(None).id();
     ///
     /// // Freshly spawned entities start with generation 1.
-    /// assert_eq!(id.generation().get(), 1);
+    /// assert_eq!(id.generation(), 1);
     /// ```
     #[inline(always)]
-    pub const fn generation(self) -> NonZeroU32 {
-        self.generation
+    pub const fn generation(self) -> u32 {
+        (self.0.get() >> 32) as u32
     }
 
     /// Reinterprets this [`EntityId`] as its underlying `u64` bit pattern.
@@ -136,7 +167,7 @@ impl EntityId {
     ///
     /// let bits = id.to_bits();
     /// assert_eq!(bits & 0xFFFF_FFFF, id.index() as u64);
-    /// assert_eq!(bits >> 32, id.generation().get() as u64);
+    /// assert_eq!(bits >> 32, id.generation() as u64);
     /// ```
     ///
     /// [`from_bits`]: Self::from_bits
@@ -149,8 +180,12 @@ impl EntityId {
 
     /// Reconstructs an [`EntityId`] from a `u64` produced by [`to_bits`].
     ///
-    /// Returns `None` if `bits` does not encode a valid `EntityId`, i.e.
-    /// if its generation part is zero.
+    /// Returns `None` only if `bits` is entirely zero, which is the one bit
+    /// pattern an `EntityId` cannot hold. A non-zero `bits` whose high half is
+    /// zero is accepted: an allocator does not hand out generation `0`, but
+    /// this constructor does not check for it, because the ids a scene reads
+    /// from a document are remapped and only have to be non-zero. See the
+    /// type-level note on [what is guaranteed](Self#what-is-guaranteed).
     ///
     /// # Example
     ///
@@ -160,25 +195,18 @@ impl EntityId {
     /// // Low 32 bits: index 2. High 32 bits: generation 1.
     /// let id = EntityId::from_bits(0x0000_0001_0000_0002).unwrap();
     /// assert_eq!(id.index(), 2);
-    /// assert_eq!(id.generation().get(), 1);
+    /// assert_eq!(id.generation(), 1);
     ///
-    /// // A zero generation is never a valid `EntityId`.
-    /// assert!(EntityId::from_bits(0x0000_0000_0000_0002).is_none());
+    /// // An all-zero value is not an `EntityId`.
+    /// assert!(EntityId::from_bits(0).is_none());
     /// ```
     ///
     /// [`to_bits`]: Self::to_bits
     #[inline]
     pub const fn from_bits(bits: u64) -> Option<Self> {
-        const OFFSET: usize = mem::offset_of!(EntityId, generation);
-
-        let ptr: *const u32 = &raw const bits as *const u32;
-        if unsafe { *ptr.byte_add(OFFSET) } == 0 {
-            core::hint::cold_path();
-            None
-        } else {
-            // SAFETY: the generation part is non-zero, so `bits` is a valid
-            // `EntityId`, which shares its layout with `u64`.
-            Some(unsafe { mem::transmute::<u64, EntityId>(bits) })
+        match NonZeroU64::new(bits) {
+            Some(v) => Some(Self(v)),
+            None => None,
         }
     }
 }
@@ -228,7 +256,7 @@ impl Display for EntityId {
         if *self == Self::PLACEHOLDER {
             f.pad("PLACEHOLDER")
         } else {
-            write!(f, "{}v{}", self.index, self.generation)
+            write!(f, "{}v{}", self.index(), self.generation())
         }
     }
 }
@@ -241,7 +269,7 @@ impl Opaque for EntityId {
                     *self = val;
                     Ok(())
                 }
-                None => Err("The EntityGeneration cannot be zero.".into()),
+                None => Err("The EntityId cannot be zero.".into()),
             },
             Err(e) => Err(e.to_string()),
         }
@@ -274,7 +302,7 @@ impl<'de> Deserialize<'de> for EntityId {
 
         match EntityId::from_bits(bits) {
             Some(val) => Ok(val),
-            None => Err(Error::custom("The EntityGeneration cannot be zero.")),
+            None => Err(Error::custom("The EntityId cannot be zero")),
         }
     }
 }
@@ -336,7 +364,7 @@ mod tests {
         let id: EntityId = EntityId::from_bits(raw).unwrap();
 
         assert_eq!(id.index(), index);
-        assert_eq!(id.generation().get(), generation);
+        assert_eq!(id.generation(), generation);
         assert_eq!(id.to_bits(), raw);
     }
 }

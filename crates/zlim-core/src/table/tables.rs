@@ -10,7 +10,7 @@ use super::Table;
 use super::TableId;
 use crate::bundle::{BundleId, Bundles};
 use crate::component::{ComponentCollector, ComponentId, Components};
-use crate::utils::{DebugCheckedUnwrap, SlicePool};
+use crate::utils::SlicePool;
 
 // -----------------------------------------------------------------------------
 // Tables
@@ -314,7 +314,7 @@ impl Tables {
             let mut collector = ComponentCollector::new(Some(components));
 
             for &id in subtracted.iter() {
-                let db = unsafe { components.get_by_id(id).debug_checked_unwrap() };
+                let db = components.get_by_id(id);
                 if let Some(required) = db.required {
                     required.collect(&mut collector);
                 }

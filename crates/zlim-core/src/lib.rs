@@ -36,6 +36,7 @@ pub mod message;
 pub mod ops;
 pub mod query;
 pub mod resource;
+pub mod scene;
 pub mod schedule;
 pub mod system;
 pub mod table;

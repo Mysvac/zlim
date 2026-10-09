@@ -8,7 +8,7 @@ use std::sync::PoisonError;
 use zlim_utils::ext::TypeMap;
 use zlim_utils::hash::HashMap;
 
-use super::db::{ComponentDB, ID_REGISTRY, PATH_REGISTRY, TYPE_REGISTRY};
+use super::db::{ComponentDB, ID_REGISTRY};
 use super::{Component, ComponentId};
 
 // -----------------------------------------------------------------------------
@@ -88,20 +88,21 @@ impl Components {
     ///
     /// First checks the local `dbs` slice via index (fast path). On a miss
     /// falls back to the global `ID_REGISTRY`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` is out of bounds of the global registry. This is
+    /// normally impossible unless the ID was manually constructed.
     #[inline]
-    pub fn get_by_id(&self, id: ComponentId) -> Option<&'static ComponentDB> {
+    pub fn get_by_id(&self, id: ComponentId) -> &'static ComponentDB {
         if let Some(info) = self.dbs.get(id.index()) {
-            return Some(*info);
+            return info;
         }
 
         #[cold]
         #[inline(never)]
-        fn slow_path(id: ComponentId) -> Option<&'static ComponentDB> {
-            ID_REGISTRY
-                .read()
-                .unwrap_or_else(PoisonError::into_inner)
-                .get(id.index())
-                .copied()
+        fn slow_path(id: ComponentId) -> &'static ComponentDB {
+            ComponentDB::get_by_id(id)
         }
 
         slow_path(id)
@@ -120,11 +121,7 @@ impl Components {
         #[cold]
         #[inline(never)]
         fn slow_path(path: &str) -> Option<&'static ComponentDB> {
-            PATH_REGISTRY
-                .read()
-                .unwrap_or_else(PoisonError::into_inner)
-                .get(path)
-                .copied()
+            ComponentDB::get_by_path(path)
         }
 
         slow_path(path)
@@ -143,11 +140,7 @@ impl Components {
         #[cold]
         #[inline(never)]
         fn slow_path(ty: TypeId) -> Option<&'static ComponentDB> {
-            TYPE_REGISTRY
-                .read()
-                .unwrap_or_else(PoisonError::into_inner)
-                .get(ty)
-                .copied()
+            ComponentDB::get_by_type(ty)
         }
 
         slow_path(ty)

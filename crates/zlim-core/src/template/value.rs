@@ -1,9 +1,10 @@
 //! The template of a *value*: a component that describes itself.
 
 use zlim_error::ZlimResult;
+use zlim_reflect::Reflect;
 
 use crate::component::Component;
-use crate::template::{Template, TemplateContext};
+use crate::template::{ErasedTemplate, ReflectTemplate, Template, TemplateContext};
 
 // -----------------------------------------------------------------------------
 // ComponentTemplate
@@ -53,6 +54,19 @@ impl<T> From<T> for ComponentTemplate<T> {
     #[inline]
     fn from(value: T) -> Self {
         Self(value)
+    }
+}
+
+impl<T: Reflect> ReflectTemplate for ComponentTemplate<T>
+where
+    Self: ErasedTemplate,
+{
+    fn as_reflect(&self) -> &dyn Reflect {
+        &self.0
+    }
+
+    fn as_reflect_mut(&mut self) -> &mut dyn Reflect {
+        &mut self.0
     }
 }
 

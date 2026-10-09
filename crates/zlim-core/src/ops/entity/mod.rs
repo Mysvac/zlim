@@ -30,12 +30,12 @@ use core::ptr;
 use zlim_ptr::Ptr;
 use zlim_utils::debug::DebugLocation;
 
-use crate::borrow::Res;
 use crate::borrow::ResMut;
 use crate::borrow::UntypedMut;
 use crate::borrow::UntypedRef;
+use crate::borrow::{Mut, Ref, Res};
 use crate::bundle::Bundle;
-use crate::component::ComponentId;
+use crate::component::{ComponentDB, ComponentId};
 use crate::entity::Location;
 use crate::entity::{Entities, EntityId};
 use crate::entity::{EntityError, EntityNode};
@@ -308,16 +308,29 @@ impl Entity<'_> {
     }
 }
 
-impl EntityRef<'_> {
-    /// Creates a shorter-lived reborrow of this entity view.
+impl<'w> EntityRef<'w> {
+    /// Creates a reborrow of this entity refererence with same lifetiem.
     #[inline(always)]
-    pub fn reborrow(&self) -> EntityRef<'_> {
+    pub fn reborrow(&self) -> EntityRef<'w> {
         // SAFETY: no need drop
         unsafe { ptr::read(self) }
     }
 }
 
-impl EntityMut<'_> {
+impl<'w> EntityMut<'w> {
+    /// Consumes `self` and returns read-only access to all of the entity's
+    /// components, with the world `'w` lifetime.
+    #[inline]
+    pub fn into_readonly(self) -> EntityRef<'w> {
+        EntityRef::from(self)
+    }
+
+    /// Gets read-only access to all of the entity's components.
+    #[inline]
+    pub fn as_readonly(&self) -> EntityRef<'_> {
+        EntityRef::from(unsafe { ptr::read(self) })
+    }
+
     /// Creates a shorter-lived reborrow of this entity view.
     #[inline(always)]
     pub fn reborrow(&mut self) -> EntityMut<'_> {
@@ -780,34 +793,6 @@ macro_rules! impl_common_methods {
                 let row = self.location.table_row;
                 unsafe { T::get_ref(self.table, row, last_run, this_run) }
             }
-
-            /// Gets raw shared type-erased pointer by given ComponentId.
-            pub fn get_by_id(&self, id: ComponentId) -> Option<Ptr<'_>> {
-                let col = self.table.get_table_col(id)?;
-                let row = self.location.table_row;
-                Some(unsafe { self.table.get_data(row, col) })
-            }
-
-            /// Gets raw shared type-erased pointer by given Component Type.
-            pub fn get_by_type(&self, ty: TypeId) -> Option<Ptr<'_>> {
-                let col = self.table.get_type_col(ty)?;
-                let row = self.location.table_row;
-                Some(unsafe { self.table.get_data(row, col) })
-            }
-
-            /// Gets type-erased change-aware shared component reference by given ComponentId.
-            pub fn get_ref_by_id(&self, id: ComponentId) -> Option<UntypedRef<'_>> {
-                let col = self.table.get_table_col(id)?;
-                let row = self.location.table_row;
-                Some(unsafe { self.table.get_ref(row, col, self.last_run, self.this_run) })
-            }
-
-            /// Gets type-erased change-aware shared component reference by given Component Type.
-            pub fn get_ref_by_type(&self, ty: TypeId) -> Option<UntypedRef<'_>> {
-                let col = self.table.get_type_col(ty)?;
-                let row = self.location.table_row;
-                Some(unsafe { self.table.get_ref(row, col, self.last_run, self.this_run) })
-            }
         }
     };
 }
@@ -823,6 +808,34 @@ impl<'a> EntityRef<'a> {
     pub fn get<T: GetComponents>(&self) -> Option<T::Raw<'a>> {
         unsafe { T::get(self.table, self.location.table_row) }
     }
+
+    /// Gets raw shared type-erased pointer by given ComponentId.
+    pub fn get_by_id(&self, id: ComponentId) -> Option<Ptr<'a>> {
+        let col = self.table.get_table_col(id)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_data(row, col) })
+    }
+
+    /// Gets raw shared type-erased pointer by given Component Type.
+    pub fn get_by_type(&self, ty: TypeId) -> Option<Ptr<'a>> {
+        let col = self.table.get_type_col(ty)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_data(row, col) })
+    }
+
+    /// Gets type-erased change-aware shared component reference by given ComponentId.
+    pub fn get_ref_by_id(&self, id: ComponentId) -> Option<UntypedRef<'a>> {
+        let col = self.table.get_table_col(id)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_ref(row, col, self.last_run, self.this_run) })
+    }
+
+    /// Gets type-erased change-aware shared component reference by given Component Type.
+    pub fn get_ref_by_type(&self, ty: TypeId) -> Option<UntypedRef<'a>> {
+        let col = self.table.get_type_col(ty)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_ref(row, col, self.last_run, self.this_run) })
+    }
 }
 
 impl<'a> EntityMut<'a> {
@@ -832,6 +845,34 @@ impl<'a> EntityMut<'a> {
     #[inline]
     pub fn get<T: GetComponents>(&self) -> Option<T::Raw<'_>> {
         unsafe { T::get(self.table, self.location.table_row) }
+    }
+
+    /// Gets raw shared type-erased pointer by given ComponentId.
+    pub fn get_by_id(&self, id: ComponentId) -> Option<Ptr<'_>> {
+        let col = self.table.get_table_col(id)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_data(row, col) })
+    }
+
+    /// Gets raw shared type-erased pointer by given Component Type.
+    pub fn get_by_type(&self, ty: TypeId) -> Option<Ptr<'_>> {
+        let col = self.table.get_type_col(ty)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_data(row, col) })
+    }
+
+    /// Gets type-erased change-aware shared component reference by given ComponentId.
+    pub fn get_ref_by_id(&self, id: ComponentId) -> Option<UntypedRef<'_>> {
+        let col = self.table.get_table_col(id)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_ref(row, col, self.last_run, self.this_run) })
+    }
+
+    /// Gets type-erased change-aware shared component reference by given Component Type.
+    pub fn get_ref_by_type(&self, ty: TypeId) -> Option<UntypedRef<'_>> {
+        let col = self.table.get_type_col(ty)?;
+        let row = self.location.table_row;
+        Some(unsafe { self.table.get_ref(row, col, self.last_run, self.this_run) })
     }
 }
 
@@ -1698,6 +1739,160 @@ impl<'w> EntityOwned<'w> {
 
         ::core::mem::drop(guard); // drop, not forget
         Ok(self)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Reflect
+// -----------------------------------------------------------------------------
+
+use zlim_reflect::Reflect;
+
+impl<'w> EntityRef<'w> {
+    /// Gets a shared reflect refernece by given ComponentId.
+    pub fn get_reflect_by_id(&self, id: ComponentId) -> Option<&'w dyn Reflect> {
+        let ptr = self.get_by_id(id)?;
+        let type_db = ComponentDB::get_by_id(id).type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece by given TypeId.
+    pub fn get_reflect_by_type(&self, ty: TypeId) -> Option<&'w dyn Reflect> {
+        let ptr = self.get_by_type(ty)?;
+        let type_db = ComponentDB::get_by_type(ty)?.type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece with change detection by given component id.
+    pub fn get_reflect_ref_by_id(&self, id: ComponentId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = ComponentDB::get_by_id(id).reflect?;
+        (reflect.reflect_ref)(self.reborrow())
+    }
+
+    /// Gets a shared reflect refernece with change detection by given TypeId.
+    pub fn get_reflect_ref_by_type(&self, ty: TypeId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = ComponentDB::get_by_type(ty)?.reflect?;
+        (reflect.reflect_ref)(self.reborrow())
+    }
+}
+
+impl<'w> EntityMut<'w> {
+    /// Gets a shared reflect refernece by given ComponentId.
+    pub fn get_reflect_by_id(&self, id: ComponentId) -> Option<&'_ dyn Reflect> {
+        let ptr = self.get_by_id(id)?;
+        let type_db = ComponentDB::get_by_id(id).type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece by given TypeId.
+    pub fn get_reflect_by_type(&self, ty: TypeId) -> Option<&'_ dyn Reflect> {
+        let ptr = self.get_by_type(ty)?;
+        let type_db = ComponentDB::get_by_type(ty)?.type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece with change detection by given component id.
+    pub fn get_reflect_ref_by_id(&self, id: ComponentId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = ComponentDB::get_by_id(id).reflect?;
+        (reflect.reflect_ref)(self.as_readonly())
+    }
+
+    /// Gets a shared reflect refernece with change detection by given TypeId.
+    pub fn get_reflect_ref_by_type(&self, ty: TypeId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = ComponentDB::get_by_type(ty)?.reflect?;
+        (reflect.reflect_ref)(self.as_readonly())
+    }
+
+    /// Gets a mutable reflect refernece with change detection by given component id.
+    pub fn get_reflect_mut_by_id(&mut self, id: ComponentId) -> Option<Mut<'_, dyn Reflect>> {
+        let reflect = ComponentDB::get_by_id(id).reflect?;
+        (reflect.reflect_mut)(self.reborrow())
+    }
+
+    /// Gets a mutable reflect refernece with change detection by given TypeId.
+    pub fn get_reflect_mut_by_type(&mut self, ty: TypeId) -> Option<Mut<'_, dyn Reflect>> {
+        let reflect = ComponentDB::get_by_type(ty)?.reflect?;
+        (reflect.reflect_mut)(self.reborrow())
+    }
+}
+
+impl<'w> Entity<'w> {
+    /// Gets a shared reflect refernece by given ComponentId.
+    pub fn get_reflect_by_id(&self, id: ComponentId) -> Option<&'_ dyn Reflect> {
+        let ptr = self.get_by_id(id)?;
+        let type_db = self.world().components.get_by_id(id).type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece by given TypeId.
+    pub fn get_reflect_by_type(&self, ty: TypeId) -> Option<&'_ dyn Reflect> {
+        let ptr = self.get_by_type(ty)?;
+        let type_db = self.world().components.get_by_type(ty)?.type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece with change detection by given component id.
+    pub fn get_reflect_ref_by_id(&self, id: ComponentId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_id(id).reflect?;
+        (reflect.reflect_ref)(self.as_readonly())
+    }
+
+    /// Gets a shared reflect refernece with change detection by given TypeId.
+    pub fn get_reflect_ref_by_type(&self, ty: TypeId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_type(ty)?.reflect?;
+        (reflect.reflect_ref)(self.as_readonly())
+    }
+
+    /// Gets a mutable reflect refernece with change detection by given component id.
+    pub fn get_reflect_mut_by_id(&mut self, id: ComponentId) -> Option<Mut<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_id(id).reflect?;
+        (reflect.reflect_mut)(self.as_mutable())
+    }
+
+    /// Gets a mutable reflect refernece with change detection by given TypeId.
+    pub fn get_reflect_mut_by_type(&mut self, ty: TypeId) -> Option<Mut<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_type(ty)?.reflect?;
+        (reflect.reflect_mut)(self.as_mutable())
+    }
+}
+
+impl<'w> EntityOwned<'w> {
+    /// Gets a shared reflect refernece by given ComponentId.
+    pub fn get_reflect_by_id(&self, id: ComponentId) -> Option<&'_ dyn Reflect> {
+        let ptr = self.get_by_id(id)?;
+        let type_db = self.world().components.get_by_id(id).type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece by given TypeId.
+    pub fn get_reflect_by_type(&self, ty: TypeId) -> Option<&'_ dyn Reflect> {
+        let ptr = self.get_by_type(ty)?;
+        let type_db = self.world().components.get_by_type(ty)?.type_db?;
+        unsafe { Some(type_db.reflect_from_ptr(ptr)) }
+    }
+
+    /// Gets a shared reflect refernece with change detection by given component id.
+    pub fn get_reflect_ref_by_id(&self, id: ComponentId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_id(id).reflect?;
+        (reflect.reflect_ref)(self.as_readonly())
+    }
+
+    /// Gets a shared reflect refernece with change detection by given TypeId.
+    pub fn get_reflect_ref_by_type(&self, ty: TypeId) -> Option<Ref<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_type(ty)?.reflect?;
+        (reflect.reflect_ref)(self.as_readonly())
+    }
+
+    /// Gets a mutable reflect refernece with change detection by given component id.
+    pub fn get_reflect_mut_by_id(&mut self, id: ComponentId) -> Option<Mut<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_id(id).reflect?;
+        (reflect.reflect_mut)(self.as_mutable())
+    }
+
+    /// Gets a mutable reflect refernece with change detection by given TypeId.
+    pub fn get_reflect_mut_by_type(&mut self, ty: TypeId) -> Option<Mut<'_, dyn Reflect>> {
+        let reflect = self.world().components.get_by_type(ty)?.reflect?;
+        (reflect.reflect_mut)(self.as_mutable())
     }
 }
 

@@ -25,5 +25,10 @@ zlim-app = { path = "../zlim-app", default-features = false }
 
 zlim-asset = { path = "../zlim-asset", default-features = false }
 
+[dev-dependencies]
+
+ron = { version = "0.12", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+
 [lints]
 workspace = true

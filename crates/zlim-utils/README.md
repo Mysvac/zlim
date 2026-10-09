@@ -58,6 +58,10 @@ Foundation utilities for the zlim engine.
 - `SyncUnsafeCell` — backport of unstable `core::cell::SyncUnsafeCell`.
 - `SyncView` — backport of unstable `core::sync::Exclusive`.
 
+## serde
+
+- `BorrowedStr` — CowStr container used for non-copy deserialzation,
+
 ## macros
 
 - `range_invoke!` — repeated range-based macro invocation.

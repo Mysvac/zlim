@@ -3,15 +3,21 @@
 //! # EntityId
 //!
 //! [`EntityId`] is a unique identifier for an entity, composed of a 32-bit
-//! index and a non-zero 32-bit generation.
+//! index and a 32-bit generation, stored as one `NonZeroU64`.
 //!
 //! ```text
-//! EntityId { index: u32, generation: NonZeroU32 }
+//! EntityId(NonZeroU64)   // low 32 bits: index, high 32 bits: generation
 //! ```
 //!
 //! The index names the slot the entity occupies, while the generation
-//! distinguishes between successive occupants of that slot. `NonZero`
-//! is used for niche optimization.
+//! distinguishes between successive occupants of that slot. `NonZero` is used
+//! for niche optimization.
+//!
+//! Only the bit pattern is guaranteed non-zero; the generation of an id taken
+//! from a live entity is non-zero as well, because an allocator never hands out
+//! generation `0`. A scene remaps the ids it reads from a document, so a
+//! deserialized id is only held to the first of those — see the type-level note
+//! on [what is guaranteed](EntityId#what-is-guaranteed).
 //!
 //! ```text
 //! Entities [

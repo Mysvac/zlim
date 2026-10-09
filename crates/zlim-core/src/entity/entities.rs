@@ -211,15 +211,16 @@ impl Entities {
     /// assert!(world.entities().try_locate(id).unwrap().is_some());
     /// ```
     pub fn try_locate(&self, id: EntityId) -> Result<Option<Location>, EntityError> {
-        let info = self.entities.get(id.index as usize).unwrap_or(DEFAULT_REF);
+        let info = self
+            .entities
+            .get(id.index() as usize)
+            .unwrap_or(DEFAULT_REF);
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
+            let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation: info.generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -252,19 +253,16 @@ impl Entities {
     /// assert_eq!(location.table_row.0, 0);
     /// ```
     pub fn locate(&self, id: EntityId) -> Result<Location, EntityError> {
-        let Some(info) = self.entities.get(id.index as usize) else {
+        let Some(info) = self.entities.get(id.index() as usize) else {
             core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
+            return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -287,19 +285,16 @@ impl Entities {
     /// assert!(node.location.is_some());
     /// ```
     pub fn get(&self, id: EntityId) -> Result<&EntityNode, EntityError> {
-        let Some(info) = self.entities.get(id.index as usize) else {
+        let Some(info) = self.entities.get(id.index() as usize) else {
             core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
+            return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -328,7 +323,7 @@ impl Entities {
     /// let id = world.spawn((), None).id();
     ///
     /// let node = world.entities().get_by_index(id.index()).unwrap();
-    /// assert_eq!(node.generation, id.generation());
+    /// assert_eq!(node.generation.get(), id.generation());
     /// ```
     pub fn get_by_index(&self, index: u32) -> Result<&EntityNode, EntityError> {
         let Some(info) = self.entities.get(index as usize) else {
@@ -358,14 +353,14 @@ impl Entities {
     /// assert!(!world.entities().contains(id));
     /// ```
     pub fn contains(&self, id: EntityId) -> bool {
-        let index = id.index as usize;
+        let index = id.index() as usize;
 
         let Some(info) = self.entities.get(index) else {
             core::hint::cold_path();
             return false;
         };
 
-        if info.generation != id.generation || info.location.is_none() {
+        if info.generation.get() != id.generation() || info.location.is_none() {
             core::hint::cold_path();
             return false;
         }
@@ -402,14 +397,8 @@ impl Entities {
     /// ```
     pub fn resolve(&self, index: u32) -> EntityId {
         match self.entities.get(index as usize) {
-            Some(info) => EntityId {
-                index,
-                generation: info.generation,
-            },
-            None => EntityId {
-                index,
-                generation: NonZeroU32::MIN,
-            },
+            Some(info) => EntityId::new(index, info.generation),
+            None => EntityId::new(index, NonZeroU32::MIN),
         }
     }
 
@@ -457,21 +446,21 @@ impl Entities {
         // `PLACEHOLDER` always be `Error::Mismatch`
         // if id == EntityId::PLACEHOLDER { return Err(..); }
 
-        let info = self.entities.get(id.index as usize).unwrap_or(DEFAULT_REF);
+        let info = self
+            .entities
+            .get(id.index() as usize)
+            .unwrap_or(DEFAULT_REF);
 
         if info.location.is_some() {
             ::core::hint::cold_path();
             return Err(EntityError::AlreadySpawned(id));
         }
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             ::core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -485,18 +474,16 @@ impl Entities {
         let MovedEntityRow::Some { entity, new_row } = moved else {
             return Ok(());
         };
-        let Some(info) = self.entities.get_mut(entity.index as usize) else {
+        let Some(info) = self.entities.get_mut(entity.index() as usize) else {
             core::hint::cold_path();
-            return Err(EntityError::NotFound(entity.index));
+            return Err(EntityError::NotFound(entity.index()));
         };
 
-        if info.generation != entity.generation {
+        if info.generation.get() != entity.generation() {
             core::hint::cold_path();
+            let generation = info.generation;
             let expect = entity;
-            let actual = EntityId {
-                index: entity.index,
-                generation: info.generation,
-            };
+            let actual = EntityId::new(entity.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
         let Some(location) = &mut info.location else {
@@ -542,12 +529,11 @@ impl Entities {
         let info = unsafe { self.entities.get_unchecked_mut(index as usize) };
         debug_assert!(info.location.is_none());
 
-        let next = info.generation.get().wrapping_add(1);
-        let generation = NonZeroU32::new(next).unwrap_or(NonZeroU32::MIN);
+        let next = EntityId::new(index, info.generation).next_generation();
+        info.generation =
+            NonZeroU32::new(next.generation()).expect("next_generation build a nonzero generation");
 
-        info.generation = generation;
-
-        EntityId { index, generation }
+        next
     }
 
     /// Removes a spawned entity and returns its storage location.
@@ -572,21 +558,18 @@ impl Entities {
     /// assert!(!world.entities().contains(child));
     /// ```
     pub fn remove_one(&mut self, id: EntityId) -> Result<Location, EntityError> {
-        self.ensure_exist(id.index);
+        self.ensure_exist(id.index());
 
-        let Some(info) = self.entities.get_mut(id.index as usize) else {
+        let Some(info) = self.entities.get_mut(id.index() as usize) else {
             core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
+            return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -596,8 +579,8 @@ impl Entities {
         let children = core::mem::take(&mut info.children);
 
         if let Some(p) = parent {
-            debug_assert!((p.index as usize) < self.entities.len());
-            let slot = unsafe { self.entities.get_unchecked_mut(p.index as usize) };
+            debug_assert!((p.index() as usize) < self.entities.len());
+            let slot = unsafe { self.entities.get_unchecked_mut(p.index() as usize) };
             debug_assert!(slot.location.is_some());
 
             match position_entity(id, &slot.children) {
@@ -616,10 +599,10 @@ impl Entities {
         }
 
         for c in children {
-            debug_assert!((c.index as usize) < self.entities.len());
-            let slot = unsafe { self.entities.get_unchecked_mut(c.index as usize) };
+            debug_assert!((c.index() as usize) < self.entities.len());
+            let slot = unsafe { self.entities.get_unchecked_mut(c.index() as usize) };
             debug_assert_eq!(slot.parent, Some(id));
-            assert_eq!(c.generation, slot.generation);
+            assert_eq!(c.generation(), slot.generation.get());
             slot.parent = None;
             self.root.insert(c);
         }
@@ -656,7 +639,7 @@ impl Entities {
         parent: Option<EntityId>,
         location: Location,
     ) -> Result<(), EntityError> {
-        self.ensure_exist(id.index);
+        self.ensure_exist(id.index());
 
         //--------------------------------------------------------------------
         // validate parent
@@ -666,18 +649,15 @@ impl Entities {
                 core::hint::cold_path();
                 return Err(EntityError::CycleHierarchy { id, to: p });
             }
-            let Some(info) = self.entities.get(p.index as usize) else {
+            let Some(info) = self.entities.get(p.index() as usize) else {
                 core::hint::cold_path();
-                return Err(EntityError::NotFound(p.index));
+                return Err(EntityError::NotFound(p.index()));
             };
-            if info.generation != p.generation {
+            if info.generation.get() != p.generation() {
                 core::hint::cold_path();
                 let generation = info.generation;
                 let expect = p;
-                let actual = EntityId {
-                    index: p.index,
-                    generation,
-                };
+                let actual = EntityId::new(p.index(), generation);
                 return Err(EntityError::Mismatch { expect, actual });
             }
             if info.location.is_none() {
@@ -689,19 +669,16 @@ impl Entities {
         //--------------------------------------------------------------------
         // validate self
 
-        let Some(info) = self.entities.get_mut(id.index as usize) else {
+        let Some(info) = self.entities.get_mut(id.index() as usize) else {
             core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
+            return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -715,7 +692,7 @@ impl Entities {
         debug_assert!(info.children.is_empty());
 
         if let Some(p) = parent {
-            let slot = unsafe { self.entities.get_unchecked_mut(p.index as usize) };
+            let slot = unsafe { self.entities.get_unchecked_mut(p.index() as usize) };
             debug_assert!(!slot.children.contains(&id));
             slot.children.push(id);
         } else {
@@ -739,7 +716,7 @@ impl Entities {
         parent: Option<EntityId>,
         location: Location,
     ) -> Result<(), EntityError> {
-        self.ensure_exist(id.index);
+        self.ensure_exist(id.index());
 
         //--------------------------------------------------------------------
         // validate parent
@@ -748,18 +725,15 @@ impl Entities {
                 core::hint::cold_path();
                 return Err(EntityError::CycleHierarchy { id, to: p });
             }
-            let Some(info) = self.entities.get(p.index as usize) else {
+            let Some(info) = self.entities.get(p.index() as usize) else {
                 core::hint::cold_path();
-                return Err(EntityError::NotFound(p.index));
+                return Err(EntityError::NotFound(p.index()));
             };
-            if info.generation != p.generation {
+            if info.generation.get() != p.generation() {
                 core::hint::cold_path();
                 let generation = info.generation;
                 let expect = p;
-                let actual = EntityId {
-                    index: p.index,
-                    generation,
-                };
+                let actual = EntityId::new(p.index(), generation);
                 return Err(EntityError::Mismatch { expect, actual });
             }
             if info.location.is_none() {
@@ -768,19 +742,16 @@ impl Entities {
             }
         }
 
-        let Some(info) = self.entities.get_mut(id.index as usize) else {
+        let Some(info) = self.entities.get_mut(id.index() as usize) else {
             core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
+            return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -982,18 +953,15 @@ impl Entities {
         // validate new parent
 
         if let Some(p) = parent {
-            let Some(info) = this.entities.get(p.index as usize) else {
+            let Some(info) = this.entities.get(p.index() as usize) else {
                 core::hint::cold_path();
-                return Err(EntityError::NotFound(p.index));
+                return Err(EntityError::NotFound(p.index()));
             };
-            if info.generation != p.generation {
+            if info.generation.get() != p.generation() {
                 core::hint::cold_path();
                 let generation = info.generation;
                 let expect = p;
-                let actual = EntityId {
-                    index: p.index,
-                    generation,
-                };
+                let actual = EntityId::new(p.index(), generation);
                 return Err(EntityError::Mismatch { expect, actual });
             }
             if info.location.is_none() {
@@ -1005,19 +973,16 @@ impl Entities {
         //--------------------------------------------------------------------
         // validate self
 
-        let Some(info) = this.entities.get_mut(id.index as usize) else {
+        let Some(info) = this.entities.get_mut(id.index() as usize) else {
             core::hint::cold_path();
-            return Err(EntityError::NotFound(id.index));
+            return Err(EntityError::NotFound(id.index()));
         };
 
-        if info.generation != id.generation {
+        if info.generation.get() != id.generation() {
             core::hint::cold_path();
             let generation = info.generation;
             let expect = id;
-            let actual = EntityId {
-                index: id.index,
-                generation,
-            };
+            let actual = EntityId::new(id.index(), generation);
             return Err(EntityError::Mismatch { expect, actual });
         }
 
@@ -1043,14 +1008,14 @@ impl Entities {
                     to: parent.unwrap(),
                 });
             }
-            debug_assert!((p.index as usize) < this.entities.len());
-            iter = unsafe { this.entities.get_unchecked(p.index as usize).parent };
+            debug_assert!((p.index() as usize) < this.entities.len());
+            iter = unsafe { this.entities.get_unchecked(p.index() as usize).parent };
         }
 
         //--------------------------------------------------------------------
         // modify parent
 
-        let slot = unsafe { this.entities.get_unchecked_mut(id.index as usize) };
+        let slot = unsafe { this.entities.get_unchecked_mut(id.index() as usize) };
         let old = slot.parent;
         slot.parent = parent;
 
@@ -1058,8 +1023,8 @@ impl Entities {
         // modify old parent
 
         if let Some(o) = old {
-            debug_assert!((o.index as usize) < this.entities.len());
-            let slot = unsafe { this.entities.get_unchecked_mut(o.index as usize) };
+            debug_assert!((o.index() as usize) < this.entities.len());
+            let slot = unsafe { this.entities.get_unchecked_mut(o.index() as usize) };
             debug_assert!(slot.location.is_some());
 
             match position_entity(id, &slot.children) {
@@ -1081,7 +1046,7 @@ impl Entities {
         // modify new parent
 
         if let Some(p) = parent {
-            let slot = unsafe { this.entities.get_unchecked_mut(p.index as usize) };
+            let slot = unsafe { this.entities.get_unchecked_mut(p.index() as usize) };
             debug_assert!(!slot.children.contains(&id));
             slot.children.push(id);
         } else {
