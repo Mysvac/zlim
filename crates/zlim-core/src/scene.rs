@@ -1,15 +1,16 @@
 use core::fmt::{Debug, Formatter};
-use core::num::NonZeroU32;
 use std::collections::{BTreeMap, VecDeque};
 
 use indexmap::IndexMap;
 use serde::de::{DeserializeSeed, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserializer, Serialize, ser::SerializeMap};
+use zlim_core::bundle::BundleScratch;
 use zlim_core::component::ComponentDB;
 use zlim_core::entity::{EntityError, EntityId, EntityMap, EntityMapper};
-use zlim_core::template::ReflectTemplate;
+use zlim_core::template::{EntityReferences, ReflectTemplate, TemplateContext};
 use zlim_core::world::World;
+use zlim_error::{ZlimError, ZlimResult};
 use zlim_reflect::Reflect;
 use zlim_reflect::{TypeDB, serde::ReflectContext};
 use zlim_utils::hash::SparseState;
@@ -39,19 +40,27 @@ impl PartialOrd for TypeIdent {
 // -----------------------------------------------------------------------------
 // SceneEntityMapper
 
+use std::hash::RandomState;
+
 /// Allocates the entity ids a scene document leaves out, so one document can be loaded many times.
 #[derive(Debug, Clone)]
 pub struct SceneEntityMapper {
-    allocator: EntityId,
-    mapper: EntityMap<EntityId>,
+    allocator: u64,
+    // `EntityMap` hashes sparsely: it keeps the low bits of the id as the slot
+    // and does not usefully mix in the generation — `SparseHasher` says as much.
+    // That assumes the index alone spreads entities out, which holds in a
+    // `World` but not here: a document's ids are placeholders, and many of them
+    // sharing one index would collide on every insert. A random state breaks
+    // that up.
+    mapper: std::collections::HashMap<EntityId, EntityId, RandomState>,
 }
 
 impl SceneEntityMapper {
     /// Creates a new empty SceneEntityMapper.
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            allocator: EntityId::new(u32::MAX, NonZeroU32::MIN),
-            mapper: EntityMap::new(),
+            allocator: 1, // NonZero
+            mapper: std::collections::HashMap::new(),
         }
     }
 
@@ -69,14 +78,13 @@ impl Default for SceneEntityMapper {
 
 impl EntityMapper for SceneEntityMapper {
     fn get_mapped(&mut self, source: EntityId) -> EntityId {
-        use zlim_utils::hash::map::Entry;
+        use std::collections::hash_map::Entry;
         match self.mapper.entry(source) {
             Entry::Occupied(entry) => *entry.get(),
             Entry::Vacant(entry) => {
-                let this = self.allocator;
-                self.allocator = this.next_generation();
-                assert!(this.generation() != u32::MAX, "too many entities");
-                *entry.insert(this)
+                let id = EntityId::from_bits(self.allocator).unwrap();
+                self.allocator += 1;
+                *entry.insert(id)
             }
         }
     }
@@ -102,7 +110,7 @@ impl EntityMapper for SceneEntityMapper {
 /// *resolved* by the crate that owns the resolved form, so a document and a
 /// description written in code meet in one place. This type is the handover
 /// between the two.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct DynamicScene {
     pub entities: Vec<DynamicEntity>,
 }
@@ -136,6 +144,21 @@ impl Debug for DynamicEntity {
         }
         debugger.entry(&"components", &ComponentsDebug(&self.components));
         debugger.finish()
+    }
+}
+
+impl Clone for DynamicEntity {
+    fn clone(&self) -> Self {
+        let mut components = BTreeMap::new();
+        for (k, v) in self.components.iter() {
+            components.insert(*k, (**v).clone_reflect_template());
+        }
+
+        Self {
+            id: self.id,
+            parent: self.parent,
+            components,
+        }
     }
 }
 
@@ -556,12 +579,14 @@ impl Serialize for SceneSerial<'_> {
 /// hands each component to `TypeDB` as a `&dyn Reflect`.
 ///
 /// [`World`]: crate::world::World
+#[derive(Clone)]
 pub struct BorrowedScene<'a> {
     pub world: &'a World,
     pub entities: Vec<BorrowedEntity<'a>>,
 }
 
 /// One entity of a [`BorrowedScene`]: its id, its parent edge, and the components it holds.
+#[derive(Clone)]
 pub struct BorrowedEntity<'a> {
     pub id: EntityId,
     pub parent: Option<EntityId>,
@@ -719,11 +744,12 @@ impl Serialize for BorrowedSceneSerial<'_, '_> {
 // -----------------------------------------------------------------------------
 // BorrowedScene Builder
 
-enum EntityMode {
-    With,
-    WithRecursive,
-    Without,
-    WithoutRecursive,
+enum SceneMode {
+    All,
+    With(EntityId),
+    WithRecursive(EntityId),
+    Without(EntityId),
+    WithoutRecursive(EntityId),
 }
 
 /// Collects which entities of a world to serialize, and in what shape.
@@ -739,7 +765,7 @@ enum EntityMode {
 /// ```rust, ignore
 /// // `child` ends up included: the `with_recursive` came
 /// // after the `without` and put the whole subtree back.
-/// world.borrrowed_scene_builder()
+/// world.borrowed_scene_builder()
 ///     .without_recursive(parent)
 ///     .with_recursive(parent)
 /// ```
@@ -755,7 +781,7 @@ enum EntityMode {
 /// [`without`]: Self::without
 pub struct BorrowedSceneBuilder<'w> {
     world: &'w World,
-    entities: Vec<(EntityId, EntityMode)>,
+    entities: Vec<SceneMode>,
     skip_missing: bool,
 }
 
@@ -765,7 +791,8 @@ impl World {
     /// The builder assembles the scene to be serialized using only references
     /// into the `World`, avoiding any deep copy of the underlying data.
     #[inline]
-    pub fn borrrowed_scene_builder(&self) -> BorrowedSceneBuilder<'_> {
+    #[doc(alias = "scene_builder")]
+    pub fn borrowed_scene_builder(&self) -> BorrowedSceneBuilder<'_> {
         BorrowedSceneBuilder::new(self)
     }
 }
@@ -790,29 +817,36 @@ impl<'w> BorrowedSceneBuilder<'w> {
 
     #[inline]
     /// Requests that `id` be included, without its children.
+    pub fn with_all(mut self) -> Self {
+        self.entities.push(SceneMode::All);
+        self
+    }
+
+    #[inline]
+    /// Requests that `id` be included, without its children.
     pub fn with(mut self, id: EntityId) -> Self {
-        self.entities.push((id, EntityMode::With));
+        self.entities.push(SceneMode::With(id));
         self
     }
 
     /// Requests that `id` and everything under it be included.
     #[inline]
     pub fn with_recursive(mut self, id: EntityId) -> Self {
-        self.entities.push((id, EntityMode::WithRecursive));
+        self.entities.push(SceneMode::WithRecursive(id));
         self
     }
 
     /// Requests that `id` be left out, leaving its children in place.
     #[inline]
     pub fn without(mut self, id: EntityId) -> Self {
-        self.entities.push((id, EntityMode::Without));
+        self.entities.push(SceneMode::Without(id));
         self
     }
 
     /// Requests that `id` and everything under it be left out.
     #[inline]
     pub fn without_recursive(mut self, id: EntityId) -> Self {
-        self.entities.push((id, EntityMode::WithoutRecursive));
+        self.entities.push(SceneMode::WithoutRecursive(id));
         self
     }
 
@@ -827,16 +861,29 @@ impl<'w> BorrowedSceneBuilder<'w> {
         let mut graph =
             IndexMap::<EntityId, Option<EntityId>, SparseState>::with_hasher(SparseState);
 
-        for (id, mode) in self.entities {
+        for mode in self.entities {
             match mode {
-                EntityMode::With => match entities.get(id) {
+                SceneMode::All => {
+                    let mut pending: VecDeque<EntityId> = VecDeque::new();
+                    entities
+                        .root_entities()
+                        .for_each(|id| pending.push_back(id));
+                    while let Some(child) = pending.pop_front() {
+                        let sub_info = entities
+                            .get(child)
+                            .expect("the entity tree must be correct");
+                        pending.extend(sub_info.children.as_slice());
+                        graph.insert(child, sub_info.parent);
+                    }
+                }
+                SceneMode::With(id) => match entities.get(id) {
                     Ok(info) => {
                         graph.insert(id, info.parent);
                     }
                     Err(e) if !self.skip_missing => return Err(e),
                     _ => {}
                 },
-                EntityMode::WithRecursive => {
+                SceneMode::WithRecursive(id) => {
                     let info = match entities.get(id) {
                         Ok(info) => info,
                         Err(e) if !self.skip_missing => return Err(e),
@@ -853,10 +900,10 @@ impl<'w> BorrowedSceneBuilder<'w> {
                         graph.insert(child, sub_info.parent);
                     }
                 }
-                EntityMode::Without => {
+                SceneMode::Without(id) => {
                     graph.swap_remove(&id);
                 }
-                EntityMode::WithoutRecursive => {
+                SceneMode::WithoutRecursive(id) => {
                     let info = match entities.get(id) {
                         Ok(info) => info,
                         Err(_) => continue,
@@ -1006,5 +1053,384 @@ impl BorrowedScene<'_> {
 impl From<BorrowedScene<'_>> for DynamicScene {
     fn from(value: BorrowedScene<'_>) -> Self {
         value.into_dynamic()
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+impl World {
+    /// Spawns every entity of `scene` under `parent`, components and all.
+    ///
+    /// A [`DynamicScene`] needs no planning: each entity it describes is exactly one entity, in a
+    /// shape already decided, so this is two passes and nothing more. The first spawns every empty
+    /// entity and records which one each document id became; the second fills them in, moving each
+    /// component out of its template straight into the entity.
+    ///
+    /// The order the document lists its entities in is not the order they are spawned in. A `parent`
+    /// names an id, and the entity that id belongs to may be declared *after* the one naming it, so
+    /// the roots are spawned first and each parent before its children. Without that, an empty entity
+    /// could not be spawned with the parent it asks for.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EntityError`] if `parent` is not a live entity, and an error if a component cannot be
+    /// applied.
+    ///
+    /// A failure leaves nothing behind. The entities spawned here are despawned again, deepest first,
+    /// and a component that was built but never written is dropped: the caller only learns of the
+    /// failure through the error, so it would have no way to name either.
+    ///
+    /// Only the first of those two errors is reachable today: a component is applied by moving it into
+    /// the entity, and every step of that returns `Ok`. The second is kept because it is part of what
+    /// the caller is promised, and a promise that lapses the first time a component learns to fail is
+    /// not one worth making. Nothing has to change here when that happens.
+    pub fn spawn_dynamic_scene(
+        &mut self,
+        scene: DynamicScene,
+        parent: Option<EntityId>,
+    ) -> ZlimResult<()> {
+        /// Despawns `entities`, deepest first.
+        #[cold]
+        #[inline(never)]
+        fn drop_spawned(world: &mut World, entities: &[EntityId]) {
+            for &id in entities.iter().rev() {
+                world.try_despawn(id);
+            }
+        }
+
+        // A parent that does not exist is refused before anything is spawned, so a bad call changes
+        // nothing at all.
+        if let Some(parent) = parent {
+            self.entities().get(parent).map_err(ZlimError::error)?;
+        }
+
+        let mut dynamic = scene.entities;
+
+        // `EntityMap` hashes sparsely, which assumes the index alone spreads the
+        // ids out — the reason `SceneEntityMapper` cannot use it. Here it holds:
+        // reading a document runs every id through `SceneEntityMapper`, so the
+        // ids in memory come from its counter and are uniform, rather than the
+        // placeholders a document may hold.
+        let mut id_map = EntityMap::with_capacity(dynamic.len());
+        let mut spawned: Vec<EntityId> = Vec::with_capacity(dynamic.len());
+        let mut world_of: Vec<Option<EntityId>> = vec![None; dynamic.len()];
+
+        // Where each document id sits in the list, which is how a `parent` naming an id is turned
+        // into the entity that id became.
+        let mut index_of: EntityMap<usize> = EntityMap::with_capacity(dynamic.len());
+        for (index, entity) in dynamic.iter().enumerate() {
+            index_of.insert(entity.id, index);
+        }
+
+        // Depth from the nearest root, walked from the roots down. A parent always sits at a smaller
+        // depth than its children, so sorting by depth spawns a parent before anything hanging off it.
+        //
+        // An id the document does not declare, and an entity that names itself, are both treated as
+        // "no parent here" and make the entity a root. A document read back from a file cannot
+        // produce either, so they only matter for a hand-built scene.
+        let mut children: Vec<Vec<usize>> = vec![Vec::new(); dynamic.len()];
+        let mut depth: Vec<usize> = vec![usize::MAX; dynamic.len()];
+        let mut stack: Vec<(usize, usize)> = Vec::new();
+
+        for (index, entity) in dynamic.iter().enumerate() {
+            if let Some(p) = entity.parent
+                && let Some(parent) = index_of.get(p).copied()
+                && parent != index
+            {
+                children[parent].push(index);
+            } else {
+                stack.push((index, 0));
+            }
+        }
+
+        while let Some((index, at)) = stack.pop() {
+            if depth[index] <= at {
+                continue;
+            }
+
+            depth[index] = at;
+            for &child in &children[index] {
+                stack.push((child, at + 1));
+            }
+        }
+
+        // --- 1: every entity, empty ---
+        //
+        // The whole list is spawned before a single component is written, because a component of one
+        // entity may point at another — including one the document declares later. Every id is bound
+        // by the time the second pass needs it.
+        let mut order: Vec<usize> = (0..dynamic.len()).collect();
+        order.sort_by_key(|&index| depth[index]);
+        for index in order {
+            let parent = dynamic[index]
+                .parent
+                .and_then(|parent| world_of[index_of[parent]])
+                .or(parent);
+
+            let id = match self.try_spawn_empty(parent) {
+                Ok(id) => id.id(),
+                Err(error) => {
+                    drop_spawned(self, &spawned);
+                    return Err(ZlimError::error(error));
+                }
+            };
+
+            spawned.push(id);
+            world_of[index] = Some(id);
+            id_map.insert(dynamic[index].id, id);
+        }
+
+        // --- 2: the components ---
+        //
+        // A dynamic scene says nothing about parenting beyond the id each entity carries, so the edge
+        // is whatever `try_spawn_empty` was given and there is nothing left to resolve here.
+        let mut references = EntityReferences::new();
+        let mut scratch = BundleScratch::new();
+
+        for (index, entity) in dynamic.drain(..).enumerate() {
+            // `world_of` is indexed by position in the document, which is the order this loop walks;
+            // `spawned` is in spawn order, and is only used to take everything back.
+            let target = world_of[index].expect("every entity was spawned in the first pass");
+
+            let result = (|| -> ZlimResult<()> {
+                let mut owned = self.get_entity_owned(target).map_err(ZlimError::error)?;
+
+                let mut writer = scratch.writer();
+                let mut context = TemplateContext::new(&mut owned, &mut references, &mut id_map);
+
+                for template in entity.components.into_values() {
+                    // `apply_owned` is what makes this cheap: `ComponentTemplate` moves the component
+                    // out of the template instead of cloning it, remaps the entities the component
+                    // carries through `context`, and pushes it into the writer directly.
+                    template.apply_owned(&mut context, &mut writer)?;
+                }
+
+                // `write` clears the scratch either way, so nothing is left in it after this returns.
+                writer.write(&mut *context.entity).map_err(ZlimError::error)
+            })();
+
+            if let Err(error) = result {
+                // Nothing here can fail today — the entity was spawned a moment ago and every
+                // `apply_owned` returns `Ok` — so this branch is reached only by a future one that
+                // can. It stays because the guarantee below is what callers rely on, and a guarantee
+                // that lapses the first time a component learns to fail is not one.
+                //
+                // A template that failed partway left what it had already pushed in the scratch space,
+                // where nothing would ever drop it: the write that hands components over never ran.
+                // `write` keeps the scratch for reuse, so this only holds the current entity's
+                // leftovers. The registry is read here rather than earlier so that its borrow ends
+                // before `drop_spawned` takes `&mut World`.
+                if !scratch.is_empty() {
+                    scratch.manual_drop(self.components());
+                }
+                drop_spawned(self, &spawned);
+                return Err(error);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Tests
+
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+    use zlim_core_derive::Component;
+    use zlim_reflect::derive::{Reflect, TypePath};
+
+    use super::{BorrowedSceneSerial, SceneSerial};
+    use crate::entity::EntityId;
+    use crate::world::World;
+
+    #[derive(Debug, Clone, TypePath, Reflect, Component)]
+    #[reflect(Clone, Debug)]
+    #[component(reflect, serialize)]
+    pub struct RawRefelct(String);
+
+    #[derive(Debug, Clone, TypePath, Reflect, Component)]
+    #[derive(Serialize, Deserialize)]
+    #[reflect(Clone, Debug, Serialize, Deserialize)]
+    #[component(reflect, serialize)]
+    pub struct Name(String);
+
+    #[derive(Debug, Clone, TypePath, Reflect, Component)]
+    #[derive(Serialize, Deserialize)]
+    #[reflect(Clone, Debug, Serialize, Deserialize)]
+    #[component(reflect, serialize)]
+    pub struct Transform {
+        pub x: f32,
+        pub y: f32,
+    }
+
+    #[derive(Debug, Clone, TypePath, Reflect, Component)]
+    #[derive(Serialize, Deserialize)]
+    #[reflect(Clone, Debug, Serialize, Deserialize)]
+    #[component(reflect, serialize)]
+    pub struct Target {
+        #[entities]
+        pub entity: EntityId,
+    }
+
+    #[derive(Debug, Clone, TypePath, Reflect, Component)]
+    #[derive(Serialize, Deserialize)]
+    #[reflect(Clone, Debug, Serialize, Deserialize)]
+    #[component(reflect, serialize)]
+    pub struct RelationShipTarget {
+        #[entities]
+        pub sources: Vec<EntityId>,
+    }
+
+    #[derive(Debug, Clone, Component)]
+    pub struct SkipA {
+        _skip: &'static str,
+    }
+
+    #[derive(Debug, Clone, Component, TypePath, Reflect)]
+    #[component(reflect)]
+    pub struct SkipB(String);
+
+    fn build_world() -> Box<World> {
+        let mut world = World::alloc();
+
+        let mut root = world.spawn(
+            (
+                Name("root".into()),
+                Transform { x: 1.0, y: 2.0 },
+                SkipA { _skip: "SkipA" },
+                SkipB("SkipB".into()),
+            ),
+            None,
+        );
+
+        root.with_child(Name("child".into())).unwrap();
+
+        let root_id = root.id;
+
+        let target_id = world.spawn(Target { entity: root_id }, None).id;
+
+        let mut relation = world.spawn(
+            (
+                RelationShipTarget {
+                    sources: vec![target_id, root_id],
+                },
+                RawRefelct("raw".into()),
+            ),
+            None,
+        );
+
+        relation.with_child(SkipB("SkipB".into())).unwrap();
+
+        world
+    }
+
+    #[test]
+    #[ignore = "manual trigger"]
+    #[expect(
+        clippy::print_stderr,
+        reason = "the RON this prints is the whole point of the manual test"
+    )]
+    fn print_scene_ron() {
+        let world = build_world();
+
+        let borrowed = world.borrowed_scene_builder().with_all().finish().unwrap();
+
+        let borrowed_serial = BorrowedSceneSerial {
+            context: &(),
+            scene: &borrowed,
+        };
+
+        let ron = ron::ser::to_string_pretty(&borrowed_serial, Default::default()).unwrap();
+        std::eprintln!("--- BorrowedScene RON ---\n{ron}");
+
+        let dynamic = borrowed.into_dynamic();
+
+        let dynamic_serial = SceneSerial {
+            context: &(),
+            scene: &dynamic,
+        };
+        let ron = ron::ser::to_string_pretty(&dynamic_serial, Default::default()).unwrap();
+        std::eprintln!("--- DynamicScene RON ---\n{ron}");
+    }
+
+    /// Reads the built world into a `DynamicScene` and spawns it into a fresh one.
+    fn rebuild() -> (Box<World>, Box<World>, Vec<EntityId>) {
+        let source = build_world();
+        let dynamic = source
+            .borrowed_scene_builder()
+            .with_all()
+            .finish()
+            .unwrap()
+            .into_dynamic();
+        let document_ids = dynamic.entities.iter().map(|entity| entity.id).collect();
+
+        let mut target = World::alloc();
+        target
+            .spawn_dynamic_scene(dynamic, None)
+            .expect("the document spawns");
+
+        (source, target, document_ids)
+    }
+
+    /// Every entity the call spawned, depth first from the roots.
+    fn all_entities(world: &World) -> Vec<EntityId> {
+        let mut out = Vec::new();
+        let mut stack: Vec<EntityId> = world.entities().root_entities().collect();
+        while let Some(id) = stack.pop() {
+            out.push(id);
+            // The node carries the children directly; `EntityRef` does not expose the tree.
+            if let Ok(node) = world.entities().get(id) {
+                stack.extend_from_slice(&node.children);
+            }
+        }
+        out
+    }
+
+    /// Every entity of the document is spawned, with the components it carried.
+    #[test]
+    fn a_dynamic_scene_spawns_every_entity() {
+        let (source, target, document_ids) = rebuild();
+
+        assert_eq!(
+            target.entity_count(),
+            source.entity_count(),
+            "the same entities, no more and no fewer",
+        );
+
+        let mut names = all_entities(&target)
+            .into_iter()
+            .filter_map(|id| target.entity_ref(id).get::<Name>().map(|n| n.0.clone()))
+            .collect::<Vec<_>>();
+
+        names.sort();
+
+        assert_eq!(names, vec!["child".to_string(), "root".to_string()]);
+
+        // Every entity the document declared exists in the target, one for one.
+        assert_eq!(document_ids.len(), target.entity_count());
+    }
+
+    /// A parent that does not exist is refused, and nothing is spawned.
+    #[test]
+    fn a_missing_parent_is_refused() {
+        let source = build_world();
+        let dynamic = source
+            .borrowed_scene_builder()
+            .with_all()
+            .finish()
+            .unwrap()
+            .into_dynamic();
+
+        let mut target = World::alloc();
+        let ghost = target.spawn_empty(None).id();
+        target.despawn(ghost).unwrap();
+
+        let _ = target
+            .spawn_dynamic_scene(dynamic, Some(ghost))
+            .expect_err("a despawned parent is not a parent");
+
+        assert_eq!(target.entity_count(), 0, "nothing was spawned");
     }
 }

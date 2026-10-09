@@ -49,6 +49,6 @@ impl TemplateEffect for EmptyTemplateEffect {
 impl<B: Bundle> TemplateEffect for B {
     #[inline]
     fn apply(this: Self, context: &mut TemplateContext, writer: &mut BundleWriter) {
-        writer.push(this, Some(context.entity.world().components()));
+        writer.push(this, Some(context.components()));
     }
 }

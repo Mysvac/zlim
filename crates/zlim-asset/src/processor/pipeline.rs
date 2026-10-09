@@ -142,7 +142,7 @@ where
         // processing is not a place that reaches back into either.
         let path = context.path().clone();
         let asset = SavedAsset::<T::AssetOutput>::from_transformed(&transformed);
-        let saver_context = SaverContext::complete(path, asset.erased());
+        let saver_context = SaverContext::new(path, asset.erased());
 
         let loader_settings = self
             .saver

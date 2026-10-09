@@ -7,6 +7,7 @@ use zlim_utils::hash::HashMap;
 use zlim_utils::hash::NoopState;
 
 use crate::borrow::{Res, ResMut};
+use crate::component::Components;
 use crate::entity::{Entities, EntityId, EntityMap, EntityMapper};
 use crate::ops::EntityOwned;
 use crate::resource::Resource;
@@ -280,6 +281,12 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
     #[inline]
     pub fn world(&self) -> &World {
         self.entity.world()
+    }
+
+    /// Returns the cached Components information in this world.
+    #[inline]
+    pub fn components(&self) -> &Components {
+        &self.entity.world().components
     }
 
     /// Returns `true` if the entity is currently spawned.

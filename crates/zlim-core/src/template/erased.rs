@@ -51,17 +51,48 @@ where
 
 /// [`ErasedTemplate`] + [`Reflect`]
 pub trait ReflectTemplate: ErasedTemplate {
+    /// Gets a shared reflect reference from self.
     fn as_reflect(&self) -> &dyn Reflect;
+
+    /// Gets a mutable shared reflect reference from self.
     fn as_reflect_mut(&mut self) -> &mut dyn Reflect;
+
+    /// Convert self into a reflect value.
+    fn into_reflect(self: Box<Self>) -> Box<dyn Reflect>;
+
+    /// Applies this template to the entity of `context`, taking ownership of it.
+    fn apply_owned(
+        self: Box<Self>,
+        context: &mut TemplateContext,
+        writer: &mut BundleWriter,
+    ) -> ZlimResult<()>;
+
+    fn clone_reflect_template(&self) -> Box<dyn ReflectTemplate>;
 }
 
-impl<T: ErasedTemplate + Reflect> ReflectTemplate for T {
+impl<T: ErasedTemplate + Reflect + Clone> ReflectTemplate for T {
     fn as_reflect(&self) -> &dyn Reflect {
         self
     }
 
     fn as_reflect_mut(&mut self) -> &mut dyn Reflect {
         self
+    }
+
+    fn into_reflect(self: Box<Self>) -> Box<dyn Reflect> {
+        self
+    }
+
+    fn apply_owned(
+        self: Box<Self>,
+        context: &mut TemplateContext,
+        writer: &mut BundleWriter,
+    ) -> ZlimResult<()> {
+        <Self as ErasedTemplate>::apply(&*self, context, writer)
+    }
+
+    fn clone_reflect_template(&self) -> Box<dyn ReflectTemplate> {
+        Box::new(T::clone(self))
     }
 }
 

@@ -8,6 +8,7 @@
 
 use core::fmt::Debug;
 use core::hash::{BuildHasher, Hash};
+use core::ops::Index;
 
 use serde::{Deserialize, Serialize};
 use zlim_utils::hash::{HashMap, HashSet, SparseState};
@@ -270,6 +271,15 @@ impl<T: Debug> Debug for EntityMap<T> {
     }
 }
 
+impl<T> Index<EntityId> for EntityMap<T> {
+    type Output = T;
+
+    #[inline(always)]
+    fn index(&self, entity: EntityId) -> &Self::Output {
+        self.0.index(&entity)
+    }
+}
+
 impl<T: Clone> Clone for EntityMap<T> {
     #[inline(always)]
     fn clone(&self) -> Self {
@@ -452,6 +462,18 @@ impl EntityMapper for EntityMap<EntityId> {
     #[inline]
     fn get_mapped(&mut self, source: EntityId) -> EntityId {
         self.get(source).copied().unwrap_or(source)
+    }
+
+    #[inline]
+    fn set_mapped(&mut self, source: EntityId, target: EntityId) {
+        self.insert(source, target);
+    }
+}
+
+impl EntityMapper for std::collections::BTreeMap<EntityId, EntityId> {
+    #[inline]
+    fn get_mapped(&mut self, source: EntityId) -> EntityId {
+        self.get(&source).copied().unwrap_or(source)
     }
 
     #[inline]

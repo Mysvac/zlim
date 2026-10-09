@@ -41,11 +41,11 @@ use crate::server::AssetServer;
 /// [`AssetSaver`]: crate::saver::AssetSaver
 /// [`AssetSaver::save`]: crate::saver::AssetSaver::save
 pub struct SaverContext<'a> {
-    /// The server this save is running on, when it is running on one.
-    server: Option<&'a AssetServer>,
-
     /// The world the asset was read out of, when the save came through the queue.
     world: Option<&'a World>,
+
+    /// The server this save is running on, when it is running on one.
+    server: Option<&'a AssetServer>,
 
     /// The path being written, which is the *source* path of the asset.
     path: AssetPath<'static>,
@@ -63,10 +63,8 @@ impl<'a> SaverContext<'a> {
     /// Such a save has no ambient state to offer — no server and no world. What it does have is a
     /// complete asset, one that came out of a load and a transform and so still carries its labeled
     /// sub-assets, and the path those bytes belong to.
-    ///
-    /// [`AssetProcessor::process`]: crate::processor::AssetProcessor::process
     #[inline]
-    pub fn complete(path: AssetPath<'static>, asset: ErasedSavedAsset<'a>) -> Self {
+    pub fn new(path: AssetPath<'static>, asset: ErasedSavedAsset<'a>) -> Self {
         Self {
             server: None,
             world: None,
@@ -167,8 +165,6 @@ impl core::fmt::Debug for SaverContext<'_> {
         f.debug_struct("SaverContext")
             .field("path", &self.path)
             .field("asset_type", &self.asset.asset_type_id())
-            .field("server", &self.server.is_some())
-            .field("world", &self.world.is_some())
             .field("is_incomplete", &self.is_incomplete)
             .finish()
     }

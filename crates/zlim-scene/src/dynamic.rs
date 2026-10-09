@@ -12,9 +12,7 @@
 //! [`DynamicScene`]: zlim_core::scene::DynamicScene
 //! [`ResolvedScene`]: crate::ResolvedScene
 
-use std::collections::HashMap;
-
-use zlim_core::entity::EntityId;
+use zlim_core::entity::EntityMap;
 use zlim_core::scene::{DynamicEntity, DynamicScene};
 use zlim_core::template::{EntityTemplate, ErasedTemplate};
 use zlim_error::{ZlimError, ZlimResult};
@@ -70,7 +68,7 @@ impl ResolvedScene {
         // A document may not give one id to two entities: the id is how an edge names an entity, so
         // a duplicate makes every edge that uses it ambiguous. Rejecting it here means nothing is
         // silently dropped later.
-        let mut index_of: HashMap<EntityId, usize> = HashMap::with_capacity(entities.len());
+        let mut index_of: EntityMap<usize> = EntityMap::with_capacity(entities.len());
         for (index, entity) in entities.iter().enumerate() {
             if index_of.insert(entity.id, index).is_some() {
                 ::core::hint::cold_path();
@@ -88,7 +86,7 @@ impl ResolvedScene {
         for (index, entity) in entities.iter().enumerate() {
             match entity
                 .parent
-                .and_then(|parent| index_of.get(&parent).copied())
+                .and_then(|parent| index_of.get(parent).copied())
             {
                 // A parent the document does not declare, or none at all: this entity is a root.
                 None => roots.push(index),

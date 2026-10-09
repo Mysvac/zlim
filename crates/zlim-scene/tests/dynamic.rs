@@ -30,7 +30,7 @@ struct Label(String);
 
 /// Serializes `roots` and everything under them into a RON document.
 fn document_of(world: &World, roots: &[EntityId]) -> String {
-    let mut builder = world.borrrowed_scene_builder().skip_missing();
+    let mut builder = world.borrowed_scene_builder().skip_missing();
     for &root in roots {
         builder = builder.with_recursive(root);
     }

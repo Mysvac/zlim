@@ -105,6 +105,15 @@ impl EntityId {
         unsafe { Self(NonZeroU64::new_unchecked(value)) }
     }
 
+    /// Returns the next index of self.
+    #[must_use]
+    #[inline(always)]
+    pub const fn next_index(self) -> Self {
+        let index = self.index().wrapping_add(1) as u64;
+        let generation = self.0.get() & const { !(u32::MAX as u64) };
+        unsafe { Self(NonZeroU64::new_unchecked(index | generation)) }
+    }
+
     /// Returns the raw index of this entity.
     ///
     /// The index names the slot the entity occupies and is reused once the

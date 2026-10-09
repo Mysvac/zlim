@@ -3,6 +3,7 @@
 use zlim_error::ZlimResult;
 use zlim_reflect::Reflect;
 
+use crate::bundle::BundleWriter;
 use crate::component::Component;
 use crate::template::{ErasedTemplate, ReflectTemplate, Template, TemplateContext};
 
@@ -57,7 +58,7 @@ impl<T> From<T> for ComponentTemplate<T> {
     }
 }
 
-impl<T: Reflect> ReflectTemplate for ComponentTemplate<T>
+impl<T: Reflect + Component + Clone> ReflectTemplate for ComponentTemplate<T>
 where
     Self: ErasedTemplate,
 {
@@ -67,6 +68,29 @@ where
 
     fn as_reflect_mut(&mut self) -> &mut dyn Reflect {
         &mut self.0
+    }
+
+    fn into_reflect(self: Box<Self>) -> Box<dyn Reflect> {
+        let ptr: *mut ComponentTemplate<T> = Box::leak(self);
+        // SAFETY: ComponentTemplate<T> is transparent to T
+        unsafe { Box::from_raw(ptr as *mut T) }
+    }
+
+    fn apply_owned(
+        self: Box<Self>,
+        context: &mut TemplateContext,
+        writer: &mut BundleWriter,
+    ) -> ZlimResult<()> {
+        let mut component = self.0;
+        if !T::NO_ENTITY {
+            T::map_entities(&mut component, &mut context.entity_mapper());
+        }
+        writer.push(component, Some(context.components()));
+        Ok(())
+    }
+
+    fn clone_reflect_template(&self) -> Box<dyn ReflectTemplate> {
+        Box::new(ComponentTemplate(T::clone(&self.0)))
     }
 }
 
