@@ -6,10 +6,8 @@ use zlim_utils::hash::map::Entry;
 use zlim_utils::hash::{HashMap, HashSet};
 
 use crate::asset::Asset;
-use crate::error::{
-    AssetError, AssetLoadError, LoadDirectError, MissingAssetLoader, MissingBuilder,
-    ReadAssetBytesError,
-};
+use crate::error::{AssetError, AssetLoadError, LoadDirectError};
+use crate::error::{MissingAssetLoader, MissingBuilder, ReadAssetBytesError};
 use crate::handle::{ErasedHandle, Handle};
 use crate::ident::{ErasedAssetId, TypedAssetIndex};
 use crate::io::{AssetReaderError, Reader};
@@ -519,10 +517,8 @@ impl<'c, 'b> NestedLoadBuilder<'c, 'b> {
 
         if path.is_unapproved() {
             ::core::hint::cold_path();
-            match (
-                &self.load_context.asset_server.0.path_mode,
-                self.override_unapproved,
-            ) {
+            let path_mode = &self.load_context.asset_server.0.path_mode;
+            match (path_mode, self.override_unapproved) {
                 // Explicitly allowed by the server, or by the caller.
                 (UnapprovedPathMode::Allow, _) | (UnapprovedPathMode::Deny, true) => {}
                 (UnapprovedPathMode::Deny, false) | (UnapprovedPathMode::Forbid, _) => {
@@ -574,10 +570,8 @@ impl<'c, 'b> NestedLoadBuilder<'c, 'b> {
 
         if path.is_unapproved() {
             ::core::hint::cold_path();
-            match (
-                &self.load_context.asset_server.0.path_mode,
-                self.override_unapproved,
-            ) {
+            let path_mode = &self.load_context.asset_server.0.path_mode;
+            match (path_mode, self.override_unapproved) {
                 // Explicitly allowed by the server, or by the caller.
                 (UnapprovedPathMode::Allow, _) | (UnapprovedPathMode::Deny, true) => {}
                 (UnapprovedPathMode::Deny, false) | (UnapprovedPathMode::Forbid, _) => {
@@ -682,10 +676,8 @@ impl<'c, 'b> NestedLoadBuilder<'c, 'b> {
 
         if path.is_unapproved() {
             ::core::hint::cold_path();
-            match (
-                &self.load_context.asset_server.0.path_mode,
-                self.override_unapproved,
-            ) {
+            let path_mode = &self.load_context.asset_server.0.path_mode;
+            match (path_mode, self.override_unapproved) {
                 // Explicitly allowed by the server, or by the caller.
                 (UnapprovedPathMode::Allow, _) | (UnapprovedPathMode::Deny, true) => {}
                 (UnapprovedPathMode::Deny, false) | (UnapprovedPathMode::Forbid, _) => {

@@ -222,6 +222,6 @@ impl AssetProcessServer {
 /// [`AssetPlugin`]: crate::plugin::AssetPlugin
 /// [`AssetServerMode::Processed`]: crate::server::AssetServerMode::Processed
 #[job_fn(type = StartAssetProcessServer)]
-pub(crate) fn start_asset_process_server(server: Res<AssetProcessServer>) {
+fn start_asset_process_server(server: Res<AssetProcessServer>) {
     server.start();
 }

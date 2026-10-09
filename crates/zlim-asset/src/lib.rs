@@ -71,6 +71,8 @@ pub mod jobs {
     #[doc(inline)]
     pub use crate::assets::jobs::HandleAssetEvents;
     #[doc(inline)]
+    pub use crate::processor::jobs::StartAssetProcessServer;
+    #[doc(inline)]
     pub use crate::server::jobs::AssetServerDiagnostic;
     #[doc(inline)]
     pub use crate::server::jobs::ClearFinishedAssetTask;

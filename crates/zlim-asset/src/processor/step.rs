@@ -229,18 +229,18 @@ impl AssetProcessServer {
                     // accepts a fully-qualified type path, so the string can be used without being
                     // classified first.
                     let found = {
-                        let processors = self.read_processors();
-                        processors
-                            .find(None, Some(&processor), Some(path))
-                            .map_err(|error| {
-                                ::core::hint::cold_path();
-                                match error {
-                                    Some(ambiguous) => AssetProcessError::from(ambiguous),
-                                    None => AssetProcessError::from(MissingAssetProcessor::from(
-                                        MissingBuilder::new().with_type_name(processor.clone()),
-                                    )),
-                                }
-                            })?
+                        let find_ressult =
+                            self.read_processors()
+                                .find(None, Some(&processor), Some(path));
+                        find_ressult.map_err(|error| {
+                            ::core::hint::cold_path();
+                            match error {
+                                Some(ambiguous) => AssetProcessError::from(ambiguous),
+                                None => AssetProcessError::from(MissingAssetProcessor::from(
+                                    MissingBuilder::new().with_type_name(processor.clone()),
+                                )),
+                            }
+                        })?
                     };
 
                     let meta = found.deserialize_meta(meta_bytes).map_err(|error| {

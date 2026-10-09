@@ -172,12 +172,14 @@ pub trait AppAssetExt {
 
     /// Makes `P` the processor that handles `extension` by default.
     ///
-    /// `P` has to be registered first with
-    /// [`register_asset_processor`](Self::register_asset_processor): the default names the processor
-    /// by index, and one that is not registered is reported and ignored.
+    /// `P` has to be registered first with [`register_asset_processor`]:
+    /// the default names the processor by index, and one that is not registered
+    /// is reported and ignored.
     ///
-    /// Like that registration, this needs an importer: without one the default is reported and
-    /// ignored.
+    /// Like that registration, this needs an importer: without one the default
+    /// is reported and ignored.
+    ///
+    /// [`register_asset_processor`]: Self::register_asset_processor
     fn register_extension<P: AssetProcessor>(&mut self, extension: &str) -> &mut Self;
 }
 
@@ -273,8 +275,8 @@ fn register_extension_impl<P: AssetProcessor>(world: &mut World, extension: &str
             ::core::hint::cold_path();
             zlim_log::error!(
                 "`register_extension` needs an `AssetProcessServer`, which `AssetPlugin` \
-                 only builds in `AssetServerMode::Processed` with the importer enabled; the default \
-                 for `.{extension}` is ignored."
+                 only builds in `AssetServerMode::Processed` with the importer enabled; \
+                 the default for `.{extension}` is ignored."
             );
         }
     }

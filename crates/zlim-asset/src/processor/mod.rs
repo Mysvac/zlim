@@ -65,9 +65,11 @@ mod transaction;
 mod watch;
 
 pub(crate) use gated::ProcessorGatedReader;
-pub(crate) use pass::StartAssetProcessServer;
 pub(crate) use processors::AssetProcessors;
 pub(crate) use state::ProcessingState;
+pub(crate) mod jobs {
+    pub use super::pass::StartAssetProcessServer;
+}
 
 pub use context::ProcessContext;
 pub use pipeline::{LoadTransformAndSave, LoadTransformAndSaveSettings};

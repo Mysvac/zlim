@@ -88,7 +88,7 @@ impl Plugin for ShutdownPlugin {
                 zlim_log::debug!("ShutdownPlugin: Default on_signal handler install succeed");
             }
             Err(ctrlc::Error::MultipleHandlers) => {
-                zlim_log::info!(
+                zlim_log::warn!(
                     "Skipping installing default terminal signal handler as one was already \
                     installed.\n  Please call `ShutdownPlugin::gracefully_exit` in your own \
                     handler if you still want graceful exit."
