@@ -83,9 +83,9 @@ pub trait Component: Send + Sync + 'static + Sized {
     /// - Components derived with `#[component(reflect)]` instead use [`register_reflect`]
     ///   and additionally require the component to implement `Reflect`.
     ///
-    /// - Components derived with `#[component(reflect, serialize)]` instead use
-    ///   [`register_serialize`], then this component will be serialized during the
-    ///   scene serialization.
+    /// - Components derived with `#[component(reflect, persist)]` instead use
+    ///   [`register_persist`], which additionally lets a scene document store
+    ///   the component and read it back.
     ///
     /// # Example
     ///
@@ -102,7 +102,7 @@ pub trait Component: Send + Sync + 'static + Sized {
     /// ```
     ///
     /// [`register_reflect`]: crate::component::register_reflect
-    /// [`register_serialize`]: crate::component::register_serialize
+    /// [`register_persist`]: crate::component::register_persist
     const REGISTER: fn() -> &'static ComponentDB = register_base::<Self>;
 
     /// Required components that must be present on any entity with this

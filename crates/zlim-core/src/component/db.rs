@@ -65,18 +65,26 @@ pub struct ComponentDB {
 
     // --------------------------------
     // Change Detection
-    pub summary_tick: bool,
     pub no_entity: bool,
+    pub summary_tick: bool,
 
     // --------------------------------
     // Reflect
-    /// Does the component need serialization.
-    pub serialize: bool,
+    /// Whether the component takes part in scene persistence.
+    ///
+    /// If this is `true`, the `type_db`, `reflect` and `into_template` must be `Some`.
+    pub persist: bool,
     /// Cached type database.
+    ///
+    /// If this is `Some`, the `reflect` must also be `Some`.
     pub type_db: Option<&'static TypeDB>,
     /// Reflect functions.
+    ///
+    /// If this is `Some`, the `type_db` must also be `Some`.
     pub reflect: Option<&'static ReflectComponent>,
     /// Turns a deserialized component value into the template that describes it.
+    ///
+    /// If this is `Some`, the `persist` must be `true`, the `type_db` and `reflect` must also be `Some`.
     pub into_template: Option<fn(Box<dyn Reflect>) -> Box<dyn ReflectTemplate>>,
 
     // --------------------------------
@@ -101,7 +109,7 @@ pub struct ComponentDB {
     pub type_path: &'static str,
     /// Short type name (e.g. `"Transform"`).
     pub type_name: &'static str,
-    /// Module path of the type definition.
+    /// Module path of the type definition (e.g. `"my_crate::components"`).
     pub module_path: &'static str,
 }
 
@@ -111,6 +119,8 @@ impl Debug for ComponentDB {
             .entry(&"id", &self.id)
             .entry(&"type_id", &self.type_id)
             .entry(&"type_path", &self.type_path)
+            .entry(&"reflect", &self.reflect.is_some())
+            .entry(&"persist", &self.persist)
             .finish()
     }
 }
@@ -157,7 +167,7 @@ impl ComponentDB {
             .get(id.index())
             .copied();
         // Split to avoid the poison of panic.
-        item.unwrap()
+        item.expect("The ComponentId must be valid and allocated by ComponentDB")
     }
 
     /// Looks up a [`ComponentDB`] by its [`TypeId`].

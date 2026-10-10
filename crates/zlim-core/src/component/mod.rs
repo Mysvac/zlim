@@ -76,7 +76,7 @@ pub use component::Component;
 pub use db::ComponentDB;
 pub use hook::{ComponentHook, HookContext};
 pub use reflect::ReflectComponent;
-pub use register::{register_base, register_reflect, register_serialize};
+pub use register::{register_base, register_persist, register_reflect};
 pub use required::{Required, RequiredComponents};
 pub use snapshot::Components;
 pub use writer::ComponentWriter;

@@ -120,7 +120,7 @@ register_job!(GroupEnd);
 ///     type: MyGroup,
 ///     name: "my_group",
 ///     jobs: [JobA, "group_job_b"],
-///     condition: JobC, // optional
+///     run_if: JobC, // optional, a single slot
 ///     order: [["group_job_b", JobA]], // optional
 ///     // ...
 /// }
@@ -134,7 +134,9 @@ register_job!(GroupEnd);
 /// - `jobs` : All jobs included in this JobGroup. All content
 ///   appearing in `order` and `weak_order` must be declared in `jobs`.
 ///
-/// - `condition` : Optional preconditions.
+/// - `run_if` : Optional precondition, named as in `job!`. A single slot is
+///   accepted, not a list: a group carries one run condition, so several have
+///   to be expressed as one condition job of the group's own.
 ///   A job with a return value of `bool` or `Result<bool, Error>`.
 ///   If it returns false or Error, the entire JobGroup will be quickly skipped.
 ///   It can be added automatically without being declared in the jobs.
@@ -230,7 +232,7 @@ pub struct JobGroup {
     /// `1` is the group-end marker; real jobs start at index `2`.
     pub jobs: &'static [JobId],
     /// Index into [`Self::jobs`] of the group's run-condition job, if any.
-    pub condition: Option<u16>,
+    pub run_if: Option<u16>,
     /// Strong (blocking) ordering edges as `(before, after)` index pairs
     /// into [`Self::jobs`].
     pub order: &'static [(u16, u16)],
@@ -257,7 +259,7 @@ impl JobGroup {
     /// If this job is skipped, the entire JobGroup will be skipped.
     #[inline]
     pub fn first(&self) -> JobId {
-        let index = self.condition.unwrap_or(0);
+        let index = self.run_if.unwrap_or(0);
         self.jobs[index as usize]
     }
 
@@ -316,7 +318,7 @@ impl JobGroup {
         panic!("{location}: cannot find job `{job}` in group `{group}`");
     }
 
-    /// Builds a job group from its name, job list, condition, and ordering
+    /// Builds a job group from its name, job list, run condition, and ordering
     /// chains.
     ///
     /// Every job slot is converted into a [`JobId`] combining the job name
@@ -335,7 +337,7 @@ impl JobGroup {
     pub fn build(
         name: &'static str,
         jobs: &[&'static str],
-        condition: Option<&'static str>,
+        run_if: Option<&'static str>,
         order: &[&[&'static str]],
         weak_order: &[&[&'static str]],
         relaxed_order: &[&[&'static str]],
@@ -370,9 +372,9 @@ impl JobGroup {
             panic!("{location}: too many jobs, cannot exceed `i16::MAX - 2`");
         }
 
-        // If the `condition` is not as written in `jobs`, it will be automatically added.
-        let (condition, condition_name): (Option<u16>, Option<&'static str>) = {
-            if let Some(x) = condition {
+        // If the `run_if` is not as written in `jobs`, it will be automatically added.
+        let (run_if, run_if_name): (Option<u16>, Option<&'static str>) = {
+            if let Some(x) = run_if {
                 match jobs.iter().position(|y| *y == x) {
                     Some(index) => (Some((index + 2) as u16), None),
                     None => (Some((jobs.len() + 2) as u16), Some(x)),
@@ -401,8 +403,8 @@ impl JobGroup {
                     order_buf.insert((a + 2, b + 2));
                 }
             }
-            // `GroupBegin` run after `condition`
-            if let Some(cond_index) = condition {
+            // `GroupBegin` run after `run_if`
+            if let Some(cond_index) = run_if {
                 order_buf.insert((cond_index, 0));
             }
 
@@ -480,9 +482,9 @@ impl JobGroup {
             buf.push(JobId::new(GroupBegin::name(), name));
             buf.push(JobId::new(GroupEnd::name(), name));
             jobs.iter().for_each(|&n| buf.push(JobId::new(n, name)));
-            if let Some(condition_name) = condition_name {
-                buf.push(JobId::new(condition_name, name));
-                debug_assert_eq!(condition, Some((buf.len() as u16) - 1));
+            if let Some(run_if_name) = run_if_name {
+                buf.push(JobId::new(run_if_name, name));
+                debug_assert_eq!(run_if, Some((buf.len() as u16) - 1));
             }
             crate::utils::SlicePool::job_id(buf.as_slice())
         };
@@ -493,7 +495,7 @@ impl JobGroup {
         Self {
             name,
             jobs,
-            condition,
+            run_if,
             order,
             weak_order,
             relaxed_order,

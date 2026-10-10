@@ -5,11 +5,13 @@
 //! - Job slots accept either string literals (used as-is) or types
 //!   implementing `JobLabel` (resolved through
 //!   `<Type as JobLabel>::name()`).
-//! - `type`, `name`, and `jobs` are required; `condition`, `order`,
+//! - `type`, `name`, and `jobs` are required; `run_if`, `order`,
 //!   and `weak_order` are optional and default to `None` / `&[]`.
 //! - The generated `register()` registers the group's type-based jobs and
-//!   condition (in list order) before registering the group itself.
+//!   its run condition (in list order) before registering the group itself.
 //!   String slots carry no type and are skipped.
+//! - `run_if` accepts a single slot, not a list: unlike `job!`, a group
+//!   carries at most one run condition.
 //! - Generic markers require every type parameter to implement `TypePath`,
 //!   and `name()` is derived from the marker type itself.
 //! - Non-generic markers register themselves at program startup through
@@ -66,7 +68,7 @@ pub(crate) struct JobGroupInput {
     pub generics: syn::Generics,
     pub name: LitStr,
     pub jobs: Vec<Slot>,
-    pub condition: Option<Slot>,
+    pub run_if: Option<Slot>,
     pub order: Vec<Vec<Slot>>,
     pub weak_order: Vec<Vec<Slot>>,
     pub relaxed_order: Vec<Vec<Slot>>,
@@ -77,7 +79,7 @@ impl Parse for JobGroupInput {
         let mut type_spec = None;
         let mut name = None;
         let mut jobs = None;
-        let mut condition = None;
+        let mut run_if = None;
         let mut order = None;
         let mut weak_order = None;
         let mut relaxed_order = None;
@@ -90,16 +92,16 @@ impl Parse for JobGroupInput {
                 "type" => type_spec = Some(parse_type_spec(input)?),
                 "name" => name = Some(input.parse()?),
                 "jobs" => jobs = Some(parse_slot_list(input)?),
-                "condition" => condition = Some(Some(input.parse()?)),
+                "run_if" => run_if = Some(Some(input.parse()?)),
                 "order" => order = Some(parse_slot_list_list(input)?),
                 "weak_order" => weak_order = Some(parse_slot_list_list(input)?),
                 "relaxed_order" => relaxed_order = Some(parse_slot_list_list(input)?),
+                "condition" => {
+                    return Err(syn::Error::new_spanned(key, "use `run_if` instead"));
+                }
                 _ => {
-                    return Err(syn::Error::new_spanned(
-                        key,
-                        "expected `type`, `name`, `jobs`, `condition`, `order`, \
-                         `weak_order`, or `relaxed_order`",
-                    ));
+                    const MSG: &str = "expected `type`, `name`, `jobs`, `run_if`, `order`, `weak_order`, or `relaxed_order`";
+                    return Err(syn::Error::new_spanned(key, MSG));
                 }
             }
 
@@ -118,7 +120,7 @@ impl Parse for JobGroupInput {
             generics,
             name,
             jobs,
-            condition: condition.unwrap_or_default(),
+            run_if: run_if.unwrap_or_default(),
             order: order.unwrap_or_default(),
             weak_order: weak_order.unwrap_or_default(),
             relaxed_order: relaxed_order.unwrap_or_default(),
@@ -153,7 +155,7 @@ pub(crate) fn expand(input: JobGroupInput) -> TokenStream {
         mut generics,
         name,
         jobs,
-        condition,
+        run_if,
         order,
         weak_order,
         relaxed_order,
@@ -206,7 +208,7 @@ pub(crate) fn expand(input: JobGroupInput) -> TokenStream {
         .collect();
 
     // `register()` calls `JobLabel::register()` on every type-based slot
-    // (jobs in list order, then `condition`) before registering the group.
+    // (jobs in list order, then `run_if`) before registering the group.
     // String slots cannot be registered.
     let job_registers: Vec<TokenStream> = jobs
         .iter()
@@ -216,12 +218,12 @@ pub(crate) fn expand(input: JobGroupInput) -> TokenStream {
         })
         .collect();
 
-    let condition_register = match &condition {
+    let run_if_register = match &run_if {
         Some(Slot::Ty(ty)) => quote! { <#ty as #job_label_>::register(); },
         _ => TokenStream::new(),
     };
 
-    let condition_expr = match &condition {
+    let run_if_expr = match &run_if {
         Some(slot) => {
             let expr = slot_expr(slot, &job_label_);
             quote! { ::core::option::Option::Some(#expr) }
@@ -270,7 +272,7 @@ pub(crate) fn expand(input: JobGroupInput) -> TokenStream {
                     #job_group_::build(
                         <Self as #job_group_label_>::name(),
                         &[ #(#job_exprs),* ],
-                        #condition_expr,
+                        #run_if_expr,
                         &[ #(#order_exprs),* ],
                         &[ #(#weak_order_exprs),* ],
                         &[ #(#relaxed_order_exprs),* ],
@@ -287,7 +289,7 @@ pub(crate) fn expand(input: JobGroupInput) -> TokenStream {
                     ::core::hint::cold_path();
 
                     #(#job_registers)*
-                    #condition_register
+                    #run_if_register
 
                     #job_group_::register(Self::group());
                 }

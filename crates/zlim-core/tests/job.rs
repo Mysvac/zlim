@@ -342,7 +342,7 @@ job_group! {
     type: ExampleGroup,
     name: "test::example_group",
     jobs: [GroupLabelA, "label_b"],
-    condition: GroupLabelA,
+    run_if: GroupLabelA,
     order: [["label_b", GroupLabelA]],
     weak_order: [[GroupLabelA, GroupLabelA]],
     relaxed_order: [["label_b", GroupLabelA]],
@@ -368,7 +368,7 @@ fn job_group_non_generic() {
 
     // `condition` indexes the group's `jobs` array (user list shifted by
     // +2 for the begin/end markers).
-    assert_eq!(group.condition, Some(2));
+    assert_eq!(group.run_if, Some(2));
 
     // order: the user chain `label_b -> group_label_a` shifted by +2,
     // plus `GroupBegin -> all`, the strict `GroupBegin -> GroupEnd` pair,
@@ -416,7 +416,7 @@ fn job_group_generic() {
     assert_eq!(group.jobs[1].name(), "zlim_core::GroupEnd");
     assert_eq!(group.jobs[2].name(), "test::group_label_a");
     // Without a condition only the implicit marker edges remain.
-    assert_eq!(group.condition, None);
+    assert_eq!(group.run_if, None);
     assert_eq!(group.order, &[(0, 1), (0, 2)]);
     assert_eq!(group.weak_order, &[]);
     assert_eq!(group.relaxed_order, &[(2, 1)]);
@@ -438,7 +438,7 @@ job_group! {
     type: RegisterGroup<T: Default>,
     name: "test::register_group",
     jobs: [GenericGroupJob<T>],
-    condition: GenericGroupJob<T>,
+    run_if: GenericGroupJob<T>,
 }
 
 #[test]

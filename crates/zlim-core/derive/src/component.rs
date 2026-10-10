@@ -30,7 +30,7 @@ struct ComponentAttrs {
     on_discard: Option<syn::ExprPath>,
     on_despawn: Option<syn::ExprPath>,
     reflect: bool,
-    serialize: bool,
+    persist: bool,
     summary_tick: bool,
     required: Vec<Type>,
 }
@@ -68,7 +68,7 @@ fn parse_component_attrs(attrs: &[syn::Attribute]) -> syn::Result<ComponentAttrs
         on_discard: None,
         on_despawn: None,
         reflect: false,
-        serialize: false,
+        persist: false,
         summary_tick: false,
         required: Vec::new(),
     };
@@ -141,23 +141,27 @@ fn parse_component_attrs(attrs: &[syn::Attribute]) -> syn::Result<ComponentAttrs
             } else if meta.path.is_ident("on_despawn") {
                 ret.on_despawn = Some(parse_hook_expr(&meta)?);
                 Ok(())
-            } else if meta.path.is_ident("serialize") {
-                ret.serialize = true;
-                Ok(())
             } else if meta.path.is_ident("reflect") {
                 ret.reflect = true;
+                Ok(())
+            } else if meta.path.is_ident("persist") {
+                ret.persist = true;
                 Ok(())
             } else if meta.path.is_ident("summary_tick") {
                 ret.summary_tick = true;
                 Ok(())
+            } else if meta.path.is_ident("serialize") || meta.path.is_ident("into_template") {
+                // Both named this attribute after the mechanism rather than after
+                // what it decides, which `#[reflect(Serialize)]` already names.
+                Err(meta.error("use #[component(persist)] instead"))
             } else {
                 Err(meta.error("unsupported component attribute"))
             }
         })?;
     }
 
-    if ret.serialize && !ret.reflect {
-        const MSG: &str = "`#[component(serialize)]` requires `#[component(reflect)]`";
+    if ret.persist && !ret.reflect {
+        const MSG: &str = "`#[component(persist)]` requires `#[component(reflect)]`";
         return Err(syn::Error::new(Span::call_site(), MSG));
     }
 
@@ -258,9 +262,9 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
             predicates.push(parse_quote! { Self: #type_database_ });
         }
 
-        // A serialized component is also `Clone`: a scene document describes a value that can be
+        // A persisted component is also `Clone`: a scene document describes a value that can be
         // applied more than once, and the template of such a value is built by cloning it.
-        if attrs.serialize {
+        if attrs.persist {
             predicates.push(parse_quote! { Self: ::core::clone::Clone });
         }
     } else if generics.lifetimes().next().is_some() {
@@ -379,14 +383,13 @@ pub(crate) fn expand(ast: DeriveInput) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     // --- register ------------------------------------------------------
-    // `#[component(serialize)]` components override the trait's default
-    // registration to fill the serialization function pointers, and expose
-    // `SERIALIZE = true`.
-    let register_tokens = if attrs.serialize {
+    // `#[component(persist)]` components override the trait's default
+    // registration to fill the persistence function pointers.
+    let register_tokens = if attrs.persist {
         let component_db_ = crate::path::component_db_(&zlim_core);
-        let register_serialize_ = crate::path::component_register_serialize_(&zlim_core);
+        let register_persist_ = crate::path::component_register_persist_(&zlim_core);
         quote! {
-            const REGISTER: fn() -> &'static #component_db_ = #register_serialize_::<Self>;
+            const REGISTER: fn() -> &'static #component_db_ = #register_persist_::<Self>;
         }
     } else if attrs.reflect {
         let component_db_ = crate::path::component_db_(&zlim_core);

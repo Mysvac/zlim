@@ -60,10 +60,9 @@ def_path_fn!(component_hook_, component::ComponentHook);
 def_path_fn!(component_cloner_, clone::ComponentCloner);
 def_path_fn!(required_, component::Required);
 def_path_fn!(component_register_reflect_, component::register_reflect);
-def_path_fn!(component_register_serialize_, component::register_serialize);
+def_path_fn!(component_register_persist_, component::register_persist);
 def_path_fn!(map_entities_, entity::MapEntities);
 def_path_fn!(entity_mapper_, entity::EntityMapper);
-
 def_path_fn!(world_, world::World);
 def_path_fn!(world_cell_, world::WorldCell);
 def_path_fn!(deferred_world_, world::DeferredWorld);

@@ -63,17 +63,19 @@ pub fn register_reflect<C: Component + TypeDatabase>() -> &'static ComponentDB {
     register_impl::<C>(None, type_db, reflect)
 }
 
-/// Registers a [`Component`] type `R` **with** serialization support.
+/// Registers a [`Component`] type `R` **with** scene persistence.
 ///
 /// The names then come from the [`TypeDB`] instead of [`core::any::type_name`],
 /// so the resource is also filed in the path registry and can be found by
 /// [`ComponentDB::get_by_path`].
 ///
-/// A serialized component is also [`Clone`], because a scene document describes a value that can be
-/// applied more than once, and the template of a value is built by cloning it — see
-/// [`ComponentDB::into_template`].
+/// This is what `#[component(persist)]` selects. It is a step above mere
+/// reflection: the component can be written into a scene document and read back
+/// out of one, which is why it is also [`Clone`] — a document describes a value
+/// that can be applied more than once, and the template of a value is built by
+/// cloning it. See [`ComponentDB::into_template`].
 #[inline]
-pub fn register_serialize<C: Component + TypeDatabase + Clone>() -> &'static ComponentDB {
+pub fn register_persist<C: Component + TypeDatabase + Clone>() -> &'static ComponentDB {
     if let Some(db) = fast_path(TypeId::of::<C>()) {
         return db;
     }
@@ -138,9 +140,9 @@ fn register_impl<C: Component>(
         dropper: Dropper::of::<C>(),
         cloner: C::CLONER,
         required: C::REQUIRED,
-        summary_tick: C::SUMMARY_TICK,
         no_entity: C::NO_ENTITY,
-        serialize: into_template.is_some(),
+        summary_tick: C::SUMMARY_TICK,
+        persist: into_template.is_some(),
         type_db,
         reflect: None,
         into_template,

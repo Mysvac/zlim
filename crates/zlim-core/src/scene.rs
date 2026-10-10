@@ -204,18 +204,21 @@ impl<'de> Visitor<'de> for ComponentsVisitor<'_> {
             let Some(into_template) = component_db.into_template else {
                 ::core::hint::cold_path();
                 return Err(serde::de::Error::custom(format!(
-                    "the component `{type_path}` cannot be deserialize, requires `#[component(serialize)]` attribute"
+                    "the component `{type_path}` cannot be deserialize, requires `#[component(persist)]` attribute"
                 )));
             };
             let seed = type_db.deserialize_seed(self.context);
             let mut value = map.next_value_seed(seed)?;
 
+            #[cold]
+            #[inline(never)]
+            fn unreachable_unreflect(name: &str) -> ! {
+                panic!("The ComponentDB `{name}` contains `TypeDB`, but missing `ReflectComponent`")
+            }
+
             if !component_db.no_entity {
                 let Some(reflect) = component_db.reflect else {
-                    ::core::hint::cold_path();
-                    return Err(serde::de::Error::custom(format!(
-                        "the component `{type_path}` is un-reflected, requires `#[component(reflect)]` attribute"
-                    )));
+                    unreachable_unreflect(type_path)
                 };
                 (reflect.map_entities)(&mut *value, self.mapper);
             }
@@ -941,7 +944,7 @@ impl<'w> BorrowedSceneBuilder<'w> {
         #[cold]
         #[inline(never)]
         fn unreachable_err(db: &ComponentDB) -> ! {
-            panic!("The component `{db:?}` annotated `serialize` does not impl reflect")
+            panic!("The component `{db:?}` annotated `persist` does not impl reflect")
         }
 
         roots.iter().for_each(|id| {
@@ -962,10 +965,10 @@ impl<'w> BorrowedSceneBuilder<'w> {
                 };
                 for &cid in entity_ref.components().iter() {
                     let db = components.get_by_id(cid);
-                    if !db.serialize {
+                    if !db.persist {
                         continue;
                     }
-                    // #[component(serialize)] will register `into_template`.
+                    // #[component(persist)] will register `into_template`.
                     debug_assert!(db.into_template.is_some());
 
                     let Some(type_db) = db.type_db else {
@@ -1039,7 +1042,7 @@ impl BorrowedScene<'_> {
                     (reflect.map_entities)(&mut *cloned, &mut mapper);
                 }
                 let into_template = db.into_template.expect(
-                    "the component in BorrowedScene must be serializable (#[component(serialize)])",
+                    "the component in BorrowedScene must be persistable (#[component(persist)])",
                 );
                 dynamic_entity.components.insert(*k, into_template(cloned));
             }
@@ -1247,19 +1250,19 @@ mod tests {
 
     #[derive(Debug, Clone, TypePath, Reflect, Component)]
     #[reflect(Clone, Debug)]
-    #[component(reflect, serialize)]
+    #[component(reflect, persist)]
     pub struct RawRefelct(String);
 
     #[derive(Debug, Clone, TypePath, Reflect, Component)]
     #[derive(Serialize, Deserialize)]
     #[reflect(Clone, Debug, Serialize, Deserialize)]
-    #[component(reflect, serialize)]
+    #[component(reflect, persist)]
     pub struct Name(String);
 
     #[derive(Debug, Clone, TypePath, Reflect, Component)]
     #[derive(Serialize, Deserialize)]
     #[reflect(Clone, Debug, Serialize, Deserialize)]
-    #[component(reflect, serialize)]
+    #[component(reflect, persist)]
     pub struct Transform {
         pub x: f32,
         pub y: f32,
@@ -1268,7 +1271,7 @@ mod tests {
     #[derive(Debug, Clone, TypePath, Reflect, Component)]
     #[derive(Serialize, Deserialize)]
     #[reflect(Clone, Debug, Serialize, Deserialize)]
-    #[component(reflect, serialize)]
+    #[component(reflect, persist)]
     pub struct Target {
         #[entities]
         pub entity: EntityId,
@@ -1277,7 +1280,7 @@ mod tests {
     #[derive(Debug, Clone, TypePath, Reflect, Component)]
     #[derive(Serialize, Deserialize)]
     #[reflect(Clone, Debug, Serialize, Deserialize)]
-    #[component(reflect, serialize)]
+    #[component(reflect, persist)]
     pub struct RelationShipTarget {
         #[entities]
         pub sources: Vec<EntityId>,
@@ -1328,10 +1331,7 @@ mod tests {
 
     #[test]
     #[ignore = "manual trigger"]
-    #[expect(
-        clippy::print_stderr,
-        reason = "the RON this prints is the whole point of the manual test"
-    )]
+    #[expect(clippy::print_stderr, reason = "Format Display")]
     fn print_scene_ron() {
         let world = build_world();
 

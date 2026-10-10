@@ -90,7 +90,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// | `on_discard = path::fn` | `on_discard` lifecycle hook. |
 /// | `on_despawn = path::fn` | `on_despawn` lifecycle hook. |
 /// | `reflect` | Register with reflection support. |
-/// | `serialize` | Register with serialization support (requires `reflect`). |
+/// | `persist` | Register with scene persistence (requires `reflect` and `Clone`). |
 /// | `summary_tick` | Enable summary tick to accelerate change query. |
 ///
 /// # Cloner
@@ -185,28 +185,35 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 /// struct Location { /* ... */ }
 /// ```
 ///
-/// # Serialize
+/// # Persist
 ///
-/// `#[component(serialize)]` enable scene serialization for a component:
+/// `#[component(persist)]` lets a component take part in scene persistence: a
+/// scene document stores it, and loading that document reads it back.
 ///
 /// ```ignore
 /// #[derive(Default, Component, Clone, TypePath, Reflect)]
-/// #[component(reflect, serialize)]
+/// #[component(reflect, persist)]
 /// struct Location { /* ... */ }
 /// ```
 ///
-/// Serialization relies on `Reflect`, so a component marked `serialize` must
-/// also be marked `reflect`.
+/// This is deliberately **not** the same word as `#[reflect(Serialize)]`, and
+/// the two are easy to confuse because they usually appear together:
 ///
-/// Note that this serialization specifically refers to persistent storage for *scene*
-/// serialization. Even if a component does not implement `serialize`, it can still be
-/// reflectively serialized in other contexts as long as it implements `reflect`.
+/// - `#[reflect(Serialize, Deserialize)]` gives the type a *reflective serde
+///   capability*. Every `Reflect` type can be written through `TypeDB::serialize` regardless of it.
 ///
-/// Scene serialization relies on `Template`, so marking a component `serialize`
-/// requires it to implement `IntoTemplate`. Simple types (`Default + Clone`) get
-/// a default implementation. For complex types — for example those containing
-/// entities or asset handles — it is recommended to use the `IntoTemplate` derive
-/// macro.
+/// - `#[component(persist)]` is the per-component *decision* to pay the cost of
+///   surviving a document. A component without it is simply absent from every
+///   document a scene writes, so it cannot be restored.
+///
+/// Persistence relies on `Reflect`, so a component marked `persist` must also be
+/// marked `reflect`; it also has to be `Clone`, because a document describes a
+/// value that can be applied more than once.
+///
+/// It further relies on `Template`, so marking a component `persist` requires it
+/// to implement `IntoTemplate`. Simple types (`Default + Clone`) get a default
+/// implementation. For complex types — for example those containing entities or
+/// asset handles — it is recommended to use the `IntoTemplate` derive macro.
 #[proc_macro_derive(Component, attributes(component, entities, require))]
 pub fn derive_component(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -555,8 +562,8 @@ pub fn job(input: TokenStream) -> TokenStream {
 ///   implementing `JobLabel` are resolved through
 ///   `<Type as JobLabel>::name()` — and builds the group through
 ///   `JobGroup::build`.
-/// - `register()` registers the group's type-based jobs and condition (in
-///   list order, via `JobLabel::register()`) before registering the group
+/// - `register()` registers the group's type-based jobs and its run condition
+///   (in list order, via `JobLabel::register()`) before registering the group
 ///   itself.  String slots carry no type and are skipped.
 ///
 /// # Arguments
@@ -566,7 +573,7 @@ pub fn job(input: TokenStream) -> TokenStream {
 /// | `type: Name` or `type: Name<GENERICS>` | The generated marker type and its generic parameters. **Required.** |
 /// | `name: "..."` | Unique string identifier of the group. **Required.** |
 /// | `jobs: [...]` | The job slots of the group. **Required.** |
-/// | `condition: ...` | Optional run condition; a single slot. |
+/// | `run_if: ...` | Optional run condition; **a single slot**, where `job!`'s `run_if` takes a list. |
 /// | `order: [...]` | Optional ordered constraints; a list of slot lists. |
 /// | `weak_order: [...]` | Optional weak ordered constraints; a list of slot lists. |
 /// | `relaxed_order: [...]` | Optional relaxed (non-blocking) ordered constraints; a list of slot lists. |
@@ -586,14 +593,18 @@ pub fn job(input: TokenStream) -> TokenStream {
 /// concrete instantiation manually, e.g. through
 /// `zlim_reg::submit!(__JobGroupReg__::of::<GenericGroup<u32>>() => __JobGroupReg__)`.
 ///
-/// # Ordering and conditions
+/// # Ordering and run conditions
 ///
-/// `condition`, `order`, `weak_order`, and `relaxed_order` reference job
+/// `run_if`, `order`, `weak_order`, and `relaxed_order` reference job
 /// slots by name (either a string literal or a `JobLabel` type).
 /// `JobGroup::build` resolves those names to indices into the group's jobs
 /// array, which is prefixed with internal `GroupBegin`/`GroupEnd` markers —
-/// slot indices are therefore shifted by `+2`, and `condition` is stored as
+/// slot indices are therefore shifted by `+2`, and `run_if` is stored as
 /// an index into that array.
+///
+/// `run_if` names **one** slot.  A group carries a single run condition,
+/// where a job's `run_if` may list several; a group that needs more has to
+/// express it as one condition job of its own.
 ///
 /// # Example
 ///
@@ -605,7 +616,7 @@ pub fn job(input: TokenStream) -> TokenStream {
 ///     type: ExampleGroup,
 ///     name: "example_group",
 ///     jobs: [LabelA, "label_b"],
-///     condition: LabelA,
+///     run_if: LabelA,
 ///     order: [["label_b", LabelA]],
 /// }
 /// ```

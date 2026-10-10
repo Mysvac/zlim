@@ -330,6 +330,8 @@ fn generate_query_slice(
                 let mut filter = true;
                 unsafe {
                     let ptr = table as *mut #table_;
+                    // ↓ Note: we cannot return early, it is possible for update_table to return false but
+                    // still enter internal search. Therefore, all internal data must be fully update_table.
                     #( filter &= <#static_field_types as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
                 }
                 filter
@@ -424,6 +426,8 @@ fn generate_query_slice(
                     let mut filter = true;
                     unsafe {
                         let ptr = table as *mut #table_;
+                        // ↓ Note: we cannot return early, it is possible for update_table to return false but
+                        // still enter internal search. Therefore, all internal data must be fully update_table.
                         #( filter &= <#ro_delegate_tys as #query_data_>::update_table(&state.#idx, &mut cache.#idx, &mut *ptr); )*
                     }
                     filter

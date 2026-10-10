@@ -20,9 +20,9 @@ use zlim_scene::ResolvedScene;
 // -----------------------------------------------------------------------------
 // Types
 
-/// A component that a scene serializes, and whose fields are plain data.
+/// A component that a scene persists, and whose fields are plain data.
 #[derive(Default, Component, Clone, Debug, PartialEq, Reflect, TypePath)]
-#[component(reflect, serialize)]
+#[component(reflect, persist)]
 struct Label(String);
 
 // -----------------------------------------------------------------------------
